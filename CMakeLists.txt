@@ -48,8 +48,8 @@ include_directories(
     ${GLM_DIR}
     ${FLECS_DIR}/include
     ${Vulkan_INCLUDE_DIRS}
-    src/
-    include/
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/include
 )
 
 # Fast build option - create separate Flecs library

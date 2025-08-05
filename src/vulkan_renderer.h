@@ -4,6 +4,8 @@
 #include <vulkan/vulkan.h>
 #include <SDL3/SDL.h>
 #include <memory>
+#include <vector>
+#include <tuple>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -22,6 +24,14 @@ public:
     bool initialize(SDL_Window* window);
     void cleanup();
     void drawFrame();
+    void setEntityPosition(float x, float y, float z);
+    
+    enum class ShapeType {
+        Triangle,
+        Square
+    };
+    
+    void updateEntities(const std::vector<std::tuple<glm::vec3, ShapeType, glm::vec4>>& entities);
     
     bool isInitialized() const { return initialized; }
 
@@ -66,4 +76,10 @@ private:
     void loadDrawingFunctions();
     void updateUniformBuffer(uint32_t currentImage);
     void updateInstanceBuffer(uint32_t currentFrame);
+    
+    // Entity position for rendering (backward compatibility)
+    glm::vec3 entityPosition = glm::vec3(0.0f, 0.0f, 0.0f);
+    
+    // Multiple entities for rendering
+    std::vector<std::tuple<glm::vec3, ShapeType, glm::vec4>> renderEntities;
 };

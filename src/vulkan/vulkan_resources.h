@@ -4,6 +4,7 @@
 #include <vulkan/vulkan.h>
 #include <vector>
 #include "vulkan_context.h"
+#include "../PolygonFactory.h"
 
 class VulkanSync;
 
@@ -19,6 +20,8 @@ public:
     bool createVertexBuffer();
     bool createIndexBuffer();
     bool createInstanceBuffers();
+    bool createMultiShapeBuffers();
+    bool createPolygonBuffers(const PolygonMesh& polygon);
     bool createDescriptorPool(VkDescriptorSetLayout descriptorSetLayout);
     bool createDescriptorSets(VkDescriptorSetLayout descriptorSetLayout);
 
@@ -27,6 +30,12 @@ public:
     
     VkBuffer getVertexBuffer() const { return vertexBuffer; }
     VkBuffer getIndexBuffer() const { return indexBuffer; }
+    VkBuffer getTriangleVertexBuffer() const { return triangleVertexBuffer; }
+    VkBuffer getTriangleIndexBuffer() const { return triangleIndexBuffer; }
+    VkBuffer getSquareVertexBuffer() const { return squareVertexBuffer; }
+    VkBuffer getSquareIndexBuffer() const { return squareIndexBuffer; }
+    uint32_t getTriangleIndexCount() const { return triangleIndexCount; }
+    uint32_t getSquareIndexCount() const { return squareIndexCount; }
     const std::vector<VkBuffer>& getInstanceBuffers() const { return instanceBuffers; }
     const std::vector<void*>& getInstanceBuffersMapped() const { return instanceBuffersMapped; }
     uint32_t getIndexCount() const { return indexCount; }
@@ -58,6 +67,19 @@ private:
     VkBuffer indexBuffer = VK_NULL_HANDLE;
     VkDeviceMemory indexBufferMemory = VK_NULL_HANDLE;
     uint32_t indexCount = 0;
+    
+    // Separate buffers for different shapes
+    VkBuffer triangleVertexBuffer = VK_NULL_HANDLE;
+    VkDeviceMemory triangleVertexBufferMemory = VK_NULL_HANDLE;
+    VkBuffer triangleIndexBuffer = VK_NULL_HANDLE;
+    VkDeviceMemory triangleIndexBufferMemory = VK_NULL_HANDLE;
+    uint32_t triangleIndexCount = 0;
+    
+    VkBuffer squareVertexBuffer = VK_NULL_HANDLE;
+    VkDeviceMemory squareVertexBufferMemory = VK_NULL_HANDLE;
+    VkBuffer squareIndexBuffer = VK_NULL_HANDLE;
+    VkDeviceMemory squareIndexBufferMemory = VK_NULL_HANDLE;
+    uint32_t squareIndexCount = 0;
     
     static const int STAGING_BUFFER_COUNT = 4;
     static const VkDeviceSize STAGING_BUFFER_SIZE = 1024 * 1024;

@@ -4,7 +4,9 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <iostream>
+#include <cmath>
 #include "vulkan_renderer.h"
+#include "PolygonFactory.h"
 
 struct Position {
     float x, y, z;
@@ -18,6 +20,20 @@ struct Color {
     float r, g, b, a;
 };
 
+enum class ShapeType {
+    Triangle,
+    Square
+};
+
+struct Shape {
+    ShapeType type;
+};
+
+struct Rotation {
+    glm::vec3 axis;
+    float angle;
+};
+
 void movement_system(flecs::entity e, Position& pos, Velocity& vel) {
     pos.x += vel.x * 0.016f; // Approximate 60 FPS delta time
     pos.y += vel.y * 0.016f;
@@ -26,6 +42,26 @@ void movement_system(flecs::entity e, Position& pos, Velocity& vel) {
     // Bounce off screen edges
     if (pos.x > 2.0f || pos.x < -2.0f) vel.x = -vel.x;
     if (pos.y > 1.5f || pos.y < -1.5f) vel.y = -vel.y;
+}
+
+void rotation_system(flecs::entity e, Position& pos, Rotation& rot) {
+    const float deltaTime = 0.016f; // Approximate 60 FPS delta time
+    
+    // Update rotation angle
+    rot.angle += deltaTime * 2.0f; // Rotate at 2 radians per second
+    
+    // Keep angle in [0, 2π] range
+    if (rot.angle > 2.0f * M_PI) {
+        rot.angle -= 2.0f * M_PI;
+    }
+    
+    // Create rotation matrix and apply to position for orbital movement
+    glm::mat4 rotationMatrix = glm::rotate(glm::mat4(1.0f), rot.angle * 0.5f, rot.axis);
+    glm::vec4 rotatedPos = rotationMatrix * glm::vec4(0.5f, 0.0f, 0.0f, 1.0f);
+    
+    // Add orbital motion to base position
+    pos.x = rotatedPos.x;
+    pos.y = rotatedPos.y;
 }
 
 int main(int argc, char* argv[]) {
@@ -83,10 +119,20 @@ int main(int argc, char* argv[]) {
     world.system<Position, Velocity>()
         .each(movement_system);
 
-    world.entity()
-        .set<Position>({0.0f, 0.0f, -2.0f})
-        .set<Velocity>({0.5f, 0.2f, 0.0f})
-        .set<Color>({1.0f, 0.0f, 0.0f, 1.0f});
+    world.system<Position, Rotation>()
+        .each(rotation_system);
+
+    // Create a triangle entity (stationary for now)
+    auto triangleEntity = world.entity()
+        .set<Position>({-0.8f, 0.0f, 0.0f})
+        .set<Color>({1.0f, 0.0f, 0.0f, 1.0f})
+        .set<Shape>({ShapeType::Triangle});
+
+    // Create a square entity (positioned separately)
+    auto squareEntity = world.entity()
+        .set<Position>({0.8f, 0.0f, 0.0f})
+        .set<Color>({0.0f, 1.0f, 0.0f, 1.0f})
+        .set<Shape>({ShapeType::Square});
 
     bool running = true;
     SDL_Event event;
@@ -113,6 +159,38 @@ int main(int argc, char* argv[]) {
         }
 
         world.progress();
+
+        // Collect all entities with position and shape components for rendering
+        std::vector<std::tuple<glm::vec3, VulkanRenderer::ShapeType, glm::vec4>> renderEntities;
+        
+        world.query<Position, Shape, Color>().each([&](flecs::entity e, Position& pos, Shape& shape, Color& color) {
+            VulkanRenderer::ShapeType vkShapeType = (shape.type == ShapeType::Triangle) ? 
+                VulkanRenderer::ShapeType::Triangle : VulkanRenderer::ShapeType::Square;
+            renderEntities.emplace_back(
+                glm::vec3(pos.x, pos.y, pos.z),
+                vkShapeType,
+                glm::vec4(color.r, color.g, color.b, color.a)
+            );
+            if (frameCount % 60 == 0) {
+                std::cout << "Found entity: pos(" << pos.x << ", " << pos.y << ", " << pos.z << ") ";
+                std::cout << "shape: " << (shape.type == ShapeType::Triangle ? "Triangle" : "Square") << std::endl;
+            }
+        });
+        
+        if (frameCount % 60 == 0) {
+            std::cout << "Collected " << renderEntities.size() << " entities for rendering" << std::endl;
+        }
+        
+        renderer.updateEntities(renderEntities);
+        
+        if (frameCount % 60 == 0) {
+            std::cout << "Rendering " << renderEntities.size() << " entities" << std::endl;
+            for (size_t i = 0; i < renderEntities.size(); i++) {
+                auto& [pos, shapeType, color] = renderEntities[i];
+                std::cout << "Entity " << i << ": pos(" << pos.x << ", " << pos.y << ", " << pos.z << ")";
+                std::cout << " shape: " << (shapeType == VulkanRenderer::ShapeType::Triangle ? "Triangle" : "Square") << std::endl;
+            }
+        }
 
         if (frameCount == 0) {
             std::cout << "Drawing first frame..." << std::endl;

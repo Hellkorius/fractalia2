@@ -40,6 +40,42 @@ void VulkanResources::cleanup() {
         }
     }
     
+    // Clean up triangle buffers
+    if (triangleVertexBuffer != VK_NULL_HANDLE) {
+        vkDestroyBuffer(context->getDevice(), triangleVertexBuffer, nullptr);
+        triangleVertexBuffer = VK_NULL_HANDLE;
+    }
+    if (triangleVertexBufferMemory != VK_NULL_HANDLE) {
+        vkFreeMemory(context->getDevice(), triangleVertexBufferMemory, nullptr);
+        triangleVertexBufferMemory = VK_NULL_HANDLE;
+    }
+    if (triangleIndexBuffer != VK_NULL_HANDLE) {
+        vkDestroyBuffer(context->getDevice(), triangleIndexBuffer, nullptr);
+        triangleIndexBuffer = VK_NULL_HANDLE;
+    }
+    if (triangleIndexBufferMemory != VK_NULL_HANDLE) {
+        vkFreeMemory(context->getDevice(), triangleIndexBufferMemory, nullptr);
+        triangleIndexBufferMemory = VK_NULL_HANDLE;
+    }
+    
+    // Clean up square buffers
+    if (squareVertexBuffer != VK_NULL_HANDLE) {
+        vkDestroyBuffer(context->getDevice(), squareVertexBuffer, nullptr);
+        squareVertexBuffer = VK_NULL_HANDLE;
+    }
+    if (squareVertexBufferMemory != VK_NULL_HANDLE) {
+        vkFreeMemory(context->getDevice(), squareVertexBufferMemory, nullptr);
+        squareVertexBufferMemory = VK_NULL_HANDLE;
+    }
+    if (squareIndexBuffer != VK_NULL_HANDLE) {
+        vkDestroyBuffer(context->getDevice(), squareIndexBuffer, nullptr);
+        squareIndexBuffer = VK_NULL_HANDLE;
+    }
+    if (squareIndexBufferMemory != VK_NULL_HANDLE) {
+        vkFreeMemory(context->getDevice(), squareIndexBufferMemory, nullptr);
+        squareIndexBufferMemory = VK_NULL_HANDLE;
+    }
+    
     if (vertexBuffer != VK_NULL_HANDLE) {
         vkDestroyBuffer(context->getDevice(), vertexBuffer, nullptr);
         vertexBuffer = VK_NULL_HANDLE;
@@ -65,7 +101,7 @@ void VulkanResources::cleanup() {
 }
 
 bool VulkanResources::createUniformBuffers() {
-    VkDeviceSize bufferSize = sizeof(float) * 16;
+    VkDeviceSize bufferSize = sizeof(glm::mat4) * 2;
     
     uniformBuffers.resize(MAX_FRAMES_IN_FLIGHT);
     uniformBuffersMemory.resize(MAX_FRAMES_IN_FLIGHT);
@@ -83,66 +119,12 @@ bool VulkanResources::createUniformBuffers() {
 }
 
 bool VulkanResources::createVertexBuffer() {
-    struct Vertex {
-        glm::vec3 pos;
-        glm::vec3 color;
-    };
-    
-    const std::array<Vertex, 3> vertices = {{
-        {{0.0f, -0.5f, 0.0f}, {1.0f, 0.0f, 0.0f}},
-        {{0.5f, 0.5f, 0.0f}, {0.0f, 1.0f, 0.0f}},
-        {{-0.5f, 0.5f, 0.0f}, {0.0f, 0.0f, 1.0f}}
-    }};
-    
-    VkDeviceSize bufferSize = sizeof(vertices[0]) * vertices.size();
-    
-    VkBuffer stagingBuffer;
-    VkDeviceMemory stagingBufferMemory;
-    createBuffer(context, bufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-                 VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                 stagingBuffer, stagingBufferMemory);
-    
-    void* data;
-    vkMapMemory(context->getDevice(), stagingBufferMemory, 0, bufferSize, 0, &data);
-    memcpy(data, vertices.data(), (size_t)bufferSize);
-    vkUnmapMemory(context->getDevice(), stagingBufferMemory);
-    
-    createBuffer(context, bufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-                 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, vertexBuffer, vertexBufferMemory);
-    
-    copyBuffer(context, sync->getCommandPool(), stagingBuffer, vertexBuffer, bufferSize);
-    
-    vkDestroyBuffer(context->getDevice(), stagingBuffer, nullptr);
-    vkFreeMemory(context->getDevice(), stagingBufferMemory, nullptr);
-    
-    return true;
+    return createMultiShapeBuffers();
 }
 
 bool VulkanResources::createIndexBuffer() {
-    const std::array<uint16_t, 3> indices = {0, 1, 2};
-    indexCount = static_cast<uint32_t>(indices.size());
-    
-    VkDeviceSize bufferSize = sizeof(indices[0]) * indices.size();
-    
-    VkBuffer stagingBuffer;
-    VkDeviceMemory stagingBufferMemory;
-    createBuffer(context, bufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-                 VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                 stagingBuffer, stagingBufferMemory);
-    
-    void* data;
-    vkMapMemory(context->getDevice(), stagingBufferMemory, 0, bufferSize, 0, &data);
-    memcpy(data, indices.data(), (size_t)bufferSize);
-    vkUnmapMemory(context->getDevice(), stagingBufferMemory);
-    
-    createBuffer(context, bufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
-                 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, indexBuffer, indexBufferMemory);
-    
-    copyBuffer(context, sync->getCommandPool(), stagingBuffer, indexBuffer, bufferSize);
-    
-    vkDestroyBuffer(context->getDevice(), stagingBuffer, nullptr);
-    vkFreeMemory(context->getDevice(), stagingBufferMemory, nullptr);
-    
+    // Index buffer is now created as part of createPolygonBuffers()
+    // This method is kept for compatibility but does nothing
     return true;
 }
 
@@ -158,6 +140,153 @@ bool VulkanResources::createInstanceBuffers() {
         
         vkMapMemory(context->getDevice(), instanceBuffersMemory[i], 0, STAGING_BUFFER_SIZE, 0, &instanceBuffersMapped[i]);
     }
+    
+    return true;
+}
+
+bool VulkanResources::createMultiShapeBuffers() {
+    // Create buffers for triangle
+    PolygonMesh triangle = PolygonFactory::createTriangle();
+    
+    VkDeviceSize triangleVertexBufferSize = sizeof(Vertex) * triangle.vertices.size();
+    
+    VkBuffer triangleStagingBuffer;
+    VkDeviceMemory triangleStagingBufferMemory;
+    createBuffer(context, triangleVertexBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                 VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                 triangleStagingBuffer, triangleStagingBufferMemory);
+    
+    void* data;
+    vkMapMemory(context->getDevice(), triangleStagingBufferMemory, 0, triangleVertexBufferSize, 0, &data);
+    memcpy(data, triangle.vertices.data(), (size_t)triangleVertexBufferSize);
+    vkUnmapMemory(context->getDevice(), triangleStagingBufferMemory);
+    
+    createBuffer(context, triangleVertexBufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+                 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, triangleVertexBuffer, triangleVertexBufferMemory);
+    
+    copyBuffer(context, sync->getCommandPool(), triangleStagingBuffer, triangleVertexBuffer, triangleVertexBufferSize);
+    
+    vkDestroyBuffer(context->getDevice(), triangleStagingBuffer, nullptr);
+    vkFreeMemory(context->getDevice(), triangleStagingBufferMemory, nullptr);
+    
+    // Create triangle index buffer
+    triangleIndexCount = static_cast<uint32_t>(triangle.indices.size());
+    VkDeviceSize triangleIndexBufferSize = sizeof(uint16_t) * triangle.indices.size();
+    
+    VkBuffer triangleIndexStagingBuffer;
+    VkDeviceMemory triangleIndexStagingBufferMemory;
+    createBuffer(context, triangleIndexBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                 VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                 triangleIndexStagingBuffer, triangleIndexStagingBufferMemory);
+    
+    vkMapMemory(context->getDevice(), triangleIndexStagingBufferMemory, 0, triangleIndexBufferSize, 0, &data);
+    memcpy(data, triangle.indices.data(), (size_t)triangleIndexBufferSize);
+    vkUnmapMemory(context->getDevice(), triangleIndexStagingBufferMemory);
+    
+    createBuffer(context, triangleIndexBufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+                 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, triangleIndexBuffer, triangleIndexBufferMemory);
+    
+    copyBuffer(context, sync->getCommandPool(), triangleIndexStagingBuffer, triangleIndexBuffer, triangleIndexBufferSize);
+    
+    vkDestroyBuffer(context->getDevice(), triangleIndexStagingBuffer, nullptr);
+    vkFreeMemory(context->getDevice(), triangleIndexStagingBufferMemory, nullptr);
+    
+    // Create buffers for square
+    PolygonMesh square = PolygonFactory::createSquare();
+    
+    VkDeviceSize squareVertexBufferSize = sizeof(Vertex) * square.vertices.size();
+    
+    VkBuffer squareStagingBuffer;
+    VkDeviceMemory squareStagingBufferMemory;
+    createBuffer(context, squareVertexBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                 VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                 squareStagingBuffer, squareStagingBufferMemory);
+    
+    vkMapMemory(context->getDevice(), squareStagingBufferMemory, 0, squareVertexBufferSize, 0, &data);
+    memcpy(data, square.vertices.data(), (size_t)squareVertexBufferSize);
+    vkUnmapMemory(context->getDevice(), squareStagingBufferMemory);
+    
+    createBuffer(context, squareVertexBufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+                 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, squareVertexBuffer, squareVertexBufferMemory);
+    
+    copyBuffer(context, sync->getCommandPool(), squareStagingBuffer, squareVertexBuffer, squareVertexBufferSize);
+    
+    vkDestroyBuffer(context->getDevice(), squareStagingBuffer, nullptr);
+    vkFreeMemory(context->getDevice(), squareStagingBufferMemory, nullptr);
+    
+    // Create square index buffer
+    squareIndexCount = static_cast<uint32_t>(square.indices.size());
+    VkDeviceSize squareIndexBufferSize = sizeof(uint16_t) * square.indices.size();
+    
+    VkBuffer squareIndexStagingBuffer;
+    VkDeviceMemory squareIndexStagingBufferMemory;
+    createBuffer(context, squareIndexBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                 VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                 squareIndexStagingBuffer, squareIndexStagingBufferMemory);
+    
+    vkMapMemory(context->getDevice(), squareIndexStagingBufferMemory, 0, squareIndexBufferSize, 0, &data);
+    memcpy(data, square.indices.data(), (size_t)squareIndexBufferSize);
+    vkUnmapMemory(context->getDevice(), squareIndexStagingBufferMemory);
+    
+    createBuffer(context, squareIndexBufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+                 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, squareIndexBuffer, squareIndexBufferMemory);
+    
+    copyBuffer(context, sync->getCommandPool(), squareIndexStagingBuffer, squareIndexBuffer, squareIndexBufferSize);
+    
+    vkDestroyBuffer(context->getDevice(), squareIndexStagingBuffer, nullptr);
+    vkFreeMemory(context->getDevice(), squareIndexStagingBufferMemory, nullptr);
+    
+    std::cout << "Multi-shape buffers created successfully:" << std::endl;
+    std::cout << "  Triangle vertices: " << triangle.vertices.size() << ", indices: " << triangle.indices.size() << std::endl;
+    std::cout << "  Square vertices: " << square.vertices.size() << ", indices: " << square.indices.size() << std::endl;
+    
+    return true;
+}
+
+bool VulkanResources::createPolygonBuffers(const PolygonMesh& polygon) {
+    // Create vertex buffer from polygon data
+    VkDeviceSize vertexBufferSize = sizeof(Vertex) * polygon.vertices.size();
+    
+    VkBuffer stagingBuffer;
+    VkDeviceMemory stagingBufferMemory;
+    createBuffer(context, vertexBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                 VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                 stagingBuffer, stagingBufferMemory);
+    
+    void* data;
+    vkMapMemory(context->getDevice(), stagingBufferMemory, 0, vertexBufferSize, 0, &data);
+    memcpy(data, polygon.vertices.data(), (size_t)vertexBufferSize);
+    vkUnmapMemory(context->getDevice(), stagingBufferMemory);
+    
+    createBuffer(context, vertexBufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+                 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, vertexBuffer, vertexBufferMemory);
+    
+    copyBuffer(context, sync->getCommandPool(), stagingBuffer, vertexBuffer, vertexBufferSize);
+    
+    vkDestroyBuffer(context->getDevice(), stagingBuffer, nullptr);
+    vkFreeMemory(context->getDevice(), stagingBufferMemory, nullptr);
+    
+    // Create index buffer from polygon data
+    indexCount = static_cast<uint32_t>(polygon.indices.size());
+    VkDeviceSize indexBufferSize = sizeof(uint16_t) * polygon.indices.size();
+    
+    VkBuffer indexStagingBuffer;
+    VkDeviceMemory indexStagingBufferMemory;
+    createBuffer(context, indexBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                 VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                 indexStagingBuffer, indexStagingBufferMemory);
+    
+    vkMapMemory(context->getDevice(), indexStagingBufferMemory, 0, indexBufferSize, 0, &data);
+    memcpy(data, polygon.indices.data(), (size_t)indexBufferSize);
+    vkUnmapMemory(context->getDevice(), indexStagingBufferMemory);
+    
+    createBuffer(context, indexBufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+                 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, indexBuffer, indexBufferMemory);
+    
+    copyBuffer(context, sync->getCommandPool(), indexStagingBuffer, indexBuffer, indexBufferSize);
+    
+    vkDestroyBuffer(context->getDevice(), indexStagingBuffer, nullptr);
+    vkFreeMemory(context->getDevice(), indexStagingBufferMemory, nullptr);
     
     return true;
 }
@@ -201,7 +330,7 @@ bool VulkanResources::createDescriptorSets(VkDescriptorSetLayout descriptorSetLa
         VkDescriptorBufferInfo bufferInfo{};
         bufferInfo.buffer = uniformBuffers[i];
         bufferInfo.offset = 0;
-        bufferInfo.range = 64;
+        bufferInfo.range = sizeof(glm::mat4) * 2;
         
         VkWriteDescriptorSet descriptorWrite{};
         descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;

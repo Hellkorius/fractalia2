@@ -250,14 +250,63 @@ void VulkanRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t
     scissor.extent = swapchain->getExtent();
     vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
-    VkBuffer vertexBuffers[] = {resources->getVertexBuffer(), resources->getInstanceBuffers()[currentFrame]};
-    VkDeviceSize offsets[] = {0, 0};
-    vkCmdBindVertexBuffers(commandBuffer, 0, 2, vertexBuffers, offsets);
+    // Debug: Print entity count
+    static int renderDebug = 0;
+    if (renderDebug % 60 == 0) {
+        std::cout << "recordCommandBuffer called: renderEntities.size() = " << renderEntities.size() << std::endl;
+    }
+    renderDebug++;
+
+    // Render all entities by type
+    uint32_t instanceOffset = 0;
     
-    vkCmdBindIndexBuffer(commandBuffer, resources->getIndexBuffer(), 0, VK_INDEX_TYPE_UINT16);
+    // Count entities by type
+    uint32_t triangleCount = 0;
+    uint32_t squareCount = 0;
+    for (const auto& [pos, shapeType, color] : renderEntities) {
+        if (shapeType == ShapeType::Triangle) triangleCount++;
+        else if (shapeType == ShapeType::Square) squareCount++;
+    }
     
-    uint32_t instanceCount = 1;
-    vkCmdDrawIndexed(commandBuffer, resources->getIndexCount(), instanceCount, 0, 0, 0);
+    if (renderDebug % 60 == 0) {
+        std::cout << "Triangle count: " << triangleCount << ", Square count: " << squareCount << std::endl;
+    }
+    
+    // Render triangles
+    if (triangleCount > 0) {
+        if (renderDebug % 60 == 0) {
+            std::cout << "Drawing " << triangleCount << " triangles with " << resources->getTriangleIndexCount() << " indices" << std::endl;
+        }
+        VkBuffer triangleVertexBuffers[] = {resources->getTriangleVertexBuffer(), resources->getInstanceBuffers()[currentFrame]};
+        VkDeviceSize offsets[] = {0, instanceOffset * sizeof(glm::mat4)};
+        vkCmdBindVertexBuffers(commandBuffer, 0, 2, triangleVertexBuffers, offsets);
+        vkCmdBindIndexBuffer(commandBuffer, resources->getTriangleIndexBuffer(), 0, VK_INDEX_TYPE_UINT16);
+        vkCmdDrawIndexed(commandBuffer, resources->getTriangleIndexCount(), triangleCount, 0, 0, instanceOffset);
+        instanceOffset += triangleCount;
+    }
+    
+	// Render squares
+	if (squareCount > 0) {
+		if (renderDebug % 60 == 0) {
+			std::cout << "Drawing " << squareCount << " squares with " << resources->getSquareIndexCount() << " indices" << std::endl;
+		}
+		VkBuffer squareVertexBuffers[] = {resources->getSquareVertexBuffer(), resources->getInstanceBuffers()[currentFrame]};
+		VkDeviceSize offsets[] = {0, instanceOffset * sizeof(glm::mat4)};
+		vkCmdBindVertexBuffers(commandBuffer, 0, 2, squareVertexBuffers, offsets);
+		vkCmdBindIndexBuffer(commandBuffer, resources->getSquareIndexBuffer(), 0, VK_INDEX_TYPE_UINT16);
+		vkCmdDrawIndexed(commandBuffer, resources->getSquareIndexCount(), squareCount, 0, 0, instanceOffset);
+		instanceOffset += squareCount;
+	}
+
+    // Emergency test: Draw a simple triangle without instancing
+    if (triangleCount == 0 && squareCount == 0) {
+        std::cout << "No entities found, drawing test triangle" << std::endl;
+        VkBuffer testVertexBuffer = resources->getTriangleVertexBuffer();
+        VkDeviceSize testOffset = 0;
+        vkCmdBindVertexBuffers(commandBuffer, 0, 1, &testVertexBuffer, &testOffset);
+        vkCmdBindIndexBuffer(commandBuffer, resources->getTriangleIndexBuffer(), 0, VK_INDEX_TYPE_UINT16);
+        vkCmdDrawIndexed(commandBuffer, resources->getTriangleIndexCount(), 1, 0, 0, 0);
+    }
 
     vkCmdEndRenderPass(commandBuffer);
 
@@ -288,30 +337,64 @@ void VulkanRenderer::loadDrawingFunctions() {
 }
 
 void VulkanRenderer::updateUniformBuffer(uint32_t currentImage) {
-    static auto startTime = std::chrono::high_resolution_clock::now();
-    auto currentTime = std::chrono::high_resolution_clock::now();
-    float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
-
     struct UniformBufferObject {
         glm::mat4 view;
         glm::mat4 proj;
     } ubo{};
 
-    ubo.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-    ubo.proj = glm::perspective(glm::radians(45.0f), swapchain->getExtent().width / (float) swapchain->getExtent().height, 0.1f, 10.0f);
+    ubo.view = glm::mat4(1.0f);
+    ubo.proj = glm::ortho(-2.0f, 2.0f, -1.5f, 1.5f, -1.0f, 1.0f);
     ubo.proj[1][1] *= -1;
+    
+    std::cout << "Using orthographic projection: -2 to 2 (x), -1.5 to 1.5 (y)" << std::endl;
 
     void* data = resources->getUniformBuffersMapped()[currentImage];
     memcpy(data, &ubo, sizeof(ubo));
 }
 
 void VulkanRenderer::updateInstanceBuffer(uint32_t currentFrame) {
+    static int debugCounter = 0;
     static auto startTime = std::chrono::high_resolution_clock::now();
     auto currentTime = std::chrono::high_resolution_clock::now();
     float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
 
-    glm::mat4 model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-    
     void* data = resources->getInstanceBuffersMapped()[currentFrame];
-    memcpy(data, &model, sizeof(model));
+    glm::mat4* matrices = static_cast<glm::mat4*>(data);
+    
+    uint32_t instanceIndex = 0;
+    
+    // Process triangles first, then squares (same order as in recordCommandBuffer)
+    for (const auto& [pos, shapeType, color] : renderEntities) {
+        if (shapeType == ShapeType::Triangle) {
+            glm::mat4 model = glm::translate(glm::mat4(1.0f), pos);
+            model = glm::rotate(model, time * glm::radians(45.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+            matrices[instanceIndex] = model;
+            instanceIndex++;
+        }
+    }
+    
+    for (const auto& [pos, shapeType, color] : renderEntities) {
+        if (shapeType == ShapeType::Square) {
+            glm::mat4 model = glm::translate(glm::mat4(1.0f), pos);
+            model = glm::rotate(model, time * glm::radians(-30.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+            matrices[instanceIndex] = model;
+            instanceIndex++;
+        }
+    }
+    
+    if (debugCounter % 60 == 0 && instanceIndex > 0) {
+        std::cout << "Updated " << instanceIndex << " instance matrices" << std::endl;
+        for (uint32_t i = 0; i < instanceIndex; i++) {
+            std::cout << "Matrix " << i << " translation: (" << matrices[i][3][0] << ", " << matrices[i][3][1] << ", " << matrices[i][3][2] << ")" << std::endl;
+        }
+    }
+    debugCounter++;
+}
+
+void VulkanRenderer::setEntityPosition(float x, float y, float z) {
+    entityPosition = glm::vec3(x, y, z);
+}
+
+void VulkanRenderer::updateEntities(const std::vector<std::tuple<glm::vec3, ShapeType, glm::vec4>>& entities) {
+    renderEntities = entities;
 }

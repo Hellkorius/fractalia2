@@ -30,6 +30,7 @@ fractalia2/
 ├── mingw-w64-toolchain.cmake   # Generated CMake toolchain file
 ├── src/
 │   ├── main.cpp                # Main application entry point
+	├─PolygonFactory.*			# Polygon generation
 	├─ vulkan_renderer.*      // master frame loop
 		├──vulkan/
 			├─ vulkan_context.*      // instance & device
