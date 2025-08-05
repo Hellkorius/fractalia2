@@ -29,6 +29,9 @@ void movement_system(flecs::entity e, Position& pos, Velocity& vel) {
 }
 
 int main(int argc, char* argv[]) {
+    constexpr int TARGET_FPS = 60;
+    constexpr int FRAME_DELAY_MS = 1000 / TARGET_FPS;
+    
     std::cout << "Starting Fractalia2..." << std::endl;
     
     if (!SDL_Init(SDL_INIT_VIDEO)) {
@@ -96,6 +99,8 @@ int main(int argc, char* argv[]) {
 
     int frameCount = 0;
     while (running) {
+        Uint64 frameStartTime = SDL_GetTicks();
+        
         while (SDL_PollEvent(&event)) {
             if (event.type == SDL_EVENT_QUIT) {
                 std::cout << "Quit event received" << std::endl;
@@ -121,6 +126,12 @@ int main(int argc, char* argv[]) {
             std::cout << "First frame drawn successfully" << std::endl;
         } else if (frameCount % 60 == 0) {
             std::cout << "Frame " << frameCount << " drawn" << std::endl;
+        }
+        
+        // Cap framerate at TARGET_FPS
+        Uint64 frameTime = SDL_GetTicks() - frameStartTime;
+        if (frameTime < FRAME_DELAY_MS) {
+            SDL_Delay(FRAME_DELAY_MS - frameTime);
         }
     }
 

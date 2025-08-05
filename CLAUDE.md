@@ -1,16 +1,16 @@
 # Fractalia2 Project Documentation
 
 ## Overview
-Fractalia2 is a C++ game/graphics project that uses cross-compilation with mingw to build Windows executables on Linux. The project leverages SDL3 for window management and input, Vulkan for rendering, and Flecs ECS for entity-component-system architecture.
+Cross-compiled (Linux→Windows) toy engine built to stress-test **tens-of-thousands of discrete entities** at 60 FPS.
 
 ## Architecture
 
-### Core Technologies
-- **SDL3**: Window management, input handling, Vulkan surface creation
-- **Vulkan**: Modern low-level graphics API for high-performance rendering
-- **Flecs ECS**: Entity-Component-System architecture for game logic
-- **GLM**: Mathematics library for 3D transformations
-- **MinGW**: Cross-compilation toolchain for Windows targets
+## Stack  
+- **SDL3** – window + input  
+- **Vulkan** – 4× MSAA, dynamic-function loading  
+- **Flecs ECS** – entities = `Position`, `Velocity`, `Color`  
+- **GLM** – math  
+- **MinGW** – build
 
 ### ECS Architecture
 The project uses Flecs ECS with the following components:
@@ -25,16 +25,18 @@ Systems:
 
 ```
 fractalia2/
-├── CLAUDE.md                    # This documentation file
 ├── CMakeLists.txt              # CMake build configuration for cross-compilation
-├── build.sh                    # Full build script with DLL management 
-├── build-fast.sh               # Fast incremental build script
 ├── compile-shaders.sh          # Shader compilation script
 ├── mingw-w64-toolchain.cmake   # Generated CMake toolchain file
 ├── src/
 │   ├── main.cpp                # Main application entry point
-│   ├── vulkan_renderer.h       # Vulkan renderer header
-│   ├── vulkan_renderer.cpp     # Vulkan renderer implementation
+	├─ vulkan_renderer.*      // master frame loop
+		├──vulkan/
+			├─ vulkan_context.*      // instance & device
+			├─ vulkan_swapchain.*    // resize, MSAA, depth
+			├─ vulkan_pipeline.*     // shaders, renderpass, layout
+			├─ vulkan_resources.*    // uniform buffers, descriptor sets
+			└─ vulkan_sync.*         // fences/semaphores, cmd pools
 │   └── shaders/                # GLSL shader source files
 │       ├── vertex.vert         # Vertex shader
 │       ├── fragment.frag       # Fragment shader
@@ -42,11 +44,6 @@ fractalia2/
 │           ├── vertex.spv      # Compiled vertex shader
 │           └── fragment.spv    # Compiled fragment shader
 ├── include/                    # Header files directory
-├── build/                      # Build output directory
-│   ├── fractalia2.exe          # Windows executable
-│   ├── SDL3.dll                # SDL3 runtime library
-│   ├── libgcc_s_seh-1.dll      # MinGW C runtime (if needed)
-│   └── libstdc++-6.dll         # MinGW C++ runtime (if needed)
 └── ../vendored/                # External libraries
     ├── SDL3-3.1.6/             # SDL3 source and binaries
     │   └── x86_64-w64-mingw32/  # Windows 64-bit binaries
@@ -59,6 +56,11 @@ fractalia2/
 
 
 ## Development Notes
+
+## Hot Spots for Scale
+1. `vulkan_resources.cpp` – uniform buffer per frame (currently 64 bytes); bump to UBO array or SSBO for entity data.
+2. `recordCommandBuffer()` – single `vkCmdDraw(3,1,0,0)` placeholder; switch to **instanced draw** / **indirect** and bind entity buffer.
+3. Flecs system in `main.cpp` – O(n) update loop; profile here first.
 
 ### Vulkan Rendering
 The project uses Vulkan with dynamic function loading for cross-platform compatibility:
