@@ -58,9 +58,22 @@ fractalia2/
 
 ## Development Notes
 
+## Rendering Pipeline Key Points
+
+### Critical Gotchas
+- **Uniform buffer size**: Must be `sizeof(glm::mat4) * 2` (128 bytes), not 64 bytes for view+proj matrices
+- **Instance offset**: Use buffer offset OR firstInstance parameter, not both - causes double-offset bug
+- **Face culling**: Disable (`VK_CULL_MODE_NONE`) during development to avoid winding order issues
+- **Viewport bounds**: Orthographic projection must encompass entity positions
+
+### Multi-Shape Rendering
+- Triangle/square use separate vertex/index buffers via `createMultiShapeBuffers()`
+- Instance matrices processed in same order as draw calls (triangles first, then squares)
+- `vkCmdDrawIndexed()` firstInstance should be 0 when using buffer offsets
+
 ## Hot Spots for Scale
-1. `vulkan_resources.cpp` – uniform buffer per frame (currently 64 bytes); bump to UBO array or SSBO for entity data.
-2. `recordCommandBuffer()` – single `vkCmdDraw(3,1,0,0)` placeholder; switch to **instanced draw** / **indirect** and bind entity buffer.
+1. `vulkan_resources.cpp` – uniform buffer per frame (currently 128 bytes); bump to UBO array or SSBO for entity data.
+2. `recordCommandBuffer()` – instanced draw calls per shape type; switch to **indirect** drawing for massive entity counts.
 3. Flecs system in `main.cpp` – O(n) update loop; profile here first.
 
 ### Vulkan Rendering
