@@ -6,6 +6,9 @@
 #include "vulkan/vulkan_sync.h"
 #include <iostream>
 #include <array>
+#include <chrono>
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 
 VulkanRenderer::VulkanRenderer() {
 }
@@ -42,8 +45,14 @@ bool VulkanRenderer::initialize(SDL_Window* window) {
     }
     std::cout << "Framebuffers created successfully" << std::endl;
     
+    sync = std::make_unique<VulkanSync>();
+    if (!sync->initialize(context.get())) {
+        std::cerr << "Failed to initialize Vulkan sync" << std::endl;
+        return false;
+    }
+    
     resources = std::make_unique<VulkanResources>();
-    if (!resources->initialize(context.get())) {
+    if (!resources->initialize(context.get(), sync.get())) {
         std::cerr << "Failed to initialize Vulkan resources" << std::endl;
         return false;
     }
@@ -54,6 +63,27 @@ bool VulkanRenderer::initialize(SDL_Window* window) {
         return false;
     }
     std::cout << "Uniform buffers created successfully" << std::endl;
+    
+    std::cout << "Creating vertex buffer..." << std::endl;
+    if (!resources->createVertexBuffer()) {
+        std::cerr << "Failed to create vertex buffer" << std::endl;
+        return false;
+    }
+    std::cout << "Vertex buffer created successfully" << std::endl;
+    
+    std::cout << "Creating index buffer..." << std::endl;
+    if (!resources->createIndexBuffer()) {
+        std::cerr << "Failed to create index buffer" << std::endl;
+        return false;
+    }
+    std::cout << "Index buffer created successfully" << std::endl;
+    
+    std::cout << "Creating instance buffers..." << std::endl;
+    if (!resources->createInstanceBuffers()) {
+        std::cerr << "Failed to create instance buffers" << std::endl;
+        return false;
+    }
+    std::cout << "Instance buffers created successfully" << std::endl;
     
     std::cout << "Creating descriptor pool..." << std::endl;
     if (!resources->createDescriptorPool(pipeline->getDescriptorSetLayout())) {
@@ -68,12 +98,6 @@ bool VulkanRenderer::initialize(SDL_Window* window) {
         return false;
     }
     std::cout << "Descriptor sets created successfully" << std::endl;
-    
-    sync = std::make_unique<VulkanSync>();
-    if (!sync->initialize(context.get())) {
-        std::cerr << "Failed to initialize Vulkan sync" << std::endl;
-        return false;
-    }
     
     loadDrawingFunctions();
     
@@ -117,6 +141,9 @@ void VulkanRenderer::drawFrame() {
     }
 
     vkResetFences(context->getDevice(), 1, &fences[currentFrame]);
+
+    updateUniformBuffer(currentFrame);
+    updateInstanceBuffer(currentFrame);
 
     vkResetCommandBuffer(commandBuffers[currentFrame], 0);
     recordCommandBuffer(commandBuffers[currentFrame], imageIndex);
@@ -223,7 +250,14 @@ void VulkanRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t
     scissor.extent = swapchain->getExtent();
     vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
-    vkCmdDraw(commandBuffer, 3, 1, 0, 0);
+    VkBuffer vertexBuffers[] = {resources->getVertexBuffer(), resources->getInstanceBuffers()[currentFrame]};
+    VkDeviceSize offsets[] = {0, 0};
+    vkCmdBindVertexBuffers(commandBuffer, 0, 2, vertexBuffers, offsets);
+    
+    vkCmdBindIndexBuffer(commandBuffer, resources->getIndexBuffer(), 0, VK_INDEX_TYPE_UINT16);
+    
+    uint32_t instanceCount = 1;
+    vkCmdDrawIndexed(commandBuffer, resources->getIndexCount(), instanceCount, 0, 0, 0);
 
     vkCmdEndRenderPass(commandBuffer);
 
@@ -248,4 +282,36 @@ void VulkanRenderer::loadDrawingFunctions() {
     vkCmdDraw = (PFN_vkCmdDraw)context->vkGetDeviceProcAddr(context->getDevice(), "vkCmdDraw");
     vkResetCommandBuffer = (PFN_vkResetCommandBuffer)context->vkGetDeviceProcAddr(context->getDevice(), "vkResetCommandBuffer");
     vkCmdBindDescriptorSets = (PFN_vkCmdBindDescriptorSets)context->vkGetDeviceProcAddr(context->getDevice(), "vkCmdBindDescriptorSets");
+    vkCmdBindVertexBuffers = (PFN_vkCmdBindVertexBuffers)context->vkGetDeviceProcAddr(context->getDevice(), "vkCmdBindVertexBuffers");
+    vkCmdBindIndexBuffer = (PFN_vkCmdBindIndexBuffer)context->vkGetDeviceProcAddr(context->getDevice(), "vkCmdBindIndexBuffer");
+    vkCmdDrawIndexed = (PFN_vkCmdDrawIndexed)context->vkGetDeviceProcAddr(context->getDevice(), "vkCmdDrawIndexed");
+}
+
+void VulkanRenderer::updateUniformBuffer(uint32_t currentImage) {
+    static auto startTime = std::chrono::high_resolution_clock::now();
+    auto currentTime = std::chrono::high_resolution_clock::now();
+    float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
+
+    struct UniformBufferObject {
+        glm::mat4 view;
+        glm::mat4 proj;
+    } ubo{};
+
+    ubo.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+    ubo.proj = glm::perspective(glm::radians(45.0f), swapchain->getExtent().width / (float) swapchain->getExtent().height, 0.1f, 10.0f);
+    ubo.proj[1][1] *= -1;
+
+    void* data = resources->getUniformBuffersMapped()[currentImage];
+    memcpy(data, &ubo, sizeof(ubo));
+}
+
+void VulkanRenderer::updateInstanceBuffer(uint32_t currentFrame) {
+    static auto startTime = std::chrono::high_resolution_clock::now();
+    auto currentTime = std::chrono::high_resolution_clock::now();
+    float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
+
+    glm::mat4 model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+    
+    void* data = resources->getInstanceBuffersMapped()[currentFrame];
+    memcpy(data, &model, sizeof(model));
 }

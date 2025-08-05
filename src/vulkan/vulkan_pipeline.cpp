@@ -2,6 +2,7 @@
 #include <iostream>
 #include <fstream>
 #include <array>
+#include <glm/glm.hpp>
 
 VulkanPipeline::VulkanPipeline() {
 }
@@ -182,6 +183,56 @@ bool VulkanPipeline::createDescriptorSetLayout() {
     return true;
 }
 
+std::array<VkVertexInputBindingDescription, 2> VulkanPipeline::getVertexBindingDescriptions() {
+    std::array<VkVertexInputBindingDescription, 2> bindingDescriptions{};
+    
+    bindingDescriptions[0].binding = 0;
+    bindingDescriptions[0].stride = sizeof(glm::vec3) + sizeof(glm::vec3);
+    bindingDescriptions[0].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+    
+    bindingDescriptions[1].binding = 1;
+    bindingDescriptions[1].stride = sizeof(glm::mat4);
+    bindingDescriptions[1].inputRate = VK_VERTEX_INPUT_RATE_INSTANCE;
+    
+    return bindingDescriptions;
+}
+
+std::array<VkVertexInputAttributeDescription, 6> VulkanPipeline::getVertexAttributeDescriptions() {
+    std::array<VkVertexInputAttributeDescription, 6> attributeDescriptions{};
+    
+    attributeDescriptions[0].binding = 0;
+    attributeDescriptions[0].location = 0;
+    attributeDescriptions[0].format = VK_FORMAT_R32G32B32_SFLOAT;
+    attributeDescriptions[0].offset = 0;
+    
+    attributeDescriptions[1].binding = 0;
+    attributeDescriptions[1].location = 1;
+    attributeDescriptions[1].format = VK_FORMAT_R32G32B32_SFLOAT;
+    attributeDescriptions[1].offset = sizeof(glm::vec3);
+    
+    attributeDescriptions[2].binding = 1;
+    attributeDescriptions[2].location = 2;
+    attributeDescriptions[2].format = VK_FORMAT_R32G32B32A32_SFLOAT;
+    attributeDescriptions[2].offset = 0;
+    
+    attributeDescriptions[3].binding = 1;
+    attributeDescriptions[3].location = 3;
+    attributeDescriptions[3].format = VK_FORMAT_R32G32B32A32_SFLOAT;
+    attributeDescriptions[3].offset = sizeof(glm::vec4);
+    
+    attributeDescriptions[4].binding = 1;
+    attributeDescriptions[4].location = 4;
+    attributeDescriptions[4].format = VK_FORMAT_R32G32B32A32_SFLOAT;
+    attributeDescriptions[4].offset = 2 * sizeof(glm::vec4);
+    
+    attributeDescriptions[5].binding = 1;
+    attributeDescriptions[5].location = 5;
+    attributeDescriptions[5].format = VK_FORMAT_R32G32B32A32_SFLOAT;
+    attributeDescriptions[5].offset = 3 * sizeof(glm::vec4);
+    
+    return attributeDescriptions;
+}
+
 bool VulkanPipeline::createGraphicsPipeline() {
     std::vector<char> vertShaderCode, fragShaderCode;
     
@@ -210,10 +261,15 @@ bool VulkanPipeline::createGraphicsPipeline() {
 
     VkPipelineShaderStageCreateInfo shaderStages[] = {vertShaderStageInfo, fragShaderStageInfo};
 
+    auto bindingDescriptions = getVertexBindingDescriptions();
+    auto attributeDescriptions = getVertexAttributeDescriptions();
+    
     VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
     vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-    vertexInputInfo.vertexBindingDescriptionCount = 0;
-    vertexInputInfo.vertexAttributeDescriptionCount = 0;
+    vertexInputInfo.vertexBindingDescriptionCount = static_cast<uint32_t>(bindingDescriptions.size());
+    vertexInputInfo.pVertexBindingDescriptions = bindingDescriptions.data();
+    vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(attributeDescriptions.size());
+    vertexInputInfo.pVertexAttributeDescriptions = attributeDescriptions.data();
 
     VkPipelineInputAssemblyStateCreateInfo inputAssembly{};
     inputAssembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;

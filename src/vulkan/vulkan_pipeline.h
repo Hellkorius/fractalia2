@@ -4,6 +4,7 @@
 #include <vulkan/vulkan.h>
 #include <vector>
 #include <string>
+#include <array>
 #include "vulkan_context.h"
 
 class VulkanPipeline {
@@ -47,4 +48,7 @@ private:
     void loadFunctions();
     VkShaderModule createShaderModule(const std::vector<char>& code);
     std::vector<char> readFile(const std::string& filename);
+    
+    std::array<VkVertexInputBindingDescription, 2> getVertexBindingDescriptions();
+    std::array<VkVertexInputAttributeDescription, 6> getVertexAttributeDescriptions();
 };

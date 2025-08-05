@@ -1,6 +1,9 @@
 #include "vulkan_resources.h"
+#include "vulkan_sync.h"
 #include <iostream>
 #include <stdexcept>
+#include <array>
+#include <glm/glm.hpp>
 
 VulkanResources::VulkanResources() {
 }
@@ -9,8 +12,9 @@ VulkanResources::~VulkanResources() {
     cleanup();
 }
 
-bool VulkanResources::initialize(VulkanContext* context) {
+bool VulkanResources::initialize(VulkanContext* context, VulkanSync* sync) {
     this->context = context;
+    this->sync = sync;
     
     loadFunctions();
     
@@ -25,6 +29,33 @@ void VulkanResources::cleanup() {
         if (i < uniformBuffersMemory.size() && uniformBuffersMemory[i] != VK_NULL_HANDLE) {
             vkFreeMemory(context->getDevice(), uniformBuffersMemory[i], nullptr);
         }
+    }
+    
+    for (size_t i = 0; i < instanceBuffers.size(); i++) {
+        if (instanceBuffers[i] != VK_NULL_HANDLE) {
+            vkDestroyBuffer(context->getDevice(), instanceBuffers[i], nullptr);
+        }
+        if (i < instanceBuffersMemory.size() && instanceBuffersMemory[i] != VK_NULL_HANDLE) {
+            vkFreeMemory(context->getDevice(), instanceBuffersMemory[i], nullptr);
+        }
+    }
+    
+    if (vertexBuffer != VK_NULL_HANDLE) {
+        vkDestroyBuffer(context->getDevice(), vertexBuffer, nullptr);
+        vertexBuffer = VK_NULL_HANDLE;
+    }
+    if (vertexBufferMemory != VK_NULL_HANDLE) {
+        vkFreeMemory(context->getDevice(), vertexBufferMemory, nullptr);
+        vertexBufferMemory = VK_NULL_HANDLE;
+    }
+    
+    if (indexBuffer != VK_NULL_HANDLE) {
+        vkDestroyBuffer(context->getDevice(), indexBuffer, nullptr);
+        indexBuffer = VK_NULL_HANDLE;
+    }
+    if (indexBufferMemory != VK_NULL_HANDLE) {
+        vkFreeMemory(context->getDevice(), indexBufferMemory, nullptr);
+        indexBufferMemory = VK_NULL_HANDLE;
     }
     
     if (descriptorPool != VK_NULL_HANDLE) {
@@ -51,16 +82,98 @@ bool VulkanResources::createUniformBuffers() {
     return true;
 }
 
+bool VulkanResources::createVertexBuffer() {
+    struct Vertex {
+        glm::vec3 pos;
+        glm::vec3 color;
+    };
+    
+    const std::array<Vertex, 3> vertices = {{
+        {{0.0f, -0.5f, 0.0f}, {1.0f, 0.0f, 0.0f}},
+        {{0.5f, 0.5f, 0.0f}, {0.0f, 1.0f, 0.0f}},
+        {{-0.5f, 0.5f, 0.0f}, {0.0f, 0.0f, 1.0f}}
+    }};
+    
+    VkDeviceSize bufferSize = sizeof(vertices[0]) * vertices.size();
+    
+    VkBuffer stagingBuffer;
+    VkDeviceMemory stagingBufferMemory;
+    createBuffer(context, bufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                 VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                 stagingBuffer, stagingBufferMemory);
+    
+    void* data;
+    vkMapMemory(context->getDevice(), stagingBufferMemory, 0, bufferSize, 0, &data);
+    memcpy(data, vertices.data(), (size_t)bufferSize);
+    vkUnmapMemory(context->getDevice(), stagingBufferMemory);
+    
+    createBuffer(context, bufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+                 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, vertexBuffer, vertexBufferMemory);
+    
+    copyBuffer(context, sync->getCommandPool(), stagingBuffer, vertexBuffer, bufferSize);
+    
+    vkDestroyBuffer(context->getDevice(), stagingBuffer, nullptr);
+    vkFreeMemory(context->getDevice(), stagingBufferMemory, nullptr);
+    
+    return true;
+}
+
+bool VulkanResources::createIndexBuffer() {
+    const std::array<uint16_t, 3> indices = {0, 1, 2};
+    indexCount = static_cast<uint32_t>(indices.size());
+    
+    VkDeviceSize bufferSize = sizeof(indices[0]) * indices.size();
+    
+    VkBuffer stagingBuffer;
+    VkDeviceMemory stagingBufferMemory;
+    createBuffer(context, bufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                 VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                 stagingBuffer, stagingBufferMemory);
+    
+    void* data;
+    vkMapMemory(context->getDevice(), stagingBufferMemory, 0, bufferSize, 0, &data);
+    memcpy(data, indices.data(), (size_t)bufferSize);
+    vkUnmapMemory(context->getDevice(), stagingBufferMemory);
+    
+    createBuffer(context, bufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+                 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, indexBuffer, indexBufferMemory);
+    
+    copyBuffer(context, sync->getCommandPool(), stagingBuffer, indexBuffer, bufferSize);
+    
+    vkDestroyBuffer(context->getDevice(), stagingBuffer, nullptr);
+    vkFreeMemory(context->getDevice(), stagingBufferMemory, nullptr);
+    
+    return true;
+}
+
+bool VulkanResources::createInstanceBuffers() {
+    instanceBuffers.resize(STAGING_BUFFER_COUNT);
+    instanceBuffersMemory.resize(STAGING_BUFFER_COUNT);
+    instanceBuffersMapped.resize(STAGING_BUFFER_COUNT);
+    
+    for (int i = 0; i < STAGING_BUFFER_COUNT; i++) {
+        createBuffer(context, STAGING_BUFFER_SIZE, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+                     VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                     instanceBuffers[i], instanceBuffersMemory[i]);
+        
+        vkMapMemory(context->getDevice(), instanceBuffersMemory[i], 0, STAGING_BUFFER_SIZE, 0, &instanceBuffersMapped[i]);
+    }
+    
+    return true;
+}
+
 bool VulkanResources::createDescriptorPool(VkDescriptorSetLayout descriptorSetLayout) {
+    const uint32_t maxSets = 1024;
+    
     VkDescriptorPoolSize poolSize{};
     poolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    poolSize.descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+    poolSize.descriptorCount = maxSets;
     
     VkDescriptorPoolCreateInfo poolInfo{};
     poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
     poolInfo.poolSizeCount = 1;
     poolInfo.pPoolSizes = &poolSize;
-    poolInfo.maxSets = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+    poolInfo.maxSets = maxSets;
     
     if (vkCreateDescriptorPool(context->getDevice(), &poolInfo, nullptr, &descriptorPool) != VK_SUCCESS) {
         std::cerr << "Failed to create descriptor pool!" << std::endl;
@@ -124,6 +237,7 @@ void VulkanResources::loadFunctions() {
     vkBindImageMemory = (PFN_vkBindImageMemory)context->vkGetDeviceProcAddr(context->getDevice(), "vkBindImageMemory");
     vkCreateImageView = (PFN_vkCreateImageView)context->vkGetDeviceProcAddr(context->getDevice(), "vkCreateImageView");
     vkDestroyImageView = (PFN_vkDestroyImageView)context->vkGetDeviceProcAddr(context->getDevice(), "vkDestroyImageView");
+    vkCmdCopyBuffer = (PFN_vkCmdCopyBuffer)context->vkGetDeviceProcAddr(context->getDevice(), "vkCmdCopyBuffer");
 }
 
 uint32_t VulkanResources::findMemoryType(VulkanContext* context, uint32_t typeFilter, VkMemoryPropertyFlags properties) {
@@ -230,4 +344,44 @@ void VulkanResources::createBuffer(VulkanContext* context, VkDeviceSize size, Vk
 
     PFN_vkBindBufferMemory vkBindBufferMemory = (PFN_vkBindBufferMemory)context->vkGetDeviceProcAddr(context->getDevice(), "vkBindBufferMemory");
     vkBindBufferMemory(context->getDevice(), buffer, bufferMemory, 0);
+}
+
+void VulkanResources::copyBuffer(VulkanContext* context, VkCommandPool commandPool, VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size) {
+    VkCommandBufferAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    allocInfo.commandPool = commandPool;
+    allocInfo.commandBufferCount = 1;
+    
+    VkCommandBuffer commandBuffer;
+    PFN_vkAllocateCommandBuffers vkAllocateCommandBuffers = (PFN_vkAllocateCommandBuffers)context->vkGetDeviceProcAddr(context->getDevice(), "vkAllocateCommandBuffers");
+    vkAllocateCommandBuffers(context->getDevice(), &allocInfo, &commandBuffer);
+    
+    VkCommandBufferBeginInfo beginInfo{};
+    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    
+    PFN_vkBeginCommandBuffer vkBeginCommandBuffer = (PFN_vkBeginCommandBuffer)context->vkGetDeviceProcAddr(context->getDevice(), "vkBeginCommandBuffer");
+    vkBeginCommandBuffer(commandBuffer, &beginInfo);
+    
+    VkBufferCopy copyRegion{};
+    copyRegion.size = size;
+    PFN_vkCmdCopyBuffer vkCmdCopyBuffer = (PFN_vkCmdCopyBuffer)context->vkGetDeviceProcAddr(context->getDevice(), "vkCmdCopyBuffer");
+    vkCmdCopyBuffer(commandBuffer, srcBuffer, dstBuffer, 1, &copyRegion);
+    
+    PFN_vkEndCommandBuffer vkEndCommandBuffer = (PFN_vkEndCommandBuffer)context->vkGetDeviceProcAddr(context->getDevice(), "vkEndCommandBuffer");
+    vkEndCommandBuffer(commandBuffer);
+    
+    VkSubmitInfo submitInfo{};
+    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submitInfo.commandBufferCount = 1;
+    submitInfo.pCommandBuffers = &commandBuffer;
+    
+    PFN_vkQueueSubmit vkQueueSubmit = (PFN_vkQueueSubmit)context->vkGetDeviceProcAddr(context->getDevice(), "vkQueueSubmit");
+    vkQueueSubmit(context->getGraphicsQueue(), 1, &submitInfo, VK_NULL_HANDLE);
+    PFN_vkQueueWaitIdle vkQueueWaitIdle = (PFN_vkQueueWaitIdle)context->vkGetDeviceProcAddr(context->getDevice(), "vkQueueWaitIdle");
+    vkQueueWaitIdle(context->getGraphicsQueue());
+    
+    PFN_vkFreeCommandBuffers vkFreeCommandBuffers = (PFN_vkFreeCommandBuffers)context->vkGetDeviceProcAddr(context->getDevice(), "vkFreeCommandBuffers");
+    vkFreeCommandBuffers(context->getDevice(), commandPool, 1, &commandBuffer);
 }

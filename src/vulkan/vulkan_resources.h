@@ -5,20 +5,31 @@
 #include <vector>
 #include "vulkan_context.h"
 
+class VulkanSync;
+
 class VulkanResources {
 public:
     VulkanResources();
     ~VulkanResources();
 
-    bool initialize(VulkanContext* context);
+    bool initialize(VulkanContext* context, VulkanSync* sync);
     void cleanup();
     
     bool createUniformBuffers();
+    bool createVertexBuffer();
+    bool createIndexBuffer();
+    bool createInstanceBuffers();
     bool createDescriptorPool(VkDescriptorSetLayout descriptorSetLayout);
     bool createDescriptorSets(VkDescriptorSetLayout descriptorSetLayout);
 
     const std::vector<VkBuffer>& getUniformBuffers() const { return uniformBuffers; }
     const std::vector<void*>& getUniformBuffersMapped() const { return uniformBuffersMapped; }
+    
+    VkBuffer getVertexBuffer() const { return vertexBuffer; }
+    VkBuffer getIndexBuffer() const { return indexBuffer; }
+    const std::vector<VkBuffer>& getInstanceBuffers() const { return instanceBuffers; }
+    const std::vector<void*>& getInstanceBuffersMapped() const { return instanceBuffersMapped; }
+    uint32_t getIndexCount() const { return indexCount; }
     
     VkDescriptorPool getDescriptorPool() const { return descriptorPool; }
     const std::vector<VkDescriptorSet>& getDescriptorSets() const { return descriptorSets; }
@@ -30,15 +41,30 @@ public:
     static VkImageView createImageView(VulkanContext* context, VkImage image, VkFormat format, VkImageAspectFlags aspectFlags);
     static void createBuffer(VulkanContext* context, VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties,
                             VkBuffer& buffer, VkDeviceMemory& bufferMemory);
+    static void copyBuffer(VulkanContext* context, VkCommandPool commandPool, VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size);
 
     static const int MAX_FRAMES_IN_FLIGHT = 2;
 
 private:
     VulkanContext* context = nullptr;
+    VulkanSync* sync = nullptr;
     
     std::vector<VkBuffer> uniformBuffers;
     std::vector<VkDeviceMemory> uniformBuffersMemory;
     std::vector<void*> uniformBuffersMapped;
+    
+    VkBuffer vertexBuffer = VK_NULL_HANDLE;
+    VkDeviceMemory vertexBufferMemory = VK_NULL_HANDLE;
+    VkBuffer indexBuffer = VK_NULL_HANDLE;
+    VkDeviceMemory indexBufferMemory = VK_NULL_HANDLE;
+    uint32_t indexCount = 0;
+    
+    static const int STAGING_BUFFER_COUNT = 4;
+    static const VkDeviceSize STAGING_BUFFER_SIZE = 1024 * 1024;
+    std::vector<VkBuffer> instanceBuffers;
+    std::vector<VkDeviceMemory> instanceBuffersMemory;
+    std::vector<void*> instanceBuffersMapped;
+    int currentStagingBuffer = 0;
     
     VkDescriptorPool descriptorPool = VK_NULL_HANDLE;
     std::vector<VkDescriptorSet> descriptorSets;
@@ -62,6 +88,7 @@ private:
     PFN_vkBindImageMemory vkBindImageMemory = nullptr;
     PFN_vkCreateImageView vkCreateImageView = nullptr;
     PFN_vkDestroyImageView vkDestroyImageView = nullptr;
+    PFN_vkCmdCopyBuffer vkCmdCopyBuffer = nullptr;
     
     void loadFunctions();
 };

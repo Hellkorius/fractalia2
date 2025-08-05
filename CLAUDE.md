@@ -1,7 +1,7 @@
 # Fractalia2 Project Documentation
 
 ## Overview
-Cross-compiled (Linux→Windows) toy engine built to stress-test **tens-of-thousands of discrete entities** at 60 FPS.
+Cross-compiled (Linux→Windows) toy engine built to stress-test **tens-of-thousands of discrete 2D entities** with physics at 60 FPS.
 
 ## Architecture
 

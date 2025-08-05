@@ -4,6 +4,8 @@
 #include <vulkan/vulkan.h>
 #include <SDL3/SDL.h>
 #include <memory>
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 
 // Forward declarations for modules
 class VulkanContext;
@@ -54,9 +56,14 @@ private:
     PFN_vkCmdDraw vkCmdDraw = nullptr;
     PFN_vkResetCommandBuffer vkResetCommandBuffer = nullptr;
     PFN_vkCmdBindDescriptorSets vkCmdBindDescriptorSets = nullptr;
+    PFN_vkCmdBindVertexBuffers vkCmdBindVertexBuffers = nullptr;
+    PFN_vkCmdBindIndexBuffer vkCmdBindIndexBuffer = nullptr;
+    PFN_vkCmdDrawIndexed vkCmdDrawIndexed = nullptr;
 
     // Helper functions
     bool recreateSwapChain();
     void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex);
     void loadDrawingFunctions();
+    void updateUniformBuffer(uint32_t currentImage);
+    void updateInstanceBuffer(uint32_t currentFrame);
 };
