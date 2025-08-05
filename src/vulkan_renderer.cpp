@@ -38,12 +38,10 @@ bool VulkanRenderer::initialize(SDL_Window* window) {
         return false;
     }
     
-    std::cout << "Creating framebuffers..." << std::endl;
     if (!swapchain->createFramebuffers(pipeline->getRenderPass())) {
         std::cerr << "Failed to create framebuffers" << std::endl;
         return false;
     }
-    std::cout << "Framebuffers created successfully" << std::endl;
     
     sync = std::make_unique<VulkanSync>();
     if (!sync->initialize(context.get())) {
@@ -57,51 +55,38 @@ bool VulkanRenderer::initialize(SDL_Window* window) {
         return false;
     }
     
-    std::cout << "Creating uniform buffers..." << std::endl;
     if (!resources->createUniformBuffers()) {
         std::cerr << "Failed to create uniform buffers" << std::endl;
         return false;
     }
-    std::cout << "Uniform buffers created successfully" << std::endl;
     
-    std::cout << "Creating vertex buffer..." << std::endl;
     if (!resources->createVertexBuffer()) {
         std::cerr << "Failed to create vertex buffer" << std::endl;
         return false;
     }
-    std::cout << "Vertex buffer created successfully" << std::endl;
     
-    std::cout << "Creating index buffer..." << std::endl;
     if (!resources->createIndexBuffer()) {
         std::cerr << "Failed to create index buffer" << std::endl;
         return false;
     }
-    std::cout << "Index buffer created successfully" << std::endl;
     
-    std::cout << "Creating instance buffers..." << std::endl;
     if (!resources->createInstanceBuffers()) {
         std::cerr << "Failed to create instance buffers" << std::endl;
         return false;
     }
-    std::cout << "Instance buffers created successfully" << std::endl;
     
-    std::cout << "Creating descriptor pool..." << std::endl;
     if (!resources->createDescriptorPool(pipeline->getDescriptorSetLayout())) {
         std::cerr << "Failed to create descriptor pool" << std::endl;
         return false;
     }
-    std::cout << "Descriptor pool created successfully" << std::endl;
     
-    std::cout << "Creating descriptor sets..." << std::endl;
     if (!resources->createDescriptorSets(pipeline->getDescriptorSetLayout())) {
         std::cerr << "Failed to create descriptor sets" << std::endl;
         return false;
     }
-    std::cout << "Descriptor sets created successfully" << std::endl;
     
     loadDrawingFunctions();
     
-    std::cout << "Vulkan initialization completed successfully!" << std::endl;
     initialized = true;
     return true;
 }
@@ -250,12 +235,6 @@ void VulkanRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t
     scissor.extent = swapchain->getExtent();
     vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
-    // Debug: Print entity count
-    static int renderDebug = 0;
-    if (renderDebug % 60 == 0) {
-        std::cout << "recordCommandBuffer called: renderEntities.size() = " << renderEntities.size() << std::endl;
-    }
-    renderDebug++;
 
     // Render all entities by type
     uint32_t instanceOffset = 0;
@@ -268,17 +247,9 @@ void VulkanRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t
         else if (shapeType == ShapeType::Square) squareCount++;
     }
     
-    if (renderDebug % 60 == 0) {
-        std::cout << "Triangle count: " << triangleCount << ", Square count: " << squareCount << std::endl;
-    }
     
     // Render triangles
     if (triangleCount > 0) {
-        std::cout << "=== TRIANGLE DRAW CALL DEBUG ===" << std::endl;
-        std::cout << "Triangle count: " << triangleCount << std::endl;
-        std::cout << "Triangle index count: " << resources->getTriangleIndexCount() << std::endl;
-        std::cout << "Triangle vertex buffer: " << resources->getTriangleVertexBuffer() << std::endl;
-        std::cout << "Triangle index buffer: " << resources->getTriangleIndexBuffer() << std::endl;
         VkBuffer triangleVertexBuffers[] = {resources->getTriangleVertexBuffer(), resources->getInstanceBuffers()[currentFrame]};
         VkDeviceSize offsets[] = {0, instanceOffset * sizeof(glm::mat4)};
         vkCmdBindVertexBuffers(commandBuffer, 0, 2, triangleVertexBuffers, offsets);
@@ -289,39 +260,16 @@ void VulkanRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t
     
 	// Render squares
 	if (squareCount > 0) {
-		std::cout << "=== SQUARE DRAW CALL DEBUG ===" << std::endl;
-		std::cout << "Square count: " << squareCount << std::endl;
-		std::cout << "Square index count: " << resources->getSquareIndexCount() << std::endl;
-		std::cout << "Square vertex buffer: " << resources->getSquareVertexBuffer() << std::endl;
-		std::cout << "Square index buffer: " << resources->getSquareIndexBuffer() << std::endl;
-		std::cout << "Instance buffer: " << resources->getInstanceBuffers()[currentFrame] << std::endl;
-		std::cout << "Instance offset: " << instanceOffset << std::endl;
-		std::cout << "Instance offset in bytes: " << (instanceOffset * sizeof(glm::mat4)) << std::endl;
-		
 		VkBuffer squareVertexBuffers[] = {resources->getSquareVertexBuffer(), resources->getInstanceBuffers()[currentFrame]};
 		VkDeviceSize offsets[] = {0, instanceOffset * sizeof(glm::mat4)};
-		
-		std::cout << "Binding vertex buffers..." << std::endl;
 		vkCmdBindVertexBuffers(commandBuffer, 0, 2, squareVertexBuffers, offsets);
-		
-		std::cout << "Binding index buffer..." << std::endl;
 		vkCmdBindIndexBuffer(commandBuffer, resources->getSquareIndexBuffer(), 0, VK_INDEX_TYPE_UINT16);
-		
-		std::cout << "Calling vkCmdDrawIndexed with:" << std::endl;
-		std::cout << "  indexCount: " << resources->getSquareIndexCount() << std::endl;
-		std::cout << "  instanceCount: " << squareCount << std::endl;
-		std::cout << "  firstIndex: 0" << std::endl;
-		std::cout << "  vertexOffset: 0" << std::endl;
-		std::cout << "  firstInstance: " << instanceOffset << std::endl;
-		
 		vkCmdDrawIndexed(commandBuffer, resources->getSquareIndexCount(), squareCount, 0, 0, 0);
-		std::cout << "Square draw call completed" << std::endl;
 		instanceOffset += squareCount;
 	}
 
     // Emergency test: Draw a simple triangle without instancing
     if (triangleCount == 0 && squareCount == 0) {
-        std::cout << "No entities found, drawing test triangle" << std::endl;
         VkBuffer testVertexBuffer = resources->getTriangleVertexBuffer();
         VkDeviceSize testOffset = 0;
         vkCmdBindVertexBuffers(commandBuffer, 0, 1, &testVertexBuffer, &testOffset);
@@ -358,6 +306,9 @@ void VulkanRenderer::loadDrawingFunctions() {
 }
 
 void VulkanRenderer::updateUniformBuffer(uint32_t currentImage) {
+    static bool initialized = false;
+    if (initialized) return;
+    
     struct UniformBufferObject {
         glm::mat4 view;
         glm::mat4 proj;
@@ -367,14 +318,16 @@ void VulkanRenderer::updateUniformBuffer(uint32_t currentImage) {
     ubo.proj = glm::ortho(-4.0f, 4.0f, -3.0f, 3.0f, -5.0f, 5.0f);
     ubo.proj[1][1] *= -1;
     
-    std::cout << "Using orthographic projection: -4 to 4 (x), -3 to 3 (y)" << std::endl;
-
-    void* data = resources->getUniformBuffersMapped()[currentImage];
-    memcpy(data, &ubo, sizeof(ubo));
+    // Update all uniform buffers once since they're identical
+    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+        void* data = resources->getUniformBuffersMapped()[i];
+        memcpy(data, &ubo, sizeof(ubo));
+    }
+    
+    initialized = true;
 }
 
 void VulkanRenderer::updateInstanceBuffer(uint32_t currentFrame) {
-    static int debugCounter = 0;
     static auto startTime = std::chrono::high_resolution_clock::now();
     auto currentTime = std::chrono::high_resolution_clock::now();
     float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
@@ -384,32 +337,23 @@ void VulkanRenderer::updateInstanceBuffer(uint32_t currentFrame) {
     
     uint32_t instanceIndex = 0;
     
-    // Process triangles first, then squares (same order as in recordCommandBuffer)
+    // Process triangles first (to match render order)
     for (const auto& [pos, shapeType, color] : renderEntities) {
         if (shapeType == ShapeType::Triangle) {
             glm::mat4 model = glm::translate(glm::mat4(1.0f), pos);
             model = glm::rotate(model, time * glm::radians(45.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-            matrices[instanceIndex] = model;
-            instanceIndex++;
+            matrices[instanceIndex++] = model;
         }
     }
     
+    // Process squares second (to match render order)
     for (const auto& [pos, shapeType, color] : renderEntities) {
         if (shapeType == ShapeType::Square) {
             glm::mat4 model = glm::translate(glm::mat4(1.0f), pos);
             model = glm::rotate(model, time * glm::radians(-30.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-            matrices[instanceIndex] = model;
-            instanceIndex++;
+            matrices[instanceIndex++] = model;
         }
     }
-    
-    if (debugCounter % 60 == 0 && instanceIndex > 0) {
-        std::cout << "Updated " << instanceIndex << " instance matrices" << std::endl;
-        for (uint32_t i = 0; i < instanceIndex; i++) {
-            std::cout << "Matrix " << i << " translation: (" << matrices[i][3][0] << ", " << matrices[i][3][1] << ", " << matrices[i][3][2] << ")" << std::endl;
-        }
-    }
-    debugCounter++;
 }
 
 void VulkanRenderer::setEntityPosition(float x, float y, float z) {

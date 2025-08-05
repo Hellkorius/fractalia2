@@ -5,6 +5,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <iostream>
 #include <cmath>
+#include <chrono>
 #include "vulkan_renderer.h"
 #include "PolygonFactory.h"
 
@@ -35,9 +36,12 @@ struct Rotation {
 };
 
 void movement_system(flecs::entity e, Position& pos, Velocity& vel) {
-    pos.x += vel.x * 0.016f; // Approximate 60 FPS delta time
-    pos.y += vel.y * 0.016f;
-    pos.z += vel.z * 0.016f;
+    // Get delta time from the world (Flecs provides this)
+    const float deltaTime = e.world().delta_time();
+    
+    pos.x += vel.x * deltaTime;
+    pos.y += vel.y * deltaTime;
+    pos.z += vel.z * deltaTime;
     
     // Bounce off screen edges
     if (pos.x > 2.0f || pos.x < -2.0f) vel.x = -vel.x;
@@ -45,7 +49,8 @@ void movement_system(flecs::entity e, Position& pos, Velocity& vel) {
 }
 
 void rotation_system(flecs::entity e, Position& pos, Rotation& rot) {
-    const float deltaTime = 0.016f; // Approximate 60 FPS delta time
+    // Get delta time from the world
+    const float deltaTime = e.world().delta_time();
     
     // Update rotation angle
     rot.angle += deltaTime * 2.0f; // Rotate at 2 radians per second
@@ -66,16 +71,14 @@ void rotation_system(flecs::entity e, Position& pos, Rotation& rot) {
 
 int main(int argc, char* argv[]) {
     constexpr int TARGET_FPS = 60;
-    constexpr int FRAME_DELAY_MS = 1000 / TARGET_FPS;
+    constexpr float TARGET_FRAME_TIME = 1.0f / TARGET_FPS;
     
-    std::cout << "Starting Fractalia2..." << std::endl;
     
     if (!SDL_Init(SDL_INIT_VIDEO)) {
         std::cerr << "Failed to initialize SDL: " << SDL_GetError() << std::endl;
         return -1;
     }
     
-    std::cout << "SDL initialized successfully" << std::endl;
 
     // Check Vulkan support
     uint32_t extensionCount = 0;
@@ -87,10 +90,6 @@ int main(int argc, char* argv[]) {
         return -1;
     }
     
-    std::cout << "Vulkan support detected. Available extensions (" << extensionCount << "):" << std::endl;
-    for (uint32_t i = 0; i < extensionCount; i++) {
-        std::cout << "  " << extensions[i] << std::endl;
-    }
 
     SDL_Window* window = SDL_CreateWindow(
         "Fractalia2 - SDL3 + Vulkan + Flecs",
@@ -104,7 +103,6 @@ int main(int argc, char* argv[]) {
         return -1;
     }
     
-    std::cout << "Window created successfully" << std::endl;
 
     VulkanRenderer renderer;
     if (!renderer.initialize(window)) {
@@ -121,6 +119,9 @@ int main(int argc, char* argv[]) {
 
     world.system<Position, Rotation>()
         .each(rotation_system);
+    
+    // Cache the query for better performance
+    auto renderQuery = world.query<Position, Shape, Color>();
 
     // Create a triangle entity
     auto triangleEntity = world.entity()
@@ -137,33 +138,31 @@ int main(int argc, char* argv[]) {
     bool running = true;
     SDL_Event event;
 
-    std::cout << "Fractalia2 initialized successfully!" << std::endl;
-    std::cout << "SDL3 Version: " << SDL_GetVersion() << std::endl;
-    std::cout << "Vulkan renderer initialized" << std::endl;
-    std::cout << "Starting main loop..." << std::endl;
-    std::cout.flush();
 
     int frameCount = 0;
+    auto lastFrameTime = std::chrono::high_resolution_clock::now();
+    
     while (running) {
-        Uint64 frameStartTime = SDL_GetTicks();
+        auto frameStartTime = std::chrono::high_resolution_clock::now();
+        float deltaTime = std::chrono::duration<float>(frameStartTime - lastFrameTime).count();
+        lastFrameTime = frameStartTime;
         
         while (SDL_PollEvent(&event)) {
             if (event.type == SDL_EVENT_QUIT) {
-                std::cout << "Quit event received" << std::endl;
                 running = false;
             }
             if (event.type == SDL_EVENT_KEY_DOWN && event.key.key == SDLK_ESCAPE) {
-                std::cout << "Escape key pressed" << std::endl;
                 running = false;
             }
         }
 
-        world.progress();
+        world.progress(deltaTime);
 
         // Collect all entities with position and shape components for rendering
         std::vector<std::tuple<glm::vec3, VulkanRenderer::ShapeType, glm::vec4>> renderEntities;
+        renderEntities.reserve(32); // Pre-allocate for better performance
         
-        world.query<Position, Shape, Color>().each([&](flecs::entity e, Position& pos, Shape& shape, Color& color) {
+        renderQuery.each([&](flecs::entity e, Position& pos, Shape& shape, Color& color) {
             VulkanRenderer::ShapeType vkShapeType = (shape.type == ShapeType::Triangle) ? 
                 VulkanRenderer::ShapeType::Triangle : VulkanRenderer::ShapeType::Square;
             renderEntities.emplace_back(
@@ -171,49 +170,28 @@ int main(int argc, char* argv[]) {
                 vkShapeType,
                 glm::vec4(color.r, color.g, color.b, color.a)
             );
-            if (frameCount % 60 == 0) {
-                std::cout << "Found entity: pos(" << pos.x << ", " << pos.y << ", " << pos.z << ") ";
-                std::cout << "shape: " << (shape.type == ShapeType::Triangle ? "Triangle" : "Square") << std::endl;
-            }
         });
         
-        if (frameCount % 60 == 0) {
-            std::cout << "Collected " << renderEntities.size() << " entities for rendering" << std::endl;
-        }
         
         renderer.updateEntities(renderEntities);
         
-        if (frameCount % 60 == 0) {
-            std::cout << "Rendering " << renderEntities.size() << " entities" << std::endl;
-            for (size_t i = 0; i < renderEntities.size(); i++) {
-                auto& [pos, shapeType, color] = renderEntities[i];
-                std::cout << "Entity " << i << ": pos(" << pos.x << ", " << pos.y << ", " << pos.z << ")";
-                std::cout << " shape: " << (shapeType == VulkanRenderer::ShapeType::Triangle ? "Triangle" : "Square") << std::endl;
-            }
-        }
 
-        if (frameCount == 0) {
-            std::cout << "Drawing first frame..." << std::endl;
-            std::cout.flush();
-        }
 
         renderer.drawFrame();
 
         frameCount++;
-        if (frameCount == 1) {
-            std::cout << "First frame drawn successfully" << std::endl;
-        } else if (frameCount % 60 == 0) {
-            std::cout << "Frame " << frameCount << " drawn" << std::endl;
-        }
         
         // Cap framerate at TARGET_FPS
-        Uint64 frameTime = SDL_GetTicks() - frameStartTime;
-        if (frameTime < FRAME_DELAY_MS) {
-            SDL_Delay(FRAME_DELAY_MS - frameTime);
+        auto frameEndTime = std::chrono::high_resolution_clock::now();
+        float frameTime = std::chrono::duration<float>(frameEndTime - frameStartTime).count();
+        if (frameTime < TARGET_FRAME_TIME) {
+            int delayMs = static_cast<int>((TARGET_FRAME_TIME - frameTime) * 1000.0f);
+            if (delayMs > 0) {
+                SDL_Delay(delayMs);
+            }
         }
     }
 
-    std::cout << "Exiting main loop..." << std::endl;
 
     renderer.cleanup();
     SDL_DestroyWindow(window);

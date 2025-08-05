@@ -13,26 +13,20 @@ bool VulkanSync::initialize(VulkanContext* context) {
     
     loadFunctions();
     
-    std::cout << "Creating command pool..." << std::endl;
     if (!createCommandPool()) {
         std::cerr << "Failed to create command pool" << std::endl;
         return false;
     }
-    std::cout << "Command pool created successfully" << std::endl;
     
-    std::cout << "Creating command buffers..." << std::endl;
     if (!createCommandBuffers()) {
         std::cerr << "Failed to create command buffers" << std::endl;
         return false;
     }
-    std::cout << "Command buffers created successfully" << std::endl;
     
-    std::cout << "Creating sync objects..." << std::endl;
     if (!createSyncObjects()) {
         std::cerr << "Failed to create sync objects" << std::endl;
         return false;
     }
-    std::cout << "Sync objects created successfully" << std::endl;
     
     return true;
 }

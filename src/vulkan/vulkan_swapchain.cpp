@@ -16,33 +16,25 @@ bool VulkanSwapchain::initialize(VulkanContext* context, SDL_Window* window) {
     
     loadFunctions();
     
-    std::cout << "Creating swap chain..." << std::endl;
     if (!createSwapChain()) {
         std::cerr << "Failed to create swap chain" << std::endl;
         return false;
     }
-    std::cout << "Swap chain created successfully" << std::endl;
     
-    std::cout << "Creating image views..." << std::endl;
     if (!createImageViews()) {
         std::cerr << "Failed to create image views" << std::endl;
         return false;
     }
-    std::cout << "Image views created successfully" << std::endl;
     
-    std::cout << "Creating depth resources..." << std::endl;
     if (!createDepthResources()) {
         std::cerr << "Failed to create depth resources" << std::endl;
         return false;
     }
-    std::cout << "Depth resources created successfully" << std::endl;
     
-    std::cout << "Creating MSAA color resources..." << std::endl;
     if (!createMSAAColorResources()) {
         std::cerr << "Failed to create MSAA color resources" << std::endl;
         return false;
     }
-    std::cout << "MSAA color resources created successfully" << std::endl;
     
     return true;
 }

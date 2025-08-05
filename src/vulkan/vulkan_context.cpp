@@ -27,31 +27,26 @@ VulkanContext::~VulkanContext() {
 bool VulkanContext::initialize(SDL_Window* window) {
     this->window = window;
     
-    std::cout << "Loading Vulkan functions..." << std::endl;
     if (!loadVulkanFunctions()) {
         std::cerr << "Failed to load Vulkan functions" << std::endl;
         return false;
     }
     
-    std::cout << "Creating Vulkan instance..." << std::endl;
     if (!createInstance()) {
         std::cerr << "Failed to create Vulkan instance" << std::endl;
         return false;
     }
     
-    std::cout << "Creating surface..." << std::endl;
     if (!createSurface()) {
         std::cerr << "Failed to create surface" << std::endl;
         return false;
     }
     
-    std::cout << "Picking physical device..." << std::endl;
     if (!pickPhysicalDevice()) {
         std::cerr << "Failed to pick physical device" << std::endl;
         return false;
     }
     
-    std::cout << "Creating logical device..." << std::endl;
     if (!createLogicalDevice()) {
         std::cerr << "Failed to create logical device" << std::endl;
         return false;
@@ -153,8 +148,6 @@ bool VulkanContext::pickPhysicalDevice() {
 bool VulkanContext::createLogicalDevice() {
     QueueFamilyIndices indices = findQueueFamilies(physicalDevice);
     
-    std::cout << "Queue families found - Graphics: " << indices.graphicsFamily.value() 
-              << ", Present: " << indices.presentFamily.value() << std::endl;
 
     std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
     std::set<uint32_t> uniqueQueueFamilies = {indices.graphicsFamily.value(), indices.presentFamily.value()};
@@ -167,7 +160,6 @@ bool VulkanContext::createLogicalDevice() {
         queueCreateInfo.queueCount = 1;
         queueCreateInfo.pQueuePriorities = &queuePriority;
         queueCreateInfos.push_back(queueCreateInfo);
-        std::cout << "Added queue family: " << queueFamily << std::endl;
     }
 
     VkPhysicalDeviceFeatures deviceFeatures{};
@@ -182,10 +174,6 @@ bool VulkanContext::createLogicalDevice() {
     createInfo.enabledLayerCount = 0;
     createInfo.ppEnabledLayerNames = nullptr;
 
-    std::cout << "Creating logical device with " << deviceExtensions.size() << " extensions..." << std::endl;
-    for (const auto& ext : deviceExtensions) {
-        std::cout << "  Device extension: " << ext << std::endl;
-    }
 
     VkResult result = vkCreateDevice(physicalDevice, &createInfo, nullptr, &device);
     if (result != VK_SUCCESS) {
@@ -193,21 +181,12 @@ bool VulkanContext::createLogicalDevice() {
         return false;
     }
 
-    std::cout << "Logical device created successfully" << std::endl;
 
-    std::cout << "Getting graphics queue (family " << indices.graphicsFamily.value() << ")..." << std::endl;
     vkGetDeviceQueue(device, indices.graphicsFamily.value(), 0, &graphicsQueue);
-    std::cout << "Graphics queue retrieved" << std::endl;
 
-    std::cout << "Getting present queue (family " << indices.presentFamily.value() << ")..." << std::endl;
     vkGetDeviceQueue(device, indices.presentFamily.value(), 0, &presentQueue);
-    std::cout << "Present queue retrieved" << std::endl;
 
-    std::cout << "Device queues retrieved successfully" << std::endl;
-
-    std::cout << "Loading device functions..." << std::endl;
     loadDeviceFunctions();
-    std::cout << "Device functions loaded successfully" << std::endl;
 
     return true;
 }
@@ -248,7 +227,6 @@ bool VulkanContext::isDeviceSuitable(VkPhysicalDevice device) {
     VkPhysicalDeviceProperties deviceProperties;
     vkGetPhysicalDeviceProperties(device, &deviceProperties);
     
-    std::cout << "Checking device: " << deviceProperties.deviceName << std::endl;
     
     uint32_t extensionCount;
     vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount, nullptr);
@@ -261,21 +239,11 @@ bool VulkanContext::isDeviceSuitable(VkPhysicalDevice device) {
     }
     
     bool extensionsSupported = requiredExtensions.empty();
-    std::cout << "  Required extensions supported: " << (extensionsSupported ? "YES" : "NO") << std::endl;
-    if (!extensionsSupported) {
-        std::cout << "  Missing extensions:" << std::endl;
-        for (const auto& ext : requiredExtensions) {
-            std::cout << "    " << ext << std::endl;
-        }
-    }
     
     QueueFamilyIndices indices = findQueueFamilies(device);
     
     bool suitable = indices.isComplete() && extensionsSupported;
     
-    std::cout << "Device suitable: " << (suitable ? "YES" : "NO") << std::endl;
-    std::cout << "  Queue families complete: " << (indices.isComplete() ? "YES" : "NO") << std::endl;
-    std::cout << "  Extensions supported: " << (extensionsSupported ? "YES" : "NO") << std::endl;
     
     return suitable;
 }
@@ -301,7 +269,6 @@ bool VulkanContext::loadVulkanFunctions() {
         return false;
     }
 
-    std::cout << "Successfully loaded vkGetInstanceProcAddr" << std::endl;
 
     vkCreateInstance = (PFN_vkCreateInstance)vkGetInstanceProcAddr(VK_NULL_HANDLE, "vkCreateInstance");
     if (!vkCreateInstance) {
@@ -309,7 +276,6 @@ bool VulkanContext::loadVulkanFunctions() {
         return false;
     }
 
-    std::cout << "Successfully loaded global Vulkan functions" << std::endl;
     return true;
 }
 
@@ -329,17 +295,11 @@ void VulkanContext::loadInstanceFunctions() {
 }
 
 void VulkanContext::loadDeviceFunctions() {
-    std::cout << "Loading device-level functions..." << std::endl;
-    
     if (!vkGetDeviceProcAddr) {
         std::cerr << "vkGetDeviceProcAddr is null!" << std::endl;
         return;
     }
     
     vkDestroyDevice = (PFN_vkDestroyDevice)vkGetDeviceProcAddr(device, "vkDestroyDevice");
-    std::cout << "  vkDestroyDevice loaded" << std::endl;
-    
     vkDeviceWaitIdle = (PFN_vkDeviceWaitIdle)vkGetDeviceProcAddr(device, "vkDeviceWaitIdle");
-    
-    std::cout << "All device functions loaded" << std::endl;
 }

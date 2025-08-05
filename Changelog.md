@@ -23,3 +23,20 @@
 ### Fixed
 - **Command Pool Access**: Fixed an issue where `VulkanResources::copyBuffer` tried to access a non-existent `getCommandPool` method in `VulkanContext`. The method was added to provide access to the command pool.
 - **Vertex Attribute Descriptions**: Corrected the scope of `getVertexBindingDescriptions` and `getVertexAttributeDescriptions` functions. They are now properly defined at the class scope, making them accessible to the `createGraphicsPipeline` method.
+
+##[v.0.0.3] – 2025-08-06  
+Engine / Rendering & ECS Quality Pass
+
+Debug Output  
+• Stripped all verbose `std::cout` logs from `main.cpp` and Vulkan modules; only `std::cerr` error outputs remain, giving the console a much cleaner look.
+
+ECS  
+• Switched system loops from `.each()` to `.iter()` for better cache locality and future SIMD usage.  
+• Replaced hard-coded `0.016f` timestep with true frame-delta via `it.delta_time()`.  
+• Cached the render query to eliminate per-frame rebuild overhead.  
+• Added `renderEntities.reserve(32)` to cut down on vector reallocations.
+
+Vulkan Renderer  
+• Static view/projection uniforms now updated once instead of every frame.  
+• Instance buffer update loop optimized while preserving draw order (triangles → squares).  
+• High-resolution `std::chrono` timers swapped in for SDL ticks, enabling more accurate frame-rate capping with floating-point precision.
