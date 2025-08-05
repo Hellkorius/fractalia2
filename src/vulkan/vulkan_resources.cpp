@@ -240,6 +240,18 @@ bool VulkanResources::createMultiShapeBuffers() {
     std::cout << "  Triangle vertices: " << triangle.vertices.size() << ", indices: " << triangle.indices.size() << std::endl;
     std::cout << "  Square vertices: " << square.vertices.size() << ", indices: " << square.indices.size() << std::endl;
     
+    // Debug square data
+    std::cout << "Square vertex data:" << std::endl;
+    for (size_t i = 0; i < square.vertices.size(); i++) {
+        const auto& v = square.vertices[i];
+        std::cout << "  Vertex " << i << ": pos(" << v.pos.x << ", " << v.pos.y << ", " << v.pos.z << ") color(" << v.color.x << ", " << v.color.y << ", " << v.color.z << ")" << std::endl;
+    }
+    std::cout << "Square indices: ";
+    for (size_t i = 0; i < square.indices.size(); i++) {
+        std::cout << square.indices[i] << " ";
+    }
+    std::cout << std::endl;
+    
     return true;
 }
 

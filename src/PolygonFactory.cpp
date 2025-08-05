@@ -19,9 +19,6 @@ PolygonMesh PolygonFactory::createSquare() {
         {{0.5f, 0.5f, 0.0f}, {1.0f, 0.0f, 0.0f}},
         {{-0.5f, 0.5f, 0.0f}, {1.0f, 0.0f, 0.0f}}
     };
-    square.indices = {
-        0, 1, 2,
-        2, 3, 0
-    };
+    square.indices = {0, 1, 2, 0, 2, 3};
     return square;
 }

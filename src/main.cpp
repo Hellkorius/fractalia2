@@ -122,16 +122,16 @@ int main(int argc, char* argv[]) {
     world.system<Position, Rotation>()
         .each(rotation_system);
 
-    // Create a triangle entity (stationary for now)
+    // Create a triangle entity
     auto triangleEntity = world.entity()
-        .set<Position>({-0.8f, 0.0f, 0.0f})
-        .set<Color>({1.0f, 0.0f, 0.0f, 1.0f})
+        .set<Position>({-1.5f, 0.0f, 0.0f})
+        .set<Color>({1.0f, 1.0f, 1.0f, 1.0f})
         .set<Shape>({ShapeType::Triangle});
 
-    // Create a square entity (positioned separately)
+    // Create a square entity (using triangle geometry for testing)
     auto squareEntity = world.entity()
-        .set<Position>({0.8f, 0.0f, 0.0f})
-        .set<Color>({0.0f, 1.0f, 0.0f, 1.0f})
+        .set<Position>({1.5f, 0.0f, 0.0f})
+        .set<Color>({1.0f, 0.0f, 0.0f, 1.0f})
         .set<Shape>({ShapeType::Square});
 
     bool running = true;

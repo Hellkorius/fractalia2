@@ -274,27 +274,48 @@ void VulkanRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t
     
     // Render triangles
     if (triangleCount > 0) {
-        if (renderDebug % 60 == 0) {
-            std::cout << "Drawing " << triangleCount << " triangles with " << resources->getTriangleIndexCount() << " indices" << std::endl;
-        }
+        std::cout << "=== TRIANGLE DRAW CALL DEBUG ===" << std::endl;
+        std::cout << "Triangle count: " << triangleCount << std::endl;
+        std::cout << "Triangle index count: " << resources->getTriangleIndexCount() << std::endl;
+        std::cout << "Triangle vertex buffer: " << resources->getTriangleVertexBuffer() << std::endl;
+        std::cout << "Triangle index buffer: " << resources->getTriangleIndexBuffer() << std::endl;
         VkBuffer triangleVertexBuffers[] = {resources->getTriangleVertexBuffer(), resources->getInstanceBuffers()[currentFrame]};
         VkDeviceSize offsets[] = {0, instanceOffset * sizeof(glm::mat4)};
         vkCmdBindVertexBuffers(commandBuffer, 0, 2, triangleVertexBuffers, offsets);
         vkCmdBindIndexBuffer(commandBuffer, resources->getTriangleIndexBuffer(), 0, VK_INDEX_TYPE_UINT16);
-        vkCmdDrawIndexed(commandBuffer, resources->getTriangleIndexCount(), triangleCount, 0, 0, instanceOffset);
+        vkCmdDrawIndexed(commandBuffer, resources->getTriangleIndexCount(), triangleCount, 0, 0, 0);
         instanceOffset += triangleCount;
     }
     
 	// Render squares
 	if (squareCount > 0) {
-		if (renderDebug % 60 == 0) {
-			std::cout << "Drawing " << squareCount << " squares with " << resources->getSquareIndexCount() << " indices" << std::endl;
-		}
+		std::cout << "=== SQUARE DRAW CALL DEBUG ===" << std::endl;
+		std::cout << "Square count: " << squareCount << std::endl;
+		std::cout << "Square index count: " << resources->getSquareIndexCount() << std::endl;
+		std::cout << "Square vertex buffer: " << resources->getSquareVertexBuffer() << std::endl;
+		std::cout << "Square index buffer: " << resources->getSquareIndexBuffer() << std::endl;
+		std::cout << "Instance buffer: " << resources->getInstanceBuffers()[currentFrame] << std::endl;
+		std::cout << "Instance offset: " << instanceOffset << std::endl;
+		std::cout << "Instance offset in bytes: " << (instanceOffset * sizeof(glm::mat4)) << std::endl;
+		
 		VkBuffer squareVertexBuffers[] = {resources->getSquareVertexBuffer(), resources->getInstanceBuffers()[currentFrame]};
 		VkDeviceSize offsets[] = {0, instanceOffset * sizeof(glm::mat4)};
+		
+		std::cout << "Binding vertex buffers..." << std::endl;
 		vkCmdBindVertexBuffers(commandBuffer, 0, 2, squareVertexBuffers, offsets);
+		
+		std::cout << "Binding index buffer..." << std::endl;
 		vkCmdBindIndexBuffer(commandBuffer, resources->getSquareIndexBuffer(), 0, VK_INDEX_TYPE_UINT16);
-		vkCmdDrawIndexed(commandBuffer, resources->getSquareIndexCount(), squareCount, 0, 0, instanceOffset);
+		
+		std::cout << "Calling vkCmdDrawIndexed with:" << std::endl;
+		std::cout << "  indexCount: " << resources->getSquareIndexCount() << std::endl;
+		std::cout << "  instanceCount: " << squareCount << std::endl;
+		std::cout << "  firstIndex: 0" << std::endl;
+		std::cout << "  vertexOffset: 0" << std::endl;
+		std::cout << "  firstInstance: " << instanceOffset << std::endl;
+		
+		vkCmdDrawIndexed(commandBuffer, resources->getSquareIndexCount(), squareCount, 0, 0, 0);
+		std::cout << "Square draw call completed" << std::endl;
 		instanceOffset += squareCount;
 	}
 
@@ -343,10 +364,10 @@ void VulkanRenderer::updateUniformBuffer(uint32_t currentImage) {
     } ubo{};
 
     ubo.view = glm::mat4(1.0f);
-    ubo.proj = glm::ortho(-2.0f, 2.0f, -1.5f, 1.5f, -1.0f, 1.0f);
+    ubo.proj = glm::ortho(-4.0f, 4.0f, -3.0f, 3.0f, -5.0f, 5.0f);
     ubo.proj[1][1] *= -1;
     
-    std::cout << "Using orthographic projection: -2 to 2 (x), -1.5 to 1.5 (y)" << std::endl;
+    std::cout << "Using orthographic projection: -4 to 4 (x), -3 to 3 (y)" << std::endl;
 
     void* data = resources->getUniformBuffersMapped()[currentImage];
     memcpy(data, &ubo, sizeof(ubo));
