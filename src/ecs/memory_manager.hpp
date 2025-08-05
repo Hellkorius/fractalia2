@@ -283,7 +283,8 @@ public:
             lifetimePool.getMemoryUsage();
             
         stats.entityPoolSize = entityRecycler->getPoolSize();
-        stats.activeEntities = entityRecycler->getTrackedEntityCount();
+        // Use transform pool as proxy for active entities since most entities have transforms
+        stats.activeEntities = transformPool.getAllocatedCount();
     }
     
     // Configuration

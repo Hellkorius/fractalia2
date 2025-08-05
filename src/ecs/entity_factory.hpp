@@ -150,6 +150,111 @@ private:
     std::vector<Entity> entityPool;
     std::mt19937 rng{std::random_device{}()};
     
+    // Helper function to generate beautiful fractal colors
+    glm::vec4 generateFractalColor(int movementType, size_t index, size_t totalCount, const glm::vec3& pos) {
+        float t = static_cast<float>(index) / static_cast<float>(totalCount);
+        float x = pos.x, y = pos.y;
+        
+        glm::vec3 color;
+        switch (movementType) {
+            case 0: // Linear - Blue to cyan gradient
+                color = glm::mix(glm::vec3(0.2f, 0.6f, 1.0f), glm::vec3(0.0f, 1.0f, 1.0f), t);
+                break;
+            case 1: // Orbital - Green spiral
+                color = glm::vec3(0.2f + 0.6f * std::sin(t * 6.28f), 0.8f, 0.3f + 0.4f * std::cos(t * 6.28f));
+                break;
+            case 2: // Spiral - Golden ratio colors
+                color = glm::vec3(1.0f, 0.618f * (1.0f - t), 0.382f + 0.618f * t);
+                break;
+            case 3: // Lissajous - Purple to pink
+                color = glm::mix(glm::vec3(0.8f, 0.2f, 1.0f), glm::vec3(1.0f, 0.4f, 0.8f), t);
+                break;
+            case 4: // Brownian - Earth tones
+                color = glm::vec3(0.6f + 0.4f * t, 0.4f + 0.3f * t, 0.2f + 0.2f * t);
+                break;
+            case 5: // Fractal - Rainbow spectrum
+                color = glm::vec3(
+                    0.5f + 0.5f * std::sin(t * 6.28f),
+                    0.5f + 0.5f * std::sin(t * 6.28f + 2.09f),
+                    0.5f + 0.5f * std::sin(t * 6.28f + 4.19f)
+                );
+                break;
+            case 6: // Wave - Ocean blues
+                color = glm::vec3(0.1f + 0.3f * t, 0.4f + 0.4f * t, 0.8f);
+                break;
+            case 7: // Petal - Flower colors
+                color = glm::mix(glm::vec3(1.0f, 0.7f, 0.8f), glm::vec3(0.9f, 0.3f, 0.6f), t);
+                break;
+            case 8: // Butterfly - Iridescent
+                color = glm::vec3(
+                    0.3f + 0.7f * std::abs(std::sin(t * 12.56f)),
+                    0.5f + 0.5f * std::abs(std::cos(t * 8.37f)),
+                    0.8f + 0.2f * std::abs(std::sin(t * 15.71f))
+                );
+                break;
+            default:
+                color = glm::vec3(0.7f, 0.7f, 0.9f);
+        }
+        
+        return glm::vec4(color, 1.0f);
+    }
+    
+    // Helper function to create fractal movement patterns
+    MovementPattern createFractalPattern(MovementType type, const glm::vec3& center, float radius, size_t index, size_t totalCount) {
+        MovementPattern pattern;
+        pattern.type = type;
+        pattern.center = center;
+        
+        // Create variation based on entity index
+        float t = static_cast<float>(index) / static_cast<float>(totalCount);
+        float goldenRatio = 1.618033988749895f;
+        
+        // Base parameters with golden ratio variations
+        pattern.amplitude = radius * (0.3f + 0.7f * t);
+        pattern.frequency = 0.5f + 2.0f * std::fmod(t * goldenRatio, 1.0f);
+        pattern.phase = t * 6.28318530718f; // 2π
+        pattern.timeOffset = t * 10.0f; // Stagger timing
+        
+        // Pattern-specific customization
+        switch (type) {
+            case MovementType::Spiral:
+                pattern.frequency *= 0.3f; // Slower for spirals
+                pattern.decay = 0.05f; // Slight decay
+                break;
+                
+            case MovementType::Lissajous:
+                pattern.lissajousRatio = glm::vec2(
+                    2.0f + 3.0f * std::fmod(t * goldenRatio, 1.0f),
+                    1.0f + 2.0f * std::fmod(t * goldenRatio * goldenRatio, 1.0f)
+                );
+                break;
+                
+            case MovementType::Fractal:
+                pattern.recursionDepth = 2.0f + 3.0f * t;
+                pattern.selfSimilarity = 0.5f + 0.3f * std::sin(t * 6.28f);
+                break;
+                
+            case MovementType::Orbital:
+                pattern.axis = glm::normalize(glm::vec3(
+                    std::sin(t * 6.28f),
+                    std::cos(t * 6.28f),
+                    0.5f * std::sin(t * 12.56f)
+                ));
+                break;
+                
+            case MovementType::Petal:
+            case MovementType::Butterfly:
+                pattern.frequency *= 0.7f; // Slower for complex curves
+                pattern.phaseShift = 0.1f * std::sin(t * 3.14f);
+                break;
+                
+            default:
+                break;
+        }
+        
+        return pattern;
+    }
+    
 public:
     EntityFactory(flecs::world& w) : world(w) {
         entityPool.reserve(1000); // Pre-allocate pool
@@ -219,12 +324,14 @@ public:
             .build();
     }
     
-    // Create swarm of entities for stress testing
+    // Create swarm of entities with beautiful fractal movement patterns
     std::vector<Entity> createSwarm(size_t count, const glm::vec3& center, float radius) {
         std::uniform_real_distribution<float> angleDist(0.0f, 2.0f * M_PI);
         std::uniform_real_distribution<float> radiusDist(0.0f, radius);
         std::uniform_real_distribution<float> colorDist(0.0f, 1.0f);
+        std::uniform_real_distribution<float> paramDist(0.0f, 1.0f);
         std::uniform_int_distribution<int> shapeDist(0, 1);
+        std::uniform_int_distribution<int> movementDist(0, 8); // 9 movement types
         
         return createBatch(count, [&](EntityBuilder& builder, size_t i) {
             float angle = angleDist(rng);
@@ -237,19 +344,31 @@ public:
             
             Renderable::ShapeType shape = shapeDist(rng) == 0 ? 
                 Renderable::ShapeType::Triangle : Renderable::ShapeType::Square;
-                
-            glm::vec4 color(colorDist(rng), colorDist(rng), colorDist(rng), 1.0f);
             
-            builder.at(pos)
+            // Create beautiful color gradients based on position and movement type
+            int movementType = movementDist(rng);
+            glm::vec4 color = generateFractalColor(movementType, i, count, pos);
+            
+            // Create movement pattern based on type
+            MovementPattern pattern = createFractalPattern(
+                static_cast<MovementType>(movementType), 
+                center, 
+                radius, 
+                i, 
+                count
+            );
+            
+            Entity entity = builder.at(pos)
                    .withShape(shape)
                    .withColor(color)
-                   .withVelocity(glm::vec3(
-                       (colorDist(rng) - 0.5f) * 2.0f,
-                       (colorDist(rng) - 0.5f) * 2.0f,
-                       0.0f
-                   ))
                    .asDynamic()
-                   .asPooled();
+                   .asPooled()
+                   .build();
+                   
+            // Add the fractal movement pattern
+            entity.set<MovementPattern>(pattern);
+            
+            return entity;
         });
     }
     

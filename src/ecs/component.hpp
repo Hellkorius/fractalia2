@@ -69,6 +69,47 @@ struct Bounds {
     bool dynamic{true}; // Updates with transform changes
 };
 
+// Fractal movement patterns for beautiful entity motion
+enum class MovementType {
+    Linear,          // Simple linear movement
+    Orbital,         // Circular/elliptical orbits
+    Spiral,          // Logarithmic spiral
+    Lissajous,       // Complex periodic patterns
+    Brownian,        // Random walk
+    Fractal,         // Self-similar recursive patterns
+    Wave,            // Sine/cosine wave patterns
+    Petal,           // Rose curve patterns
+    Butterfly        // Butterfly curve
+};
+
+struct MovementPattern {
+    MovementType type{MovementType::Linear};
+    
+    // Universal parameters
+    float amplitude{1.0f};      // Size/scale of pattern
+    float frequency{1.0f};      // Speed/frequency of oscillation
+    float phase{0.0f};          // Phase offset for variation
+    float timeOffset{0.0f};     // Individual timing offset
+    
+    // Pattern-specific parameters
+    glm::vec3 center{0.0f};     // Center point for orbits/spirals
+    glm::vec3 axis{0.0f, 0.0f, 1.0f}; // Rotation axis
+    
+    // Fractal parameters
+    float recursionDepth{3.0f}; // Depth of fractal recursion
+    float selfSimilarity{0.618f}; // Golden ratio for aesthetics
+    
+    // Advanced parameters
+    float decay{0.0f};          // Amplitude decay over time
+    float phaseShift{0.0f};     // Phase shift rate
+    glm::vec2 lissajousRatio{3.0f, 2.0f}; // Frequency ratios for Lissajous
+    
+    // Runtime state
+    mutable float totalTime{0.0f};
+    mutable glm::vec3 lastPosition{0.0f};
+    mutable bool initialized{false};
+};
+
 // Tag components for efficient filtering
 struct Static {}; // Non-moving entities
 struct Dynamic {}; // Moving entities  

@@ -7,6 +7,7 @@
 #include "ecs/world.hpp"
 #include "ecs/systems/render_system.cpp"
 #include "ecs/systems/physics_system.hpp"
+#include "ecs/systems/fractal_movement_system.hpp"
 #include "ecs/profiler.hpp"
 
 int main(int argc, char* argv[]) {
@@ -54,9 +55,13 @@ int main(int argc, char* argv[]) {
 
     World world;
 
-    // Use new Transform-based physics system
+    // Beautiful fractal movement system
+    world.getFlecsWorld().system<Transform, MovementPattern>()
+        .each(fractal_movement_system);
+        
+    // Velocity-based movement for entities without movement patterns
     world.getFlecsWorld().system<Transform, Velocity>()
-        .each(movement_system);
+        .each(velocity_movement_system);
         
     world.getFlecsWorld().system<Lifetime>()
         .each(lifetime_system);
@@ -95,12 +100,15 @@ int main(int argc, char* argv[]) {
     squareEntity.set<Velocity>({{-0.3f, 0.4f, 0.0f}, {0.0f, 0.0f, -0.5f}});
     
     std::cout << "Created " << (swarmEntities.size() + 2) << " total entities!" << std::endl;
-    std::cout << "\n=== Battle-Ready ECS Demo Controls ===" << std::endl;
+    std::cout << "\n=== Fractal ECS Demo Controls ===" << std::endl;
     std::cout << "ESC: Exit" << std::endl;
     std::cout << "P: Print detailed performance report" << std::endl;
-    std::cout << "+/=: Add 100 more entities (stress test)" << std::endl;
+    std::cout << "+/=: Add 100 more fractal entities" << std::endl;
     std::cout << "-: Show current performance stats" << std::endl;
-    std::cout << "====================================\n" << std::endl;
+    std::cout << "\nFractal Movement Patterns Active:" << std::endl;
+    std::cout << "• Linear, Orbital, Spiral, Lissajous" << std::endl;
+    std::cout << "• Brownian, Fractal, Wave, Petal, Butterfly" << std::endl;
+    std::cout << "=====================================\n" << std::endl;
 
     bool running = true;
     SDL_Event event;

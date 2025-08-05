@@ -166,11 +166,24 @@ public:
     };
     
     WorldStats getStats() const {
+        auto memStats = memoryManager->getStats();
+        
+        // Get accurate entity count from Flecs
+        size_t activeEntityCount = 0;
+        flecsWorld.each([&](flecs::entity e) {
+            if (e.is_valid() && e.is_alive()) {
+                activeEntityCount++;
+            }
+        });
+        
+        // Update memory stats with correct entity count
+        const_cast<ECSMemoryManager::MemoryStats&>(memStats).activeEntities = activeEntityCount;
+        
         return {
             frameCount,
             deltaTime,
             queryCache->size(),
-            memoryManager->getStats()
+            memStats
         };
     }
 };
