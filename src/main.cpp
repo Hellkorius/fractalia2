@@ -7,6 +7,7 @@
 #include "ecs/world.hpp"
 #include "ecs/systems/render_system.cpp"
 #include "ecs/systems/physics_system.hpp"
+#include "ecs/profiler.hpp"
 
 int main(int argc, char* argv[]) {
     constexpr int TARGET_FPS = 60;
@@ -53,26 +54,31 @@ int main(int argc, char* argv[]) {
 
     World world;
 
-    world.getFlecsWorld().system<Position, Velocity>()
+    // Use new Transform-based physics system
+    world.getFlecsWorld().system<Transform, Velocity>()
         .each(movement_system);
-
-    world.getFlecsWorld().system<Position, Rotation>()
-        .each(rotation_system);
+        
+    world.getFlecsWorld().system<Lifetime>()
+        .each(lifetime_system);
     
     // Initialize render system
     RenderSystem renderSystem(&renderer, world.getFlecsWorld());
+    
+    // Configure profiler for 60 FPS
+    Profiler::getInstance().setTargetFrameTime(TARGET_FRAME_TIME);
 
-    // Create a triangle entity
-    auto triangleEntity = world.entity()
-        .set<Position>({-1.5f, 0.0f, 0.0f})
-        .set<Color>({1.0f, 1.0f, 1.0f, 1.0f})
-        .set<Shape>({ShapeType::Triangle});
+    // Create entities using new factory system
+    auto triangleEntity = world.getEntityFactory().createTriangle(
+        glm::vec3(-1.5f, 0.0f, 0.0f),
+        glm::vec4(1.0f, 1.0f, 1.0f, 1.0f)
+    );
+    triangleEntity.set<Velocity>({{0.5f, 0.2f, 0.0f}, {0.0f, 0.0f, 1.0f}});
 
-    // Create a square entity (using triangle geometry for testing)
-    auto squareEntity = world.entity()
-        .set<Position>({1.5f, 0.0f, 0.0f})
-        .set<Color>({1.0f, 0.0f, 0.0f, 1.0f})
-        .set<Shape>({ShapeType::Square});
+    auto squareEntity = world.getEntityFactory().createSquare(
+        glm::vec3(1.5f, 0.0f, 0.0f),
+        glm::vec4(1.0f, 0.0f, 0.0f, 1.0f)
+    );
+    squareEntity.set<Velocity>({{-0.3f, 0.4f, 0.0f}, {0.0f, 0.0f, -0.5f}});
 
     bool running = true;
     SDL_Event event;
@@ -90,21 +96,47 @@ int main(int argc, char* argv[]) {
             if (event.type == SDL_EVENT_QUIT) {
                 running = false;
             }
-            if (event.type == SDL_EVENT_KEY_DOWN && event.key.key == SDLK_ESCAPE) {
-                running = false;
+            if (event.type == SDL_EVENT_KEY_DOWN) {
+                if (event.key.key == SDLK_ESCAPE) {
+                    running = false;
+                } else if (event.key.key == SDLK_P) {
+                    // Print performance report
+                    Profiler::getInstance().printReport();
+                }
             }
         }
 
-        world.progress(deltaTime);
+        // Profile the main update loop
+        PROFILE_BEGIN_FRAME();
+        {
+            PROFILE_SCOPE("ECS Update");
+            world.progress(deltaTime);
+        }
 
-        // Update render system
-        renderSystem.update();
+        {
+            PROFILE_SCOPE("Render System");
+            renderSystem.update();
+        }
         
 
-
-        renderer.drawFrame();
+        {
+            PROFILE_SCOPE("Vulkan Rendering");
+            renderer.drawFrame();
+        }
 
         frameCount++;
+        PROFILE_END_FRAME();
+        
+        // Show periodic performance info
+        if (frameCount % 300 == 0) { // Every 5 seconds at 60fps
+            float avgFrameTime = Profiler::getInstance().getFrameTime();
+            auto memStats = world.getMemoryManager().getStats();
+            std::cout << "Frame " << frameCount 
+                      << ": Avg " << avgFrameTime << "ms"
+                      << " (" << (1000.0f / avgFrameTime) << " FPS)"
+                      << " | Memory: " << (memStats.totalAllocated / 1024) << "KB"
+                      << std::endl;
+        }
         
         // Cap framerate at TARGET_FPS
         auto frameEndTime = std::chrono::high_resolution_clock::now();

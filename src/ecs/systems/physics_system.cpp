@@ -4,34 +4,34 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <cmath>
 
-void movement_system(flecs::entity e, Position& pos, Velocity& vel) {
+void movement_system(flecs::entity e, Transform& transform, Velocity& vel) {
     const float deltaTime = e.world().delta_time();
     
-    pos.x += vel.x * deltaTime;
-    pos.y += vel.y * deltaTime;
-    pos.z += vel.z * deltaTime;
+    glm::vec3 newPos = transform.position;
+    newPos += vel.linear * deltaTime;
     
     // Bounce off screen edges
-    if (pos.x > 2.0f || pos.x < -2.0f) vel.x = -vel.x;
-    if (pos.y > 1.5f || pos.y < -1.5f) vel.y = -vel.y;
+    if (newPos.x > 2.0f || newPos.x < -2.0f) vel.linear.x = -vel.linear.x;
+    if (newPos.y > 1.5f || newPos.y < -1.5f) vel.linear.y = -vel.linear.y;
+    
+    // Update transform
+    transform.setPosition(newPos);
+    
+    // Apply angular velocity to rotation
+    if (glm::length(vel.angular) > 0.0f) {
+        glm::vec3 newRot = transform.rotation + vel.angular * deltaTime;
+        transform.setRotation(newRot);
+    }
 }
 
-void rotation_system(flecs::entity e, Position& pos, Rotation& rot) {
+void lifetime_system(flecs::entity e, Lifetime& lifetime) {
     const float deltaTime = e.world().delta_time();
     
-    // Update rotation angle
-    rot.angle += deltaTime * 2.0f; // Rotate at 2 radians per second
-    
-    // Keep angle in [0, 2π] range
-    if (rot.angle > 2.0f * M_PI) {
-        rot.angle -= 2.0f * M_PI;
+    if (lifetime.maxAge > 0.0f) {
+        lifetime.currentAge += deltaTime;
+        
+        if (lifetime.autoDestroy && lifetime.currentAge >= lifetime.maxAge) {
+            e.destruct();
+        }
     }
-    
-    // Create rotation matrix and apply to position for orbital movement
-    glm::mat4 rotationMatrix = glm::rotate(glm::mat4(1.0f), rot.angle * 0.5f, rot.axis);
-    glm::vec4 rotatedPos = rotationMatrix * glm::vec4(0.5f, 0.0f, 0.0f, 1.0f);
-    
-    // Add orbital motion to base position
-    pos.x = rotatedPos.x;
-    pos.y = rotatedPos.y;
 }
