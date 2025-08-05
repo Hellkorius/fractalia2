@@ -3,6 +3,7 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <cstdint>
+#include <cstring>
 
 // Transform component - consolidates position/rotation for better cache locality
 struct Transform {
@@ -109,6 +110,135 @@ struct MovementPattern {
     mutable glm::vec3 lastPosition{0.0f};
     mutable bool initialized{false};
 };
+
+// Input system components for ECS-based input handling
+struct KeyboardInput {
+    static constexpr size_t MAX_KEYS = 512;
+    
+    // Current frame key states
+    bool keys[MAX_KEYS] = {false};
+    bool keysPressed[MAX_KEYS] = {false};   // Key pressed this frame
+    bool keysReleased[MAX_KEYS] = {false};  // Key released this frame
+    
+    // Modifier states
+    bool shift = false;
+    bool ctrl = false;
+    bool alt = false;
+    
+    // Helper methods
+    bool isKeyDown(int scancode) const {
+        return scancode >= 0 && scancode < MAX_KEYS && keys[scancode];
+    }
+    
+    bool isKeyPressed(int scancode) const {
+        return scancode >= 0 && scancode < MAX_KEYS && keysPressed[scancode];
+    }
+    
+    bool isKeyReleased(int scancode) const {
+        return scancode >= 0 && scancode < MAX_KEYS && keysReleased[scancode];
+    }
+    
+    void clearFrameStates() {
+        std::memset(keysPressed, false, sizeof(keysPressed));
+        std::memset(keysReleased, false, sizeof(keysReleased));
+    }
+};
+
+struct MouseInput {
+    // Mouse position
+    glm::vec2 position{0.0f, 0.0f};
+    glm::vec2 deltaPosition{0.0f, 0.0f};
+    glm::vec2 worldPosition{0.0f, 0.0f}; // Position in world coordinates
+    
+    // Mouse buttons (left, middle, right, x1, x2)
+    static constexpr size_t MAX_BUTTONS = 8;
+    bool buttons[MAX_BUTTONS] = {false};
+    bool buttonsPressed[MAX_BUTTONS] = {false};
+    bool buttonsReleased[MAX_BUTTONS] = {false};
+    
+    // Mouse wheel
+    glm::vec2 wheelDelta{0.0f, 0.0f};
+    
+    // Mouse state
+    bool isInWindow = true;
+    bool isRelativeMode = false;
+    
+    // Helper methods
+    bool isButtonDown(int button) const {
+        return button >= 0 && button < MAX_BUTTONS && buttons[button];
+    }
+    
+    bool isButtonPressed(int button) const {
+        return button >= 0 && button < MAX_BUTTONS && buttonsPressed[button];
+    }
+    
+    bool isButtonReleased(int button) const {
+        return button >= 0 && button < MAX_BUTTONS && buttonsReleased[button];
+    }
+    
+    void clearFrameStates() {
+        std::memset(buttonsPressed, false, sizeof(buttonsPressed));
+        std::memset(buttonsReleased, false, sizeof(buttonsReleased));
+        wheelDelta = glm::vec2(0.0f, 0.0f);
+        deltaPosition = glm::vec2(0.0f, 0.0f);
+    }
+};
+
+struct InputEvents {
+    static constexpr size_t MAX_EVENTS = 64;
+    
+    struct Event {
+        enum Type {
+            QUIT,
+            KEY_DOWN,
+            KEY_UP,
+            MOUSE_BUTTON_DOWN,
+            MOUSE_BUTTON_UP,
+            MOUSE_MOTION,
+            MOUSE_WHEEL,
+            WINDOW_RESIZE
+        };
+        
+        Type type;
+        union {
+            struct { int key; bool repeat; } keyEvent;
+            struct { int button; glm::vec2 position; } mouseButtonEvent;
+            struct { glm::vec2 position; glm::vec2 delta; } mouseMotionEvent;
+            struct { glm::vec2 delta; } mouseWheelEvent;
+            struct { int width; int height; } windowResizeEvent;
+        };
+    };
+    
+    Event events[MAX_EVENTS];
+    size_t eventCount = 0;
+    
+    void addEvent(const Event& event) {
+        if (eventCount < MAX_EVENTS) {
+            events[eventCount++] = event;
+        }
+    }
+    
+    void clear() {
+        eventCount = 0;
+    }
+};
+
+// Singleton component for global input state
+struct InputState {
+    bool quit = false;
+    float deltaTime = 0.0f;
+    uint32_t frameNumber = 0;
+    
+    // Input processing flags
+    bool processKeyboard = true;
+    bool processMouse = true;
+    bool consumeEvents = true; // Whether to consume SDL events
+};
+
+// Tag components for input-responsive entities
+struct KeyboardControlled {};   // Entity responds to keyboard input
+struct MouseControlled {};      // Entity responds to mouse input
+struct InputResponsive {};      // Entity responds to any input
 
 // Tag components for efficient filtering
 struct Static {}; // Non-moving entities

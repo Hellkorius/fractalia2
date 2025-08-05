@@ -8,6 +8,7 @@
 #include "ecs/systems/render_system.cpp"
 #include "ecs/systems/physics_system.hpp"
 #include "ecs/systems/fractal_movement_system.hpp"
+#include "ecs/systems/input_system.hpp"
 #include "ecs/profiler.hpp"
 
 int main(int argc, char* argv[]) {
@@ -66,6 +67,13 @@ int main(int argc, char* argv[]) {
     world.getFlecsWorld().system<Lifetime>()
         .each(lifetime_system);
     
+    // Input processing system
+    world.getFlecsWorld().system<InputState, KeyboardInput, MouseInput, InputEvents>()
+        .each(input_processing_system);
+    
+    // Create input singleton entity
+    auto inputEntity = InputManager::createInputEntity(world.getFlecsWorld());
+    
     // Initialize render system
     RenderSystem renderSystem(&renderer, world.getFlecsWorld());
     
@@ -111,9 +119,6 @@ int main(int argc, char* argv[]) {
     std::cout << "=====================================\n" << std::endl;
 
     bool running = true;
-    SDL_Event event;
-
-
     int frameCount = 0;
     auto lastFrameTime = std::chrono::high_resolution_clock::now();
     
@@ -122,30 +127,34 @@ int main(int argc, char* argv[]) {
         float deltaTime = std::chrono::duration<float>(frameStartTime - lastFrameTime).count();
         lastFrameTime = frameStartTime;
         
-        while (SDL_PollEvent(&event)) {
-            if (event.type == SDL_EVENT_QUIT) {
-                running = false;
-            }
-            if (event.type == SDL_EVENT_KEY_DOWN) {
-                if (event.key.key == SDLK_ESCAPE) {
-                    running = false;
-                } else if (event.key.key == SDLK_P) {
-                    // Print performance report
-                    Profiler::getInstance().printReport();
-                } else if (event.key.key == SDLK_PLUS || event.key.key == SDLK_EQUALS) {
-                    // Add more entities (stress test)
-                    std::cout << "Adding 100 more entities..." << std::endl;
-                    auto newEntities = world.getEntityFactory().createSwarm(100, glm::vec3(0.0f), 1.5f);
-                    std::cout << "Total entities now: " << world.getMemoryManager().getStats().activeEntities << std::endl;
-                } else if (event.key.key == SDLK_MINUS) {
-                    // Print current stats
-                    auto memStats = world.getMemoryManager().getStats();
-                    float avgFrameTime = Profiler::getInstance().getFrameTime();
-                    std::cout << "Current Stats - Entities: " << memStats.activeEntities 
-                              << ", Frame Time: " << avgFrameTime << "ms"
-                              << ", FPS: " << (1000.0f / avgFrameTime) << std::endl;
-                }
-            }
+        // Process SDL events through the input system
+        InputManager::processSDLEvents(world.getFlecsWorld());
+        
+        // Handle input using the ECS system
+        if (InputQuery::shouldQuit(world.getFlecsWorld())) {
+            running = false;
+        }
+        
+        // Handle key presses using the input system
+        if (InputQuery::isKeyPressed(world.getFlecsWorld(), SDL_SCANCODE_ESCAPE)) {
+            running = false;
+        } else if (InputQuery::isKeyPressed(world.getFlecsWorld(), SDL_SCANCODE_P)) {
+            // Print performance report
+            Profiler::getInstance().printReport();
+        } else if (InputQuery::isKeyPressed(world.getFlecsWorld(), SDL_SCANCODE_EQUALS) || 
+                   InputQuery::isKeyPressed(world.getFlecsWorld(), SDL_SCANCODE_KP_PLUS)) {
+            // Add more entities (stress test)
+            std::cout << "Adding 100 more entities..." << std::endl;
+            auto newEntities = world.getEntityFactory().createSwarm(100, glm::vec3(0.0f), 1.5f);
+            std::cout << "Total entities now: " << world.getMemoryManager().getStats().activeEntities << std::endl;
+        } else if (InputQuery::isKeyPressed(world.getFlecsWorld(), SDL_SCANCODE_MINUS) || 
+                   InputQuery::isKeyPressed(world.getFlecsWorld(), SDL_SCANCODE_KP_MINUS)) {
+            // Print current stats
+            auto memStats = world.getMemoryManager().getStats();
+            float avgFrameTime = Profiler::getInstance().getFrameTime();
+            std::cout << "Current Stats - Entities: " << memStats.activeEntities 
+                      << ", Frame Time: " << avgFrameTime << "ms"
+                      << ", FPS: " << (1000.0f / avgFrameTime) << std::endl;
         }
 
         // Profile the main update loop

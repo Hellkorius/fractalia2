@@ -38,6 +38,15 @@ fractalia2/
 			├─ vulkan_pipeline.*     // shaders, renderpass, layout
 			├─ vulkan_resources.*    // uniform buffers, descriptor sets
 			└─ vulkan_sync.*         // fences/semaphores, cmd pools
+	ecs/
+	├── component.hpp           // All component definitions
+	├── entity.hpp              // Entity & EntityHandle aliases
+	├── world.hpp               // World wrapper around flecs::world
+	├── system.hpp              // Base System interface
+	└── systems/
+		├── physics_system.cpp  // Movement & rotation logic
+		├── physics_system.hpp  // Physics system headers
+		└── render_system.cpp   // Vulkan-aware RenderSystem		
 │   └── shaders/                # GLSL shader source files
 │       ├── vertex.vert         # Vertex shader
 │       ├── fragment.frag       # Fragment shader
