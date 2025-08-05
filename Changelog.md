@@ -40,3 +40,33 @@ Vulkan Renderer
 • Static view/projection uniforms now updated once instead of every frame.  
 • Instance buffer update loop optimized while preserving draw order (triangles → squares).  
 • High-resolution `std::chrono` timers swapped in for SDL ticks, enabling more accurate frame-rate capping with floating-point precision.
+
+##v0.0.4 — ECS Refactor & Modular Architecture
+
+    New ECS file hierarchy under src/ecs/
+
+Copy
+
+ecs/
+├── component.hpp           // All component definitions
+├── entity.hpp              // Entity & EntityHandle aliases
+├── world.hpp               // World wrapper around flecs::world
+├── system.hpp              // Base System interface
+└── systems/
+    ├── physics_system.cpp  // Movement & rotation logic
+    ├── physics_system.hpp  // Physics system headers
+    └── render_system.cpp   // Vulkan-aware RenderSystem
+
+Refactored main.cpp into clean, modular ECS
+
+    Extracted all components into component.hpp
+    Introduced World wrapper for better flecs encapsulation
+    Split physics systems into dedicated headers & source files
+    Added RenderSystem class for isolated entity-to-renderer communication
+
+Architecture benefits
+
+    Clear separation of ECS logic from rendering
+    Forward declarations & proper headers for faster builds
+    Extensible system architecture for future systems
+    Backward-compatible with existing CMakeLists.txt (recursive glob)
