@@ -10,6 +10,7 @@
 #include "ecs/systems/fractal_movement_system.hpp"
 #include "ecs/systems/input_system.hpp"
 #include "ecs/systems/camera_system.hpp"
+#include "ecs/camera_component.hpp"
 #include "ecs/profiler.hpp"
 
 int main(int argc, char* argv[]) {

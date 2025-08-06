@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../component.hpp"
+#include "../camera_component.hpp"
 #include <SDL3/SDL.h>
 #include <flecs.h>
 #include <glm/glm.hpp>

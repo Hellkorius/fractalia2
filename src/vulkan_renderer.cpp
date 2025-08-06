@@ -5,6 +5,7 @@
 #include "vulkan/vulkan_resources.h"
 #include "vulkan/vulkan_sync.h"
 #include "ecs/systems/camera_system.hpp"
+#include "ecs/camera_component.hpp"
 #include <iostream>
 #include <array>
 #include <chrono>

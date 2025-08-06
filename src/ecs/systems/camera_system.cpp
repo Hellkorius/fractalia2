@@ -1,5 +1,6 @@
 #include "camera_system.hpp"
 #include "input_system.hpp"
+#include "../camera_component.hpp"
 #include <iostream>
 
 // Camera control system - processes input and updates camera

@@ -41,11 +41,17 @@ fractalia2/
 	ecs/
 	├── component.hpp           // All component definitions
 	├── entity.hpp              // Entity & EntityHandle aliases
+	├──	entity_factory.hpp		// Factory for creating and managing entities.
+	├── memory_manager.hpp		//memory manager for ECS, with component pools, entity recycling, and memory tracking.
+	├── profiler.hpp			//collecting, analyzing, and reporting performance data.
+	├── render_batch.hpp		//RenderInstance struct and RenderBatch class for managing and sorting render instances by layer for efficient GPU batch processing.
 	├── world.hpp               // World wrapper around flecs::world
 	├── system.hpp              // Base System interface
+	├──	camera_component.hpp
 	└── systems/
-		├── physics_system.cpp  // Movement & rotation logic
-		├── physics_system.hpp  // Physics system headers
+		├── physics_system.*  	// Movement & rotation logic
+		├── input_system.*		// input
+		├── camera_system.*		// camera
 		└── render_system.cpp   // Vulkan-aware RenderSystem		
 │   └── shaders/                # GLSL shader source files
 │       ├── vertex.vert         # Vertex shader
