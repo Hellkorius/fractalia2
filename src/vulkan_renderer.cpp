@@ -4,6 +4,7 @@
 #include "vulkan/vulkan_pipeline.h"
 #include "vulkan/vulkan_resources.h"
 #include "vulkan/vulkan_sync.h"
+#include "ecs/systems/camera_system.hpp"
 #include <iostream>
 #include <array>
 #include <chrono>
@@ -306,25 +307,33 @@ void VulkanRenderer::loadDrawingFunctions() {
 }
 
 void VulkanRenderer::updateUniformBuffer(uint32_t currentImage) {
-    static bool initialized = false;
-    if (initialized) return;
-    
     struct UniformBufferObject {
         glm::mat4 view;
         glm::mat4 proj;
     } ubo{};
 
-    ubo.view = glm::mat4(1.0f);
-    ubo.proj = glm::ortho(-4.0f, 4.0f, -3.0f, 3.0f, -5.0f, 5.0f);
-    ubo.proj[1][1] *= -1;
-    
-    // Update all uniform buffers once since they're identical
-    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-        void* data = resources->getUniformBuffersMapped()[i];
-        memcpy(data, &ubo, sizeof(ubo));
+    // Get camera matrices from ECS if available
+    if (world != nullptr) {
+        auto cameraMatrices = CameraManager::getCameraMatrices(*world);
+        if (cameraMatrices.valid) {
+            ubo.view = cameraMatrices.view;
+            ubo.proj = cameraMatrices.projection;
+        } else {
+            // Fallback to default matrices if no camera found
+            ubo.view = glm::mat4(1.0f);
+            ubo.proj = glm::ortho(-4.0f, 4.0f, -3.0f, 3.0f, -5.0f, 5.0f);
+            ubo.proj[1][1] *= -1; // Flip Y for Vulkan
+        }
+    } else {
+        // Original fallback matrices when no world is set
+        ubo.view = glm::mat4(1.0f);
+        ubo.proj = glm::ortho(-4.0f, 4.0f, -3.0f, 3.0f, -5.0f, 5.0f);
+        ubo.proj[1][1] *= -1; // Flip Y for Vulkan
     }
     
-    initialized = true;
+    // Update the uniform buffer for the current frame
+    void* data = resources->getUniformBuffersMapped()[currentImage];
+    memcpy(data, &ubo, sizeof(ubo));
 }
 
 void VulkanRenderer::updateInstanceBuffer(uint32_t currentFrame) {
@@ -362,4 +371,10 @@ void VulkanRenderer::setEntityPosition(float x, float y, float z) {
 
 void VulkanRenderer::updateEntities(const std::vector<std::tuple<glm::vec3, ShapeType, glm::vec4>>& entities) {
     renderEntities = entities;
+}
+
+void VulkanRenderer::updateAspectRatio(int windowWidth, int windowHeight) {
+    if (world != nullptr) {
+        CameraManager::updateAspectRatio(*world, windowWidth, windowHeight);
+    }
 }

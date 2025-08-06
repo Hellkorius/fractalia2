@@ -9,6 +9,7 @@
 #include "ecs/systems/physics_system.hpp"
 #include "ecs/systems/fractal_movement_system.hpp"
 #include "ecs/systems/input_system.hpp"
+#include "ecs/systems/camera_system.hpp"
 #include "ecs/profiler.hpp"
 
 int main(int argc, char* argv[]) {
@@ -71,8 +72,23 @@ int main(int argc, char* argv[]) {
     world.getFlecsWorld().system<InputState, KeyboardInput, MouseInput, InputEvents>()
         .each(input_processing_system);
     
+    // Camera systems - process camera input and update matrices
+    world.getFlecsWorld().system<Camera>()
+        .each([](flecs::entity e, Camera& camera) {
+            camera_control_system(e, camera, e.world().delta_time());
+        });
+        
+    world.getFlecsWorld().system<Camera>()
+        .each(camera_matrix_system);
+    
     // Create input singleton entity
     InputManager::createInputEntity(world.getFlecsWorld());
+    
+    // Create main camera entity
+    CameraManager::createMainCamera(world.getFlecsWorld());
+    
+    // Set world reference in renderer for camera integration
+    renderer.setWorld(&world.getFlecsWorld());
     
     // Initialize render system
     RenderSystem renderSystem(&renderer, world.getFlecsWorld());
@@ -113,6 +129,14 @@ int main(int argc, char* argv[]) {
     std::cout << "P: Print detailed performance report" << std::endl;
     std::cout << "+/=: Add 100 more fractal entities" << std::endl;
     std::cout << "-: Show current performance stats" << std::endl;
+    std::cout << "\nCamera Controls:" << std::endl;
+    std::cout << "WASD: Move camera" << std::endl;
+    std::cout << "Q/E: Move camera up/down" << std::endl;
+    std::cout << "Mouse Wheel: Zoom in/out" << std::endl;
+    std::cout << "R/T: Rotate camera" << std::endl;
+    std::cout << "Shift: Speed boost | Ctrl: Precision mode" << std::endl;
+    std::cout << "Space: Reset camera to origin" << std::endl;
+    std::cout << "C: Print camera info" << std::endl;
     std::cout << "\nFractal Movement Patterns Active:" << std::endl;
     std::cout << "• Linear, Orbital, Spiral, Lissajous" << std::endl;
     std::cout << "• Brownian, Fractal, Wave, Petal, Butterfly" << std::endl;
@@ -133,6 +157,21 @@ int main(int argc, char* argv[]) {
         // Handle input using the ECS system
         if (InputQuery::shouldQuit(world.getFlecsWorld())) {
             running = false;
+        }
+        
+        // Handle window resize for camera aspect ratio
+        auto inputEntity = world.getFlecsWorld().lookup("InputManager");
+        if (inputEntity.is_valid()) {
+            auto* events = inputEntity.get<InputEvents>();
+            if (events) {
+                for (size_t i = 0; i < events->eventCount; i++) {
+                    const auto& event = events->events[i];
+                    if (event.type == InputEvents::Event::WINDOW_RESIZE) {
+                        renderer.updateAspectRatio(event.windowResizeEvent.width, event.windowResizeEvent.height);
+                        std::cout << "Window resized to " << event.windowResizeEvent.width << "x" << event.windowResizeEvent.height << std::endl;
+                    }
+                }
+            }
         }
         
         // Handle key presses using the input system

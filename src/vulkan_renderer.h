@@ -8,6 +8,7 @@
 #include <tuple>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#include <flecs.h>
 
 // Forward declarations for modules
 class VulkanContext;
@@ -33,11 +34,16 @@ public:
     
     void updateEntities(const std::vector<std::tuple<glm::vec3, ShapeType, glm::vec4>>& entities);
     
+    // Camera integration
+    void setWorld(flecs::world* world) { this->world = world; }
+    void updateAspectRatio(int windowWidth, int windowHeight);
+    
     bool isInitialized() const { return initialized; }
 
 private:
     bool initialized = false;
     SDL_Window* window = nullptr;
+    flecs::world* world = nullptr; // Reference to ECS world for camera access
     
     static const int MAX_FRAMES_IN_FLIGHT = 2;
     uint32_t currentFrame = 0;

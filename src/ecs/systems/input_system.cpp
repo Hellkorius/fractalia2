@@ -1,4 +1,5 @@
 #include "input_system.hpp"
+#include "camera_system.hpp"
 #include <iostream>
 
 // Global state for mouse delta tracking (since this needs to persist across frames)
@@ -190,9 +191,10 @@ namespace InputManager {
     }
     
     glm::vec2 screenToWorld(const glm::vec2& screenPos, flecs::world& world) {
-        // TODO: Implement proper screen-to-world coordinate transformation
-        // For now, return screen coordinates (assuming orthographic projection)
-        return screenPos;
+        // Use camera system for proper screen-to-world transformation
+        // Note: This is a simplified version - in production you'd get actual screen size
+        glm::vec2 screenSize(800.0f, 600.0f); // Default screen size, should be dynamic
+        return CameraManager::screenToWorld(world, screenPos, screenSize);
     }
 }
 

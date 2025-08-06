@@ -168,3 +168,31 @@ src/main.cpp, render_system.*, physics_system.* – upgraded to new pipeline
   - Input singleton entity created
   - SDL event loop replaced with ECS-based input queries
   - All existing functionality preserved (ESC, P, +/-, etc.)
+  
+##Changelog v0.1.0
+
+Camera System Implementation
+Camera Component (src/ecs/component.hpp)
+Position, Zoom, and Rotation Controls: Implemented controls for position, zoom, and rotation with configurable speed limits.
+Cached View/Projection Matrices: Added cached view and projection matrices with lazy computation to enhance performance.
+Screen-to-World Coordinate Conversion: Implemented screen-to-world coordinate conversion for mouse interactions.
+Visibility Culling: Added visibility culling to check if objects are within the camera view.
+Aspect Ratio Handling: Implemented aspect ratio handling for window resize events.
+Camera System (src/ecs/systems/camera_system.cpp/.hpp)
+WASD Movement: Added WASD movement with camera-relative directions when rotated.
+Mouse Wheel Zoom: Implemented mouse wheel zoom with configurable limits (0.1x to 10x).
+Q/E Up/Down Movement: Added Q/E keys for up/down movement for 3D camera positioning.
+R/T Rotation: Implemented R/T keys for rotation around the Z-axis.
+Shift/Ctrl Modifiers: Added Shift/Ctrl modifiers for speed boost and precision mode.
+Space Key Reset: Added the Space key to reset the camera to the origin.
+C Key Debug: Added the C key to print camera state for debugging purposes.
+Vulkan Integration
+Dynamic View/Projection Matrices: Integrated dynamic view and projection matrices pulled from the ECS camera entity.
+Uniform Buffer Updates: Updated uniform buffers every frame with current camera transforms.
+Aspect Ratio Synchronization: Implemented aspect ratio synchronization on window resize events.
+Fallback Matrices: Added fallback matrices when no camera is present.
+ECS Integration
+Main Camera Singleton Entity: Automatically created a main camera singleton entity.
+Camera Systems: Implemented two camera systems: one for control (input processing) and one for matrix updates.
+Query Functions: Added query functions for easy access to camera state from other systems.
+Window Resize Handling: Implemented window resize handling that updates the camera aspect ratio.
