@@ -10,6 +10,7 @@
 #include "ecs/systems/fractal_movement_system.hpp"
 #include "ecs/systems/input_system.hpp"
 #include "ecs/systems/camera_system.hpp"
+#include "ecs/systems/control_handler_system.hpp"
 #include "ecs/camera_component.hpp"
 #include "ecs/profiler.hpp"
 
@@ -125,24 +126,9 @@ int main(int argc, char* argv[]) {
     squareEntity.set<Velocity>({{-0.3f, 0.4f, 0.0f}, {0.0f, 0.0f, -0.5f}});
     
     std::cout << "Created " << (swarmEntities.size() + 2) << " total entities!" << std::endl;
-    std::cout << "\n=== Fractal ECS Demo Controls ===" << std::endl;
-    std::cout << "ESC: Exit" << std::endl;
-    std::cout << "P: Print detailed performance report" << std::endl;
-    std::cout << "+/=: Add 100 more fractal entities" << std::endl;
-    std::cout << "-: Show current performance stats" << std::endl;
-    std::cout << "Left Click: Create entity with fractal movement at mouse position" << std::endl;
-    std::cout << "\nCamera Controls:" << std::endl;
-    std::cout << "WASD: Move camera" << std::endl;
-    std::cout << "Q/E: Move camera up/down" << std::endl;
-    std::cout << "Mouse Wheel: Zoom in/out" << std::endl;
-    std::cout << "R/T: Rotate camera" << std::endl;
-    std::cout << "Shift: Speed boost | Ctrl: Precision mode" << std::endl;
-    std::cout << "Space: Reset camera to origin" << std::endl;
-    std::cout << "C: Print camera info" << std::endl;
-    std::cout << "\nFractal Movement Patterns Active:" << std::endl;
-    std::cout << "• Linear, Orbital, Spiral, Lissajous" << std::endl;
-    std::cout << "• Brownian, Fractal, Wave, Petal, Butterfly" << std::endl;
-    std::cout << "=====================================\n" << std::endl;
+    
+    // Initialize control handler system
+    ControlHandler::initialize(world);
 
     bool running = true;
     int frameCount = 0;
@@ -156,10 +142,8 @@ int main(int argc, char* argv[]) {
         // Process SDL events through the input system
         InputManager::processSDLEvents(world.getFlecsWorld());
         
-        // Handle input using the ECS system
-        if (InputQuery::shouldQuit(world.getFlecsWorld())) {
-            running = false;
-        }
+        // Handle all controls through the control handler system
+        ControlHandler::processControls(world, running);
         
         // Handle window resize for camera aspect ratio
         auto inputEntity = world.getFlecsWorld().lookup("InputManager");
@@ -174,126 +158,6 @@ int main(int argc, char* argv[]) {
                     }
                 }
             }
-        }
-        
-        // Handle key presses using the input system
-        if (InputQuery::isKeyPressed(world.getFlecsWorld(), SDL_SCANCODE_ESCAPE)) {
-            running = false;
-        } else if (InputQuery::isKeyPressed(world.getFlecsWorld(), SDL_SCANCODE_P)) {
-            // Print performance report
-            Profiler::getInstance().printReport();
-        } else if (InputQuery::isKeyPressed(world.getFlecsWorld(), SDL_SCANCODE_EQUALS) || 
-                   InputQuery::isKeyPressed(world.getFlecsWorld(), SDL_SCANCODE_KP_PLUS)) {
-            // Add more entities (stress test) - these automatically get movement patterns
-            std::cout << "Adding 100 more fractal entities..." << std::endl;
-            auto newEntities = world.getEntityFactory().createSwarm(100, glm::vec3(0.0f), 1.5f);
-            auto worldStats = world.getStats();
-            std::cout << "Total entities now: " << worldStats.memoryStats.activeEntities << std::endl;
-        } else if (InputQuery::isMouseButtonPressed(world.getFlecsWorld(), 0)) { // Left mouse button
-            // Create entity at mouse position
-            glm::vec2 mouseWorldPos = InputQuery::getMouseWorldPosition(world.getFlecsWorld());
-            std::cout << "Creating fractal entity at mouse position: " << mouseWorldPos.x << ", " << mouseWorldPos.y << std::endl;
-            
-            // Create a single entity with random movement pattern at mouse position
-            auto mouseEntity = world.getEntityFactory().createFractalEntity(
-                glm::vec3(mouseWorldPos.x, mouseWorldPos.y, 0.0f)
-            );
-            if (mouseEntity.is_valid()) {
-                std::cout << "Created entity with fractal movement pattern" << std::endl;
-            }
-        } else if (InputQuery::isKeyPressed(world.getFlecsWorld(), SDL_SCANCODE_MINUS) || 
-                   InputQuery::isKeyPressed(world.getFlecsWorld(), SDL_SCANCODE_KP_MINUS)) {
-            // Print current stats
-            auto worldStats = world.getStats();
-            float avgFrameTime = Profiler::getInstance().getFrameTime();
-            float fps = avgFrameTime > 0.0f ? (1000.0f / avgFrameTime) : 0.0f;
-            std::cout << "Current Stats - Entities: " << worldStats.memoryStats.activeEntities 
-                      << ", Frame Time: " << avgFrameTime << "ms"
-                      << ", FPS: " << fps << std::endl;
-        }
-        
-        // Sacred Geometry pattern switching with number keys (1-0)
-        // All patterns center around origin (0,0) for unified formations
-        if (InputQuery::isKeyPressed(world.getFlecsWorld(), SDL_SCANCODE_1)) {
-            // Switch all entities to FlowerOfLife pattern
-            std::cout << "Switching all entities to Flower of Life pattern around origin..." << std::endl;
-            world.getFlecsWorld().each([](flecs::entity e, MovementPattern& pattern) {
-                pattern.type = MovementType::FlowerOfLife;
-                pattern.center = glm::vec3(0.0f, 0.0f, 0.0f); // Set center to origin
-                pattern.initialized = false; // Reset pattern initialization
-            });
-        } else if (InputQuery::isKeyPressed(world.getFlecsWorld(), SDL_SCANCODE_2)) {
-            // Switch all entities to SeedOfLife pattern
-            std::cout << "Switching all entities to Seed of Life pattern around origin..." << std::endl;
-            world.getFlecsWorld().each([](flecs::entity e, MovementPattern& pattern) {
-                pattern.type = MovementType::SeedOfLife;
-                pattern.center = glm::vec3(0.0f, 0.0f, 0.0f);
-                pattern.initialized = false;
-            });
-        } else if (InputQuery::isKeyPressed(world.getFlecsWorld(), SDL_SCANCODE_3)) {
-            // Switch all entities to VesicaPiscis pattern
-            std::cout << "Switching all entities to Vesica Piscis pattern around origin..." << std::endl;
-            world.getFlecsWorld().each([](flecs::entity e, MovementPattern& pattern) {
-                pattern.type = MovementType::VesicaPiscis;
-                pattern.center = glm::vec3(0.0f, 0.0f, 0.0f);
-                pattern.initialized = false;
-            });
-        } else if (InputQuery::isKeyPressed(world.getFlecsWorld(), SDL_SCANCODE_4)) {
-            // Switch all entities to SriYantra pattern
-            std::cout << "Switching all entities to Sri Yantra pattern around origin..." << std::endl;
-            world.getFlecsWorld().each([](flecs::entity e, MovementPattern& pattern) {
-                pattern.type = MovementType::SriYantra;
-                pattern.center = glm::vec3(0.0f, 0.0f, 0.0f);
-                pattern.initialized = false;
-            });
-        } else if (InputQuery::isKeyPressed(world.getFlecsWorld(), SDL_SCANCODE_5)) {
-            // Switch all entities to PlatonicSolids pattern
-            std::cout << "Switching all entities to Platonic Solids pattern around origin..." << std::endl;
-            world.getFlecsWorld().each([](flecs::entity e, MovementPattern& pattern) {
-                pattern.type = MovementType::PlatonicSolids;
-                pattern.center = glm::vec3(0.0f, 0.0f, 0.0f);
-                pattern.initialized = false;
-            });
-        } else if (InputQuery::isKeyPressed(world.getFlecsWorld(), SDL_SCANCODE_6)) {
-            // Switch all entities to FibonacciSpiral pattern
-            std::cout << "Switching all entities to Fibonacci Spiral pattern around origin..." << std::endl;
-            world.getFlecsWorld().each([](flecs::entity e, MovementPattern& pattern) {
-                pattern.type = MovementType::FibonacciSpiral;
-                pattern.center = glm::vec3(0.0f, 0.0f, 0.0f);
-                pattern.initialized = false;
-            });
-        } else if (InputQuery::isKeyPressed(world.getFlecsWorld(), SDL_SCANCODE_7)) {
-            // Switch all entities to GoldenRatio pattern
-            std::cout << "Switching all entities to Golden Ratio pattern around origin..." << std::endl;
-            world.getFlecsWorld().each([](flecs::entity e, MovementPattern& pattern) {
-                pattern.type = MovementType::GoldenRatio;
-                pattern.center = glm::vec3(0.0f, 0.0f, 0.0f);
-                pattern.initialized = false;
-            });
-        } else if (InputQuery::isKeyPressed(world.getFlecsWorld(), SDL_SCANCODE_8)) {
-            // Switch all entities to Metatron pattern
-            std::cout << "Switching all entities to Metatron's Cube pattern around origin..." << std::endl;
-            world.getFlecsWorld().each([](flecs::entity e, MovementPattern& pattern) {
-                pattern.type = MovementType::Metatron;
-                pattern.center = glm::vec3(0.0f, 0.0f, 0.0f);
-                pattern.initialized = false;
-            });
-        } else if (InputQuery::isKeyPressed(world.getFlecsWorld(), SDL_SCANCODE_9)) {
-            // Switch all entities to TreeOfLife pattern
-            std::cout << "Switching all entities to Tree of Life pattern around origin..." << std::endl;
-            world.getFlecsWorld().each([](flecs::entity e, MovementPattern& pattern) {
-                pattern.type = MovementType::TreeOfLife;
-                pattern.center = glm::vec3(0.0f, 0.0f, 0.0f);
-                pattern.initialized = false;
-            });
-        } else if (InputQuery::isKeyPressed(world.getFlecsWorld(), SDL_SCANCODE_0)) {
-            // Switch all entities to TetraktysFlow pattern
-            std::cout << "Switching all entities to Tetraktys Flow pattern around origin..." << std::endl;
-            world.getFlecsWorld().each([](flecs::entity e, MovementPattern& pattern) {
-                pattern.type = MovementType::TetraktysFlow;
-                pattern.center = glm::vec3(0.0f, 0.0f, 0.0f);
-                pattern.initialized = false;
-            });
         }
 
         // Profile the main update loop
