@@ -4,6 +4,8 @@
 #include <glm/gtc/constants.hpp>
 #include <cmath>
 #include <random>
+#include <iostream>
+#include <algorithm>
 
 // Dynamic color generation based on movement parameters
 glm::vec4 generateDynamicColor(const MovementPattern& pattern, float currentTime) {
@@ -344,6 +346,18 @@ void fractal_movement_system(flecs::entity e, Transform& transform, MovementPatt
     const float smoothing = 0.85f; // More responsive but still smooth
     glm::vec3 smoothPosition = glm::mix(transform.position, newPosition, smoothing);
     
+    // Validate and clamp position to prevent extreme values that cause rendering issues
+    const float MAX_WORLD_POS = 500.0f; // Reasonable world bounds
+    smoothPosition.x = glm::clamp(smoothPosition.x, -MAX_WORLD_POS, MAX_WORLD_POS);
+    smoothPosition.y = glm::clamp(smoothPosition.y, -MAX_WORLD_POS, MAX_WORLD_POS);
+    smoothPosition.z = glm::clamp(smoothPosition.z, -MAX_WORLD_POS, MAX_WORLD_POS);
+    
+    // Check for NaN/infinite values and reset if found
+    if (!std::isfinite(smoothPosition.x) || !std::isfinite(smoothPosition.y) || !std::isfinite(smoothPosition.z)) {
+        smoothPosition = pattern.center; // Reset to center if invalid
+        std::cerr << "Warning: Invalid position detected, resetting entity to center" << std::endl;
+    }
+    
     transform.setPosition(smoothPosition);
     pattern.lastPosition = smoothPosition;
     
@@ -366,6 +380,18 @@ void velocity_movement_system(flecs::entity e, Transform& transform, Velocity& v
     
     glm::vec3 newPos = transform.position;
     newPos += velocity.linear * deltaTime;
+    
+    // Validate and clamp position to prevent extreme values
+    const float MAX_WORLD_POS = 500.0f;
+    newPos.x = glm::clamp(newPos.x, -MAX_WORLD_POS, MAX_WORLD_POS);
+    newPos.y = glm::clamp(newPos.y, -MAX_WORLD_POS, MAX_WORLD_POS);
+    newPos.z = glm::clamp(newPos.z, -MAX_WORLD_POS, MAX_WORLD_POS);
+    
+    // Check for NaN/infinite values
+    if (!std::isfinite(newPos.x) || !std::isfinite(newPos.y) || !std::isfinite(newPos.z)) {
+        newPos = glm::vec3(0.0f); // Reset to origin if invalid
+        velocity.linear = glm::vec3(0.0f); // Stop movement
+    }
     
     transform.setPosition(newPos);
     

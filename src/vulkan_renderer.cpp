@@ -9,6 +9,8 @@
 #include <iostream>
 #include <array>
 #include <chrono>
+#include <algorithm>
+#include <cmath>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -247,13 +249,23 @@ void VulkanRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t
     // Render all entities by type
     uint32_t instanceOffset = 0;
     
-    // Count entities by type
+    // Count entities by type with bounds checking
     uint32_t triangleCount = 0;
     uint32_t squareCount = 0;
+    const uint32_t maxInstances = resources->getMaxInstancesPerBuffer();
+    
     for (const auto& [pos, shapeType, color] : renderEntities) {
+        if (triangleCount + squareCount >= maxInstances) {
+            // Prevent overflow - stop counting if we exceed buffer capacity
+            break;
+        }
         if (shapeType == ShapeType::Triangle) triangleCount++;
         else if (shapeType == ShapeType::Square) squareCount++;
     }
+    
+    // Clamp counts to prevent buffer overflow
+    triangleCount = std::min(triangleCount, maxInstances);
+    squareCount = std::min(squareCount, maxInstances - triangleCount);
     
     
     // Render triangles
@@ -352,25 +364,82 @@ void VulkanRenderer::updateInstanceBuffer(uint32_t currentFrame) {
     InstanceData* instances = static_cast<InstanceData*>(data);
     
     uint32_t instanceIndex = 0;
+    const uint32_t maxInstances = resources->getMaxInstancesPerBuffer();
+    
+    // Count total entities first for bounds checking
+    uint32_t totalEntities = static_cast<uint32_t>(renderEntities.size());
+    if (totalEntities > maxInstances) {
+        std::cerr << "WARNING: Too many entities (" << totalEntities 
+                  << ") for instance buffer capacity (" << maxInstances 
+                  << "). Limiting to maximum." << std::endl;
+        // Note: This will cause some entities to not render, but prevents crashes
+    }
     
     // Process triangles first (to match render order)
     for (const auto& [pos, shapeType, color] : renderEntities) {
+        if (instanceIndex >= maxInstances) {
+            std::cerr << "Instance buffer overflow prevented. Some entities will not render." << std::endl;
+            break;
+        }
+        
         if (shapeType == ShapeType::Triangle) {
-            glm::mat4 model = glm::translate(glm::mat4(1.0f), pos);
-            model = glm::rotate(model, time * glm::radians(45.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+            // Validate position values to prevent giant rectangles
+            glm::vec3 safePos = pos;
+            const float MAX_POS = 1000.0f; // Reasonable world limit
+            safePos.x = glm::clamp(safePos.x, -MAX_POS, MAX_POS);
+            safePos.y = glm::clamp(safePos.y, -MAX_POS, MAX_POS);
+            safePos.z = glm::clamp(safePos.z, -MAX_POS, MAX_POS);
+            
+            glm::mat4 model = glm::translate(glm::mat4(1.0f), safePos);
+            float rotationAngle = time * glm::radians(45.0f);
+            // Validate rotation angle to prevent NaN/infinite values
+            if (std::isfinite(rotationAngle)) {
+                model = glm::rotate(model, rotationAngle, glm::vec3(0.0f, 0.0f, 1.0f));
+            }
+            
+            // Validate color values
+            glm::vec4 safeColor = color;
+            safeColor.r = glm::clamp(safeColor.r, 0.0f, 1.0f);
+            safeColor.g = glm::clamp(safeColor.g, 0.0f, 1.0f);
+            safeColor.b = glm::clamp(safeColor.b, 0.0f, 1.0f);
+            safeColor.a = glm::clamp(safeColor.a, 0.0f, 1.0f);
+            
             instances[instanceIndex].transform = model;
-            instances[instanceIndex].color = color; // Use the color from ECS!
+            instances[instanceIndex].color = safeColor;
             instanceIndex++;
         }
     }
     
     // Process squares second (to match render order)
     for (const auto& [pos, shapeType, color] : renderEntities) {
+        if (instanceIndex >= maxInstances) {
+            break;
+        }
+        
         if (shapeType == ShapeType::Square) {
-            glm::mat4 model = glm::translate(glm::mat4(1.0f), pos);
-            model = glm::rotate(model, time * glm::radians(-30.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+            // Validate position values to prevent giant rectangles
+            glm::vec3 safePos = pos;
+            const float MAX_POS = 1000.0f; // Reasonable world limit
+            safePos.x = glm::clamp(safePos.x, -MAX_POS, MAX_POS);
+            safePos.y = glm::clamp(safePos.y, -MAX_POS, MAX_POS);
+            safePos.z = glm::clamp(safePos.z, -MAX_POS, MAX_POS);
+            
+            glm::mat4 model = glm::translate(glm::mat4(1.0f), safePos);
+            float rotationAngle = time * glm::radians(-30.0f);
+            // Validate rotation angle to prevent NaN/infinite values
+            if (std::isfinite(rotationAngle)) {
+                model = glm::rotate(model, rotationAngle, glm::vec3(0.0f, 0.0f, 1.0f));
+            }
+            
+            // Validate color values
+            glm::vec4 safeColor = color;
+            safeColor.r = glm::clamp(safeColor.r, 0.0f, 1.0f);
+            safeColor.g = glm::clamp(safeColor.g, 0.0f, 1.0f);
+            safeColor.b = glm::clamp(safeColor.b, 0.0f, 1.0f);
+            safeColor.a = glm::clamp(safeColor.a, 0.0f, 1.0f);
+            
             instances[instanceIndex].transform = model;
-            instances[instanceIndex].color = color; // Use the color from ECS!
+            instances[instanceIndex].color = safeColor;
             instanceIndex++;
         }
     }

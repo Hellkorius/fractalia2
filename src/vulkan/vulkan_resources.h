@@ -50,6 +50,9 @@ public:
     static VkImageView createImageView(VulkanContext* context, VkImage image, VkFormat format, VkImageAspectFlags aspectFlags);
     static void createBuffer(VulkanContext* context, VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties,
                             VkBuffer& buffer, VkDeviceMemory& bufferMemory);
+    
+    // Get maximum instances that can fit in buffer
+    uint32_t getMaxInstancesPerBuffer() const { return MAX_INSTANCES_PER_BUFFER; }
     static void copyBuffer(VulkanContext* context, VkCommandPool commandPool, VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size);
 
     static const int MAX_FRAMES_IN_FLIGHT = 2;
@@ -82,7 +85,8 @@ private:
     uint32_t squareIndexCount = 0;
     
     static const int STAGING_BUFFER_COUNT = 4;
-    static const VkDeviceSize STAGING_BUFFER_SIZE = 1024 * 1024;
+    static const VkDeviceSize STAGING_BUFFER_SIZE = 16 * 1024 * 1024; // Increased to 16MB for up to 200k instances
+    static const uint32_t MAX_INSTANCES_PER_BUFFER = STAGING_BUFFER_SIZE / (sizeof(glm::mat4) + sizeof(glm::vec4));
     std::vector<VkBuffer> instanceBuffers;
     std::vector<VkDeviceMemory> instanceBuffersMemory;
     std::vector<void*> instanceBuffersMapped;
