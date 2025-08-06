@@ -18,9 +18,6 @@ The project uses Flecs ECS with the following components:
 - `Velocity`: Entity velocity for movement (x, y, z)
 - `Color`: RGBA color values for rendering
 
-Systems:
-- `movement_system`: Updates entity positions based on velocity with screen bounds collision
-
 ## File Hierarchy
 
 ```
@@ -52,6 +49,7 @@ fractalia2/
 		├── physics_system.*  	// Movement & rotation logic
 		├── input_system.*		// input
 		├── camera_system.*		// camera
+		├──	control_handler_system.* //controls
 		└── render_system.cpp   // Vulkan-aware RenderSystem		
 │   └── shaders/                # GLSL shader source files
 │       ├── vertex.vert         # Vertex shader
