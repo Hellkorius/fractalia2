@@ -71,7 +71,7 @@ Architecture benefits
     Extensible system architecture for future systems
     Backward-compatible with existing CMakeLists.txt (recursive glob)
 	
-##[0.0.5] – 2024-08-06
+##[0.0.5] – 2025-08-06
 Major ECS & Rendering Overhaul – “From Prototype to Production”
 🏗️ New Core Architecture
 
@@ -145,3 +145,26 @@ memory_manager.hpp, system_scheduler.hpp, change_detection.hpp,
 profiler.hpp, world.hpp, main_demo.cpp
 Modified:
 src/main.cpp, render_system.*, physics_system.* – upgraded to new pipeline
+
+
+#0.0.7
+
+  Complete ECS Input System
+
+  Components added to component.hpp:
+  - KeyboardInput: Tracks key states, presses, releases, and modifiers
+  - MouseInput: Handles mouse position, buttons, wheel, and coordinate transformation
+  - InputEvents: Buffers raw SDL events for systems that need them
+  - InputState: Global input state management
+  - Tag components for input-responsive entities
+
+  System architecture:
+  - input_processing_system(): ECS system function that runs on input entities
+  - InputManager::processSDLEvents(): Processes SDL events and updates components
+  - InputQuery namespace: Helper functions for querying input state from any system
+
+  Integration in main.cpp:
+  - Input system registered with ECS world
+  - Input singleton entity created
+  - SDL event loop replaced with ECS-based input queries
+  - All existing functionality preserved (ESC, P, +/-, etc.)

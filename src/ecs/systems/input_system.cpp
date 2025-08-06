@@ -8,14 +8,16 @@ static bool g_mouseInitialized = false;
 // Input processing system function - runs on entities with all input components
 void input_processing_system(flecs::entity e, InputState& state, KeyboardInput& keyboard, 
                              MouseInput& mouse, InputEvents& events) {
+    // Suppress unused parameter warnings
+    (void)keyboard;
+    (void)mouse;
+    (void)events;
+    
     // Update frame info
     state.deltaTime = e.world().delta_time();
     state.frameNumber++;
     
-    // Clear frame-specific states
-    keyboard.clearFrameStates();
-    mouse.clearFrameStates();
-    events.clear();
+    // Note: Frame state clearing is handled manually in main.cpp after all input processing
 }
 
 // Input manager functions
@@ -34,7 +36,7 @@ namespace InputManager {
     
     static void handleKeyboardEvent(const SDL_Event& event, KeyboardInput& keyboard) {
         int scancode = event.key.scancode;
-        if (scancode < 0 || scancode >= KeyboardInput::MAX_KEYS) {
+        if (scancode < 0 || static_cast<size_t>(scancode) >= KeyboardInput::MAX_KEYS) {
             return;
         }
         
@@ -61,7 +63,7 @@ namespace InputManager {
             case SDL_EVENT_MOUSE_BUTTON_DOWN:
             case SDL_EVENT_MOUSE_BUTTON_UP: {
                 int button = event.button.button - 1; // SDL uses 1-based indexing
-                if (button < 0 || button >= MouseInput::MAX_BUTTONS) {
+                if (button < 0 || static_cast<size_t>(button) >= MouseInput::MAX_BUTTONS) {
                     return;
                 }
                 

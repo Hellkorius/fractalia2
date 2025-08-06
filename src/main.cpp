@@ -72,7 +72,7 @@ int main(int argc, char* argv[]) {
         .each(input_processing_system);
     
     // Create input singleton entity
-    auto inputEntity = InputManager::createInputEntity(world.getFlecsWorld());
+    InputManager::createInputEntity(world.getFlecsWorld());
     
     // Initialize render system
     RenderSystem renderSystem(&renderer, world.getFlecsWorld());
@@ -162,6 +162,20 @@ int main(int argc, char* argv[]) {
         {
             PROFILE_SCOPE("ECS Update");
             world.progress(deltaTime);
+        }
+        
+        // Clear input frame states AFTER all systems have processed input
+        {
+            PROFILE_SCOPE("Input Cleanup");
+            auto inputEntity = world.getFlecsWorld().lookup("InputManager");
+            if (inputEntity.is_valid()) {
+                auto* keyboard = inputEntity.get_mut<KeyboardInput>();
+                auto* mouse = inputEntity.get_mut<MouseInput>();
+                auto* events = inputEntity.get_mut<InputEvents>();
+                if (keyboard) keyboard->clearFrameStates();
+                if (mouse) mouse->clearFrameStates();
+                if (events) events->clear();
+            }
         }
 
         {

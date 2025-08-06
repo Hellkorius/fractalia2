@@ -127,15 +127,15 @@ struct KeyboardInput {
     
     // Helper methods
     bool isKeyDown(int scancode) const {
-        return scancode >= 0 && scancode < MAX_KEYS && keys[scancode];
+        return scancode >= 0 && static_cast<size_t>(scancode) < MAX_KEYS && keys[scancode];
     }
     
     bool isKeyPressed(int scancode) const {
-        return scancode >= 0 && scancode < MAX_KEYS && keysPressed[scancode];
+        return scancode >= 0 && static_cast<size_t>(scancode) < MAX_KEYS && keysPressed[scancode];
     }
     
     bool isKeyReleased(int scancode) const {
-        return scancode >= 0 && scancode < MAX_KEYS && keysReleased[scancode];
+        return scancode >= 0 && static_cast<size_t>(scancode) < MAX_KEYS && keysReleased[scancode];
     }
     
     void clearFrameStates() {
@@ -165,15 +165,15 @@ struct MouseInput {
     
     // Helper methods
     bool isButtonDown(int button) const {
-        return button >= 0 && button < MAX_BUTTONS && buttons[button];
+        return button >= 0 && static_cast<size_t>(button) < MAX_BUTTONS && buttons[button];
     }
     
     bool isButtonPressed(int button) const {
-        return button >= 0 && button < MAX_BUTTONS && buttonsPressed[button];
+        return button >= 0 && static_cast<size_t>(button) < MAX_BUTTONS && buttonsPressed[button];
     }
     
     bool isButtonReleased(int button) const {
-        return button >= 0 && button < MAX_BUTTONS && buttonsReleased[button];
+        return button >= 0 && static_cast<size_t>(button) < MAX_BUTTONS && buttonsReleased[button];
     }
     
     void clearFrameStates() {
