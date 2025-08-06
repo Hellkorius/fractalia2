@@ -2,6 +2,7 @@
 
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#include <limits>
 
 // Camera component for 2D view control
 struct Camera {
@@ -18,9 +19,9 @@ struct Camera {
     float zoomSpeed{2.0f};                  // Zoom factor per second
     float rotationSpeed{1.0f};              // Radians per second
     
-    // Zoom limits
-    float minZoom{0.1f};
-    float maxZoom{10.0f};
+    // Zoom limits (disabled for unbounded zoom)
+    float minZoom{0.0f};  // Disabled - allow infinite zoom out
+    float maxZoom{std::numeric_limits<float>::max()};  // Disabled - allow infinite zoom in
     
     // Cached matrices (updated when dirty)
     mutable glm::mat4 viewMatrix{1.0f};
@@ -71,7 +72,8 @@ struct Camera {
     }
     
     void setZoom(float newZoom) {
-        zoom = glm::clamp(newZoom, minZoom, maxZoom);
+        // Ensure zoom is positive but allow unbounded zoom
+        zoom = std::max(newZoom, std::numeric_limits<float>::epsilon());
         projectionDirty = true;
     }
     
