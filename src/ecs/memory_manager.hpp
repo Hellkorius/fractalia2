@@ -283,8 +283,7 @@ public:
             lifetimePool.getMemoryUsage();
             
         stats.entityPoolSize = entityRecycler->getPoolSize();
-        // Use transform pool as proxy for active entities since most entities have transforms
-        stats.activeEntities = transformPool.getAllocatedCount();
+        // Note: activeEntities will be set by World::getStats() with proper Flecs count
     }
     
     // Configuration

@@ -146,15 +146,17 @@ int main(int argc, char* argv[]) {
             // Add more entities (stress test)
             std::cout << "Adding 100 more entities..." << std::endl;
             auto newEntities = world.getEntityFactory().createSwarm(100, glm::vec3(0.0f), 1.5f);
-            std::cout << "Total entities now: " << world.getMemoryManager().getStats().activeEntities << std::endl;
+            auto worldStats = world.getStats();
+            std::cout << "Total entities now: " << worldStats.memoryStats.activeEntities << std::endl;
         } else if (InputQuery::isKeyPressed(world.getFlecsWorld(), SDL_SCANCODE_MINUS) || 
                    InputQuery::isKeyPressed(world.getFlecsWorld(), SDL_SCANCODE_KP_MINUS)) {
             // Print current stats
-            auto memStats = world.getMemoryManager().getStats();
+            auto worldStats = world.getStats();
             float avgFrameTime = Profiler::getInstance().getFrameTime();
-            std::cout << "Current Stats - Entities: " << memStats.activeEntities 
+            float fps = avgFrameTime > 0.0f ? (1000.0f / avgFrameTime) : 0.0f;
+            std::cout << "Current Stats - Entities: " << worldStats.memoryStats.activeEntities 
                       << ", Frame Time: " << avgFrameTime << "ms"
-                      << ", FPS: " << (1000.0f / avgFrameTime) << std::endl;
+                      << ", FPS: " << fps << std::endl;
         }
 
         // Profile the main update loop
@@ -195,11 +197,16 @@ int main(int argc, char* argv[]) {
         // Show periodic performance info
         if (frameCount % 300 == 0) { // Every 5 seconds at 60fps
             float avgFrameTime = Profiler::getInstance().getFrameTime();
-            auto memStats = world.getMemoryManager().getStats();
+            auto worldStats = world.getStats();
+            
+            // Update profiler with current memory usage
+            Profiler::getInstance().updateMemoryUsage(worldStats.memoryStats.totalAllocated);
+            
+            float fps = avgFrameTime > 0.0f ? (1000.0f / avgFrameTime) : 0.0f;
             std::cout << "Frame " << frameCount 
                       << ": Avg " << avgFrameTime << "ms"
-                      << " (" << (1000.0f / avgFrameTime) << " FPS)"
-                      << " | Memory: " << (memStats.totalAllocated / 1024) << "KB"
+                      << " (" << fps << " FPS)"
+                      << " | Memory: " << (worldStats.memoryStats.totalAllocated / 1024) << "KB"
                       << std::endl;
         }
         

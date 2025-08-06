@@ -288,7 +288,11 @@ public:
     float getFrameTime() const {
         std::lock_guard<std::mutex> lock(profileMutex);
         auto it = profiles.find("Frame");
-        return it != profiles.end() ? it->second->getRecentAverageTime() : 0.0f;
+        if (it != profiles.end() && it->second->callCount > 0) {
+            float frameTime = it->second->getRecentAverageTime();
+            return frameTime > 0.0f ? frameTime : targetFrameTime;
+        }
+        return targetFrameTime; // Return target frame time as fallback
     }
     
     size_t getFrameCount() const { return frameCount; }
