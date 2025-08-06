@@ -130,6 +130,7 @@ int main(int argc, char* argv[]) {
     std::cout << "P: Print detailed performance report" << std::endl;
     std::cout << "+/=: Add 100 more fractal entities" << std::endl;
     std::cout << "-: Show current performance stats" << std::endl;
+    std::cout << "Left Click: Create entity with fractal movement at mouse position" << std::endl;
     std::cout << "\nCamera Controls:" << std::endl;
     std::cout << "WASD: Move camera" << std::endl;
     std::cout << "Q/E: Move camera up/down" << std::endl;
@@ -183,11 +184,23 @@ int main(int argc, char* argv[]) {
             Profiler::getInstance().printReport();
         } else if (InputQuery::isKeyPressed(world.getFlecsWorld(), SDL_SCANCODE_EQUALS) || 
                    InputQuery::isKeyPressed(world.getFlecsWorld(), SDL_SCANCODE_KP_PLUS)) {
-            // Add more entities (stress test)
-            std::cout << "Adding 100 more entities..." << std::endl;
+            // Add more entities (stress test) - these automatically get movement patterns
+            std::cout << "Adding 100 more fractal entities..." << std::endl;
             auto newEntities = world.getEntityFactory().createSwarm(100, glm::vec3(0.0f), 1.5f);
             auto worldStats = world.getStats();
             std::cout << "Total entities now: " << worldStats.memoryStats.activeEntities << std::endl;
+        } else if (InputQuery::isMouseButtonPressed(world.getFlecsWorld(), 0)) { // Left mouse button
+            // Create entity at mouse position
+            glm::vec2 mouseWorldPos = InputQuery::getMouseWorldPosition(world.getFlecsWorld());
+            std::cout << "Creating fractal entity at mouse position: " << mouseWorldPos.x << ", " << mouseWorldPos.y << std::endl;
+            
+            // Create a single entity with random movement pattern at mouse position
+            auto mouseEntity = world.getEntityFactory().createFractalEntity(
+                glm::vec3(mouseWorldPos.x, mouseWorldPos.y, 0.0f)
+            );
+            if (mouseEntity.is_valid()) {
+                std::cout << "Created entity with fractal movement pattern" << std::endl;
+            }
         } else if (InputQuery::isKeyPressed(world.getFlecsWorld(), SDL_SCANCODE_MINUS) || 
                    InputQuery::isKeyPressed(world.getFlecsWorld(), SDL_SCANCODE_KP_MINUS)) {
             // Print current stats

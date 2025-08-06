@@ -153,7 +153,7 @@ private:
     // Helper function to generate beautiful fractal colors
     glm::vec4 generateFractalColor(int movementType, size_t index, size_t totalCount, const glm::vec3& pos) {
         float t = static_cast<float>(index) / static_cast<float>(totalCount);
-        float x = pos.x, y = pos.y;
+        (void)pos; // Suppress unused parameter warning
         
         glm::vec3 color;
         switch (movementType) {
@@ -203,17 +203,17 @@ private:
     MovementPattern createFractalPattern(MovementType type, const glm::vec3& center, float radius, size_t index, size_t totalCount) {
         MovementPattern pattern;
         pattern.type = type;
-        pattern.center = center;
+        // Don't set center here - let each entity use its own starting position
         
         // Create variation based on entity index
         float t = static_cast<float>(index) / static_cast<float>(totalCount);
         float goldenRatio = 1.618033988749895f;
         
-        // Base parameters with golden ratio variations
-        pattern.amplitude = radius * (0.3f + 0.7f * t);
-        pattern.frequency = 0.5f + 2.0f * std::fmod(t * goldenRatio, 1.0f);
-        pattern.phase = t * 6.28318530718f; // 2π
-        pattern.timeOffset = t * 10.0f; // Stagger timing
+        // More individualized parameters for character
+        pattern.amplitude = 0.2f + 0.6f * std::fmod(t * goldenRatio * 3.0f, 1.0f); // Varied amplitude
+        pattern.frequency = 0.3f + 1.5f * std::fmod(t * goldenRatio * 7.0f, 1.0f); // Varied speed
+        pattern.phase = t * 6.28318530718f * 4.0f; // More phase variation
+        pattern.timeOffset = t * 20.0f; // Stagger timing more
         
         // Pattern-specific customization
         switch (type) {
@@ -324,6 +324,37 @@ public:
             .build();
     }
     
+    // Create a single entity with fractal movement pattern
+    Entity createFractalEntity(const glm::vec3& pos, Renderable::ShapeType shape = Renderable::ShapeType::Triangle) {
+        std::uniform_int_distribution<int> movementDist(0, 8); // 9 movement types
+        std::uniform_int_distribution<int> shapeDist(0, 1);
+        
+        if (shape == Renderable::ShapeType::Triangle && shapeDist(rng) == 1) {
+            shape = Renderable::ShapeType::Square;
+        }
+        
+        int movementType = movementDist(rng);
+        glm::vec4 color = generateFractalColor(movementType, 0, 1, pos);
+        
+        MovementPattern pattern = createFractalPattern(
+            static_cast<MovementType>(movementType), 
+            pos, 
+            0.3f + 0.4f * std::uniform_real_distribution<float>(0.0f, 1.0f)(rng), // Random radius
+            0, 
+            1
+        );
+        
+        Entity entity = create()
+            .at(pos)
+            .withShape(shape)
+            .withColor(color)
+            .asDynamic()
+            .build();
+            
+        entity.set<MovementPattern>(pattern);
+        return entity;
+    }
+    
     // Create swarm of entities with beautiful fractal movement patterns
     std::vector<Entity> createSwarm(size_t count, const glm::vec3& center, float radius) {
         std::uniform_real_distribution<float> angleDist(0.0f, 2.0f * M_PI);
@@ -334,8 +365,9 @@ public:
         std::uniform_int_distribution<int> movementDist(0, 8); // 9 movement types
         
         return createBatch(count, [&](EntityBuilder& builder, size_t i) {
+            // Spread entities more naturally across the area
             float angle = angleDist(rng);
-            float r = radiusDist(rng);
+            float r = std::sqrt(radiusDist(rng)) * radius; // Square root for better distribution
             glm::vec3 pos = center + glm::vec3(
                 r * std::cos(angle),
                 r * std::sin(angle),
@@ -349,11 +381,12 @@ public:
             int movementType = movementDist(rng);
             glm::vec4 color = generateFractalColor(movementType, i, count, pos);
             
-            // Create movement pattern based on type
+            // Create movement pattern based on type - each entity gets its own character
+            float goldenRatio = 1.618033988749895f;
             MovementPattern pattern = createFractalPattern(
                 static_cast<MovementType>(movementType), 
-                center, 
-                radius, 
+                pos, // Use entity's starting position as reference
+                0.5f + 0.5f * std::fmod(i * goldenRatio, 1.0f), // Varied movement radius
                 i, 
                 count
             );

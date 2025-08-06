@@ -10,9 +10,11 @@ void fractal_movement_system(flecs::entity e, Transform& transform, MovementPatt
     const float deltaTime = e.world().delta_time();
     pattern.totalTime += deltaTime;
     
-    // Initialize starting position if needed
+    // Initialize starting position and create unique center for each entity
     if (!pattern.initialized) {
         pattern.lastPosition = transform.position;
+        // Give each entity its own movement center based on starting position
+        pattern.center = transform.position;
         pattern.initialized = true;
     }
     
@@ -22,83 +24,86 @@ void fractal_movement_system(flecs::entity e, Transform& transform, MovementPatt
     
     switch (pattern.type) {
         case MovementType::Linear: {
-            // Simple linear movement with slight randomness
-            static std::random_device rd;
-            static std::mt19937 gen(rd());
-            std::uniform_real_distribution<float> noise(-0.01f, 0.01f);
-            
-            newPosition.x += pattern.frequency * deltaTime + noise(gen);
-            newPosition.y += pattern.frequency * 0.7f * deltaTime + noise(gen);
+            // Smooth directional movement with gentle curves
+            float directionAngle = pattern.phase + t * 0.1f;
+            glm::vec3 direction = glm::vec3(
+                std::cos(directionAngle),
+                std::sin(directionAngle),
+                0.0f
+            );
+            newPosition += direction * pattern.frequency * deltaTime;
             break;
         }
         
         case MovementType::Orbital: {
-            // Circular/elliptical orbit around center
+            // Smooth orbital movement around entity's own center
             float angle = t * pattern.frequency + pattern.phase;
-            newPosition = pattern.center + glm::vec3(
+            glm::vec3 offset = glm::vec3(
                 currentAmplitude * std::cos(angle),
-                currentAmplitude * 0.7f * std::sin(angle),
-                currentAmplitude * 0.3f * std::sin(angle * 0.5f)
+                currentAmplitude * 0.8f * std::sin(angle),
+                0.0f
             );
+            newPosition = pattern.center + offset;
             break;
         }
         
         case MovementType::Spiral: {
-            // Logarithmic spiral - classic fractal pattern
+            // Gentle expanding/contracting spiral
             float angle = t * pattern.frequency + pattern.phase;
-            float radius = currentAmplitude * std::exp(angle * 0.1f);
+            float radiusVariation = 1.0f + 0.3f * std::sin(t * 0.2f); // Gentle breathing
+            float radius = currentAmplitude * radiusVariation;
             newPosition = pattern.center + glm::vec3(
                 radius * std::cos(angle),
                 radius * std::sin(angle),
-                currentAmplitude * 0.2f * std::sin(angle * 2.0f)
+                0.0f
             );
             break;
         }
         
         case MovementType::Lissajous: {
-            // Complex periodic patterns (Lissajous curves)
+            // Smooth figure-8 and complex patterns
             float x_freq = pattern.lissajousRatio.x;
             float y_freq = pattern.lissajousRatio.y;
             newPosition = pattern.center + glm::vec3(
                 currentAmplitude * std::sin(x_freq * t + pattern.phase),
                 currentAmplitude * std::sin(y_freq * t + pattern.phase + glm::pi<float>() / 4.0f),
-                currentAmplitude * 0.5f * std::sin((x_freq + y_freq) * 0.5f * t)
+                0.0f
             );
             break;
         }
         
         case MovementType::Brownian: {
-            // Brownian motion (random walk)
+            // Smooth wandering motion with gentle direction changes
             static std::random_device rd;
             static std::mt19937 gen(rd());
-            std::uniform_real_distribution<float> walk(-1.0f, 1.0f);
+            std::uniform_real_distribution<float> walk(-0.3f, 0.3f);
             
-            glm::vec3 randomStep = glm::vec3(walk(gen), walk(gen), walk(gen) * 0.3f);
-            newPosition += randomStep * pattern.frequency * deltaTime * currentAmplitude;
-            
-            // Keep within bounds
-            float maxDistance = pattern.amplitude * 2.0f;
-            glm::vec3 fromCenter = newPosition - pattern.center;
-            if (glm::length(fromCenter) > maxDistance) {
-                newPosition = pattern.center + glm::normalize(fromCenter) * maxDistance;
-            }
+            // Update direction smoothly over time
+            pattern.phase += walk(gen) * deltaTime;
+            glm::vec3 direction = glm::vec3(
+                std::cos(pattern.phase),
+                std::sin(pattern.phase),
+                0.0f
+            );
+            newPosition += direction * pattern.frequency * deltaTime * currentAmplitude;
             break;
         }
         
         case MovementType::Fractal: {
-            // Self-similar recursive pattern
-            float baseFreq = pattern.frequency;
+            // Layered smooth movement with multiple frequencies
+            float baseFreq = pattern.frequency * 0.5f; // Slower base frequency
             glm::vec3 fractalPos(0.0f);
             
-            for (int i = 0; i < static_cast<int>(pattern.recursionDepth); ++i) {
-                float scale = std::pow(pattern.selfSimilarity, i);
-                float freq = baseFreq * std::pow(2.0f, i);
-                float phase = pattern.phase + i * glm::pi<float>() / 3.0f;
+            // Combine 2-3 smooth layers instead of many chaotic ones
+            for (int i = 0; i < 3; ++i) {
+                float scale = std::pow(0.6f, i); // Gentler scaling
+                float freq = baseFreq * std::pow(1.8f, i); // Less aggressive frequency scaling
+                float phase = pattern.phase + i * glm::pi<float>() / 4.0f;
                 
                 fractalPos += scale * glm::vec3(
                     std::sin(freq * t + phase),
-                    std::cos(freq * t + phase + glm::pi<float>() / 2.0f),
-                    0.5f * std::sin(freq * 0.5f * t + phase)
+                    std::cos(freq * t + phase + glm::pi<float>() / 3.0f),
+                    0.0f
                 );
             }
             
@@ -107,45 +112,42 @@ void fractal_movement_system(flecs::entity e, Transform& transform, MovementPatt
         }
         
         case MovementType::Wave: {
-            // Sine wave patterns
+            // Smooth flowing wave patterns
             float wave1 = std::sin(pattern.frequency * t + pattern.phase);
-            float wave2 = std::sin(pattern.frequency * 1.618f * t + pattern.phase + glm::pi<float>() / 3.0f);
-            float wave3 = std::sin(pattern.frequency * 0.382f * t + pattern.phase);
+            float wave2 = std::sin(pattern.frequency * 1.414f * t + pattern.phase + glm::pi<float>() / 3.0f);
             
             newPosition = pattern.center + currentAmplitude * glm::vec3(
-                wave1,
-                wave2,
-                0.5f * wave3
+                wave1 * 0.8f,
+                wave2 * 0.6f,
+                0.0f
             );
             break;
         }
         
         case MovementType::Petal: {
-            // Rose curve (petal patterns)
-            float k = 5.0f; // Number of petals
+            // Gentle petal-like movements
+            float k = 3.0f + 2.0f * std::sin(t * 0.1f); // Varying petal count
             float angle = t * pattern.frequency + pattern.phase;
-            float r = currentAmplitude * std::cos(k * angle);
+            float r = currentAmplitude * std::abs(std::cos(k * angle * 0.5f));
             
             newPosition = pattern.center + glm::vec3(
                 r * std::cos(angle),
                 r * std::sin(angle),
-                currentAmplitude * 0.3f * std::sin(k * angle)
+                0.0f
             );
             break;
         }
         
         case MovementType::Butterfly: {
-            // Butterfly curve - incredibly beautiful!
-            float scale = currentAmplitude;
+            // Smooth butterfly-like figure-8 movement
             float bt = t * pattern.frequency + pattern.phase;
+            float scale = currentAmplitude * 0.3f; // Smaller, more controlled
             
-            float r = std::exp(std::cos(bt)) - 2.0f * std::cos(4.0f * bt) - std::pow(std::sin(bt / 12.0f), 5.0f);
+            // Simplified butterfly curve that's smoother
+            float x = scale * std::sin(bt) * (std::exp(std::cos(bt)) - 2.0f * std::cos(4.0f * bt));
+            float y = scale * std::cos(bt) * (std::exp(std::cos(bt)) - 2.0f * std::cos(4.0f * bt));
             
-            newPosition = pattern.center + scale * glm::vec3(
-                r * std::cos(bt),
-                r * std::sin(bt),
-                scale * 0.2f * std::sin(bt * 2.0f)
-            );
+            newPosition = pattern.center + glm::vec3(x * 0.1f, y * 0.1f, 0.0f);
             break;
         }
     }
@@ -153,9 +155,12 @@ void fractal_movement_system(flecs::entity e, Transform& transform, MovementPatt
     // Apply phase shift over time for dynamic evolution
     pattern.phase += pattern.phaseShift * deltaTime;
     
-    // Smoothly update transform
-    transform.setPosition(newPosition);
-    pattern.lastPosition = newPosition;
+    // Smoothly interpolate position for better flow
+    const float smoothing = 0.85f; // More responsive but still smooth
+    glm::vec3 smoothPosition = glm::mix(transform.position, newPosition, smoothing);
+    
+    transform.setPosition(smoothPosition);
+    pattern.lastPosition = smoothPosition;
 }
 
 // System to apply velocity-based movement (for entities without MovementPattern)
@@ -167,10 +172,6 @@ void velocity_movement_system(flecs::entity e, Transform& transform, Velocity& v
     
     glm::vec3 newPos = transform.position;
     newPos += velocity.linear * deltaTime;
-    
-    // Bounce off screen edges
-    if (newPos.x > 2.0f || newPos.x < -2.0f) velocity.linear.x = -velocity.linear.x;
-    if (newPos.y > 1.5f || newPos.y < -1.5f) velocity.linear.y = -velocity.linear.y;
     
     transform.setPosition(newPos);
     
