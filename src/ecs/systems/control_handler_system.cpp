@@ -48,8 +48,8 @@ namespace ControlHandler {
         // Add more entities (stress test)
         if (InputQuery::isKeyPressed(flecsWorld, SDL_SCANCODE_EQUALS) || 
             InputQuery::isKeyPressed(flecsWorld, SDL_SCANCODE_KP_PLUS)) {
-            std::cout << "Adding 100 more fractal entities..." << std::endl;
-            auto newEntities = world.getEntityFactory().createSwarm(100, glm::vec3(0.0f), 1.5f);
+            std::cout << "Adding 1000 more fractal entities..." << std::endl;
+            auto newEntities = world.getEntityFactory().createSwarm(1000, glm::vec3(0.0f), 1.5f);
             auto worldStats = world.getStats();
             std::cout << "Total entities now: " << worldStats.memoryStats.activeEntities << std::endl;
         }

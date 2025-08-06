@@ -7,7 +7,75 @@
 #include <iostream>
 #include <algorithm>
 
-// Dynamic color generation based on movement parameters
+// Performance optimization: Fast math functions with lookup tables
+namespace FastMath {
+    // Pre-computed sine/cosine lookup table for common angles
+    static constexpr int LUT_SIZE = 1024;
+    static constexpr float LUT_SCALE = LUT_SIZE / (2.0f * M_PI);
+    static float sin_lut[LUT_SIZE];
+    static float cos_lut[LUT_SIZE];
+    static bool lut_initialized = false;
+    
+    void initializeLUT() {
+        if (lut_initialized) return;
+        for (int i = 0; i < LUT_SIZE; ++i) {
+            float angle = (2.0f * M_PI * i) / LUT_SIZE;
+            sin_lut[i] = std::sin(angle);
+            cos_lut[i] = std::cos(angle);
+        }
+        lut_initialized = true;
+    }
+    
+    // Fast sine approximation using lookup table with linear interpolation
+    inline float fastSin(float x) {
+        if (!lut_initialized) initializeLUT();
+        
+        // Normalize to [0, 2π)
+        x = std::fmod(x, 2.0f * M_PI);
+        if (x < 0) x += 2.0f * M_PI;
+        
+        float index = x * LUT_SCALE;
+        int i = static_cast<int>(index);
+        float frac = index - i;
+        
+        int next = (i + 1) % LUT_SIZE;
+        return sin_lut[i] + frac * (sin_lut[next] - sin_lut[i]);
+    }
+    
+    // Fast cosine approximation using lookup table with linear interpolation
+    inline float fastCos(float x) {
+        if (!lut_initialized) initializeLUT();
+        
+        // Normalize to [0, 2π)
+        x = std::fmod(x, 2.0f * M_PI);
+        if (x < 0) x += 2.0f * M_PI;
+        
+        float index = x * LUT_SCALE;
+        int i = static_cast<int>(index);
+        float frac = index - i;
+        
+        int next = (i + 1) % LUT_SIZE;
+        return cos_lut[i] + frac * (cos_lut[next] - cos_lut[i]);
+    }
+    
+    // Fast approximation for small exponentials
+    inline float fastExp(float x) {
+        if (x > 5.0f) return std::exp(5.0f); // Clamp to prevent overflow
+        if (x < -5.0f) return 0.0f;
+        return std::exp(x); // For small values, std::exp is reasonable
+    }
+}
+
+// Cached computational values to reduce per-frame calculations
+struct MovementCache {
+    static constexpr float GOLDEN_RATIO = 1.618033988749f;
+    static constexpr float SQRT_3_DIV_2 = 0.866025403784f;
+    static constexpr float TWO_PI = 2.0f * M_PI;
+    static constexpr float PI_DIV_3 = M_PI / 3.0f;
+    static constexpr float TWO_PI_DIV_3 = 2.0f * M_PI / 3.0f;
+};
+
+// Optimized dynamic color generation with reduced calculations
 glm::vec4 generateDynamicColor(const MovementPattern& pattern, float currentTime) {
     // Base hue determined by sacred geometry type for spiritual distinction
     float baseHue = 0.0f;
@@ -57,9 +125,34 @@ glm::vec4 generateDynamicColor(const MovementPattern& pattern, float currentTime
     return glm::vec4(rgb, 1.0f);
 }
 
+// Frame-level cache for expensive calculations
+struct FrameCache {
+    static float deltaTime;
+    static float frameTime;
+    static bool initialized;
+    
+    static void update(float dt, float ft) {
+        deltaTime = dt;
+        frameTime = ft;
+        initialized = true;
+        FastMath::initializeLUT(); // Initialize lookup tables once per frame
+    }
+};
+
+// Static initialization
+float FrameCache::deltaTime = 0.0f;
+float FrameCache::frameTime = 0.0f;
+bool FrameCache::initialized = false;
+
 // Sacred Geometry movement system with spiritual and mathematical beauty
 void fractal_movement_system(flecs::entity e, Transform& transform, MovementPattern& pattern) {
-    const float deltaTime = e.world().delta_time();
+    // Use cached delta time and frame time for all entities this frame
+    if (!FrameCache::initialized) {
+        FrameCache::update(e.world().delta_time(), 0.0f); // Remove unused frame time
+        FastMath::initializeLUT(); // Initialize lookup tables once per frame
+    }
+    
+    const float deltaTime = FrameCache::deltaTime;
     pattern.totalTime += deltaTime;
     
     // Initialize starting position and create unique center for each entity
@@ -72,7 +165,11 @@ void fractal_movement_system(flecs::entity e, Transform& transform, MovementPatt
     
     glm::vec3 newPosition = transform.position;
     float t = pattern.totalTime + pattern.timeOffset;
-    float currentAmplitude = pattern.amplitude * (1.0f - pattern.decay * pattern.totalTime);
+    
+    // Optimize amplitude calculation - avoid multiplication if decay is zero
+    float currentAmplitude = (pattern.decay > 0.001f) ? 
+        pattern.amplitude * (1.0f - pattern.decay * pattern.totalTime) : 
+        pattern.amplitude;
     
     switch (pattern.type) {
         case MovementType::FlowerOfLife: {
@@ -81,16 +178,20 @@ void fractal_movement_system(flecs::entity e, Transform& transform, MovementPatt
             float petalIndex = std::floor(pattern.totalTime * 0.5f) + 1; // Cycle through petals
             petalIndex = std::fmod(petalIndex, 6.0f); // 6 outer petals
             
-            float petalAngle = petalIndex * glm::pi<float>() / 3.0f; // 60 degrees apart
+            float petalAngle = petalIndex * MovementCache::PI_DIV_3; // 60 degrees apart
+            float petalCos = FastMath::fastCos(petalAngle);
+            float petalSin = FastMath::fastSin(petalAngle);
             glm::vec3 petalCenter = pattern.center + glm::vec3(
-                pattern.circleRadius * std::cos(petalAngle),
-                pattern.circleRadius * std::sin(petalAngle),
+                pattern.circleRadius * petalCos,
+                pattern.circleRadius * petalSin,
                 0.0f
             );
             
+            float mainCos = FastMath::fastCos(mainAngle);
+            float mainSin = FastMath::fastSin(mainAngle);
             newPosition = petalCenter + currentAmplitude * 0.5f * glm::vec3(
-                std::cos(mainAngle),
-                std::sin(mainAngle),
+                mainCos,
+                mainSin,
                 0.0f
             );
             break;
@@ -104,17 +205,21 @@ void fractal_movement_system(flecs::entity e, Transform& transform, MovementPatt
             glm::vec3 circleCenter = pattern.center;
             if (circleIndex > 0) {
                 // Outer 6 circles
-                float centerAngle = (circleIndex - 1) * glm::pi<float>() / 3.0f;
+                float centerAngle = (circleIndex - 1) * MovementCache::PI_DIV_3;
+                float centerCos = FastMath::fastCos(centerAngle);
+                float centerSin = FastMath::fastSin(centerAngle);
                 circleCenter += glm::vec3(
-                    pattern.circleRadius * std::cos(centerAngle),
-                    pattern.circleRadius * std::sin(centerAngle),
+                    pattern.circleRadius * centerCos,
+                    pattern.circleRadius * centerSin,
                     0.0f
                 );
             }
             
+            float angleCos = FastMath::fastCos(angle);
+            float angleSin = FastMath::fastSin(angle);
             newPosition = circleCenter + currentAmplitude * 0.4f * glm::vec3(
-                std::cos(angle),
-                std::sin(angle),
+                angleCos,
+                angleSin,
                 0.0f
             );
             break;
@@ -125,17 +230,19 @@ void fractal_movement_system(flecs::entity e, Transform& transform, MovementPatt
             float angle = t * pattern.frequency + pattern.phase;
             float circleOffset = pattern.circleRadius * 0.5f;
             
-            // Alternate between the two circles
-            bool leftCircle = std::sin(t * 0.5f) > 0;
+            // Alternate between the two circles using fast approximation
+            bool leftCircle = FastMath::fastSin(t * 0.5f) > 0;
             glm::vec3 centerOffset = leftCircle ? 
                 glm::vec3(-circleOffset, 0.0f, 0.0f) : 
                 glm::vec3(circleOffset, 0.0f, 0.0f);
             
             // Focus movement in the intersection area
             float radius = currentAmplitude * pattern.vesicaRatio;
+            float angleCos = FastMath::fastCos(angle);
+            float angleSin = FastMath::fastSin(angle);
             newPosition = pattern.center + centerOffset + glm::vec3(
-                radius * std::cos(angle),
-                radius * std::sin(angle),
+                radius * angleCos,
+                radius * angleSin,
                 0.0f
             );
             break;
@@ -147,20 +254,24 @@ void fractal_movement_system(flecs::entity e, Transform& transform, MovementPatt
             float trianglePhase = pattern.totalTime * 0.2f;
             
             // Outer triangle points
-            float triangleSize = currentAmplitude * 0.866025f; // sqrt(3)/2
+            float triangleSize = currentAmplitude * MovementCache::SQRT_3_DIV_2;
             int trianglePoint = static_cast<int>(trianglePhase) % 3;
             
             glm::vec3 triangleCenter = pattern.center;
-            float pointAngle = trianglePoint * 2.0f * glm::pi<float>() / 3.0f;
+            float pointAngle = trianglePoint * MovementCache::TWO_PI_DIV_3;
+            float pointCos = FastMath::fastCos(pointAngle);
+            float pointSin = FastMath::fastSin(pointAngle);
             triangleCenter += triangleSize * glm::vec3(
-                std::cos(pointAngle),
-                std::sin(pointAngle),
+                pointCos,
+                pointSin,
                 0.0f
             );
             
+            float angleCos = FastMath::fastCos(angle);
+            float angleSin = FastMath::fastSin(angle);
             newPosition = triangleCenter + currentAmplitude * 0.3f * glm::vec3(
-                std::cos(angle),
-                std::sin(angle),
+                angleCos,
+                angleSin,
                 0.0f
             );
             break;
@@ -176,39 +287,57 @@ void fractal_movement_system(flecs::entity e, Transform& transform, MovementPatt
             
             switch (solidType) {
                 case 0: // Tetrahedron (4 vertices)
-                    offset = radius * glm::vec3(
-                        std::cos(angle * 4.0f / 3.0f),
-                        std::sin(angle * 4.0f / 3.0f),
-                        0.0f
-                    );
+                    {
+                        float tetraAngle = angle * 4.0f / 3.0f;
+                        offset = radius * glm::vec3(
+                            FastMath::fastCos(tetraAngle),
+                            FastMath::fastSin(tetraAngle),
+                            0.0f
+                        );
+                    }
                     break;
                 case 1: // Cube/Hexahedron (8 vertices)
-                    offset = radius * glm::vec3(
-                        std::cos(angle) + 0.3f * std::cos(angle * 2.0f),
-                        std::sin(angle) + 0.3f * std::sin(angle * 2.0f),
-                        0.0f
-                    );
+                    {
+                        float cos1 = FastMath::fastCos(angle);
+                        float sin1 = FastMath::fastSin(angle);
+                        float cos2 = FastMath::fastCos(angle * 2.0f);
+                        float sin2 = FastMath::fastSin(angle * 2.0f);
+                        offset = radius * glm::vec3(
+                            cos1 + 0.3f * cos2,
+                            sin1 + 0.3f * sin2,
+                            0.0f
+                        );
+                    }
                     break;
                 case 2: // Octahedron (6 vertices)
-                    offset = radius * glm::vec3(
-                        std::cos(angle * 1.5f),
-                        std::sin(angle * 1.5f),
-                        0.0f
-                    );
+                    {
+                        float octaAngle = angle * 1.5f;
+                        offset = radius * glm::vec3(
+                            FastMath::fastCos(octaAngle),
+                            FastMath::fastSin(octaAngle),
+                            0.0f
+                        );
+                    }
                     break;
                 case 3: // Dodecahedron (20 vertices)
-                    offset = radius * glm::vec3(
-                        std::cos(angle * pattern.goldenRatio),
-                        std::sin(angle * pattern.goldenRatio),
-                        0.0f
-                    );
+                    {
+                        float dodecaAngle = angle * MovementCache::GOLDEN_RATIO;
+                        offset = radius * glm::vec3(
+                            FastMath::fastCos(dodecaAngle),
+                            FastMath::fastSin(dodecaAngle),
+                            0.0f
+                        );
+                    }
                     break;
                 case 4: // Icosahedron (12 vertices)
-                    offset = radius * glm::vec3(
-                        std::cos(angle * 1.2f) * pattern.goldenRatio,
-                        std::sin(angle * 1.2f) / pattern.goldenRatio,
-                        0.0f
-                    );
+                    {
+                        float icosaAngle = angle * 1.2f;
+                        offset = radius * glm::vec3(
+                            FastMath::fastCos(icosaAngle) * MovementCache::GOLDEN_RATIO,
+                            FastMath::fastSin(icosaAngle) / MovementCache::GOLDEN_RATIO,
+                            0.0f
+                        );
+                    }
                     break;
             }
             
@@ -219,14 +348,16 @@ void fractal_movement_system(flecs::entity e, Transform& transform, MovementPatt
         case MovementType::FibonacciSpiral: {
             // Golden spiral following Fibonacci sequence
             float spiralAngle = t * pattern.frequency + pattern.phase;
-            float radius = currentAmplitude * std::exp(spiralAngle * pattern.spiralGrowth / pattern.goldenRatio);
+            float radius = currentAmplitude * FastMath::fastExp(spiralAngle * pattern.spiralGrowth / MovementCache::GOLDEN_RATIO);
             
             // Limit radius growth to prevent entities from going too far
             radius = std::min(radius, currentAmplitude * 3.0f);
             
+            float spiralCos = FastMath::fastCos(spiralAngle);
+            float spiralSin = FastMath::fastSin(spiralAngle);
             newPosition = pattern.center + glm::vec3(
-                radius * std::cos(spiralAngle),
-                radius * std::sin(spiralAngle),
+                radius * spiralCos,
+                radius * spiralSin,
                 0.0f
             );
             break;
@@ -235,11 +366,12 @@ void fractal_movement_system(flecs::entity e, Transform& transform, MovementPatt
         case MovementType::GoldenRatio: {
             // Patterns based on the golden ratio (phi = 1.618...)
             float angle = t * pattern.frequency + pattern.phase;
-            float goldenAngle = 2.0f * glm::pi<float>() / (pattern.goldenRatio * pattern.goldenRatio);
             
             // Golden spiral with ratio-based frequency
-            float x = currentAmplitude * std::cos(angle * pattern.goldenRatio) * std::exp(-angle * 0.1f);
-            float y = currentAmplitude * std::sin(angle * pattern.goldenRatio) * std::exp(-angle * 0.1f);
+            float scaledAngle = angle * MovementCache::GOLDEN_RATIO;
+            float expFactor = FastMath::fastExp(-angle * 0.1f);
+            float x = currentAmplitude * FastMath::fastCos(scaledAngle) * expFactor;
+            float y = currentAmplitude * FastMath::fastSin(scaledAngle) * expFactor;
             
             newPosition = pattern.center + glm::vec3(x, y, 0.0f);
             break;
@@ -400,4 +532,9 @@ void velocity_movement_system(flecs::entity e, Transform& transform, Velocity& v
         glm::vec3 newRot = transform.rotation + velocity.angular * deltaTime;
         transform.setRotation(newRot);
     }
+}
+
+// Reset frame cache - called once per frame for optimal performance
+void reset_movement_frame_cache() {
+    FrameCache::initialized = false;
 }

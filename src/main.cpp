@@ -162,6 +162,10 @@ int main(int argc, char* argv[]) {
 
         // Profile the main update loop
         PROFILE_BEGIN_FRAME();
+        
+        // Reset movement system caches for optimal performance
+        reset_movement_frame_cache();
+        
         {
             PROFILE_SCOPE("ECS Update");
             world.progress(deltaTime);
