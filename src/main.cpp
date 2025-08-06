@@ -58,7 +58,7 @@ int main(int argc, char* argv[]) {
 
     World world;
 
-    // Beautiful fractal movement system
+    // Beautiful fractal movement system with dynamic colors
     world.getFlecsWorld().system<Transform, MovementPattern>()
         .each(fractal_movement_system);
         

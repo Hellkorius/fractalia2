@@ -191,15 +191,16 @@ std::array<VkVertexInputBindingDescription, 2> VulkanPipeline::getVertexBindingD
     bindingDescriptions[0].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
     
     bindingDescriptions[1].binding = 1;
-    bindingDescriptions[1].stride = sizeof(glm::mat4);
+    bindingDescriptions[1].stride = sizeof(glm::mat4) + sizeof(glm::vec4); // Matrix + color
     bindingDescriptions[1].inputRate = VK_VERTEX_INPUT_RATE_INSTANCE;
     
     return bindingDescriptions;
 }
 
-std::array<VkVertexInputAttributeDescription, 6> VulkanPipeline::getVertexAttributeDescriptions() {
-    std::array<VkVertexInputAttributeDescription, 6> attributeDescriptions{};
+std::array<VkVertexInputAttributeDescription, 7> VulkanPipeline::getVertexAttributeDescriptions() {
+    std::array<VkVertexInputAttributeDescription, 7> attributeDescriptions{};
     
+    // Vertex attributes (binding 0)
     attributeDescriptions[0].binding = 0;
     attributeDescriptions[0].location = 0;
     attributeDescriptions[0].format = VK_FORMAT_R32G32B32_SFLOAT;
@@ -210,6 +211,7 @@ std::array<VkVertexInputAttributeDescription, 6> VulkanPipeline::getVertexAttrib
     attributeDescriptions[1].format = VK_FORMAT_R32G32B32_SFLOAT;
     attributeDescriptions[1].offset = sizeof(glm::vec3);
     
+    // Instance matrix attributes (binding 1) - locations 2-5
     attributeDescriptions[2].binding = 1;
     attributeDescriptions[2].location = 2;
     attributeDescriptions[2].format = VK_FORMAT_R32G32B32A32_SFLOAT;
@@ -229,6 +231,12 @@ std::array<VkVertexInputAttributeDescription, 6> VulkanPipeline::getVertexAttrib
     attributeDescriptions[5].location = 5;
     attributeDescriptions[5].format = VK_FORMAT_R32G32B32A32_SFLOAT;
     attributeDescriptions[5].offset = 3 * sizeof(glm::vec4);
+    
+    // Instance color attribute (binding 1) - location 6
+    attributeDescriptions[6].binding = 1;
+    attributeDescriptions[6].location = 6;
+    attributeDescriptions[6].format = VK_FORMAT_R32G32B32A32_SFLOAT;
+    attributeDescriptions[6].offset = 4 * sizeof(glm::vec4);
     
     return attributeDescriptions;
 }

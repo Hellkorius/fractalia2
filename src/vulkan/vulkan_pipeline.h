@@ -50,5 +50,5 @@ private:
     std::vector<char> readFile(const std::string& filename);
     
     std::array<VkVertexInputBindingDescription, 2> getVertexBindingDescriptions();
-    std::array<VkVertexInputAttributeDescription, 6> getVertexAttributeDescriptions();
+    std::array<VkVertexInputAttributeDescription, 7> getVertexAttributeDescriptions();
 };

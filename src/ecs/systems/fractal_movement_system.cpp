@@ -5,6 +5,52 @@
 #include <cmath>
 #include <random>
 
+// Dynamic color generation based on movement parameters
+glm::vec4 generateDynamicColor(const MovementPattern& pattern, float currentTime) {
+    // Base hue determined by movement type for visual distinction
+    float baseHue = 0.0f;
+    switch (pattern.type) {
+        case MovementType::Linear:    baseHue = 0.0f;   break; // Red spectrum
+        case MovementType::Orbital:   baseHue = 0.15f;  break; // Orange spectrum
+        case MovementType::Spiral:    baseHue = 0.33f;  break; // Green spectrum
+        case MovementType::Lissajous: baseHue = 0.5f;   break; // Cyan spectrum
+        case MovementType::Brownian:  baseHue = 0.6f;   break; // Blue spectrum
+        case MovementType::Fractal:   baseHue = 0.75f;  break; // Purple spectrum
+        case MovementType::Wave:      baseHue = 0.85f;  break; // Magenta spectrum
+        case MovementType::Petal:     baseHue = 0.92f;  break; // Pink spectrum
+        case MovementType::Butterfly: baseHue = 0.08f;  break; // Yellow spectrum
+    }
+    
+    // Modulate hue based on amplitude and time for variety within each type
+    float hue = std::fmod(baseHue + pattern.amplitude * 0.1f + currentTime * 0.05f, 1.0f);
+    
+    // Map frequency to saturation (higher frequency = more saturated)
+    float saturation = 0.7f + 0.3f * glm::clamp(pattern.frequency / 2.5f, 0.0f, 1.0f);
+    
+    // Base brightness with subtle pulsing based on movement phase
+    float brightness = 0.8f + 0.2f * std::abs(std::sin(pattern.phase + currentTime * 1.5f));
+    
+    // Convert HSV to RGB
+    auto hsvToRgb = [](float h, float s, float v) -> glm::vec3 {
+        float c = v * s;
+        float x = c * (1.0f - std::abs(std::fmod(h * 6.0f, 2.0f) - 1.0f));
+        float m = v - c;
+        
+        glm::vec3 rgb;
+        if (h < 1.0f/6.0f) rgb = {c, x, 0};
+        else if (h < 2.0f/6.0f) rgb = {x, c, 0};
+        else if (h < 3.0f/6.0f) rgb = {0, c, x};
+        else if (h < 4.0f/6.0f) rgb = {0, x, c};
+        else if (h < 5.0f/6.0f) rgb = {x, 0, c};
+        else rgb = {c, 0, x};
+        
+        return rgb + m;
+    };
+    
+    glm::vec3 rgb = hsvToRgb(hue, saturation, brightness);
+    return glm::vec4(rgb, 1.0f);
+}
+
 // Beautiful fractal movement system with various pattern types
 void fractal_movement_system(flecs::entity e, Transform& transform, MovementPattern& pattern) {
     const float deltaTime = e.world().delta_time();
@@ -161,6 +207,15 @@ void fractal_movement_system(flecs::entity e, Transform& transform, MovementPatt
     
     transform.setPosition(smoothPosition);
     pattern.lastPosition = smoothPosition;
+    
+    // Update color dynamically based on amplitude and frequency
+    if (auto* renderable = e.get_mut<Renderable>()) {
+        glm::vec4 newColor = generateDynamicColor(pattern, pattern.totalTime);
+        if (renderable->color != newColor) {
+            renderable->color = newColor;
+            renderable->markDirty();
+        }
+    }
 }
 
 // System to apply velocity-based movement (for entities without MovementPattern)

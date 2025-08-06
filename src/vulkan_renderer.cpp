@@ -12,6 +12,12 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
+// Instance data structure for GPU upload
+struct InstanceData {
+    glm::mat4 transform;
+    glm::vec4 color;
+};
+
 VulkanRenderer::VulkanRenderer() {
 }
 
@@ -253,7 +259,7 @@ void VulkanRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t
     // Render triangles
     if (triangleCount > 0) {
         VkBuffer triangleVertexBuffers[] = {resources->getTriangleVertexBuffer(), resources->getInstanceBuffers()[currentFrame]};
-        VkDeviceSize offsets[] = {0, instanceOffset * sizeof(glm::mat4)};
+        VkDeviceSize offsets[] = {0, instanceOffset * sizeof(InstanceData)};
         vkCmdBindVertexBuffers(commandBuffer, 0, 2, triangleVertexBuffers, offsets);
         vkCmdBindIndexBuffer(commandBuffer, resources->getTriangleIndexBuffer(), 0, VK_INDEX_TYPE_UINT16);
         vkCmdDrawIndexed(commandBuffer, resources->getTriangleIndexCount(), triangleCount, 0, 0, 0);
@@ -263,7 +269,7 @@ void VulkanRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t
 	// Render squares
 	if (squareCount > 0) {
 		VkBuffer squareVertexBuffers[] = {resources->getSquareVertexBuffer(), resources->getInstanceBuffers()[currentFrame]};
-		VkDeviceSize offsets[] = {0, instanceOffset * sizeof(glm::mat4)};
+		VkDeviceSize offsets[] = {0, instanceOffset * sizeof(InstanceData)};
 		vkCmdBindVertexBuffers(commandBuffer, 0, 2, squareVertexBuffers, offsets);
 		vkCmdBindIndexBuffer(commandBuffer, resources->getSquareIndexBuffer(), 0, VK_INDEX_TYPE_UINT16);
 		vkCmdDrawIndexed(commandBuffer, resources->getSquareIndexCount(), squareCount, 0, 0, 0);
@@ -343,7 +349,7 @@ void VulkanRenderer::updateInstanceBuffer(uint32_t currentFrame) {
     float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
 
     void* data = resources->getInstanceBuffersMapped()[currentFrame];
-    glm::mat4* matrices = static_cast<glm::mat4*>(data);
+    InstanceData* instances = static_cast<InstanceData*>(data);
     
     uint32_t instanceIndex = 0;
     
@@ -352,7 +358,9 @@ void VulkanRenderer::updateInstanceBuffer(uint32_t currentFrame) {
         if (shapeType == ShapeType::Triangle) {
             glm::mat4 model = glm::translate(glm::mat4(1.0f), pos);
             model = glm::rotate(model, time * glm::radians(45.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-            matrices[instanceIndex++] = model;
+            instances[instanceIndex].transform = model;
+            instances[instanceIndex].color = color; // Use the color from ECS!
+            instanceIndex++;
         }
     }
     
@@ -361,7 +369,9 @@ void VulkanRenderer::updateInstanceBuffer(uint32_t currentFrame) {
         if (shapeType == ShapeType::Square) {
             glm::mat4 model = glm::translate(glm::mat4(1.0f), pos);
             model = glm::rotate(model, time * glm::radians(-30.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-            matrices[instanceIndex++] = model;
+            instances[instanceIndex].transform = model;
+            instances[instanceIndex].color = color; // Use the color from ECS!
+            instanceIndex++;
         }
     }
 }
