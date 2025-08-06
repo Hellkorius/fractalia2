@@ -211,6 +211,90 @@ int main(int argc, char* argv[]) {
                       << ", Frame Time: " << avgFrameTime << "ms"
                       << ", FPS: " << fps << std::endl;
         }
+        
+        // Sacred Geometry pattern switching with number keys (1-0)
+        // All patterns center around origin (0,0) for unified formations
+        if (InputQuery::isKeyPressed(world.getFlecsWorld(), SDL_SCANCODE_1)) {
+            // Switch all entities to FlowerOfLife pattern
+            std::cout << "Switching all entities to Flower of Life pattern around origin..." << std::endl;
+            world.getFlecsWorld().each([](flecs::entity e, MovementPattern& pattern) {
+                pattern.type = MovementType::FlowerOfLife;
+                pattern.center = glm::vec3(0.0f, 0.0f, 0.0f); // Set center to origin
+                pattern.initialized = false; // Reset pattern initialization
+            });
+        } else if (InputQuery::isKeyPressed(world.getFlecsWorld(), SDL_SCANCODE_2)) {
+            // Switch all entities to SeedOfLife pattern
+            std::cout << "Switching all entities to Seed of Life pattern around origin..." << std::endl;
+            world.getFlecsWorld().each([](flecs::entity e, MovementPattern& pattern) {
+                pattern.type = MovementType::SeedOfLife;
+                pattern.center = glm::vec3(0.0f, 0.0f, 0.0f);
+                pattern.initialized = false;
+            });
+        } else if (InputQuery::isKeyPressed(world.getFlecsWorld(), SDL_SCANCODE_3)) {
+            // Switch all entities to VesicaPiscis pattern
+            std::cout << "Switching all entities to Vesica Piscis pattern around origin..." << std::endl;
+            world.getFlecsWorld().each([](flecs::entity e, MovementPattern& pattern) {
+                pattern.type = MovementType::VesicaPiscis;
+                pattern.center = glm::vec3(0.0f, 0.0f, 0.0f);
+                pattern.initialized = false;
+            });
+        } else if (InputQuery::isKeyPressed(world.getFlecsWorld(), SDL_SCANCODE_4)) {
+            // Switch all entities to SriYantra pattern
+            std::cout << "Switching all entities to Sri Yantra pattern around origin..." << std::endl;
+            world.getFlecsWorld().each([](flecs::entity e, MovementPattern& pattern) {
+                pattern.type = MovementType::SriYantra;
+                pattern.center = glm::vec3(0.0f, 0.0f, 0.0f);
+                pattern.initialized = false;
+            });
+        } else if (InputQuery::isKeyPressed(world.getFlecsWorld(), SDL_SCANCODE_5)) {
+            // Switch all entities to PlatonicSolids pattern
+            std::cout << "Switching all entities to Platonic Solids pattern around origin..." << std::endl;
+            world.getFlecsWorld().each([](flecs::entity e, MovementPattern& pattern) {
+                pattern.type = MovementType::PlatonicSolids;
+                pattern.center = glm::vec3(0.0f, 0.0f, 0.0f);
+                pattern.initialized = false;
+            });
+        } else if (InputQuery::isKeyPressed(world.getFlecsWorld(), SDL_SCANCODE_6)) {
+            // Switch all entities to FibonacciSpiral pattern
+            std::cout << "Switching all entities to Fibonacci Spiral pattern around origin..." << std::endl;
+            world.getFlecsWorld().each([](flecs::entity e, MovementPattern& pattern) {
+                pattern.type = MovementType::FibonacciSpiral;
+                pattern.center = glm::vec3(0.0f, 0.0f, 0.0f);
+                pattern.initialized = false;
+            });
+        } else if (InputQuery::isKeyPressed(world.getFlecsWorld(), SDL_SCANCODE_7)) {
+            // Switch all entities to GoldenRatio pattern
+            std::cout << "Switching all entities to Golden Ratio pattern around origin..." << std::endl;
+            world.getFlecsWorld().each([](flecs::entity e, MovementPattern& pattern) {
+                pattern.type = MovementType::GoldenRatio;
+                pattern.center = glm::vec3(0.0f, 0.0f, 0.0f);
+                pattern.initialized = false;
+            });
+        } else if (InputQuery::isKeyPressed(world.getFlecsWorld(), SDL_SCANCODE_8)) {
+            // Switch all entities to Metatron pattern
+            std::cout << "Switching all entities to Metatron's Cube pattern around origin..." << std::endl;
+            world.getFlecsWorld().each([](flecs::entity e, MovementPattern& pattern) {
+                pattern.type = MovementType::Metatron;
+                pattern.center = glm::vec3(0.0f, 0.0f, 0.0f);
+                pattern.initialized = false;
+            });
+        } else if (InputQuery::isKeyPressed(world.getFlecsWorld(), SDL_SCANCODE_9)) {
+            // Switch all entities to TreeOfLife pattern
+            std::cout << "Switching all entities to Tree of Life pattern around origin..." << std::endl;
+            world.getFlecsWorld().each([](flecs::entity e, MovementPattern& pattern) {
+                pattern.type = MovementType::TreeOfLife;
+                pattern.center = glm::vec3(0.0f, 0.0f, 0.0f);
+                pattern.initialized = false;
+            });
+        } else if (InputQuery::isKeyPressed(world.getFlecsWorld(), SDL_SCANCODE_0)) {
+            // Switch all entities to TetraktysFlow pattern
+            std::cout << "Switching all entities to Tetraktys Flow pattern around origin..." << std::endl;
+            world.getFlecsWorld().each([](flecs::entity e, MovementPattern& pattern) {
+                pattern.type = MovementType::TetraktysFlow;
+                pattern.center = glm::vec3(0.0f, 0.0f, 0.0f);
+                pattern.initialized = false;
+            });
+        }
 
         // Profile the main update loop
         PROFILE_BEGIN_FRAME();

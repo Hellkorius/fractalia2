@@ -162,43 +162,62 @@ private:
         float t = static_cast<float>(index) / static_cast<float>(totalCount);
         float goldenRatio = 1.618033988749895f;
         
-        // More individualized parameters for character
-        pattern.amplitude = 0.2f + 0.6f * std::fmod(t * goldenRatio * 3.0f, 1.0f); // Varied amplitude
+        // More individualized parameters for character - 10x dispersal for pattern visibility
+        pattern.amplitude = 2.0f + 6.0f * std::fmod(t * goldenRatio * 3.0f, 1.0f); // 10x larger amplitude for pattern visibility
         pattern.frequency = 0.3f + 1.5f * std::fmod(t * goldenRatio * 7.0f, 1.0f); // Varied speed
         pattern.phase = t * 6.28318530718f * 4.0f; // More phase variation
         pattern.timeOffset = t * 20.0f; // Stagger timing more
         
-        // Pattern-specific customization
+        // Sacred Geometry pattern-specific customization
         switch (type) {
-            case MovementType::Spiral:
-                pattern.frequency *= 0.3f; // Slower for spirals
-                pattern.decay = 0.05f; // Slight decay
+            case MovementType::FlowerOfLife:
+                pattern.circleRadius = 3.0f + 2.0f * t; // 10x larger for pattern visibility
+                pattern.petalCount = 6; // Classic Flower of Life has 6 outer petals
+                pattern.frequency *= 0.8f; // Slower, more meditative
                 break;
                 
-            case MovementType::Lissajous:
-                pattern.lissajousRatio = glm::vec2(
-                    2.0f + 3.0f * std::fmod(t * goldenRatio, 1.0f),
-                    1.0f + 2.0f * std::fmod(t * goldenRatio * goldenRatio, 1.0f)
-                );
+            case MovementType::SeedOfLife:
+                pattern.circleRadius = 2.5f + 1.5f * t; // 10x larger for pattern visibility
+                pattern.petalCount = 7; // 7 circles in Seed of Life
+                pattern.frequency *= 0.6f; // Even slower for contemplation
                 break;
                 
-            case MovementType::Fractal:
-                pattern.recursionDepth = 2.0f + 3.0f * t;
-                pattern.selfSimilarity = 0.5f + 0.3f * std::sin(t * 6.28f);
+            case MovementType::VesicaPiscis:
+                pattern.vesicaRatio = 0.866025f; // sqrt(3)/2 - sacred ratio
+                pattern.frequency *= 1.2f; // More active lens movement
                 break;
                 
-            case MovementType::Orbital:
-                pattern.axis = glm::normalize(glm::vec3(
-                    std::sin(t * 6.28f),
-                    std::cos(t * 6.28f),
-                    0.5f * std::sin(t * 12.56f)
-                ));
+            case MovementType::SriYantra:
+                pattern.frequency *= 0.4f; // Very slow, spiritual movement
+                pattern.phaseShift = 0.05f * std::sin(t * 3.14f);
                 break;
                 
-            case MovementType::Petal:
-            case MovementType::Butterfly:
-                pattern.frequency *= 0.7f; // Slower for complex curves
-                pattern.phaseShift = 0.1f * std::sin(t * 3.14f);
+            case MovementType::PlatonicSolids:
+                pattern.frequency *= 0.7f; // Moderate speed for geometric beauty
+                break;
+                
+            case MovementType::FibonacciSpiral:
+                pattern.spiralGrowth = 0.05f + 0.1f * t; // Varied growth rates
+                pattern.frequency *= 0.5f; // Let the spiral unfold slowly
+                break;
+                
+            case MovementType::GoldenRatio:
+                pattern.goldenRatio = 1.618033988749f; // Ensure precise phi
+                pattern.frequency *= pattern.goldenRatio * 0.3f; // Ratio-based frequency
+                break;
+                
+            case MovementType::Metatron:
+                pattern.circleRadius = 4.0f + 3.0f * t; // 10x larger varied cube sizes
+                pattern.frequency *= 0.3f; // Slow, powerful movement
+                break;
+                
+            case MovementType::TreeOfLife:
+                pattern.frequency *= 0.25f; // Very slow, contemplative
+                pattern.phaseShift = 0.02f; // Gentle phase evolution
+                break;
+                
+            case MovementType::TetraktysFlow:
+                pattern.frequency *= 0.9f; // Moderate Pythagorean rhythm
                 break;
                 
             default:
@@ -277,9 +296,9 @@ public:
             .build();
     }
     
-    // Create a single entity with fractal movement pattern
+    // Create a single entity with sacred geometry movement pattern
     Entity createFractalEntity(const glm::vec3& pos, Renderable::ShapeType shape = Renderable::ShapeType::Triangle) {
-        std::uniform_int_distribution<int> movementDist(0, 8); // 9 movement types
+        std::uniform_int_distribution<int> movementDist(0, 9); // 10 sacred geometry types
         std::uniform_int_distribution<int> shapeDist(0, 1);
         
         if (shape == Renderable::ShapeType::Triangle && shapeDist(rng) == 1) {
@@ -292,7 +311,7 @@ public:
         MovementPattern pattern = createFractalPattern(
             static_cast<MovementType>(movementType), 
             pos, 
-            0.3f + 0.4f * std::uniform_real_distribution<float>(0.0f, 1.0f)(rng), // Random radius
+            3.0f + 4.0f * std::uniform_real_distribution<float>(0.0f, 1.0f)(rng), // 10x larger random radius
             0, 
             1
         );
@@ -315,7 +334,7 @@ public:
         std::uniform_real_distribution<float> colorDist(0.0f, 1.0f);
         std::uniform_real_distribution<float> paramDist(0.0f, 1.0f);
         std::uniform_int_distribution<int> shapeDist(0, 1);
-        std::uniform_int_distribution<int> movementDist(0, 8); // 9 movement types
+        std::uniform_int_distribution<int> movementDist(0, 9); // 10 sacred geometry types
         
         return createBatch(count, [&](EntityBuilder& builder, size_t i) {
             // Spread entities more naturally across the area
@@ -339,7 +358,7 @@ public:
             MovementPattern pattern = createFractalPattern(
                 static_cast<MovementType>(movementType), 
                 pos, // Use entity's starting position as reference
-                0.5f + 0.5f * std::fmod(i * goldenRatio, 1.0f), // Varied movement radius
+                5.0f + 5.0f * std::fmod(i * goldenRatio, 1.0f), // 10x larger varied movement radius
                 i, 
                 count
             );

@@ -7,28 +7,32 @@
 
 // Dynamic color generation based on movement parameters
 glm::vec4 generateDynamicColor(const MovementPattern& pattern, float currentTime) {
-    // Base hue determined by movement type for visual distinction
+    // Base hue determined by sacred geometry type for spiritual distinction
     float baseHue = 0.0f;
     switch (pattern.type) {
-        case MovementType::Linear:    baseHue = 0.0f;   break; // Red spectrum
-        case MovementType::Orbital:   baseHue = 0.15f;  break; // Orange spectrum
-        case MovementType::Spiral:    baseHue = 0.33f;  break; // Green spectrum
-        case MovementType::Lissajous: baseHue = 0.5f;   break; // Cyan spectrum
-        case MovementType::Brownian:  baseHue = 0.6f;   break; // Blue spectrum
-        case MovementType::Fractal:   baseHue = 0.75f;  break; // Purple spectrum
-        case MovementType::Wave:      baseHue = 0.85f;  break; // Magenta spectrum
-        case MovementType::Petal:     baseHue = 0.92f;  break; // Pink spectrum
-        case MovementType::Butterfly: baseHue = 0.08f;  break; // Yellow spectrum
+        case MovementType::FlowerOfLife:    baseHue = 0.0f;   break; // Red - Root chakra energy
+        case MovementType::SeedOfLife:      baseHue = 0.08f;  break; // Orange - Sacral chakra
+        case MovementType::VesicaPiscis:    baseHue = 0.17f;  break; // Yellow - Solar plexus
+        case MovementType::SriYantra:       baseHue = 0.33f;  break; // Green - Heart chakra
+        case MovementType::PlatonicSolids:  baseHue = 0.5f;   break; // Cyan - Throat chakra
+        case MovementType::FibonacciSpiral: baseHue = 0.67f;  break; // Blue - Third eye
+        case MovementType::GoldenRatio:     baseHue = 0.75f;  break; // Purple - Crown chakra
+        case MovementType::Metatron:        baseHue = 0.83f;  break; // Violet - Divine connection
+        case MovementType::TreeOfLife:      baseHue = 0.92f;  break; // Magenta - Universal love
+        case MovementType::TetraktysFlow:   baseHue = 0.97f;  break; // White-pink - Pure wisdom
     }
     
-    // Modulate hue based on amplitude and time for variety within each type
-    float hue = std::fmod(baseHue + pattern.amplitude * 0.1f + currentTime * 0.05f, 1.0f);
+    // Enhanced modulation based on amplitude, frequency, and time for rich variety
+    float amplitudeInfluence = pattern.amplitude / 8.0f; // Scale for new larger amplitudes
+    float hue = std::fmod(baseHue + amplitudeInfluence * 0.15f + currentTime * 0.05f, 1.0f);
     
-    // Map frequency to saturation (higher frequency = more saturated)
-    float saturation = 0.7f + 0.3f * glm::clamp(pattern.frequency / 2.5f, 0.0f, 1.0f);
+    // Map frequency and amplitude to saturation for more dynamic colors
+    float saturation = 0.6f + 0.4f * glm::clamp((pattern.frequency + amplitudeInfluence) / 3.0f, 0.0f, 1.0f);
     
-    // Base brightness with subtle pulsing based on movement phase
-    float brightness = 0.8f + 0.2f * std::abs(std::sin(pattern.phase + currentTime * 1.5f));
+    // Amplitude-based brightness variation with movement pulsing
+    float amplitudeBrightness = 0.3f + 0.4f * glm::clamp(amplitudeInfluence, 0.0f, 1.0f);
+    float phaseBrightness = 0.3f + 0.2f * std::abs(std::sin(pattern.phase + currentTime * 1.5f));
+    float brightness = amplitudeBrightness + phaseBrightness;
     
     // Convert HSV to RGB
     auto hsvToRgb = [](float h, float s, float v) -> glm::vec3 {
@@ -51,7 +55,7 @@ glm::vec4 generateDynamicColor(const MovementPattern& pattern, float currentTime
     return glm::vec4(rgb, 1.0f);
 }
 
-// Beautiful fractal movement system with various pattern types
+// Sacred Geometry movement system with spiritual and mathematical beauty
 void fractal_movement_system(flecs::entity e, Transform& transform, MovementPattern& pattern) {
     const float deltaTime = e.world().delta_time();
     pattern.totalTime += deltaTime;
@@ -69,36 +73,65 @@ void fractal_movement_system(flecs::entity e, Transform& transform, MovementPatt
     float currentAmplitude = pattern.amplitude * (1.0f - pattern.decay * pattern.totalTime);
     
     switch (pattern.type) {
-        case MovementType::Linear: {
-            // Smooth directional movement with gentle curves
-            float directionAngle = pattern.phase + t * 0.1f;
-            glm::vec3 direction = glm::vec3(
-                std::cos(directionAngle),
-                std::sin(directionAngle),
+        case MovementType::FlowerOfLife: {
+            // Movement along overlapping circles in the Flower of Life pattern
+            float mainAngle = t * pattern.frequency + pattern.phase;
+            float petalIndex = std::floor(pattern.totalTime * 0.5f) + 1; // Cycle through petals
+            petalIndex = std::fmod(petalIndex, 6.0f); // 6 outer petals
+            
+            float petalAngle = petalIndex * glm::pi<float>() / 3.0f; // 60 degrees apart
+            glm::vec3 petalCenter = pattern.center + glm::vec3(
+                pattern.circleRadius * std::cos(petalAngle),
+                pattern.circleRadius * std::sin(petalAngle),
                 0.0f
             );
-            newPosition += direction * pattern.frequency * deltaTime;
+            
+            newPosition = petalCenter + currentAmplitude * 0.5f * glm::vec3(
+                std::cos(mainAngle),
+                std::sin(mainAngle),
+                0.0f
+            );
             break;
         }
         
-        case MovementType::Orbital: {
-            // Smooth orbital movement around entity's own center
+        case MovementType::SeedOfLife: {
+            // Movement within the seven-circle pattern of the Seed of Life
             float angle = t * pattern.frequency + pattern.phase;
-            glm::vec3 offset = glm::vec3(
-                currentAmplitude * std::cos(angle),
-                currentAmplitude * 0.8f * std::sin(angle),
+            int circleIndex = static_cast<int>(pattern.totalTime * 0.3f) % 7;
+            
+            glm::vec3 circleCenter = pattern.center;
+            if (circleIndex > 0) {
+                // Outer 6 circles
+                float centerAngle = (circleIndex - 1) * glm::pi<float>() / 3.0f;
+                circleCenter += glm::vec3(
+                    pattern.circleRadius * std::cos(centerAngle),
+                    pattern.circleRadius * std::sin(centerAngle),
+                    0.0f
+                );
+            }
+            
+            newPosition = circleCenter + currentAmplitude * 0.4f * glm::vec3(
+                std::cos(angle),
+                std::sin(angle),
                 0.0f
             );
-            newPosition = pattern.center + offset;
             break;
         }
         
-        case MovementType::Spiral: {
-            // Gentle expanding/contracting spiral
+        case MovementType::VesicaPiscis: {
+            // Movement in the vesica piscis (sacred lens between two circles)
             float angle = t * pattern.frequency + pattern.phase;
-            float radiusVariation = 1.0f + 0.3f * std::sin(t * 0.2f); // Gentle breathing
-            float radius = currentAmplitude * radiusVariation;
-            newPosition = pattern.center + glm::vec3(
+            float circleOffset = pattern.circleRadius * 0.5f;
+            
+            // Alternate between the two circles
+            bool leftCircle = std::sin(t * 0.5f) > 0;
+            glm::vec3 centerOffset = leftCircle ? 
+                glm::vec3(-circleOffset, 0.0f, 0.0f) : 
+                glm::vec3(circleOffset, 0.0f, 0.0f);
+            
+            // Focus movement in the intersection area
+            float radius = currentAmplitude * pattern.vesicaRatio;
+            newPosition = pattern.center + centerOffset + glm::vec3(
                 radius * std::cos(angle),
                 radius * std::sin(angle),
                 0.0f
@@ -106,94 +139,200 @@ void fractal_movement_system(flecs::entity e, Transform& transform, MovementPatt
             break;
         }
         
-        case MovementType::Lissajous: {
-            // Smooth figure-8 and complex patterns
-            float x_freq = pattern.lissajousRatio.x;
-            float y_freq = pattern.lissajousRatio.y;
+        case MovementType::SriYantra: {
+            // Movement following the interlocking triangles of Sri Yantra
+            float angle = t * pattern.frequency + pattern.phase;
+            float trianglePhase = pattern.totalTime * 0.2f;
+            
+            // Outer triangle points
+            float triangleSize = currentAmplitude * 0.866025f; // sqrt(3)/2
+            int trianglePoint = static_cast<int>(trianglePhase) % 3;
+            
+            glm::vec3 triangleCenter = pattern.center;
+            float pointAngle = trianglePoint * 2.0f * glm::pi<float>() / 3.0f;
+            triangleCenter += triangleSize * glm::vec3(
+                std::cos(pointAngle),
+                std::sin(pointAngle),
+                0.0f
+            );
+            
+            newPosition = triangleCenter + currentAmplitude * 0.3f * glm::vec3(
+                std::cos(angle),
+                std::sin(angle),
+                0.0f
+            );
+            break;
+        }
+        
+        case MovementType::PlatonicSolids: {
+            // Movement based on 2D projections of the five Platonic solids
+            float angle = t * pattern.frequency + pattern.phase;
+            int solidType = static_cast<int>(pattern.totalTime * 0.1f) % 5;
+            
+            float radius = currentAmplitude;
+            glm::vec3 offset(0.0f);
+            
+            switch (solidType) {
+                case 0: // Tetrahedron (4 vertices)
+                    offset = radius * glm::vec3(
+                        std::cos(angle * 4.0f / 3.0f),
+                        std::sin(angle * 4.0f / 3.0f),
+                        0.0f
+                    );
+                    break;
+                case 1: // Cube/Hexahedron (8 vertices)
+                    offset = radius * glm::vec3(
+                        std::cos(angle) + 0.3f * std::cos(angle * 2.0f),
+                        std::sin(angle) + 0.3f * std::sin(angle * 2.0f),
+                        0.0f
+                    );
+                    break;
+                case 2: // Octahedron (6 vertices)
+                    offset = radius * glm::vec3(
+                        std::cos(angle * 1.5f),
+                        std::sin(angle * 1.5f),
+                        0.0f
+                    );
+                    break;
+                case 3: // Dodecahedron (20 vertices)
+                    offset = radius * glm::vec3(
+                        std::cos(angle * pattern.goldenRatio),
+                        std::sin(angle * pattern.goldenRatio),
+                        0.0f
+                    );
+                    break;
+                case 4: // Icosahedron (12 vertices)
+                    offset = radius * glm::vec3(
+                        std::cos(angle * 1.2f) * pattern.goldenRatio,
+                        std::sin(angle * 1.2f) / pattern.goldenRatio,
+                        0.0f
+                    );
+                    break;
+            }
+            
+            newPosition = pattern.center + offset;
+            break;
+        }
+        
+        case MovementType::FibonacciSpiral: {
+            // Golden spiral following Fibonacci sequence
+            float spiralAngle = t * pattern.frequency + pattern.phase;
+            float radius = currentAmplitude * std::exp(spiralAngle * pattern.spiralGrowth / pattern.goldenRatio);
+            
+            // Limit radius growth to prevent entities from going too far
+            radius = std::min(radius, currentAmplitude * 3.0f);
+            
             newPosition = pattern.center + glm::vec3(
-                currentAmplitude * std::sin(x_freq * t + pattern.phase),
-                currentAmplitude * std::sin(y_freq * t + pattern.phase + glm::pi<float>() / 4.0f),
+                radius * std::cos(spiralAngle),
+                radius * std::sin(spiralAngle),
                 0.0f
             );
             break;
         }
         
-        case MovementType::Brownian: {
-            // Smooth wandering motion with gentle direction changes
-            static std::random_device rd;
-            static std::mt19937 gen(rd());
-            std::uniform_real_distribution<float> walk(-0.3f, 0.3f);
+        case MovementType::GoldenRatio: {
+            // Patterns based on the golden ratio (phi = 1.618...)
+            float angle = t * pattern.frequency + pattern.phase;
+            float goldenAngle = 2.0f * glm::pi<float>() / (pattern.goldenRatio * pattern.goldenRatio);
             
-            // Update direction smoothly over time
-            pattern.phase += walk(gen) * deltaTime;
-            glm::vec3 direction = glm::vec3(
-                std::cos(pattern.phase),
-                std::sin(pattern.phase),
-                0.0f
-            );
-            newPosition += direction * pattern.frequency * deltaTime * currentAmplitude;
+            // Golden spiral with ratio-based frequency
+            float x = currentAmplitude * std::cos(angle * pattern.goldenRatio) * std::exp(-angle * 0.1f);
+            float y = currentAmplitude * std::sin(angle * pattern.goldenRatio) * std::exp(-angle * 0.1f);
+            
+            newPosition = pattern.center + glm::vec3(x, y, 0.0f);
             break;
         }
         
-        case MovementType::Fractal: {
-            // Layered smooth movement with multiple frequencies
-            float baseFreq = pattern.frequency * 0.5f; // Slower base frequency
-            glm::vec3 fractalPos(0.0f);
+        case MovementType::Metatron: {
+            // Metatron's Cube - contains all five Platonic solids
+            float angle = t * pattern.frequency + pattern.phase;
+            float cubePhase = pattern.totalTime * 0.15f;
             
-            // Combine 2-3 smooth layers instead of many chaotic ones
-            for (int i = 0; i < 3; ++i) {
-                float scale = std::pow(0.6f, i); // Gentler scaling
-                float freq = baseFreq * std::pow(1.8f, i); // Less aggressive frequency scaling
-                float phase = pattern.phase + i * glm::pi<float>() / 4.0f;
+            // 13 circles of Metatron's Cube
+            int circleIndex = static_cast<int>(cubePhase) % 13;
+            glm::vec3 circleCenter = pattern.center;
+            
+            if (circleIndex > 0) {
+                float ringRadius = (circleIndex <= 6) ? pattern.circleRadius : pattern.circleRadius * 2.0f;
+                float ringAngle = (circleIndex - 1) * glm::pi<float>() / 3.0f;
+                if (circleIndex > 6) ringAngle = (circleIndex - 7) * glm::pi<float>() / 3.0f + glm::pi<float>() / 6.0f;
                 
-                fractalPos += scale * glm::vec3(
-                    std::sin(freq * t + phase),
-                    std::cos(freq * t + phase + glm::pi<float>() / 3.0f),
+                circleCenter += glm::vec3(
+                    ringRadius * std::cos(ringAngle),
+                    ringRadius * std::sin(ringAngle),
                     0.0f
                 );
             }
             
-            newPosition = pattern.center + currentAmplitude * fractalPos;
-            break;
-        }
-        
-        case MovementType::Wave: {
-            // Smooth flowing wave patterns
-            float wave1 = std::sin(pattern.frequency * t + pattern.phase);
-            float wave2 = std::sin(pattern.frequency * 1.414f * t + pattern.phase + glm::pi<float>() / 3.0f);
-            
-            newPosition = pattern.center + currentAmplitude * glm::vec3(
-                wave1 * 0.8f,
-                wave2 * 0.6f,
+            newPosition = circleCenter + currentAmplitude * 0.25f * glm::vec3(
+                std::cos(angle),
+                std::sin(angle),
                 0.0f
             );
             break;
         }
         
-        case MovementType::Petal: {
-            // Gentle petal-like movements
-            float k = 3.0f + 2.0f * std::sin(t * 0.1f); // Varying petal count
+        case MovementType::TreeOfLife: {
+            // Kabbalistic Tree of Life - 10 sephirot pattern
             float angle = t * pattern.frequency + pattern.phase;
-            float r = currentAmplitude * std::abs(std::cos(k * angle * 0.5f));
+            int sephira = static_cast<int>(pattern.totalTime * 0.2f) % 10;
             
-            newPosition = pattern.center + glm::vec3(
-                r * std::cos(angle),
-                r * std::sin(angle),
+            // Positions of the 10 sephirot in the Tree of Life
+            glm::vec2 sephirotPositions[10] = {
+                {0.0f, 1.0f},      // Keter (Crown)
+                {-0.5f, 0.7f},     // Chokmah (Wisdom)
+                {0.5f, 0.7f},      // Binah (Understanding)
+                {-0.3f, 0.3f},     // Chesed (Mercy)
+                {0.3f, 0.3f},      // Geburah (Severity)
+                {0.0f, 0.0f},      // Tiferet (Beauty)
+                {-0.3f, -0.3f},    // Netzach (Victory)
+                {0.3f, -0.3f},     // Hod (Glory)
+                {0.0f, -0.6f},     // Yesod (Foundation)
+                {0.0f, -1.0f}      // Malkuth (Kingdom)
+            };
+            
+            glm::vec3 sephiraCenter = pattern.center + currentAmplitude * glm::vec3(
+                sephirotPositions[sephira].x,
+                sephirotPositions[sephira].y,
+                0.0f
+            );
+            
+            newPosition = sephiraCenter + currentAmplitude * 0.15f * glm::vec3(
+                std::cos(angle),
+                std::sin(angle),
                 0.0f
             );
             break;
         }
         
-        case MovementType::Butterfly: {
-            // Smooth butterfly-like figure-8 movement
-            float bt = t * pattern.frequency + pattern.phase;
-            float scale = currentAmplitude * 0.3f; // Smaller, more controlled
+        case MovementType::TetraktysFlow: {
+            // Sacred Pythagorean Tetraktys - triangular arrangement of 10 points
+            float angle = t * pattern.frequency + pattern.phase;
+            int pointIndex = static_cast<int>(pattern.totalTime * 0.3f) % 10;
             
-            // Simplified butterfly curve that's smoother
-            float x = scale * std::sin(bt) * (std::exp(std::cos(bt)) - 2.0f * std::cos(4.0f * bt));
-            float y = scale * std::cos(bt) * (std::exp(std::cos(bt)) - 2.0f * std::cos(4.0f * bt));
+            // Tetraktys points arranged in triangle (1+2+3+4 = 10 points)
+            glm::vec2 tetraktysPoints[10] = {
+                // Row 1 (1 point)
+                {0.0f, 0.75f},
+                // Row 2 (2 points)
+                {-0.25f, 0.25f}, {0.25f, 0.25f},
+                // Row 3 (3 points)
+                {-0.5f, -0.25f}, {0.0f, -0.25f}, {0.5f, -0.25f},
+                // Row 4 (4 points)
+                {-0.75f, -0.75f}, {-0.25f, -0.75f}, {0.25f, -0.75f}, {0.75f, -0.75f}
+            };
             
-            newPosition = pattern.center + glm::vec3(x * 0.1f, y * 0.1f, 0.0f);
+            glm::vec3 pointCenter = pattern.center + currentAmplitude * glm::vec3(
+                tetraktysPoints[pointIndex].x,
+                tetraktysPoints[pointIndex].y,
+                0.0f
+            );
+            
+            newPosition = pointCenter + currentAmplitude * 0.1f * glm::vec3(
+                std::cos(angle),
+                std::sin(angle),
+                0.0f
+            );
             break;
         }
     }

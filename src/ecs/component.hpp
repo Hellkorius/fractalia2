@@ -70,21 +70,22 @@ struct Bounds {
     bool dynamic{true}; // Updates with transform changes
 };
 
-// Fractal movement patterns for beautiful entity motion
+// Sacred Geometry movement patterns for spiritual and natural beauty
 enum class MovementType {
-    Linear,          // Simple linear movement
-    Orbital,         // Circular/elliptical orbits
-    Spiral,          // Logarithmic spiral
-    Lissajous,       // Complex periodic patterns
-    Brownian,        // Random walk
-    Fractal,         // Self-similar recursive patterns
-    Wave,            // Sine/cosine wave patterns
-    Petal,           // Rose curve patterns
-    Butterfly        // Butterfly curve
+    FlowerOfLife,    // Overlapping circles in sacred pattern
+    SeedOfLife,      // Seven-circle pattern within Flower of Life
+    VesicaPiscis,    // Two overlapping circles creating sacred lens
+    SriYantra,       // Interlocking triangles forming cosmic diagram
+    PlatonicSolids,  // 2D projections of regular polyhedra
+    FibonacciSpiral, // Golden spiral found throughout nature
+    GoldenRatio,     // Patterns based on phi (1.618...)
+    Metatron,        // Metatron's Cube - all Platonic solids within
+    TreeOfLife,      // Kabbalistic sephirot pattern
+    TetraktysFlow    // Sacred Pythagorean triangle arrangement
 };
 
 struct MovementPattern {
-    MovementType type{MovementType::Linear};
+    MovementType type{MovementType::FlowerOfLife};
     
     // Universal parameters
     float amplitude{1.0f};      // Size/scale of pattern
@@ -96,14 +97,16 @@ struct MovementPattern {
     glm::vec3 center{0.0f};     // Center point for orbits/spirals
     glm::vec3 axis{0.0f, 0.0f, 1.0f}; // Rotation axis
     
-    // Fractal parameters
-    float recursionDepth{3.0f}; // Depth of fractal recursion
-    float selfSimilarity{0.618f}; // Golden ratio for aesthetics
+    // Sacred Geometry parameters
+    float goldenRatio{1.618033988749f}; // Phi - the divine proportion
+    float circleRadius{1.0f};    // Base radius for circular patterns
+    int petalCount{6};           // Number of petals/circles for patterns
+    float vesicaRatio{0.866025f}; // sqrt(3)/2 for vesica piscis
     
     // Advanced parameters
     float decay{0.0f};          // Amplitude decay over time
     float phaseShift{0.0f};     // Phase shift rate
-    glm::vec2 lissajousRatio{3.0f, 2.0f}; // Frequency ratios for Lissajous
+    float spiralGrowth{0.1f};   // Growth rate for spiral patterns
     
     // Runtime state
     mutable float totalTime{0.0f};
