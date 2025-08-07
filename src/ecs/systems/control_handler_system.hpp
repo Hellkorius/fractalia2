@@ -18,9 +18,5 @@ namespace ControlHandler {
     // Individual control handler functions
     void handleApplicationControls(World& world, bool& running);
     void handleEntityCreation(World& world);
-    void handlePatternSwitching(World& world);
     void handlePerformanceControls(World& world);
-    
-    // Helper function to switch all entities to a specific movement pattern
-    void switchAllEntitiesToPattern(flecs::world& world, MovementType pattern, const std::string& patternName);
 }

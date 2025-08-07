@@ -7,7 +7,7 @@
 #include "ecs/world.hpp"
 #include "ecs/systems/render_system.cpp"
 #include "ecs/systems/physics_system.hpp"
-#include "ecs/systems/fractal_movement_system.hpp"
+#include "ecs/systems/movement_system.hpp"
 #include "ecs/systems/input_system.hpp"
 #include "ecs/systems/camera_system.hpp"
 #include "ecs/systems/control_handler_system.hpp"
@@ -59,9 +59,9 @@ int main(int argc, char* argv[]) {
 
     World world;
 
-    // Beautiful fractal movement system with dynamic colors
+    // Simple petal movement system with dynamic colors
     world.getFlecsWorld().system<Transform, MovementPattern>()
-        .each(fractal_movement_system);
+        .each(movement_system);
         
     // Velocity-based movement for entities without movement patterns
     world.getFlecsWorld().system<Transform, Velocity>()
@@ -163,8 +163,7 @@ int main(int argc, char* argv[]) {
         // Profile the main update loop
         PROFILE_BEGIN_FRAME();
         
-        // Reset movement system caches for optimal performance
-        reset_movement_frame_cache();
+        // Movement system update (no caches needed)
         
         {
             PROFILE_SCOPE("ECS Update");

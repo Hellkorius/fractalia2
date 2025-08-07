@@ -5,12 +5,12 @@
 namespace ControlHandler {
     
     void initialize(World& world) {
-        std::cout << "\n=== Fractal ECS Demo Controls ===" << std::endl;
+        std::cout << "\n=== Simple Petal Movement Demo Controls ===" << std::endl;
         std::cout << "ESC: Exit" << std::endl;
         std::cout << "P: Print detailed performance report" << std::endl;
-        std::cout << "+/=: Add 100 more fractal entities" << std::endl;
+        std::cout << "+/=: Add 1000 more entities" << std::endl;
         std::cout << "-: Show current performance stats" << std::endl;
-        std::cout << "Left Click: Create entity with fractal movement at mouse position" << std::endl;
+        std::cout << "Left Click: Create entity with petal movement at mouse position" << std::endl;
         std::cout << "\nCamera Controls:" << std::endl;
         std::cout << "WASD: Move camera" << std::endl;
         std::cout << "Q/E: Move camera up/down" << std::endl;
@@ -19,16 +19,14 @@ namespace ControlHandler {
         std::cout << "Shift: Speed boost | Ctrl: Precision mode" << std::endl;
         std::cout << "Space: Reset camera to origin" << std::endl;
         std::cout << "C: Print camera info" << std::endl;
-        std::cout << "\nFractal Movement Patterns Active:" << std::endl;
-        std::cout << "• Linear, Orbital, Spiral, Lissajous" << std::endl;
-        std::cout << "• Brownian, Fractal, Wave, Petal, Butterfly" << std::endl;
-        std::cout << "=====================================\n" << std::endl;
+        std::cout << "\nSimple Petal Movement:" << std::endl;
+        std::cout << "• Entities emanate from center and return in petal pattern" << std::endl;
+        std::cout << "===============================================\n" << std::endl;
     }
     
     void processControls(World& world, bool& running) {
         handleApplicationControls(world, running);
         handleEntityCreation(world);
-        handlePatternSwitching(world);
         handlePerformanceControls(world);
     }
     
@@ -48,7 +46,7 @@ namespace ControlHandler {
         // Add more entities (stress test)
         if (InputQuery::isKeyPressed(flecsWorld, SDL_SCANCODE_EQUALS) || 
             InputQuery::isKeyPressed(flecsWorld, SDL_SCANCODE_KP_PLUS)) {
-            std::cout << "Adding 1000 more fractal entities..." << std::endl;
+            std::cout << "Adding 1000 more entities with petal movement..." << std::endl;
             auto newEntities = world.getEntityFactory().createSwarm(1000, glm::vec3(0.0f), 1.5f);
             auto worldStats = world.getStats();
             std::cout << "Total entities now: " << worldStats.memoryStats.activeEntities << std::endl;
@@ -57,43 +55,17 @@ namespace ControlHandler {
         // Create entity at mouse position
         if (InputQuery::isMouseButtonPressed(flecsWorld, 0)) { // Left mouse button
             glm::vec2 mouseWorldPos = InputQuery::getMouseWorldPosition(flecsWorld);
-            std::cout << "Creating fractal entity at mouse position: " << mouseWorldPos.x << ", " << mouseWorldPos.y << std::endl;
+            std::cout << "Creating petal movement entity at mouse position: " << mouseWorldPos.x << ", " << mouseWorldPos.y << std::endl;
             
-            auto mouseEntity = world.getEntityFactory().createFractalEntity(
+            auto mouseEntity = world.getEntityFactory().createMovingEntity(
                 glm::vec3(mouseWorldPos.x, mouseWorldPos.y, 0.0f)
             );
             if (mouseEntity.is_valid()) {
-                std::cout << "Created entity with fractal movement pattern" << std::endl;
+                std::cout << "Created entity with petal movement pattern" << std::endl;
             }
         }
     }
     
-    void handlePatternSwitching(World& world) {
-        flecs::world& flecsWorld = world.getFlecsWorld();
-        
-        // Sacred Geometry pattern switching with number keys (1-0)
-        if (InputQuery::isKeyPressed(flecsWorld, SDL_SCANCODE_1)) {
-            switchAllEntitiesToPattern(flecsWorld, MovementType::FlowerOfLife, "Flower of Life");
-        } else if (InputQuery::isKeyPressed(flecsWorld, SDL_SCANCODE_2)) {
-            switchAllEntitiesToPattern(flecsWorld, MovementType::SeedOfLife, "Seed of Life");
-        } else if (InputQuery::isKeyPressed(flecsWorld, SDL_SCANCODE_3)) {
-            switchAllEntitiesToPattern(flecsWorld, MovementType::VesicaPiscis, "Vesica Piscis");
-        } else if (InputQuery::isKeyPressed(flecsWorld, SDL_SCANCODE_4)) {
-            switchAllEntitiesToPattern(flecsWorld, MovementType::SriYantra, "Sri Yantra");
-        } else if (InputQuery::isKeyPressed(flecsWorld, SDL_SCANCODE_5)) {
-            switchAllEntitiesToPattern(flecsWorld, MovementType::PlatonicSolids, "Platonic Solids");
-        } else if (InputQuery::isKeyPressed(flecsWorld, SDL_SCANCODE_6)) {
-            switchAllEntitiesToPattern(flecsWorld, MovementType::FibonacciSpiral, "Fibonacci Spiral");
-        } else if (InputQuery::isKeyPressed(flecsWorld, SDL_SCANCODE_7)) {
-            switchAllEntitiesToPattern(flecsWorld, MovementType::GoldenRatio, "Golden Ratio");
-        } else if (InputQuery::isKeyPressed(flecsWorld, SDL_SCANCODE_8)) {
-            switchAllEntitiesToPattern(flecsWorld, MovementType::Metatron, "Metatron's Cube");
-        } else if (InputQuery::isKeyPressed(flecsWorld, SDL_SCANCODE_9)) {
-            switchAllEntitiesToPattern(flecsWorld, MovementType::TreeOfLife, "Tree of Life");
-        } else if (InputQuery::isKeyPressed(flecsWorld, SDL_SCANCODE_0)) {
-            switchAllEntitiesToPattern(flecsWorld, MovementType::TetraktysFlow, "Tetraktys Flow");
-        }
-    }
     
     void handlePerformanceControls(World& world) {
         flecs::world& flecsWorld = world.getFlecsWorld();
@@ -115,12 +87,4 @@ namespace ControlHandler {
         }
     }
     
-    void switchAllEntitiesToPattern(flecs::world& world, MovementType pattern, const std::string& patternName) {
-        std::cout << "Switching all entities to " << patternName << " pattern around origin..." << std::endl;
-        world.each([pattern](flecs::entity e, MovementPattern& movementPattern) {
-            movementPattern.type = pattern;
-            movementPattern.center = glm::vec3(0.0f, 0.0f, 0.0f); // Set center to origin
-            movementPattern.initialized = false; // Reset pattern initialization
-        });
-    }
 }

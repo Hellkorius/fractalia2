@@ -27,7 +27,7 @@ fractalia2/
 ├── mingw-w64-toolchain.cmake   # Generated CMake toolchain file
 ├── src/
 │   ├── main.cpp                # Main application entry point
-	├─PolygonFactory.*			# Polygon generation
+	├─ PolygonFactory.*			# Polygon generation
 	├─ vulkan_renderer.*      // master frame loop
 		├──vulkan/
 			├─ vulkan_context.*      // instance & device
@@ -44,10 +44,12 @@ fractalia2/
 	├── render_batch.hpp		//RenderInstance struct and RenderBatch class for managing and sorting render instances by layer for efficient GPU batch processing.
 	├── world.hpp               // World wrapper around flecs::world
 	├── system.hpp              // Base System interface
+	├── system_scheduler.hpp
 	├──	camera_component.hpp
 	└── systems/
 		├── physics_system.*  	// Movement & rotation logic
 		├── input_system.*		// input
+		├── movement_system.* //simple petal movement
 		├── camera_system.*		// camera
 		├──	control_handler_system.* //controls
 		└── render_system.cpp   // Vulkan-aware RenderSystem		

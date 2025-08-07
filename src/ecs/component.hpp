@@ -70,47 +70,25 @@ struct Bounds {
     bool dynamic{true}; // Updates with transform changes
 };
 
-// Sacred Geometry movement patterns for spiritual and natural beauty
+// Simple movement type for petal movement
 enum class MovementType {
-    FlowerOfLife,    // Overlapping circles in sacred pattern
-    SeedOfLife,      // Seven-circle pattern within Flower of Life
-    VesicaPiscis,    // Two overlapping circles creating sacred lens
-    SriYantra,       // Interlocking triangles forming cosmic diagram
-    PlatonicSolids,  // 2D projections of regular polyhedra
-    FibonacciSpiral, // Golden spiral found throughout nature
-    GoldenRatio,     // Patterns based on phi (1.618...)
-    Metatron,        // Metatron's Cube - all Platonic solids within
-    TreeOfLife,      // Kabbalistic sephirot pattern
-    TetraktysFlow    // Sacred Pythagorean triangle arrangement
+    Petal  // Simple petal movement - emanate from center and return
 };
 
 struct MovementPattern {
-    MovementType type{MovementType::FlowerOfLife};
+    MovementType type{MovementType::Petal};
     
-    // Universal parameters
+    // Basic movement parameters
     float amplitude{1.0f};      // Size/scale of pattern
     float frequency{1.0f};      // Speed/frequency of oscillation
     float phase{0.0f};          // Phase offset for variation
     float timeOffset{0.0f};     // Individual timing offset
     
-    // Pattern-specific parameters
-    glm::vec3 center{0.0f};     // Center point for orbits/spirals
-    glm::vec3 axis{0.0f, 0.0f, 1.0f}; // Rotation axis
-    
-    // Sacred Geometry parameters
-    float goldenRatio{1.618033988749f}; // Phi - the divine proportion
-    float circleRadius{1.0f};    // Base radius for circular patterns
-    int petalCount{6};           // Number of petals/circles for patterns
-    float vesicaRatio{0.866025f}; // sqrt(3)/2 for vesica piscis
-    
-    // Advanced parameters
-    float decay{0.0f};          // Amplitude decay over time
-    float phaseShift{0.0f};     // Phase shift rate
-    float spiralGrowth{0.1f};   // Growth rate for spiral patterns
+    // Center point for movement
+    glm::vec3 center{0.0f};
     
     // Runtime state
     mutable float totalTime{0.0f};
-    mutable glm::vec3 lastPosition{0.0f};
     mutable bool initialized{false};
 };
 
