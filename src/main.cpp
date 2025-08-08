@@ -5,9 +5,7 @@
 #include "vulkan_renderer.h"
 #include "PolygonFactory.h"
 #include "ecs/world.hpp"
-#include "ecs/systems/render_system.cpp"
-#include "ecs/systems/physics_system.hpp"
-#include "ecs/systems/movement_system.hpp"
+#include "ecs/systems/lifetime_system.hpp"
 #include "ecs/systems/input_system.hpp"
 #include "ecs/systems/camera_system.hpp"
 #include "ecs/systems/control_handler_system.hpp"
@@ -60,12 +58,7 @@ int main(int argc, char* argv[]) {
 
     World world;
 
-    // NOTE: Movement systems disabled - now handled by GPU compute shader
-    // world.getFlecsWorld().system<Transform, MovementPattern>()
-    //     .each(movement_system);
-    //     
-    // world.getFlecsWorld().system<Transform, Velocity>()
-    //     .each(velocity_movement_system);
+    // NOTE: Movement systems removed - now handled by GPU compute shader
         
     world.getFlecsWorld().system<Lifetime>()
         .each(lifetime_system);
@@ -93,8 +86,7 @@ int main(int argc, char* argv[]) {
     // Set world reference in renderer for camera integration
     renderer.setWorld(&world.getFlecsWorld());
     
-    // Initialize render system
-    RenderSystem renderSystem(&renderer, world.getFlecsWorld());
+    // NOTE: Legacy CPU render system removed - entities now render directly via GPU compute
     
     // Configure profiler for 60 FPS
     Profiler::getInstance().setTargetFrameTime(TARGET_FRAME_TIME);
@@ -175,17 +167,7 @@ int main(int argc, char* argv[]) {
             }
         }
 
-        // Only update render system when there are ECS changes (entity creation/destruction)
-        // For GPU entities, the compute pipeline handles all movement/rendering
-        static uint32_t lastEntityCount = 0;
-        uint32_t currentEntityCount = static_cast<uint32_t>(world.getFlecsWorld().count<Renderable>());
-        
-        if (currentEntityCount != lastEntityCount) {
-            PROFILE_SCOPE("Render System - ECS Changes");
-            renderSystem.update();
-            lastEntityCount = currentEntityCount;
-            std::cout << "ECS entities updated: " << currentEntityCount << std::endl;
-        }
+        // NOTE: Legacy CPU render system update removed - GPU entities render directly
         
 
         {

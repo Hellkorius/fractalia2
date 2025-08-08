@@ -1,4 +1,5 @@
 #include "vulkan_renderer.h"
+#include "vulkan/vulkan_function_loader.h"
 #include "vulkan/vulkan_context.h"
 #include "vulkan/vulkan_swapchain.h"
 #include "vulkan/vulkan_pipeline.h"
@@ -32,8 +33,15 @@ VulkanRenderer::~VulkanRenderer() {
 bool VulkanRenderer::initialize(SDL_Window* window) {
     this->window = window;
     
+    // Initialize centralized function loader first
+    functionLoader = std::make_unique<VulkanFunctionLoader>();
+    if (!functionLoader->initialize(window)) {
+        std::cerr << "Failed to initialize Vulkan function loader" << std::endl;
+        return false;
+    }
+    
     context = std::make_unique<VulkanContext>();
-    if (!context->initialize(window)) {
+    if (!context->initialize(window, functionLoader.get())) {
         std::cerr << "Failed to initialize Vulkan context" << std::endl;
         return false;
     }
@@ -99,7 +107,7 @@ bool VulkanRenderer::initialize(SDL_Window* window) {
     
     // Initialize GPU entity manager after sync is created
     gpuEntityManager = std::make_unique<GPUEntityManager>();
-    if (!gpuEntityManager->initialize(context.get(), sync.get())) {
+    if (!gpuEntityManager->initialize(context.get(), sync.get(), functionLoader.get())) {
         std::cerr << "Failed to initialize GPU entity manager" << std::endl;
         return false;
     }
@@ -123,8 +131,8 @@ bool VulkanRenderer::initialize(SDL_Window* window) {
 }
 
 void VulkanRenderer::cleanup() {
-    if (context && context->getDevice() != VK_NULL_HANDLE) {
-        context->vkDeviceWaitIdle(context->getDevice());
+    if (functionLoader && context && context->getDevice() != VK_NULL_HANDLE) {
+        functionLoader->vkDeviceWaitIdle(context->getDevice());
     }
     
     gpuEntityManager.reset();
@@ -134,6 +142,7 @@ void VulkanRenderer::cleanup() {
     pipeline.reset();
     swapchain.reset();
     context.reset();
+    functionLoader.reset();
     
     initialized = false;
 }

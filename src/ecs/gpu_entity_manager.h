@@ -57,6 +57,7 @@ struct GPUEntity {
 // Forward declaration
 class VulkanContext;
 class VulkanSync;
+class VulkanFunctionLoader;
 
 // Manages GPU entity storage and CPU->GPU handover
 class GPUEntityManager {
@@ -64,7 +65,7 @@ public:
     GPUEntityManager();
     ~GPUEntityManager();
     
-    bool initialize(VulkanContext* context, VulkanSync* sync);
+    bool initialize(VulkanContext* context, VulkanSync* sync, VulkanFunctionLoader* loader);
     void cleanup();
     
     // Entity management
@@ -96,6 +97,7 @@ private:
     
     VulkanContext* context = nullptr;
     VulkanSync* sync = nullptr;
+    VulkanFunctionLoader* loader = nullptr;
     
     // Double-buffered storage for compute pipeline
     VkBuffer entityBuffers[2] = {VK_NULL_HANDLE, VK_NULL_HANDLE};
@@ -112,26 +114,9 @@ private:
     VkDescriptorSetLayout computeDescriptorSetLayout = VK_NULL_HANDLE;
     VkDescriptorSet computeDescriptorSets[2] = {VK_NULL_HANDLE, VK_NULL_HANDLE};
     
-    // Function pointers
-    PFN_vkCreateBuffer vkCreateBuffer = nullptr;
-    PFN_vkDestroyBuffer vkDestroyBuffer = nullptr;
-    PFN_vkGetBufferMemoryRequirements vkGetBufferMemoryRequirements = nullptr;
-    PFN_vkBindBufferMemory vkBindBufferMemory = nullptr;
-    PFN_vkAllocateMemory vkAllocateMemory = nullptr;
-    PFN_vkFreeMemory vkFreeMemory = nullptr;
-    PFN_vkMapMemory vkMapMemory = nullptr;
-    PFN_vkUnmapMemory vkUnmapMemory = nullptr;
-    PFN_vkCreateDescriptorPool vkCreateDescriptorPool = nullptr;
-    PFN_vkDestroyDescriptorPool vkDestroyDescriptorPool = nullptr;
-    PFN_vkCreateDescriptorSetLayout vkCreateDescriptorSetLayout = nullptr;
-    PFN_vkDestroyDescriptorSetLayout vkDestroyDescriptorSetLayout = nullptr;
-    PFN_vkAllocateDescriptorSets vkAllocateDescriptorSets = nullptr;
-    PFN_vkUpdateDescriptorSets vkUpdateDescriptorSets = nullptr;
-    PFN_vkGetPhysicalDeviceMemoryProperties vkGetPhysicalDeviceMemoryProperties = nullptr;
+    // Note: Function pointers removed - now using centralized VulkanFunctionLoader
     
-    void loadFunctions();
     bool createEntityBuffers();
     bool createComputeDescriptorPool();
     bool createComputeDescriptorSetLayout();
-    uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties);
 };

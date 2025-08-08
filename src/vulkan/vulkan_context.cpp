@@ -1,4 +1,5 @@
 #include "vulkan_context.h"
+#include "vulkan_function_loader.h"
 #include <iostream>
 #include <set>
 #include <algorithm>
@@ -24,7 +25,7 @@ VulkanContext::~VulkanContext() {
     cleanup();
 }
 
-bool VulkanContext::initialize(SDL_Window* window) {
+bool VulkanContext::initialize(SDL_Window* window, VulkanFunctionLoader* loader) {
     this->window = window;
     
     if (!loadVulkanFunctions()) {
@@ -35,6 +36,12 @@ bool VulkanContext::initialize(SDL_Window* window) {
     if (!createInstance()) {
         std::cerr << "Failed to create Vulkan instance" << std::endl;
         return false;
+    }
+    
+    // Update shared function loader with instance handle
+    if (loader) {
+        loader->setInstance(instance);
+        loader->loadPostInstanceFunctions();
     }
     
     if (!createSurface()) {
@@ -50,6 +57,15 @@ bool VulkanContext::initialize(SDL_Window* window) {
     if (!createLogicalDevice()) {
         std::cerr << "Failed to create logical device" << std::endl;
         return false;
+    }
+    
+    // Update shared function loader with device handles
+    if (loader) {
+        loader->setDevice(device, physicalDevice);
+        if (!loader->loadPostDeviceFunctions()) {
+            std::cerr << "Failed to load device functions in shared loader" << std::endl;
+            return false;
+        }
     }
     
     return true;

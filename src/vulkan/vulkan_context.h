@@ -21,7 +21,7 @@ public:
     VulkanContext();
     ~VulkanContext();
 
-    bool initialize(SDL_Window* window);
+    bool initialize(SDL_Window* window, class VulkanFunctionLoader* loader = nullptr);
     void cleanup();
 
     VkInstance getInstance() const { return instance; }
