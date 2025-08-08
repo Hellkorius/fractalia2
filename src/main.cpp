@@ -174,9 +174,16 @@ int main(int argc, char* argv[]) {
             }
         }
 
-        {
-            PROFILE_SCOPE("Render System");
+        // Only update render system when there are ECS changes (entity creation/destruction)
+        // For GPU entities, the compute pipeline handles all movement/rendering
+        static uint32_t lastEntityCount = 0;
+        uint32_t currentEntityCount = static_cast<uint32_t>(world.getFlecsWorld().count<Renderable>());
+        
+        if (currentEntityCount != lastEntityCount) {
+            PROFILE_SCOPE("Render System - ECS Changes");
             renderSystem.update();
+            lastEntityCount = currentEntityCount;
+            std::cout << "ECS entities updated: " << currentEntityCount << std::endl;
         }
         
 
