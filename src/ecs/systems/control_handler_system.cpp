@@ -8,6 +8,7 @@ namespace ControlHandler {
     
     // Global movement type state (0=Petal, 1=Orbit, 2=Wave)
     int g_currentMovementType = 0;
+    bool g_angelModeEnabled = false;
     
     void initialize(World& world) {
         std::cout << "\n=== GPU Compute Movement Demo Controls ===" << std::endl;
@@ -17,6 +18,7 @@ namespace ControlHandler {
         std::cout << "-: Show current GPU performance stats" << std::endl;
         std::cout << "Left Click: Create GPU entity with movement at mouse position" << std::endl;
         std::cout << "0/1/2: Switch movement pattern (0=Petal, 1=Orbit, 2=Wave)" << std::endl;
+        std::cout << "CAPS LOCK: Toggle Angel Mode (epic transition effect)" << std::endl;
         std::cout << "\nCamera Controls:" << std::endl;
         std::cout << "WASD: Move camera" << std::endl;
         std::cout << "Q/E: Move camera up/down" << std::endl;
@@ -120,6 +122,13 @@ namespace ControlHandler {
     void handleMovementTypeControls(World& world, VulkanRenderer* renderer) {
         flecs::world& flecsWorld = world.getFlecsWorld();
         
+        // Handle Angel Mode toggle (CAPS LOCK)
+        if (InputQuery::isKeyPressed(flecsWorld, SDL_SCANCODE_CAPSLOCK)) {
+            g_angelModeEnabled = !g_angelModeEnabled;
+            std::cout << "Angel Mode " << (g_angelModeEnabled ? "ENABLED" : "DISABLED") 
+                      << " - " << (g_angelModeEnabled ? "Biblical transitions via origin" : "Direct organic transitions") << std::endl;
+        }
+        
         // Handle movement type switching (0, 1, 2)
         if (InputQuery::isKeyPressed(flecsWorld, SDL_SCANCODE_0)) {
             g_currentMovementType = 0;
@@ -127,7 +136,7 @@ namespace ControlHandler {
             
             // Update all existing GPU entities
             if (renderer && renderer->getGPUEntityManager()) {
-                renderer->getGPUEntityManager()->updateAllMovementTypes(0);
+                renderer->getGPUEntityManager()->updateAllMovementTypes(0, g_angelModeEnabled);
             }
         }
         else if (InputQuery::isKeyPressed(flecsWorld, SDL_SCANCODE_1)) {
@@ -136,7 +145,7 @@ namespace ControlHandler {
             
             // Update all existing GPU entities
             if (renderer && renderer->getGPUEntityManager()) {
-                renderer->getGPUEntityManager()->updateAllMovementTypes(1);
+                renderer->getGPUEntityManager()->updateAllMovementTypes(1, g_angelModeEnabled);
             }
         }
         else if (InputQuery::isKeyPressed(flecsWorld, SDL_SCANCODE_2)) {
@@ -145,7 +154,7 @@ namespace ControlHandler {
             
             // Update all existing GPU entities
             if (renderer && renderer->getGPUEntityManager()) {
-                renderer->getGPUEntityManager()->updateAllMovementTypes(2);
+                renderer->getGPUEntityManager()->updateAllMovementTypes(2, g_angelModeEnabled);
             }
         }
     }

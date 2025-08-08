@@ -7,13 +7,20 @@ layout(local_size_x = 64) in;
 #define MOVEMENT_ORBIT 1
 #define MOVEMENT_WAVE 2
 
+// Transition system constants
+#define TRANSITION_DURATION 2.0  // Total transition time in seconds
+#define TRANSITION_TO_ORIGIN 0.0   // Phase 0: Moving to origin (0,0)
+#define TRANSITION_TO_TARGET 1.0   // Phase 1: Moving from origin to target center
+#define ORGANIC_TRANSITION_DURATION 1.0  // Organic transition time
+#define ORGANIC_TRANSITION_MARKER 1000.0 // Special marker for organic mode
+
 // GPU entity structure - matches CPU-side GPUEntity
 struct GPUEntity {
     mat4 modelMatrix;        // Transform matrix
     vec4 color;              // RGBA color
     vec4 movementParams0;    // amplitude, frequency, phase, timeOffset  
     vec4 movementParams1;    // center.xyz, movementType
-    vec4 runtimeState;       // totalTime, initialized, reserved, reserved
+    vec4 runtimeState;       // totalTime, initialized, transitionTime, transitionPhase
 };
 
 // Storage buffers - double buffered for compute/graphics
@@ -67,6 +74,33 @@ vec3 computeWaveMovement(vec3 center, float amplitude, float frequency, float ph
     );
 }
 
+// Smooth transition system - entities move to origin, then to new center (Angel Mode)
+vec3 computeTransitionMovement(vec3 currentPos, vec3 targetCenter, float transitionTime, float transitionPhase) {
+    float halfDuration = TRANSITION_DURATION * 0.5;
+    
+    if (transitionPhase < 0.5) {
+        // Phase 0: Move from current position to origin (0,0)
+        float t = clamp(transitionTime / halfDuration, 0.0, 1.0);
+        // Smooth easing function (ease-in-out)
+        t = t * t * (3.0 - 2.0 * t);
+        return mix(currentPos, vec3(0.0, 0.0, 0.0), t);
+    } else {
+        // Phase 1: Move from origin to target center
+        float t = clamp((transitionTime - halfDuration) / halfDuration, 0.0, 1.0);
+        // Smooth easing function (ease-in-out)
+        t = t * t * (3.0 - 2.0 * t);
+        return mix(vec3(0.0, 0.0, 0.0), targetCenter, t);
+    }
+}
+
+// Organic transition system - entities move directly to their target position in the new pattern
+vec3 computeOrganicTransition(vec3 currentPos, vec3 targetPos, float transitionTime) {
+    float t = clamp(transitionTime / ORGANIC_TRANSITION_DURATION, 0.0, 1.0);
+    // Smooth easing function (ease-in-out)
+    t = t * t * (3.0 - 2.0 * t);
+    return mix(currentPos, targetPos, t);
+}
+
 // Dynamic color generation based on movement
 vec4 generateDynamicColor(float amplitude, float frequency, float phase, float totalTime) {
     // HSV-style color generation
@@ -104,6 +138,8 @@ void main() {
     // Update runtime state
     float totalTime = entity.runtimeState.x + pc.deltaTime;
     bool initialized = entity.runtimeState.y > 0.5;
+    float transitionTime = entity.runtimeState.z;
+    float transitionPhase = entity.runtimeState.w;
     
     // Extract movement parameters
     float amplitude = entity.movementParams0.x;
@@ -113,9 +149,12 @@ void main() {
     vec3 center = entity.movementParams1.xyz;
     uint movementType = uint(entity.movementParams1.w);
     
+    // Get current position
+    vec3 currentPos = vec3(entity.modelMatrix[3][0], entity.modelMatrix[3][1], entity.modelMatrix[3][2]);
+    
     // Initialize center if first frame
     if (!initialized) {
-        center = vec3(entity.modelMatrix[3][0], entity.modelMatrix[3][1], entity.modelMatrix[3][2]);
+        center = currentPos;
         entity.movementParams1.xyz = center;
         initialized = true;
     }
@@ -123,21 +162,80 @@ void main() {
     // Apply time offset
     float adjustedTime = totalTime + timeOffset;
     
-    // Compute new position based on movement type
     vec3 newPosition;
-    switch (movementType) {
-        case MOVEMENT_PETAL:
-            newPosition = computePetalMovement(center, amplitude, frequency, phase, adjustedTime);
-            break;
-        case MOVEMENT_ORBIT:
-            newPosition = computeOrbitMovement(center, amplitude, frequency, phase, adjustedTime);
-            break;
-        case MOVEMENT_WAVE:
-            newPosition = computeWaveMovement(center, amplitude, frequency, phase, adjustedTime);
-            break;
-        default:
-            newPosition = computePetalMovement(center, amplitude, frequency, phase, adjustedTime);
-            break;
+    
+    // Check if we're in transition mode
+    if (transitionTime >= 0.0 && transitionTime < TRANSITION_DURATION) {
+        // Angel Mode: Biblical transition via origin
+        transitionTime += pc.deltaTime;
+        
+        // Update transition phase
+        if (transitionTime >= TRANSITION_DURATION * 0.5 && transitionPhase < 0.5) {
+            transitionPhase = 1.0;  // Switch to phase 1
+        }
+        
+        // Compute transition movement
+        newPosition = computeTransitionMovement(currentPos, center, transitionTime, transitionPhase);
+        
+        // Check if transition is complete
+        if (transitionTime >= TRANSITION_DURATION) {
+            transitionTime = -1.0;  // Mark transition as complete
+            transitionPhase = 0.0;
+            // Update center to origin for new movement pattern
+            center = vec3(0.0, 0.0, 0.0);
+            entity.movementParams1.xyz = center;
+        }
+    } else if (transitionTime >= ORGANIC_TRANSITION_MARKER) {
+        // Organic Mode: Direct transition to target position
+        float organicTime = transitionTime - ORGANIC_TRANSITION_MARKER;
+        organicTime += pc.deltaTime;
+        
+        // Calculate where the entity should be in the new movement pattern
+        // Use the entity's original center (preserved from before transition)
+        vec3 targetPosition;
+        switch (movementType) {
+            case MOVEMENT_PETAL:
+                targetPosition = computePetalMovement(center, amplitude, frequency, phase, adjustedTime);
+                break;
+            case MOVEMENT_ORBIT:
+                targetPosition = computeOrbitMovement(center, amplitude, frequency, phase, adjustedTime);
+                break;
+            case MOVEMENT_WAVE:
+                targetPosition = computeWaveMovement(center, amplitude, frequency, phase, adjustedTime);
+                break;
+            default:
+                targetPosition = computePetalMovement(center, amplitude, frequency, phase, adjustedTime);
+                break;
+        }
+        
+        // Compute organic transition movement
+        newPosition = computeOrganicTransition(currentPos, targetPosition, organicTime);
+        
+        // Check if organic transition is complete
+        if (organicTime >= ORGANIC_TRANSITION_DURATION) {
+            transitionTime = -1.0;  // Mark transition as complete
+            // DON'T reset center in organic mode - keep each entity's original center
+            // This preserves the individual movement patterns
+        } else {
+            // Store updated organic time
+            transitionTime = ORGANIC_TRANSITION_MARKER + organicTime;
+        }
+    } else {
+        // Normal movement pattern computation
+        switch (movementType) {
+            case MOVEMENT_PETAL:
+                newPosition = computePetalMovement(center, amplitude, frequency, phase, adjustedTime);
+                break;
+            case MOVEMENT_ORBIT:
+                newPosition = computeOrbitMovement(center, amplitude, frequency, phase, adjustedTime);
+                break;
+            case MOVEMENT_WAVE:
+                newPosition = computeWaveMovement(center, amplitude, frequency, phase, adjustedTime);
+                break;
+            default:
+                newPosition = computePetalMovement(center, amplitude, frequency, phase, adjustedTime);
+                break;
+        }
     }
     
     // Update transform matrix with new position
@@ -151,6 +249,8 @@ void main() {
     // Update runtime state
     entity.runtimeState.x = totalTime;
     entity.runtimeState.y = initialized ? 1.0 : 0.0;
+    entity.runtimeState.z = transitionTime;
+    entity.runtimeState.w = transitionPhase;
     
     // Write to output buffer
     entitiesOut[index] = entity;

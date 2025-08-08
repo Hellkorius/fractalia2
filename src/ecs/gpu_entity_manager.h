@@ -46,8 +46,8 @@ struct GPUEntity {
         entity.runtimeState = glm::vec4(
             pattern.totalTime,
             pattern.initialized ? 1.0f : 0.0f,
-            0.0f, // reserved
-            0.0f  // reserved
+            -1.0f, // transitionTime: -1 means no transition
+            0.0f   // transitionPhase
         );
         
         return entity;
@@ -72,7 +72,7 @@ public:
     void addEntitiesFromECS(const std::vector<Entity>& entities);
     void uploadPendingEntities();
     void clearAllEntities();
-    void updateAllMovementTypes(int newMovementType);
+    void updateAllMovementTypes(int newMovementType, bool angelMode = false);
     
     // GPU buffer management  
     VkBuffer getCurrentEntityBuffer() const { return entityBuffers[currentBufferIndex]; }

@@ -132,7 +132,7 @@ void GPUEntityManager::clearAllEntities() {
     pendingEntities.clear();
 }
 
-void GPUEntityManager::updateAllMovementTypes(int newMovementType) {
+void GPUEntityManager::updateAllMovementTypes(int newMovementType, bool angelMode) {
     if (activeEntityCount == 0) {
         return;
     }
@@ -145,12 +145,28 @@ void GPUEntityManager::updateAllMovementTypes(int newMovementType) {
             // Update the movementType field (w component of movementParams1)
             bufferPtr[i].movementParams1.w = static_cast<float>(newMovementType);
             
-            // Reset runtime state to reinitialize movement from current position
-            bufferPtr[i].runtimeState.y = 0.0f; // Set initialized to false
+            if (angelMode) {
+                // Angel Mode: Trigger smooth transition via origin (current behavior)
+                bufferPtr[i].runtimeState.z = 0.0f; // Start transition timer
+                bufferPtr[i].runtimeState.w = 0.0f; // Start with phase 0 (to origin)
+            } else {
+                // Organic Mode: Trigger direct transition to target position
+                bufferPtr[i].runtimeState.z = 1000.0f; // Use special value to indicate direct transition
+                bufferPtr[i].runtimeState.w = 0.0f;    // Reset phase
+            }
+            
+            // Keep initialized flag so center is preserved during transition
+            // (Don't reset runtimeState.y - keep it as initialized)
         }
     }
     
-    std::cout << "Updated movement type for " << activeEntityCount << " GPU entities to type " << newMovementType << std::endl;
+    if (angelMode) {
+        std::cout << "Started ANGEL MODE transition for " << activeEntityCount << " GPU entities to movement type " << newMovementType 
+                  << " (biblical 2-second transition via origin)" << std::endl;
+    } else {
+        std::cout << "Started organic transition for " << activeEntityCount << " GPU entities to movement type " << newMovementType 
+                  << " (direct movement to target positions)" << std::endl;
+    }
 }
 
 bool GPUEntityManager::createEntityBuffers() {

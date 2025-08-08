@@ -14,6 +14,7 @@ namespace ControlHandler {
     
     // Global movement type state
     extern int g_currentMovementType; // 0=Petal, 1=Orbit, 2=Wave
+    extern bool g_angelModeEnabled; // CAPS LOCK: Enable "biblically accurate angel" transition effect
     
     // Initialize control handler - call this after world and input setup
     void initialize(World& world);
