@@ -146,13 +146,13 @@ void GPUEntityManager::updateAllMovementTypes(int newMovementType, bool angelMod
             bufferPtr[i].movementParams1.w = static_cast<float>(newMovementType);
             
             if (angelMode) {
-                // Angel Mode: Trigger smooth transition via origin (current behavior)
-                bufferPtr[i].runtimeState.z = 0.0f; // Start transition timer
-                bufferPtr[i].runtimeState.w = 0.0f; // Start with phase 0 (to origin)
+                // Angel Mode: Trigger biblical transition via origin
+                bufferPtr[i].runtimeState.z = 0.0f; // Reset state timer
+                bufferPtr[i].runtimeState.w = 2.0f; // STATE_ANGEL_TRANSITION
             } else {
                 // Organic Mode: Trigger direct transition to target position
-                bufferPtr[i].runtimeState.z = 1000.0f; // Use special value to indicate direct transition
-                bufferPtr[i].runtimeState.w = 0.0f;    // Reset phase
+                bufferPtr[i].runtimeState.z = 0.0f; // Reset state timer
+                bufferPtr[i].runtimeState.w = 3.0f; // STATE_ORGANIC_TRANSITION
             }
             
             // Keep initialized flag so center is preserved during transition

@@ -15,13 +15,19 @@ layout(local_size_x = 64) in;
 #define ORGANIC_TRANSITION_MARKER 1000.0 // Special marker for organic mode
 #define SPAWN_LERP_DURATION 0.5  // Time to lerp from spawn to pattern position
 
+// Entity states
+#define STATE_SPAWN_LERP 0.0
+#define STATE_NORMAL 1.0
+#define STATE_ANGEL_TRANSITION 2.0
+#define STATE_ORGANIC_TRANSITION 3.0
+
 // GPU entity structure - matches CPU-side GPUEntity
 struct GPUEntity {
     mat4 modelMatrix;        // Transform matrix
     vec4 color;              // RGBA color
     vec4 movementParams0;    // amplitude, frequency, phase, timeOffset  
     vec4 movementParams1;    // center.xyz, movementType
-    vec4 runtimeState;       // totalTime, initialized, spawnLerpTime/transitionTime, transitionPhase
+    vec4 runtimeState;       // totalTime, initialized, stateTimer, entityState
 };
 
 // Storage buffers - double buffered for compute/graphics
@@ -139,8 +145,8 @@ void main() {
     // Update runtime state
     float totalTime = entity.runtimeState.x + pc.deltaTime;
     bool initialized = entity.runtimeState.y > 0.5;
-    float transitionTime = entity.runtimeState.z;
-    float transitionPhase = entity.runtimeState.w;
+    float stateTimer = entity.runtimeState.z;
+    float entityState = entity.runtimeState.w;
     
     // Extract movement parameters
     float amplitude = entity.movementParams0.x;
@@ -153,11 +159,12 @@ void main() {
     // Get current position
     vec3 currentPos = vec3(entity.modelMatrix[3][0], entity.modelMatrix[3][1], entity.modelMatrix[3][2]);
     
-    // Initialize center if first frame
+    // Initialize on first frame
     if (!initialized) {
-        center = currentPos;
-        entity.movementParams1.xyz = center;
         initialized = true;
+        entityState = STATE_SPAWN_LERP;
+        stateTimer = 0.0;
+        // Center is already correctly set from CPU with mouse click position
     }
     
     // Apply time offset
@@ -165,34 +172,62 @@ void main() {
     
     vec3 newPosition;
     
-    // Check if we're in transition mode
-    if (transitionTime >= 0.0 && transitionTime < TRANSITION_DURATION) {
-        // Angel Mode: Biblical transition via origin
-        transitionTime += pc.deltaTime;
+    // State machine
+    if (entityState == STATE_SPAWN_LERP) {
+        // Spawn lerp: entity lerps from spawn position to pattern position
+        stateTimer += pc.deltaTime;
         
-        // Update transition phase
-        if (transitionTime >= TRANSITION_DURATION * 0.5 && transitionPhase < 0.5) {
-            transitionPhase = 1.0;  // Switch to phase 1
+        // Calculate where entity should be in movement pattern
+        vec3 targetPatternPosition;
+        switch (movementType) {
+            case MOVEMENT_PETAL:
+                targetPatternPosition = computePetalMovement(center, amplitude, frequency, phase, adjustedTime);
+                break;
+            case MOVEMENT_ORBIT:
+                targetPatternPosition = computeOrbitMovement(center, amplitude, frequency, phase, adjustedTime);
+                break;
+            case MOVEMENT_WAVE:
+                targetPatternPosition = computeWaveMovement(center, amplitude, frequency, phase, adjustedTime);
+                break;
+            default:
+                targetPatternPosition = computePetalMovement(center, amplitude, frequency, phase, adjustedTime);
+                break;
         }
         
+        // Lerp from spawn position (center) to pattern position
+        float t = clamp(stateTimer / SPAWN_LERP_DURATION, 0.0, 1.0);
+        t = t * t * (3.0 - 2.0 * t); // Smooth step easing
+        newPosition = mix(center, targetPatternPosition, t);
+        
+        // Check if spawn lerp is complete
+        if (stateTimer >= SPAWN_LERP_DURATION) {
+            entityState = STATE_NORMAL;
+            stateTimer = 0.0;
+        }
+    }
+    else if (entityState == STATE_ANGEL_TRANSITION) {
+        // Angel Mode: Biblical transition via origin
+        stateTimer += pc.deltaTime;
+        
+        float transitionPhase = (stateTimer >= TRANSITION_DURATION * 0.5) ? 1.0 : 0.0;
+        
         // Compute transition movement
-        newPosition = computeTransitionMovement(currentPos, center, transitionTime, transitionPhase);
+        newPosition = computeTransitionMovement(currentPos, center, stateTimer, transitionPhase);
         
         // Check if transition is complete
-        if (transitionTime >= TRANSITION_DURATION) {
-            transitionTime = -1.0;  // Mark transition as complete
-            transitionPhase = 0.0;
+        if (stateTimer >= TRANSITION_DURATION) {
+            entityState = STATE_NORMAL;
+            stateTimer = 0.0;
             // Update center to origin for new movement pattern
             center = vec3(0.0, 0.0, 0.0);
             entity.movementParams1.xyz = center;
         }
-    } else if (transitionTime >= ORGANIC_TRANSITION_MARKER) {
+    }
+    else if (entityState == STATE_ORGANIC_TRANSITION) {
         // Organic Mode: Direct transition to target position
-        float organicTime = transitionTime - ORGANIC_TRANSITION_MARKER;
-        organicTime += pc.deltaTime;
+        stateTimer += pc.deltaTime;
         
         // Calculate where the entity should be in the new movement pattern
-        // Use the entity's original center (preserved from before transition)
         vec3 targetPosition;
         switch (movementType) {
             case MOVEMENT_PETAL:
@@ -210,18 +245,15 @@ void main() {
         }
         
         // Compute organic transition movement
-        newPosition = computeOrganicTransition(currentPos, targetPosition, organicTime);
+        newPosition = computeOrganicTransition(currentPos, targetPosition, stateTimer);
         
         // Check if organic transition is complete
-        if (organicTime >= ORGANIC_TRANSITION_DURATION) {
-            transitionTime = -1.0;  // Mark transition as complete
-            // DON'T reset center in organic mode - keep each entity's original center
-            // This preserves the individual movement patterns
-        } else {
-            // Store updated organic time
-            transitionTime = ORGANIC_TRANSITION_MARKER + organicTime;
+        if (stateTimer >= ORGANIC_TRANSITION_DURATION) {
+            entityState = STATE_NORMAL;
+            stateTimer = 0.0;
         }
-    } else {
+    }
+    else { // STATE_NORMAL
         // Normal movement pattern computation
         switch (movementType) {
             case MOVEMENT_PETAL:
@@ -250,8 +282,8 @@ void main() {
     // Update runtime state
     entity.runtimeState.x = totalTime;
     entity.runtimeState.y = initialized ? 1.0 : 0.0;
-    entity.runtimeState.z = transitionTime;
-    entity.runtimeState.w = transitionPhase;
+    entity.runtimeState.z = stateTimer;
+    entity.runtimeState.w = entityState;
     
     // Write to output buffer
     entitiesOut[index] = entity;
