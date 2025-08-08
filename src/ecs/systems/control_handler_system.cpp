@@ -70,8 +70,9 @@ namespace ControlHandler {
         
         // Create GPU entity at mouse position
         if (InputQuery::isMouseButtonPressed(flecsWorld, 0)) { // Left mouse button
+            glm::vec2 mouseScreenPos = InputQuery::getMousePosition(flecsWorld);
             glm::vec2 mouseWorldPos = InputQuery::getMouseWorldPosition(flecsWorld);
-            std::cout << "Creating GPU entity at mouse position: " << mouseWorldPos.x << ", " << mouseWorldPos.y << std::endl;
+            std::cout << "Mouse click - Screen: (" << mouseScreenPos.x << ", " << mouseScreenPos.y << ") -> World: (" << mouseWorldPos.x << ", " << mouseWorldPos.y << ")" << std::endl;
             
             if (renderer && renderer->getGPUEntityManager()) {
                 // Create entity with current movement type

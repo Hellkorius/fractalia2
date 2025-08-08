@@ -6,6 +6,9 @@
 static glm::vec2 g_previousMousePos{0.0f, 0.0f};
 static bool g_mouseInitialized = false;
 
+// Global window reference for accurate screen size calculations
+static SDL_Window* g_window = nullptr;
+
 // Input processing system function - runs on entities with all input components
 void input_processing_system(flecs::entity e, InputState& state, KeyboardInput& keyboard, 
                              MouseInput& mouse, InputEvents& events) {
@@ -33,6 +36,10 @@ namespace InputManager {
             
         std::cout << "Input entity created" << std::endl;
         return entity;
+    }
+    
+    void setWindow(SDL_Window* window) {
+        g_window = window;
     }
     
     static void handleKeyboardEvent(const SDL_Event& event, KeyboardInput& keyboard) {
@@ -79,7 +86,10 @@ namespace InputManager {
                     mouse.buttonsReleased[button] = true;
                 }
                 
-                mouse.position = glm::vec2(event.button.x, event.button.y);
+                // Update position and previous position to stay consistent with motion events
+                glm::vec2 buttonPos(event.button.x, event.button.y);
+                mouse.position = buttonPos;
+                g_previousMousePos = buttonPos;
                 break;
             }
             
@@ -191,10 +201,18 @@ namespace InputManager {
     }
     
     glm::vec2 screenToWorld(const glm::vec2& screenPos, flecs::world& world) {
+        // Get actual window size
+        glm::vec2 screenSize(800.0f, 600.0f); // Default fallback
+        if (g_window) {
+            int width, height;
+            // Mouse coords are in logical window space, so use logical size
+            SDL_GetWindowSize(g_window, &width, &height);
+            screenSize = glm::vec2(static_cast<float>(width), static_cast<float>(height));
+        }
+        
         // Use camera system for proper screen-to-world transformation
-        // Note: This is a simplified version - in production you'd get actual screen size
-        glm::vec2 screenSize(800.0f, 600.0f); // Default screen size, should be dynamic
-        return CameraManager::screenToWorld(world, screenPos, screenSize);
+        glm::vec2 worldPos = CameraManager::screenToWorld(world, screenPos, screenSize);
+        return worldPos;
     }
 }
 

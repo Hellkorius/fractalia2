@@ -13,6 +13,9 @@ namespace InputManager {
     // Initialize input singleton entity
     flecs::entity createInputEntity(flecs::world& world);
     
+    // Set the window reference for accurate screen size calculations
+    void setWindow(SDL_Window* window);
+    
     // Process SDL events manually (call this once per frame before ECS update)
     void processSDLEvents(flecs::world& world);
     

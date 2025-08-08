@@ -156,6 +156,7 @@ private:
     MovementPattern createMovementPattern(const glm::vec3& center, size_t index, size_t totalCount, MovementType type = MovementType::Petal) {
         MovementPattern pattern;
         pattern.type = type;
+        pattern.center = center; // Set the movement center!
         
         // Create variation based on entity index
         float t = static_cast<float>(index) / static_cast<float>(totalCount);
@@ -253,6 +254,7 @@ public:
         
         glm::vec4 color = glm::vec4(0.8f, 0.8f, 0.8f, 1.0f); // Neutral start - dynamic colors will be applied
         
+        // Entity spawns at mouse click, movement pattern centered at mouse click
         MovementPattern pattern = createMovementPattern(pos, 0, 1, movementType);
         
         Entity entity = create()

@@ -3,6 +3,7 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <limits>
+#include <iostream>
 
 // Camera component for 2D view control
 struct Camera {
@@ -32,9 +33,9 @@ struct Camera {
     // Get view matrix (lazy computation)
     const glm::mat4& getViewMatrix() const {
         if (viewDirty) {
-            // Create view matrix: translate to camera position, then rotate
-            viewMatrix = glm::rotate(glm::mat4(1.0f), -rotation, glm::vec3(0, 0, 1));
-            viewMatrix = glm::translate(viewMatrix, -position);
+            // Create view matrix: translate first, then rotate
+            viewMatrix = glm::translate(glm::mat4(1.0f), -position);
+            viewMatrix = glm::rotate(viewMatrix, -rotation, glm::vec3(0, 0, 1));
             viewDirty = false;
         }
         return viewMatrix;
@@ -103,10 +104,13 @@ struct Camera {
         // Normalize screen coordinates to [-1, 1]
         glm::vec2 normalized;
         normalized.x = (screenPos.x / screenSize.x) * 2.0f - 1.0f;
-        normalized.y = 1.0f - (screenPos.y / screenSize.y) * 2.0f; // Flip Y
+        normalized.y = (screenPos.y / screenSize.y) * 2.0f - 1.0f;
         
         // Apply inverse projection and view transformations
-        glm::vec4 worldPos = glm::inverse(getProjectionMatrix() * getViewMatrix()) * glm::vec4(normalized, 0.0f, 1.0f);
+        // First inverse projection (clip → view), then inverse view (view → world)
+        glm::vec4 clipPos = glm::vec4(normalized, 0.0f, 1.0f);
+        glm::vec4 viewPos = glm::inverse(getProjectionMatrix()) * clipPos;
+        glm::vec4 worldPos = glm::inverse(getViewMatrix()) * viewPos;
         return glm::vec2(worldPos.x, worldPos.y);
     }
     

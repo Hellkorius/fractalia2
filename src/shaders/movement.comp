@@ -13,6 +13,7 @@ layout(local_size_x = 64) in;
 #define TRANSITION_TO_TARGET 1.0   // Phase 1: Moving from origin to target center
 #define ORGANIC_TRANSITION_DURATION 1.0  // Organic transition time
 #define ORGANIC_TRANSITION_MARKER 1000.0 // Special marker for organic mode
+#define SPAWN_LERP_DURATION 0.5  // Time to lerp from spawn to pattern position
 
 // GPU entity structure - matches CPU-side GPUEntity
 struct GPUEntity {
@@ -20,7 +21,7 @@ struct GPUEntity {
     vec4 color;              // RGBA color
     vec4 movementParams0;    // amplitude, frequency, phase, timeOffset  
     vec4 movementParams1;    // center.xyz, movementType
-    vec4 runtimeState;       // totalTime, initialized, transitionTime, transitionPhase
+    vec4 runtimeState;       // totalTime, initialized, spawnLerpTime/transitionTime, transitionPhase
 };
 
 // Storage buffers - double buffered for compute/graphics
