@@ -132,6 +132,27 @@ void GPUEntityManager::clearAllEntities() {
     pendingEntities.clear();
 }
 
+void GPUEntityManager::updateAllMovementTypes(int newMovementType) {
+    if (activeEntityCount == 0) {
+        return;
+    }
+    
+    // Update both buffers to keep them in sync
+    for (int bufferIndex = 0; bufferIndex < 2; bufferIndex++) {
+        GPUEntity* bufferPtr = static_cast<GPUEntity*>(entityBufferMapped[bufferIndex]);
+        
+        for (uint32_t i = 0; i < activeEntityCount; i++) {
+            // Update the movementType field (w component of movementParams1)
+            bufferPtr[i].movementParams1.w = static_cast<float>(newMovementType);
+            
+            // Reset runtime state to reinitialize movement from current position
+            bufferPtr[i].runtimeState.y = 0.0f; // Set initialized to false
+        }
+    }
+    
+    std::cout << "Updated movement type for " << activeEntityCount << " GPU entities to type " << newMovementType << std::endl;
+}
+
 bool GPUEntityManager::createEntityBuffers() {
     for (int i = 0; i < 2; i++) {
         // Create buffer

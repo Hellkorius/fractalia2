@@ -12,6 +12,9 @@ class VulkanRenderer;
 // Control handler system for processing game controls and interactions
 namespace ControlHandler {
     
+    // Global movement type state
+    extern int g_currentMovementType; // 0=Petal, 1=Orbit, 2=Wave
+    
     // Initialize control handler - call this after world and input setup
     void initialize(World& world);
     
@@ -22,4 +25,5 @@ namespace ControlHandler {
     void handleApplicationControls(World& world, bool& running);
     void handleEntityCreation(World& world, VulkanRenderer* renderer = nullptr);
     void handlePerformanceControls(World& world, VulkanRenderer* renderer = nullptr);
+    void handleMovementTypeControls(World& world, VulkanRenderer* renderer = nullptr);
 }

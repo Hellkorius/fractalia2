@@ -70,9 +70,11 @@ struct Bounds {
     bool dynamic{true}; // Updates with transform changes
 };
 
-// Simple movement type for petal movement
+// Movement types matching GPU compute shader
 enum class MovementType {
-    Petal  // Simple petal movement - emanate from center and return
+    Petal = 0,  // Smooth radial oscillation from center
+    Orbit = 1,  // Circular orbit around center point
+    Wave = 2    // Sinusoidal wave motion
 };
 
 struct MovementPattern {

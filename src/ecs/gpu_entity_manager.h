@@ -72,6 +72,7 @@ public:
     void addEntitiesFromECS(const std::vector<Entity>& entities);
     void uploadPendingEntities();
     void clearAllEntities();
+    void updateAllMovementTypes(int newMovementType);
     
     // GPU buffer management  
     VkBuffer getCurrentEntityBuffer() const { return entityBuffers[currentBufferIndex]; }

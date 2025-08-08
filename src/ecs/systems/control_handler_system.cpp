@@ -6,6 +6,9 @@
 
 namespace ControlHandler {
     
+    // Global movement type state (0=Petal, 1=Orbit, 2=Wave)
+    int g_currentMovementType = 0;
+    
     void initialize(World& world) {
         std::cout << "\n=== GPU Compute Movement Demo Controls ===" << std::endl;
         std::cout << "ESC: Exit" << std::endl;
@@ -13,6 +16,7 @@ namespace ControlHandler {
         std::cout << "+/=: Add 1000 more GPU entities" << std::endl;
         std::cout << "-: Show current GPU performance stats" << std::endl;
         std::cout << "Left Click: Create GPU entity with movement at mouse position" << std::endl;
+        std::cout << "0/1/2: Switch movement pattern (0=Petal, 1=Orbit, 2=Wave)" << std::endl;
         std::cout << "\nCamera Controls:" << std::endl;
         std::cout << "WASD: Move camera" << std::endl;
         std::cout << "Q/E: Move camera up/down" << std::endl;
@@ -31,6 +35,7 @@ namespace ControlHandler {
         handleApplicationControls(world, running);
         handleEntityCreation(world, renderer);
         handlePerformanceControls(world, renderer);
+        handleMovementTypeControls(world, renderer);
     }
     
     void handleApplicationControls(World& world, bool& running) {
@@ -52,7 +57,8 @@ namespace ControlHandler {
             std::cout << "Adding 1000 more GPU entities..." << std::endl;
             
             if (renderer && renderer->getGPUEntityManager()) {
-                auto newEntities = world.getEntityFactory().createSwarm(1000, glm::vec3(0.0f), 2.0f);
+                MovementType currentType = static_cast<MovementType>(g_currentMovementType);
+                auto newEntities = world.getEntityFactory().createSwarmWithType(1000, glm::vec3(0.0f), 2.0f, currentType);
                 renderer->getGPUEntityManager()->addEntitiesFromECS(newEntities);
                 std::cout << "Total GPU entities now: " << renderer->getGPUEntityManager()->getEntityCount() << std::endl;
             } else {
@@ -66,8 +72,11 @@ namespace ControlHandler {
             std::cout << "Creating GPU entity at mouse position: " << mouseWorldPos.x << ", " << mouseWorldPos.y << std::endl;
             
             if (renderer && renderer->getGPUEntityManager()) {
-                auto mouseEntity = world.getEntityFactory().createMovingEntity(
-                    glm::vec3(mouseWorldPos.x, mouseWorldPos.y, 0.0f)
+                // Create entity with current movement type
+                MovementType currentType = static_cast<MovementType>(g_currentMovementType);
+                auto mouseEntity = world.getEntityFactory().createMovingEntityWithType(
+                    glm::vec3(mouseWorldPos.x, mouseWorldPos.y, 0.0f),
+                    currentType
                 );
                 if (mouseEntity.is_valid()) {
                     std::vector<Entity> entityVec = {mouseEntity};
@@ -105,6 +114,39 @@ namespace ControlHandler {
                       << ", GPU Entities: " << gpuEntityCount
                       << ", Frame Time: " << avgFrameTime << "ms"
                       << ", FPS: " << fps << std::endl;
+        }
+    }
+    
+    void handleMovementTypeControls(World& world, VulkanRenderer* renderer) {
+        flecs::world& flecsWorld = world.getFlecsWorld();
+        
+        // Handle movement type switching (0, 1, 2)
+        if (InputQuery::isKeyPressed(flecsWorld, SDL_SCANCODE_0)) {
+            g_currentMovementType = 0;
+            std::cout << "Movement type changed to: PETAL (0)" << std::endl;
+            
+            // Update all existing GPU entities
+            if (renderer && renderer->getGPUEntityManager()) {
+                renderer->getGPUEntityManager()->updateAllMovementTypes(0);
+            }
+        }
+        else if (InputQuery::isKeyPressed(flecsWorld, SDL_SCANCODE_1)) {
+            g_currentMovementType = 1;
+            std::cout << "Movement type changed to: ORBIT (1)" << std::endl;
+            
+            // Update all existing GPU entities
+            if (renderer && renderer->getGPUEntityManager()) {
+                renderer->getGPUEntityManager()->updateAllMovementTypes(1);
+            }
+        }
+        else if (InputQuery::isKeyPressed(flecsWorld, SDL_SCANCODE_2)) {
+            g_currentMovementType = 2;
+            std::cout << "Movement type changed to: WAVE (2)" << std::endl;
+            
+            // Update all existing GPU entities
+            if (renderer && renderer->getGPUEntityManager()) {
+                renderer->getGPUEntityManager()->updateAllMovementTypes(2);
+            }
         }
     }
     
