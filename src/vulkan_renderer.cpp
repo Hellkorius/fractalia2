@@ -47,13 +47,13 @@ bool VulkanRenderer::initialize(SDL_Window* window) {
     }
     
     swapchain = std::make_unique<VulkanSwapchain>();
-    if (!swapchain->initialize(context.get(), window)) {
+    if (!swapchain->initialize(context.get(), window, functionLoader.get())) {
         std::cerr << "Failed to initialize Vulkan swapchain" << std::endl;
         return false;
     }
     
     pipeline = std::make_unique<VulkanPipeline>();
-    if (!pipeline->initialize(context.get(), swapchain->getImageFormat())) {
+    if (!pipeline->initialize(context.get(), swapchain->getImageFormat(), functionLoader.get())) {
         std::cerr << "Failed to initialize Vulkan pipeline" << std::endl;
         return false;
     }
@@ -154,10 +154,10 @@ void VulkanRenderer::drawFrame() {
     const auto& renderFinishedSemaphores = sync->getRenderFinishedSemaphores();
     const auto& commandBuffers = sync->getCommandBuffers();
 
-    vkWaitForFences(context->getDevice(), 1, &fences[currentFrame], VK_TRUE, UINT64_MAX);
+    functionLoader->vkWaitForFences(context->getDevice(), 1, &fences[currentFrame], VK_TRUE, UINT64_MAX);
 
     uint32_t imageIndex;
-    VkResult result = vkAcquireNextImageKHR(context->getDevice(), swapchain->getSwapchain(), UINT64_MAX, imageAvailableSemaphores[currentFrame], VK_NULL_HANDLE, &imageIndex);
+    VkResult result = functionLoader->vkAcquireNextImageKHR(context->getDevice(), swapchain->getSwapchain(), UINT64_MAX, imageAvailableSemaphores[currentFrame], VK_NULL_HANDLE, &imageIndex);
 
     if (result == VK_ERROR_OUT_OF_DATE_KHR) {
         recreateSwapChain();
@@ -167,7 +167,7 @@ void VulkanRenderer::drawFrame() {
         return;
     }
 
-    vkResetFences(context->getDevice(), 1, &fences[currentFrame]);
+    functionLoader->vkResetFences(context->getDevice(), 1, &fences[currentFrame]);
 
     // Upload any pending GPU entities
     uploadPendingGPUEntities();
@@ -175,13 +175,13 @@ void VulkanRenderer::drawFrame() {
     updateUniformBuffer(currentFrame);
     updateInstanceBuffer(currentFrame);
 
-    vkResetCommandBuffer(commandBuffers[currentFrame], 0);
+    functionLoader->vkResetCommandBuffer(commandBuffers[currentFrame], 0);
     
     // Dispatch compute first, then record graphics commands
     VkCommandBufferBeginInfo beginInfo{};
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     
-    if (vkBeginCommandBuffer(commandBuffers[currentFrame], &beginInfo) != VK_SUCCESS) {
+    if (functionLoader->vkBeginCommandBuffer(commandBuffers[currentFrame], &beginInfo) != VK_SUCCESS) {
         std::cerr << "Failed to begin recording command buffer!" << std::endl;
         return;
     }
@@ -209,7 +209,7 @@ void VulkanRenderer::drawFrame() {
     submitInfo.signalSemaphoreCount = 1;
     submitInfo.pSignalSemaphores = signalSemaphores;
 
-    if (vkQueueSubmit(context->getGraphicsQueue(), 1, &submitInfo, fences[currentFrame]) != VK_SUCCESS) {
+    if (functionLoader->vkQueueSubmit(context->getGraphicsQueue(), 1, &submitInfo, fences[currentFrame]) != VK_SUCCESS) {
         std::cerr << "Failed to submit draw command buffer" << std::endl;
         return;
     }
@@ -224,7 +224,7 @@ void VulkanRenderer::drawFrame() {
     presentInfo.pSwapchains = swapChains;
     presentInfo.pImageIndices = &imageIndex;
 
-    result = vkQueuePresentKHR(context->getPresentQueue(), &presentInfo);
+    result = functionLoader->vkQueuePresentKHR(context->getPresentQueue(), &presentInfo);
 
     if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || framebufferResized) {
         framebufferResized = false;
@@ -269,12 +269,12 @@ void VulkanRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t
     renderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
     renderPassInfo.pClearValues = clearValues.data();
 
-    vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
+    functionLoader->vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
 
-    vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->getGraphicsPipeline());
+    functionLoader->vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->getGraphicsPipeline());
     
     const auto& descriptorSets = resources->getDescriptorSets();
-    vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->getPipelineLayout(), 0, 1, &descriptorSets[currentFrame], 0, nullptr);
+    functionLoader->vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->getPipelineLayout(), 0, 1, &descriptorSets[currentFrame], 0, nullptr);
 
     VkViewport viewport{};
     viewport.x = 0.0f;
@@ -283,12 +283,12 @@ void VulkanRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t
     viewport.height = (float) swapchain->getExtent().height;
     viewport.minDepth = 0.0f;
     viewport.maxDepth = 1.0f;
-    vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
+    functionLoader->vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
 
     VkRect2D scissor{};
     scissor.offset = {0, 0};
     scissor.extent = swapchain->getExtent();
-    vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
+    functionLoader->vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
 
     // Render all entities by type
@@ -318,16 +318,16 @@ void VulkanRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t
     if (gpuEntityCount > 0) {
         VkBuffer triangleVertexBuffers[] = {resources->getTriangleVertexBuffer(), gpuEntityManager->getCurrentEntityBuffer()};
         VkDeviceSize offsets[] = {0, 0}; // GPU entities start at beginning of buffer
-        vkCmdBindVertexBuffers(commandBuffer, 0, 2, triangleVertexBuffers, offsets);
-        vkCmdBindIndexBuffer(commandBuffer, resources->getTriangleIndexBuffer(), 0, VK_INDEX_TYPE_UINT16);
-        vkCmdDrawIndexed(commandBuffer, resources->getTriangleIndexCount(), gpuEntityCount, 0, 0, 0);
+        functionLoader->vkCmdBindVertexBuffers(commandBuffer, 0, 2, triangleVertexBuffers, offsets);
+        functionLoader->vkCmdBindIndexBuffer(commandBuffer, resources->getTriangleIndexBuffer(), 0, VK_INDEX_TYPE_UINT16);
+        functionLoader->vkCmdDrawIndexed(commandBuffer, resources->getTriangleIndexCount(), gpuEntityCount, 0, 0, 0);
     } else if (triangleCount > 0) {
         // Fallback to old CPU instance buffer for compatibility
         VkBuffer triangleVertexBuffers[] = {resources->getTriangleVertexBuffer(), resources->getInstanceBuffers()[currentFrame]};
         VkDeviceSize offsets[] = {0, instanceOffset * sizeof(InstanceData)};
-        vkCmdBindVertexBuffers(commandBuffer, 0, 2, triangleVertexBuffers, offsets);
-        vkCmdBindIndexBuffer(commandBuffer, resources->getTriangleIndexBuffer(), 0, VK_INDEX_TYPE_UINT16);
-        vkCmdDrawIndexed(commandBuffer, resources->getTriangleIndexCount(), triangleCount, 0, 0, 0);
+        functionLoader->vkCmdBindVertexBuffers(commandBuffer, 0, 2, triangleVertexBuffers, offsets);
+        functionLoader->vkCmdBindIndexBuffer(commandBuffer, resources->getTriangleIndexBuffer(), 0, VK_INDEX_TYPE_UINT16);
+        functionLoader->vkCmdDrawIndexed(commandBuffer, resources->getTriangleIndexCount(), triangleCount, 0, 0, 0);
         instanceOffset += triangleCount;
     }
     
@@ -337,9 +337,9 @@ void VulkanRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t
 		// Fallback CPU rendering for squares
 		VkBuffer squareVertexBuffers[] = {resources->getSquareVertexBuffer(), resources->getInstanceBuffers()[currentFrame]};
 		VkDeviceSize offsets[] = {0, instanceOffset * sizeof(InstanceData)};
-		vkCmdBindVertexBuffers(commandBuffer, 0, 2, squareVertexBuffers, offsets);
-		vkCmdBindIndexBuffer(commandBuffer, resources->getSquareIndexBuffer(), 0, VK_INDEX_TYPE_UINT16);
-		vkCmdDrawIndexed(commandBuffer, resources->getSquareIndexCount(), squareCount, 0, 0, 0);
+		functionLoader->vkCmdBindVertexBuffers(commandBuffer, 0, 2, squareVertexBuffers, offsets);
+		functionLoader->vkCmdBindIndexBuffer(commandBuffer, resources->getSquareIndexBuffer(), 0, VK_INDEX_TYPE_UINT16);
+		functionLoader->vkCmdDrawIndexed(commandBuffer, resources->getSquareIndexCount(), squareCount, 0, 0, 0);
 		instanceOffset += squareCount;
 	}
 
@@ -347,40 +347,21 @@ void VulkanRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t
     if (triangleCount == 0 && squareCount == 0) {
         VkBuffer testVertexBuffer = resources->getTriangleVertexBuffer();
         VkDeviceSize testOffset = 0;
-        vkCmdBindVertexBuffers(commandBuffer, 0, 1, &testVertexBuffer, &testOffset);
-        vkCmdBindIndexBuffer(commandBuffer, resources->getTriangleIndexBuffer(), 0, VK_INDEX_TYPE_UINT16);
-        vkCmdDrawIndexed(commandBuffer, resources->getTriangleIndexCount(), 1, 0, 0, 0);
+        functionLoader->vkCmdBindVertexBuffers(commandBuffer, 0, 1, &testVertexBuffer, &testOffset);
+        functionLoader->vkCmdBindIndexBuffer(commandBuffer, resources->getTriangleIndexBuffer(), 0, VK_INDEX_TYPE_UINT16);
+        functionLoader->vkCmdDrawIndexed(commandBuffer, resources->getTriangleIndexCount(), 1, 0, 0, 0);
     }
 
-    vkCmdEndRenderPass(commandBuffer);
+    functionLoader->vkCmdEndRenderPass(commandBuffer);
 
-    if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS) {
+    if (functionLoader->vkEndCommandBuffer(commandBuffer) != VK_SUCCESS) {
         std::cerr << "Failed to record command buffer" << std::endl;
     }
 }
 
 void VulkanRenderer::loadDrawingFunctions() {
-    vkWaitForFences = (PFN_vkWaitForFences)context->vkGetDeviceProcAddr(context->getDevice(), "vkWaitForFences");
-    vkResetFences = (PFN_vkResetFences)context->vkGetDeviceProcAddr(context->getDevice(), "vkResetFences");
-    vkAcquireNextImageKHR = (PFN_vkAcquireNextImageKHR)context->vkGetDeviceProcAddr(context->getDevice(), "vkAcquireNextImageKHR");
-    vkQueueSubmit = (PFN_vkQueueSubmit)context->vkGetDeviceProcAddr(context->getDevice(), "vkQueueSubmit");
-    vkQueuePresentKHR = (PFN_vkQueuePresentKHR)context->vkGetDeviceProcAddr(context->getDevice(), "vkQueuePresentKHR");
-    vkBeginCommandBuffer = (PFN_vkBeginCommandBuffer)context->vkGetDeviceProcAddr(context->getDevice(), "vkBeginCommandBuffer");
-    vkEndCommandBuffer = (PFN_vkEndCommandBuffer)context->vkGetDeviceProcAddr(context->getDevice(), "vkEndCommandBuffer");
-    vkCmdBeginRenderPass = (PFN_vkCmdBeginRenderPass)context->vkGetDeviceProcAddr(context->getDevice(), "vkCmdBeginRenderPass");
-    vkCmdEndRenderPass = (PFN_vkCmdEndRenderPass)context->vkGetDeviceProcAddr(context->getDevice(), "vkCmdEndRenderPass");
-    vkCmdBindPipeline = (PFN_vkCmdBindPipeline)context->vkGetDeviceProcAddr(context->getDevice(), "vkCmdBindPipeline");
-    vkCmdSetViewport = (PFN_vkCmdSetViewport)context->vkGetDeviceProcAddr(context->getDevice(), "vkCmdSetViewport");
-    vkCmdSetScissor = (PFN_vkCmdSetScissor)context->vkGetDeviceProcAddr(context->getDevice(), "vkCmdSetScissor");
-    vkCmdDraw = (PFN_vkCmdDraw)context->vkGetDeviceProcAddr(context->getDevice(), "vkCmdDraw");
-    vkResetCommandBuffer = (PFN_vkResetCommandBuffer)context->vkGetDeviceProcAddr(context->getDevice(), "vkResetCommandBuffer");
-    vkCmdBindDescriptorSets = (PFN_vkCmdBindDescriptorSets)context->vkGetDeviceProcAddr(context->getDevice(), "vkCmdBindDescriptorSets");
-    vkCmdBindVertexBuffers = (PFN_vkCmdBindVertexBuffers)context->vkGetDeviceProcAddr(context->getDevice(), "vkCmdBindVertexBuffers");
-    vkCmdBindIndexBuffer = (PFN_vkCmdBindIndexBuffer)context->vkGetDeviceProcAddr(context->getDevice(), "vkCmdBindIndexBuffer");
-    vkCmdDrawIndexed = (PFN_vkCmdDrawIndexed)context->vkGetDeviceProcAddr(context->getDevice(), "vkCmdDrawIndexed");
-    vkCmdDispatch = (PFN_vkCmdDispatch)context->vkGetDeviceProcAddr(context->getDevice(), "vkCmdDispatch");
-    vkCmdPipelineBarrier = (PFN_vkCmdPipelineBarrier)context->vkGetDeviceProcAddr(context->getDevice(), "vkCmdPipelineBarrier");
-    vkCmdPushConstants = (PFN_vkCmdPushConstants)context->vkGetDeviceProcAddr(context->getDevice(), "vkCmdPushConstants");
+    // Note: Function loading now handled by centralized VulkanFunctionLoader
+    // All Vulkan calls in this class now use functionLoader->functionName()
 }
 
 void VulkanRenderer::uploadPendingGPUEntities() {
@@ -395,11 +376,11 @@ void VulkanRenderer::dispatchCompute(VkCommandBuffer commandBuffer, float deltaT
     }
     
     // Bind compute pipeline
-    vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, computePipeline->getMovementPipeline());
+    functionLoader->vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, computePipeline->getMovementPipeline());
     
     // Bind descriptor sets
     VkDescriptorSet descriptorSet = gpuEntityManager->getCurrentComputeDescriptorSet();
-    vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, 
+    functionLoader->vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, 
                            computePipeline->getMovementPipelineLayout(), 0, 1, &descriptorSet, 0, nullptr);
     
     // Push constants for time and entity count
@@ -408,12 +389,12 @@ void VulkanRenderer::dispatchCompute(VkCommandBuffer commandBuffer, float deltaT
         uint32_t entityCount;
     } pushConstants = { deltaTime, gpuEntityManager->getEntityCount() };
     
-    vkCmdPushConstants(commandBuffer, computePipeline->getMovementPipelineLayout(),
+    functionLoader->vkCmdPushConstants(commandBuffer, computePipeline->getMovementPipelineLayout(),
                       VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(PushConstants), &pushConstants);
     
     // Dispatch compute shader (64 threads per workgroup)
     uint32_t workgroupCount = (gpuEntityManager->getEntityCount() + 63) / 64;
-    vkCmdDispatch(commandBuffer, workgroupCount, 1, 1);
+    functionLoader->vkCmdDispatch(commandBuffer, workgroupCount, 1, 1);
     
     // Swap buffers for next frame
     gpuEntityManager->swapBuffers();
@@ -430,7 +411,7 @@ void VulkanRenderer::transitionBufferLayout(VkCommandBuffer commandBuffer) {
     barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
     barrier.dstAccessMask = VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT;
     
-    vkCmdPipelineBarrier(commandBuffer,
+    functionLoader->vkCmdPipelineBarrier(commandBuffer,
                         VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                         VK_PIPELINE_STAGE_VERTEX_INPUT_BIT,
                         0, 1, &barrier, 0, nullptr, 0, nullptr);

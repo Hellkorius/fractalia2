@@ -39,6 +39,8 @@ fractalia2/
 	├─ PolygonFactory.*			# Polygon generation
 	├─ vulkan_renderer.*      // master frame loop + GPU compute dispatch
 		├──vulkan/
+			├─ vulkan_function_loader.* // centralized Vulkan function loading
+			├─ vulkan_utils.*        // utility functions (memory, file I/O)
 			├─ vulkan_context.*      // instance & device
 			├─ vulkan_swapchain.*    // resize, MSAA, depth
 			├─ vulkan_pipeline.*     // graphics shaders, renderpass, layout
@@ -58,12 +60,10 @@ fractalia2/
 	├── system_scheduler.hpp
 	├──	camera_component.hpp
 	└── systems/
-		├── physics_system.*  	// Movement & rotation logic (legacy)
+		├── lifetime_system.*  	// Entity lifetime management (renamed from physics_system)
 		├── input_system.*		// input handling
-		├── movement_system.* 	// CPU movement (disabled - now GPU compute)
 		├── camera_system.*		// camera controls
-		├──	control_handler_system.* // controls + GPU entity creation
-		└── render_system.cpp   // Vulkan-aware RenderSystem (legacy CPU path)
+		└──	control_handler_system.* // controls + GPU entity creation
 │   └── shaders/                # GLSL shader source files
 │       ├── vertex.vert         # Vertex shader (updated for GPUEntity)
 │       ├── fragment.frag       # Fragment shader
@@ -115,7 +115,7 @@ struct GPUEntity {
 - **Double-buffered Storage**: Compute reads from buffer N, writes to buffer N+1, graphics renders buffer N+1
 - **Memory Barriers**: `VK_ACCESS_SHADER_WRITE_BIT` → `VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT` synchronization between compute/graphics
 - **Buffer Layout**: Vertex shader attributes match `GPUEntity` exactly (locations 2-9 for instance data)
-- **Dynamic Function Loading**: All Vulkan functions loaded at runtime for cross-platform compatibility
+- **Centralized Function Loading**: `VulkanFunctionLoader` provides single source of truth for all Vulkan function pointers
 - **Shader Path**: Compute shader loaded from `shaders/compiled/movement.spv` (not `src/shaders/compiled/`)
 
 ### Performance Characteristics

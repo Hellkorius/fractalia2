@@ -67,28 +67,7 @@ private:
     std::unique_ptr<ComputePipeline> computePipeline;
     std::unique_ptr<GPUEntityManager> gpuEntityManager;
 
-    // Vulkan function pointers for drawing operations
-    PFN_vkWaitForFences vkWaitForFences = nullptr;
-    PFN_vkResetFences vkResetFences = nullptr;
-    PFN_vkAcquireNextImageKHR vkAcquireNextImageKHR = nullptr;
-    PFN_vkQueueSubmit vkQueueSubmit = nullptr;
-    PFN_vkQueuePresentKHR vkQueuePresentKHR = nullptr;
-    PFN_vkBeginCommandBuffer vkBeginCommandBuffer = nullptr;
-    PFN_vkEndCommandBuffer vkEndCommandBuffer = nullptr;
-    PFN_vkCmdBeginRenderPass vkCmdBeginRenderPass = nullptr;
-    PFN_vkCmdEndRenderPass vkCmdEndRenderPass = nullptr;
-    PFN_vkCmdBindPipeline vkCmdBindPipeline = nullptr;
-    PFN_vkCmdSetViewport vkCmdSetViewport = nullptr;
-    PFN_vkCmdSetScissor vkCmdSetScissor = nullptr;
-    PFN_vkCmdDraw vkCmdDraw = nullptr;
-    PFN_vkResetCommandBuffer vkResetCommandBuffer = nullptr;
-    PFN_vkCmdBindDescriptorSets vkCmdBindDescriptorSets = nullptr;
-    PFN_vkCmdBindVertexBuffers vkCmdBindVertexBuffers = nullptr;
-    PFN_vkCmdBindIndexBuffer vkCmdBindIndexBuffer = nullptr;
-    PFN_vkCmdDrawIndexed vkCmdDrawIndexed = nullptr;
-    PFN_vkCmdDispatch vkCmdDispatch = nullptr;
-    PFN_vkCmdPipelineBarrier vkCmdPipelineBarrier = nullptr;
-    PFN_vkCmdPushConstants vkCmdPushConstants = nullptr;
+    // Note: Function pointers removed - now using centralized VulkanFunctionLoader
 
     // Helper functions
     bool recreateSwapChain();

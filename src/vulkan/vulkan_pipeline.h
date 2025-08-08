@@ -7,12 +7,15 @@
 #include <array>
 #include "vulkan_context.h"
 
+// Forward declaration
+class VulkanFunctionLoader;
+
 class VulkanPipeline {
 public:
     VulkanPipeline();
     ~VulkanPipeline();
 
-    bool initialize(VulkanContext* context, VkFormat swapChainImageFormat);
+    bool initialize(VulkanContext* context, VkFormat swapChainImageFormat, VulkanFunctionLoader* loader = nullptr);
     void cleanup();
     bool recreate(VkFormat swapChainImageFormat);
 
@@ -23,31 +26,21 @@ public:
 
 private:
     VulkanContext* context = nullptr;
+    VulkanFunctionLoader* loader = nullptr;
     
     VkRenderPass renderPass = VK_NULL_HANDLE;
     VkPipelineLayout pipelineLayout = VK_NULL_HANDLE;
     VkPipeline graphicsPipeline = VK_NULL_HANDLE;
     VkDescriptorSetLayout descriptorSetLayout = VK_NULL_HANDLE;
 
-    // Function pointers for pipeline operations
-    PFN_vkCreateRenderPass vkCreateRenderPass = nullptr;
-    PFN_vkDestroyRenderPass vkDestroyRenderPass = nullptr;
-    PFN_vkCreateShaderModule vkCreateShaderModule = nullptr;
-    PFN_vkDestroyShaderModule vkDestroyShaderModule = nullptr;
-    PFN_vkCreatePipelineLayout vkCreatePipelineLayout = nullptr;
-    PFN_vkDestroyPipelineLayout vkDestroyPipelineLayout = nullptr;
-    PFN_vkCreateGraphicsPipelines vkCreateGraphicsPipelines = nullptr;
-    PFN_vkDestroyPipeline vkDestroyPipeline = nullptr;
-    PFN_vkCreateDescriptorSetLayout vkCreateDescriptorSetLayout = nullptr;
-    PFN_vkDestroyDescriptorSetLayout vkDestroyDescriptorSetLayout = nullptr;
+    // Note: Function pointers removed - now using centralized VulkanFunctionLoader
 
     bool createRenderPass(VkFormat swapChainImageFormat);
     bool createDescriptorSetLayout();
     bool createGraphicsPipeline();
     
-    void loadFunctions();
     VkShaderModule createShaderModule(const std::vector<char>& code);
-    std::vector<char> readFile(const std::string& filename);
+    // Note: readFile removed - now using VulkanUtils::readFile
     
     std::array<VkVertexInputBindingDescription, 2> getVertexBindingDescriptions();
     std::array<VkVertexInputAttributeDescription, 10> getVertexAttributeDescriptions();

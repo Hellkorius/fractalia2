@@ -1,4 +1,6 @@
 #include "vulkan_swapchain.h"
+#include "vulkan_function_loader.h"
+#include "vulkan_utils.h"
 #include <iostream>
 #include <algorithm>
 #include <array>
@@ -10,11 +12,15 @@ VulkanSwapchain::~VulkanSwapchain() {
     cleanup();
 }
 
-bool VulkanSwapchain::initialize(VulkanContext* context, SDL_Window* window) {
+bool VulkanSwapchain::initialize(VulkanContext* context, SDL_Window* window, VulkanFunctionLoader* loader) {
     this->context = context;
     this->window = window;
+    this->loader = loader;
     
-    loadFunctions();
+    if (!loader) {
+        std::cerr << "VulkanSwapchain requires VulkanFunctionLoader" << std::endl;
+        return false;
+    }
     
     if (!createSwapChain()) {
         std::cerr << "Failed to create swap chain" << std::endl;
@@ -40,6 +46,9 @@ bool VulkanSwapchain::initialize(VulkanContext* context, SDL_Window* window) {
 }
 
 void VulkanSwapchain::cleanup() {
+    if (loader && context) {
+        loader->vkDeviceWaitIdle(context->getDevice());
+    }
     cleanupSwapChain();
 }
 
@@ -52,7 +61,7 @@ bool VulkanSwapchain::recreate(VkRenderPass renderPass) {
         SDL_WaitEvent(nullptr);
     }
 
-    context->vkDeviceWaitIdle(context->getDevice());
+    loader->vkDeviceWaitIdle(context->getDevice());
 
     cleanupSwapChain();
 
@@ -123,14 +132,14 @@ bool VulkanSwapchain::createSwapChain() {
     createInfo.clipped = VK_TRUE;
     createInfo.oldSwapchain = VK_NULL_HANDLE;
 
-    if (vkCreateSwapchainKHR(context->getDevice(), &createInfo, nullptr, &swapChain) != VK_SUCCESS) {
+    if (loader->vkCreateSwapchainKHR(context->getDevice(), &createInfo, nullptr, &swapChain) != VK_SUCCESS) {
         std::cerr << "Failed to create swap chain" << std::endl;
         return false;
     }
 
-    vkGetSwapchainImagesKHR(context->getDevice(), swapChain, &imageCount, nullptr);
+    loader->vkGetSwapchainImagesKHR(context->getDevice(), swapChain, &imageCount, nullptr);
     swapChainImages.resize(imageCount);
-    vkGetSwapchainImagesKHR(context->getDevice(), swapChain, &imageCount, swapChainImages.data());
+    loader->vkGetSwapchainImagesKHR(context->getDevice(), swapChain, &imageCount, swapChainImages.data());
 
     swapChainImageFormat = surfaceFormat.format;
     swapChainExtent = extent;
@@ -157,7 +166,7 @@ bool VulkanSwapchain::createImageViews() {
         createInfo.subresourceRange.baseArrayLayer = 0;
         createInfo.subresourceRange.layerCount = 1;
 
-        if (vkCreateImageView(context->getDevice(), &createInfo, nullptr, &swapChainImageViews[i]) != VK_SUCCESS) {
+        if (loader->vkCreateImageView(context->getDevice(), &createInfo, nullptr, &swapChainImageViews[i]) != VK_SUCCESS) {
             std::cerr << "Failed to create image views" << std::endl;
             return false;
         }
@@ -192,43 +201,43 @@ bool VulkanSwapchain::createMSAAColorResources() {
 
 void VulkanSwapchain::cleanupSwapChain() {
     for (auto framebuffer : swapChainFramebuffers) {
-        vkDestroyFramebuffer(context->getDevice(), framebuffer, nullptr);
+        loader->vkDestroyFramebuffer(context->getDevice(), framebuffer, nullptr);
     }
     swapChainFramebuffers.clear();
     
     if (msaaColorImageView != VK_NULL_HANDLE) {
-        vkDestroyImageView(context->getDevice(), msaaColorImageView, nullptr);
+        loader->vkDestroyImageView(context->getDevice(), msaaColorImageView, nullptr);
         msaaColorImageView = VK_NULL_HANDLE;
     }
     if (msaaColorImage != VK_NULL_HANDLE) {
-        vkDestroyImage(context->getDevice(), msaaColorImage, nullptr);
+        loader->vkDestroyImage(context->getDevice(), msaaColorImage, nullptr);
         msaaColorImage = VK_NULL_HANDLE;
     }
     if (msaaColorImageMemory != VK_NULL_HANDLE) {
-        vkFreeMemory(context->getDevice(), msaaColorImageMemory, nullptr);
+        loader->vkFreeMemory(context->getDevice(), msaaColorImageMemory, nullptr);
         msaaColorImageMemory = VK_NULL_HANDLE;
     }
     
     if (depthImageView != VK_NULL_HANDLE) {
-        vkDestroyImageView(context->getDevice(), depthImageView, nullptr);
+        loader->vkDestroyImageView(context->getDevice(), depthImageView, nullptr);
         depthImageView = VK_NULL_HANDLE;
     }
     if (depthImage != VK_NULL_HANDLE) {
-        vkDestroyImage(context->getDevice(), depthImage, nullptr);
+        loader->vkDestroyImage(context->getDevice(), depthImage, nullptr);
         depthImage = VK_NULL_HANDLE;
     }
     if (depthImageMemory != VK_NULL_HANDLE) {
-        vkFreeMemory(context->getDevice(), depthImageMemory, nullptr);
+        loader->vkFreeMemory(context->getDevice(), depthImageMemory, nullptr);
         depthImageMemory = VK_NULL_HANDLE;
     }
     
     for (auto imageView : swapChainImageViews) {
-        vkDestroyImageView(context->getDevice(), imageView, nullptr);
+        loader->vkDestroyImageView(context->getDevice(), imageView, nullptr);
     }
     swapChainImageViews.clear();
     
     if (swapChain != VK_NULL_HANDLE) {
-        vkDestroySwapchainKHR(context->getDevice(), swapChain, nullptr);
+        loader->vkDestroySwapchainKHR(context->getDevice(), swapChain, nullptr);
         swapChain = VK_NULL_HANDLE;
     }
 }
@@ -236,22 +245,22 @@ void VulkanSwapchain::cleanupSwapChain() {
 SwapChainSupportDetails VulkanSwapchain::querySwapChainSupport(VkPhysicalDevice device) {
     SwapChainSupportDetails details;
 
-    vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device, context->getSurface(), &details.capabilities);
+    loader->vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device, context->getSurface(), &details.capabilities);
 
     uint32_t formatCount;
-    vkGetPhysicalDeviceSurfaceFormatsKHR(device, context->getSurface(), &formatCount, nullptr);
+    loader->vkGetPhysicalDeviceSurfaceFormatsKHR(device, context->getSurface(), &formatCount, nullptr);
 
     if (formatCount != 0) {
         details.formats.resize(formatCount);
-        vkGetPhysicalDeviceSurfaceFormatsKHR(device, context->getSurface(), &formatCount, details.formats.data());
+        loader->vkGetPhysicalDeviceSurfaceFormatsKHR(device, context->getSurface(), &formatCount, details.formats.data());
     }
 
     uint32_t presentModeCount;
-    vkGetPhysicalDeviceSurfacePresentModesKHR(device, context->getSurface(), &presentModeCount, nullptr);
+    loader->vkGetPhysicalDeviceSurfacePresentModesKHR(device, context->getSurface(), &presentModeCount, nullptr);
 
     if (presentModeCount != 0) {
         details.presentModes.resize(presentModeCount);
-        vkGetPhysicalDeviceSurfacePresentModesKHR(device, context->getSurface(), &presentModeCount, details.presentModes.data());
+        loader->vkGetPhysicalDeviceSurfacePresentModesKHR(device, context->getSurface(), &presentModeCount, details.presentModes.data());
     }
 
     return details;
@@ -294,41 +303,12 @@ VkExtent2D VulkanSwapchain::chooseSwapExtent(const VkSurfaceCapabilitiesKHR& cap
     }
 }
 
-void VulkanSwapchain::loadFunctions() {
-    vkCreateSwapchainKHR = (PFN_vkCreateSwapchainKHR)context->vkGetDeviceProcAddr(context->getDevice(), "vkCreateSwapchainKHR");
-    vkDestroySwapchainKHR = (PFN_vkDestroySwapchainKHR)context->vkGetDeviceProcAddr(context->getDevice(), "vkDestroySwapchainKHR");
-    vkGetSwapchainImagesKHR = (PFN_vkGetSwapchainImagesKHR)context->vkGetDeviceProcAddr(context->getDevice(), "vkGetSwapchainImagesKHR");
-    vkCreateImageView = (PFN_vkCreateImageView)context->vkGetDeviceProcAddr(context->getDevice(), "vkCreateImageView");
-    vkDestroyImageView = (PFN_vkDestroyImageView)context->vkGetDeviceProcAddr(context->getDevice(), "vkDestroyImageView");
-    vkGetPhysicalDeviceSurfaceCapabilitiesKHR = (PFN_vkGetPhysicalDeviceSurfaceCapabilitiesKHR)context->vkGetInstanceProcAddr(context->getInstance(), "vkGetPhysicalDeviceSurfaceCapabilitiesKHR");
-    vkGetPhysicalDeviceSurfaceFormatsKHR = (PFN_vkGetPhysicalDeviceSurfaceFormatsKHR)context->vkGetInstanceProcAddr(context->getInstance(), "vkGetPhysicalDeviceSurfaceFormatsKHR");
-    vkGetPhysicalDeviceSurfacePresentModesKHR = (PFN_vkGetPhysicalDeviceSurfacePresentModesKHR)context->vkGetInstanceProcAddr(context->getInstance(), "vkGetPhysicalDeviceSurfacePresentModesKHR");
-    vkCreateImage = (PFN_vkCreateImage)context->vkGetDeviceProcAddr(context->getDevice(), "vkCreateImage");
-    vkDestroyImage = (PFN_vkDestroyImage)context->vkGetDeviceProcAddr(context->getDevice(), "vkDestroyImage");
-    vkGetImageMemoryRequirements = (PFN_vkGetImageMemoryRequirements)context->vkGetDeviceProcAddr(context->getDevice(), "vkGetImageMemoryRequirements");
-    vkAllocateMemory = (PFN_vkAllocateMemory)context->vkGetDeviceProcAddr(context->getDevice(), "vkAllocateMemory");
-    vkFreeMemory = (PFN_vkFreeMemory)context->vkGetDeviceProcAddr(context->getDevice(), "vkFreeMemory");
-    vkBindImageMemory = (PFN_vkBindImageMemory)context->vkGetDeviceProcAddr(context->getDevice(), "vkBindImageMemory");
-    vkCreateFramebuffer = (PFN_vkCreateFramebuffer)context->vkGetDeviceProcAddr(context->getDevice(), "vkCreateFramebuffer");
-    vkDestroyFramebuffer = (PFN_vkDestroyFramebuffer)context->vkGetDeviceProcAddr(context->getDevice(), "vkDestroyFramebuffer");
-}
-
-uint32_t VulkanSwapchain::findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties) {
-    VkPhysicalDeviceMemoryProperties memProperties;
-    context->vkGetPhysicalDeviceMemoryProperties(context->getPhysicalDevice(), &memProperties);
-
-    for (uint32_t i = 0; i < memProperties.memoryTypeCount; i++) {
-        if ((typeFilter & (1 << i)) && (memProperties.memoryTypes[i].propertyFlags & properties) == properties) {
-            return i;
-        }
-    }
-
-    throw std::runtime_error("Failed to find suitable memory type!");
-}
+// Note: loadFunctions and findMemoryType removed - now using VulkanFunctionLoader and VulkanUtils
 
 void VulkanSwapchain::createImage(uint32_t width, uint32_t height, VkFormat format, VkImageTiling tiling,
                                  VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkSampleCountFlagBits numSamples,
                                  VkImage& image, VkDeviceMemory& imageMemory) {
+    // Use VulkanUtils for image creation - but need to extend it for MSAA samples
     VkImageCreateInfo imageInfo{};
     imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
     imageInfo.imageType = VK_IMAGE_TYPE_2D;
@@ -344,23 +324,24 @@ void VulkanSwapchain::createImage(uint32_t width, uint32_t height, VkFormat form
     imageInfo.samples = numSamples;
     imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
-    if (vkCreateImage(context->getDevice(), &imageInfo, nullptr, &image) != VK_SUCCESS) {
+    if (loader->vkCreateImage(context->getDevice(), &imageInfo, nullptr, &image) != VK_SUCCESS) {
         throw std::runtime_error("Failed to create image!");
     }
 
     VkMemoryRequirements memRequirements;
-    vkGetImageMemoryRequirements(context->getDevice(), image, &memRequirements);
+    loader->vkGetImageMemoryRequirements(context->getDevice(), image, &memRequirements);
 
     VkMemoryAllocateInfo allocInfo{};
     allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
     allocInfo.allocationSize = memRequirements.size;
-    allocInfo.memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, properties);
+    allocInfo.memoryTypeIndex = VulkanUtils::findMemoryType(context->getPhysicalDevice(), *loader,
+                                                           memRequirements.memoryTypeBits, properties);
 
-    if (vkAllocateMemory(context->getDevice(), &allocInfo, nullptr, &imageMemory) != VK_SUCCESS) {
+    if (loader->vkAllocateMemory(context->getDevice(), &allocInfo, nullptr, &imageMemory) != VK_SUCCESS) {
         throw std::runtime_error("Failed to allocate image memory!");
     }
 
-    vkBindImageMemory(context->getDevice(), image, imageMemory, 0);
+    loader->vkBindImageMemory(context->getDevice(), image, imageMemory, 0);
 }
 
 VkImageView VulkanSwapchain::createImageView(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags) {
@@ -376,7 +357,7 @@ VkImageView VulkanSwapchain::createImageView(VkImage image, VkFormat format, VkI
     viewInfo.subresourceRange.layerCount = 1;
 
     VkImageView imageView;
-    if (vkCreateImageView(context->getDevice(), &viewInfo, nullptr, &imageView) != VK_SUCCESS) {
+    if (loader->vkCreateImageView(context->getDevice(), &viewInfo, nullptr, &imageView) != VK_SUCCESS) {
         throw std::runtime_error("Failed to create texture image view!");
     }
 
@@ -402,7 +383,7 @@ bool VulkanSwapchain::createFramebuffers(VkRenderPass renderPass) {
         framebufferInfo.height = swapChainExtent.height;
         framebufferInfo.layers = 1;
 
-        if (vkCreateFramebuffer(context->getDevice(), &framebufferInfo, nullptr, &swapChainFramebuffers[i]) != VK_SUCCESS) {
+        if (loader->vkCreateFramebuffer(context->getDevice(), &framebufferInfo, nullptr, &swapChainFramebuffers[i]) != VK_SUCCESS) {
             std::cerr << "Failed to create framebuffer" << std::endl;
             return false;
         }

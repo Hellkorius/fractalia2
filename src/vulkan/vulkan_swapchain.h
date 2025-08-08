@@ -6,6 +6,9 @@
 #include <vector>
 #include "vulkan_context.h"
 
+// Forward declaration
+class VulkanFunctionLoader;
+
 struct SwapChainSupportDetails {
     VkSurfaceCapabilitiesKHR capabilities;
     std::vector<VkSurfaceFormatKHR> formats;
@@ -17,7 +20,7 @@ public:
     VulkanSwapchain();
     ~VulkanSwapchain();
 
-    bool initialize(VulkanContext* context, SDL_Window* window);
+    bool initialize(VulkanContext* context, SDL_Window* window, VulkanFunctionLoader* loader = nullptr);
     void cleanup();
     bool recreate(VkRenderPass renderPass);
 
@@ -38,6 +41,7 @@ public:
 private:
     VulkanContext* context = nullptr;
     SDL_Window* window = nullptr;
+    VulkanFunctionLoader* loader = nullptr;
     
     VkSwapchainKHR swapChain = VK_NULL_HANDLE;
     std::vector<VkImage> swapChainImages;
@@ -55,23 +59,7 @@ private:
     
     std::vector<VkFramebuffer> swapChainFramebuffers;
 
-    // Function pointers for swapchain operations
-    PFN_vkCreateSwapchainKHR vkCreateSwapchainKHR = nullptr;
-    PFN_vkDestroySwapchainKHR vkDestroySwapchainKHR = nullptr;
-    PFN_vkGetSwapchainImagesKHR vkGetSwapchainImagesKHR = nullptr;
-    PFN_vkCreateImageView vkCreateImageView = nullptr;
-    PFN_vkDestroyImageView vkDestroyImageView = nullptr;
-    PFN_vkGetPhysicalDeviceSurfaceCapabilitiesKHR vkGetPhysicalDeviceSurfaceCapabilitiesKHR = nullptr;
-    PFN_vkGetPhysicalDeviceSurfaceFormatsKHR vkGetPhysicalDeviceSurfaceFormatsKHR = nullptr;
-    PFN_vkGetPhysicalDeviceSurfacePresentModesKHR vkGetPhysicalDeviceSurfacePresentModesKHR = nullptr;
-    PFN_vkCreateImage vkCreateImage = nullptr;
-    PFN_vkDestroyImage vkDestroyImage = nullptr;
-    PFN_vkGetImageMemoryRequirements vkGetImageMemoryRequirements = nullptr;
-    PFN_vkAllocateMemory vkAllocateMemory = nullptr;
-    PFN_vkFreeMemory vkFreeMemory = nullptr;
-    PFN_vkBindImageMemory vkBindImageMemory = nullptr;
-    PFN_vkCreateFramebuffer vkCreateFramebuffer = nullptr;
-    PFN_vkDestroyFramebuffer vkDestroyFramebuffer = nullptr;
+    // Note: Function pointers removed - now using centralized VulkanFunctionLoader
 
     bool createSwapChain();
     bool createImageViews();

@@ -1,4 +1,6 @@
 #include "vulkan_pipeline.h"
+#include "vulkan_function_loader.h"
+#include "vulkan_utils.h"
 #include <iostream>
 #include <fstream>
 #include <array>
@@ -11,10 +13,14 @@ VulkanPipeline::~VulkanPipeline() {
     cleanup();
 }
 
-bool VulkanPipeline::initialize(VulkanContext* context, VkFormat swapChainImageFormat) {
+bool VulkanPipeline::initialize(VulkanContext* context, VkFormat swapChainImageFormat, VulkanFunctionLoader* loader) {
     this->context = context;
+    this->loader = loader;
     
-    loadFunctions();
+    if (!loader) {
+        std::cerr << "VulkanPipeline requires VulkanFunctionLoader" << std::endl;
+        return false;
+    }
     
     std::cout << "Creating descriptor set layout..." << std::endl;
     if (!createDescriptorSetLayout()) {
@@ -41,20 +47,22 @@ bool VulkanPipeline::initialize(VulkanContext* context, VkFormat swapChainImageF
 }
 
 void VulkanPipeline::cleanup() {
+    if (!loader || !context) return;
+    
     if (graphicsPipeline != VK_NULL_HANDLE) {
-        vkDestroyPipeline(context->getDevice(), graphicsPipeline, nullptr);
+        loader->vkDestroyPipeline(context->getDevice(), graphicsPipeline, nullptr);
         graphicsPipeline = VK_NULL_HANDLE;
     }
     if (pipelineLayout != VK_NULL_HANDLE) {
-        vkDestroyPipelineLayout(context->getDevice(), pipelineLayout, nullptr);
+        loader->vkDestroyPipelineLayout(context->getDevice(), pipelineLayout, nullptr);
         pipelineLayout = VK_NULL_HANDLE;
     }
     if (renderPass != VK_NULL_HANDLE) {
-        vkDestroyRenderPass(context->getDevice(), renderPass, nullptr);
+        loader->vkDestroyRenderPass(context->getDevice(), renderPass, nullptr);
         renderPass = VK_NULL_HANDLE;
     }
     if (descriptorSetLayout != VK_NULL_HANDLE) {
-        vkDestroyDescriptorSetLayout(context->getDevice(), descriptorSetLayout, nullptr);
+        loader->vkDestroyDescriptorSetLayout(context->getDevice(), descriptorSetLayout, nullptr);
         descriptorSetLayout = VK_NULL_HANDLE;
     }
 }
@@ -154,7 +162,7 @@ bool VulkanPipeline::createRenderPass(VkFormat swapChainImageFormat) {
     renderPassInfo.dependencyCount = static_cast<uint32_t>(dependencies.size());
     renderPassInfo.pDependencies = dependencies.data();
 
-    if (vkCreateRenderPass(context->getDevice(), &renderPassInfo, nullptr, &renderPass) != VK_SUCCESS) {
+    if (loader->vkCreateRenderPass(context->getDevice(), &renderPassInfo, nullptr, &renderPass) != VK_SUCCESS) {
         std::cerr << "Failed to create render pass" << std::endl;
         return false;
     }
@@ -175,7 +183,7 @@ bool VulkanPipeline::createDescriptorSetLayout() {
     layoutInfo.bindingCount = 1;
     layoutInfo.pBindings = &uboLayoutBinding;
     
-    if (vkCreateDescriptorSetLayout(context->getDevice(), &layoutInfo, nullptr, &descriptorSetLayout) != VK_SUCCESS) {
+    if (loader->vkCreateDescriptorSetLayout(context->getDevice(), &layoutInfo, nullptr, &descriptorSetLayout) != VK_SUCCESS) {
         std::cerr << "Failed to create descriptor set layout!" << std::endl;
         return false;
     }
@@ -264,8 +272,8 @@ bool VulkanPipeline::createGraphicsPipeline() {
     std::vector<char> vertShaderCode, fragShaderCode;
     
     try {
-        vertShaderCode = readFile("shaders/compiled/vertex.spv");
-        fragShaderCode = readFile("shaders/compiled/fragment.spv");
+        vertShaderCode = VulkanUtils::readFile("shaders/compiled/vertex.spv");
+        fragShaderCode = VulkanUtils::readFile("shaders/compiled/fragment.spv");
     } catch (const std::exception& e) {
         std::cerr << "Failed to load shader files: " << e.what() << std::endl;
         return false;
@@ -361,7 +369,7 @@ bool VulkanPipeline::createGraphicsPipeline() {
     pipelineLayoutInfo.pSetLayouts = &descriptorSetLayout;
     pipelineLayoutInfo.pushConstantRangeCount = 0;
 
-    if (vkCreatePipelineLayout(context->getDevice(), &pipelineLayoutInfo, nullptr, &pipelineLayout) != VK_SUCCESS) {
+    if (loader->vkCreatePipelineLayout(context->getDevice(), &pipelineLayoutInfo, nullptr, &pipelineLayout) != VK_SUCCESS) {
         std::cerr << "Failed to create pipeline layout" << std::endl;
         return false;
     }
@@ -383,61 +391,21 @@ bool VulkanPipeline::createGraphicsPipeline() {
     pipelineInfo.subpass = 0;
     pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
 
-    if (vkCreateGraphicsPipelines(context->getDevice(), VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &graphicsPipeline) != VK_SUCCESS) {
+    if (loader->vkCreateGraphicsPipelines(context->getDevice(), VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &graphicsPipeline) != VK_SUCCESS) {
         std::cerr << "Failed to create graphics pipeline" << std::endl;
         return false;
     }
 
-    vkDestroyShaderModule(context->getDevice(), fragShaderModule, nullptr);
-    vkDestroyShaderModule(context->getDevice(), vertShaderModule, nullptr);
+    loader->vkDestroyShaderModule(context->getDevice(), fragShaderModule, nullptr);
+    loader->vkDestroyShaderModule(context->getDevice(), vertShaderModule, nullptr);
 
     return true;
 }
 
-void VulkanPipeline::loadFunctions() {
-    vkCreateRenderPass = (PFN_vkCreateRenderPass)context->vkGetDeviceProcAddr(context->getDevice(), "vkCreateRenderPass");
-    vkDestroyRenderPass = (PFN_vkDestroyRenderPass)context->vkGetDeviceProcAddr(context->getDevice(), "vkDestroyRenderPass");
-    vkCreateShaderModule = (PFN_vkCreateShaderModule)context->vkGetDeviceProcAddr(context->getDevice(), "vkCreateShaderModule");
-    vkDestroyShaderModule = (PFN_vkDestroyShaderModule)context->vkGetDeviceProcAddr(context->getDevice(), "vkDestroyShaderModule");
-    vkCreatePipelineLayout = (PFN_vkCreatePipelineLayout)context->vkGetDeviceProcAddr(context->getDevice(), "vkCreatePipelineLayout");
-    vkDestroyPipelineLayout = (PFN_vkDestroyPipelineLayout)context->vkGetDeviceProcAddr(context->getDevice(), "vkDestroyPipelineLayout");
-    vkCreateGraphicsPipelines = (PFN_vkCreateGraphicsPipelines)context->vkGetDeviceProcAddr(context->getDevice(), "vkCreateGraphicsPipelines");
-    vkDestroyPipeline = (PFN_vkDestroyPipeline)context->vkGetDeviceProcAddr(context->getDevice(), "vkDestroyPipeline");
-    vkCreateDescriptorSetLayout = (PFN_vkCreateDescriptorSetLayout)context->vkGetDeviceProcAddr(context->getDevice(), "vkCreateDescriptorSetLayout");
-    vkDestroyDescriptorSetLayout = (PFN_vkDestroyDescriptorSetLayout)context->vkGetDeviceProcAddr(context->getDevice(), "vkDestroyDescriptorSetLayout");
-}
+// Note: loadFunctions removed - now using centralized VulkanFunctionLoader
 
 VkShaderModule VulkanPipeline::createShaderModule(const std::vector<char>& code) {
-    VkShaderModuleCreateInfo createInfo{};
-    createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-    createInfo.codeSize = code.size();
-    createInfo.pCode = reinterpret_cast<const uint32_t*>(code.data());
-
-    VkShaderModule shaderModule;
-    if (vkCreateShaderModule(context->getDevice(), &createInfo, nullptr, &shaderModule) != VK_SUCCESS) {
-        std::cerr << "Failed to create shader module" << std::endl;
-        throw std::runtime_error("failed to create shader module!");
-    }
-
-    return shaderModule;
+    return VulkanUtils::createShaderModule(context->getDevice(), *loader, code);
 }
 
-std::vector<char> VulkanPipeline::readFile(const std::string& filename) {
-    std::ifstream file(filename, std::ios::ate | std::ios::binary);
-
-    if (!file.is_open()) {
-        std::cerr << "Failed to open shader file: " << filename << std::endl;
-        throw std::runtime_error("failed to open file: " + filename);
-    }
-
-    size_t fileSize = (size_t) file.tellg();
-    std::vector<char> buffer(fileSize);
-
-    file.seekg(0);
-    file.read(buffer.data(), fileSize);
-
-    file.close();
-
-    std::cout << "Successfully loaded shader file: " << filename << " (" << fileSize << " bytes)" << std::endl;
-    return buffer;
-}
+// Note: readFile removed - now using VulkanUtils::readFile
