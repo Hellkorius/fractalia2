@@ -1,12 +1,19 @@
 #!/bin/bash
 
-# Create shaders directory if it doesn't exist
+# Create shaders directories if they don't exist
 mkdir -p build/shaders/compiled
+mkdir -p src/shaders/compiled
 
 # Compile vertex shader
-glslangValidator -V src/shaders/vertex.vert -o build/shaders/compiled/vertex.spv
+glslangValidator -V src/shaders/vertex.vert -o src/shaders/compiled/vertex.spv
+cp src/shaders/compiled/vertex.spv build/shaders/compiled/
 
 # Compile fragment shader  
-glslangValidator -V src/shaders/fragment.frag -o build/shaders/compiled/fragment.spv
+glslangValidator -V src/shaders/fragment.frag -o src/shaders/compiled/fragment.spv
+cp src/shaders/compiled/fragment.spv build/shaders/compiled/
+
+# Compile compute shader
+glslangValidator -V src/shaders/movement.comp -o src/shaders/compiled/movement.spv
+cp src/shaders/compiled/movement.spv build/shaders/compiled/
 
 echo "Shaders compiled successfully!"

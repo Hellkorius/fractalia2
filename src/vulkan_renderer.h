@@ -16,6 +16,8 @@ class VulkanSwapchain;
 class VulkanPipeline;
 class VulkanResources;
 class VulkanSync;
+class ComputePipeline;
+class GPUEntityManager;
 
 class VulkanRenderer {
 public:
@@ -33,6 +35,11 @@ public:
     };
     
     void updateEntities(const std::vector<std::tuple<glm::vec3, ShapeType, glm::vec4>>& entities);
+    
+    // GPU entity management
+    GPUEntityManager* getGPUEntityManager() { return gpuEntityManager.get(); }
+    void uploadPendingGPUEntities();
+    void setDeltaTime(float deltaTime) { this->deltaTime = deltaTime; }
     
     // Camera integration
     void setWorld(flecs::world* world) { this->world = world; }
@@ -55,6 +62,8 @@ private:
     std::unique_ptr<VulkanPipeline> pipeline;
     std::unique_ptr<VulkanResources> resources;
     std::unique_ptr<VulkanSync> sync;
+    std::unique_ptr<ComputePipeline> computePipeline;
+    std::unique_ptr<GPUEntityManager> gpuEntityManager;
 
     // Vulkan function pointers for drawing operations
     PFN_vkWaitForFences vkWaitForFences = nullptr;
@@ -75,6 +84,9 @@ private:
     PFN_vkCmdBindVertexBuffers vkCmdBindVertexBuffers = nullptr;
     PFN_vkCmdBindIndexBuffer vkCmdBindIndexBuffer = nullptr;
     PFN_vkCmdDrawIndexed vkCmdDrawIndexed = nullptr;
+    PFN_vkCmdDispatch vkCmdDispatch = nullptr;
+    PFN_vkCmdPipelineBarrier vkCmdPipelineBarrier = nullptr;
+    PFN_vkCmdPushConstants vkCmdPushConstants = nullptr;
 
     // Helper functions
     bool recreateSwapChain();
@@ -82,10 +94,15 @@ private:
     void loadDrawingFunctions();
     void updateUniformBuffer(uint32_t currentImage);
     void updateInstanceBuffer(uint32_t currentFrame);
+    void dispatchCompute(VkCommandBuffer commandBuffer, float deltaTime);
+    void transitionBufferLayout(VkCommandBuffer commandBuffer);
     
     // Entity position for rendering (backward compatibility)
     glm::vec3 entityPosition = glm::vec3(0.0f, 0.0f, 0.0f);
     
     // Multiple entities for rendering
     std::vector<std::tuple<glm::vec3, ShapeType, glm::vec4>> renderEntities;
+    
+    // GPU compute state
+    float deltaTime = 0.0f;
 };

@@ -4,6 +4,8 @@
 #include "vulkan/vulkan_pipeline.h"
 #include "vulkan/vulkan_resources.h"
 #include "vulkan/vulkan_sync.h"
+#include "vulkan/compute_pipeline.h"
+#include "ecs/gpu_entity_manager.h"
 #include "ecs/systems/camera_system.hpp"
 #include "ecs/camera_component.hpp"
 #include <iostream>
@@ -95,6 +97,25 @@ bool VulkanRenderer::initialize(SDL_Window* window) {
         return false;
     }
     
+    // Initialize GPU entity manager after sync is created
+    gpuEntityManager = std::make_unique<GPUEntityManager>();
+    if (!gpuEntityManager->initialize(context.get(), sync.get())) {
+        std::cerr << "Failed to initialize GPU entity manager" << std::endl;
+        return false;
+    }
+    
+    // Initialize compute pipeline
+    computePipeline = std::make_unique<ComputePipeline>();
+    if (!computePipeline->initialize(context.get())) {
+        std::cerr << "Failed to initialize compute pipeline" << std::endl;
+        return false;
+    }
+    
+    if (!computePipeline->createMovementPipeline(gpuEntityManager->getComputeDescriptorSetLayout())) {
+        std::cerr << "Failed to create movement compute pipeline" << std::endl;
+        return false;
+    }
+    
     loadDrawingFunctions();
     
     initialized = true;
@@ -106,6 +127,8 @@ void VulkanRenderer::cleanup() {
         context->vkDeviceWaitIdle(context->getDevice());
     }
     
+    gpuEntityManager.reset();
+    computePipeline.reset();
     sync.reset();
     resources.reset();
     pipeline.reset();
@@ -137,10 +160,29 @@ void VulkanRenderer::drawFrame() {
 
     vkResetFences(context->getDevice(), 1, &fences[currentFrame]);
 
+    // Upload any pending GPU entities
+    uploadPendingGPUEntities();
+    
     updateUniformBuffer(currentFrame);
     updateInstanceBuffer(currentFrame);
 
     vkResetCommandBuffer(commandBuffers[currentFrame], 0);
+    
+    // Dispatch compute first, then record graphics commands
+    VkCommandBufferBeginInfo beginInfo{};
+    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    
+    if (vkBeginCommandBuffer(commandBuffers[currentFrame], &beginInfo) != VK_SUCCESS) {
+        std::cerr << "Failed to begin recording command buffer!" << std::endl;
+        return;
+    }
+    
+    // Dispatch compute for entity movement
+    dispatchCompute(commandBuffers[currentFrame], deltaTime);
+    
+    // Transition buffer for graphics pipeline
+    transitionBufferLayout(commandBuffers[currentFrame]);
+    
     recordCommandBuffer(commandBuffers[currentFrame], imageIndex);
 
     VkSubmitInfo submitInfo{};
@@ -202,13 +244,7 @@ bool VulkanRenderer::recreateSwapChain() {
 }
 
 void VulkanRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex) {
-    VkCommandBufferBeginInfo beginInfo{};
-    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-
-    if (vkBeginCommandBuffer(commandBuffer, &beginInfo) != VK_SUCCESS) {
-        std::cerr << "Failed to begin recording command buffer" << std::endl;
-        return;
-    }
+    // Command buffer is already begun by drawFrame(), just record graphics commands
 
     VkRenderPassBeginInfo renderPassInfo{};
     renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
@@ -268,8 +304,16 @@ void VulkanRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t
     squareCount = std::min(squareCount, maxInstances - triangleCount);
     
     
-    // Render triangles
-    if (triangleCount > 0) {
+    // Render triangles using GPU entity buffer
+    uint32_t gpuEntityCount = gpuEntityManager ? gpuEntityManager->getEntityCount() : 0;
+    if (gpuEntityCount > 0) {
+        VkBuffer triangleVertexBuffers[] = {resources->getTriangleVertexBuffer(), gpuEntityManager->getCurrentEntityBuffer()};
+        VkDeviceSize offsets[] = {0, 0}; // GPU entities start at beginning of buffer
+        vkCmdBindVertexBuffers(commandBuffer, 0, 2, triangleVertexBuffers, offsets);
+        vkCmdBindIndexBuffer(commandBuffer, resources->getTriangleIndexBuffer(), 0, VK_INDEX_TYPE_UINT16);
+        vkCmdDrawIndexed(commandBuffer, resources->getTriangleIndexCount(), gpuEntityCount, 0, 0, 0);
+    } else if (triangleCount > 0) {
+        // Fallback to old CPU instance buffer for compatibility
         VkBuffer triangleVertexBuffers[] = {resources->getTriangleVertexBuffer(), resources->getInstanceBuffers()[currentFrame]};
         VkDeviceSize offsets[] = {0, instanceOffset * sizeof(InstanceData)};
         vkCmdBindVertexBuffers(commandBuffer, 0, 2, triangleVertexBuffers, offsets);
@@ -278,8 +322,10 @@ void VulkanRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t
         instanceOffset += triangleCount;
     }
     
-	// Render squares
-	if (squareCount > 0) {
+	// Skip squares when using GPU entities - all entities are rendered as triangles for simplicity
+	// GPU compute shader doesn't differentiate by shape type in this implementation
+	if (gpuEntityCount == 0 && squareCount > 0) {
+		// Fallback CPU rendering for squares
 		VkBuffer squareVertexBuffers[] = {resources->getSquareVertexBuffer(), resources->getInstanceBuffers()[currentFrame]};
 		VkDeviceSize offsets[] = {0, instanceOffset * sizeof(InstanceData)};
 		vkCmdBindVertexBuffers(commandBuffer, 0, 2, squareVertexBuffers, offsets);
@@ -323,6 +369,62 @@ void VulkanRenderer::loadDrawingFunctions() {
     vkCmdBindVertexBuffers = (PFN_vkCmdBindVertexBuffers)context->vkGetDeviceProcAddr(context->getDevice(), "vkCmdBindVertexBuffers");
     vkCmdBindIndexBuffer = (PFN_vkCmdBindIndexBuffer)context->vkGetDeviceProcAddr(context->getDevice(), "vkCmdBindIndexBuffer");
     vkCmdDrawIndexed = (PFN_vkCmdDrawIndexed)context->vkGetDeviceProcAddr(context->getDevice(), "vkCmdDrawIndexed");
+    vkCmdDispatch = (PFN_vkCmdDispatch)context->vkGetDeviceProcAddr(context->getDevice(), "vkCmdDispatch");
+    vkCmdPipelineBarrier = (PFN_vkCmdPipelineBarrier)context->vkGetDeviceProcAddr(context->getDevice(), "vkCmdPipelineBarrier");
+    vkCmdPushConstants = (PFN_vkCmdPushConstants)context->vkGetDeviceProcAddr(context->getDevice(), "vkCmdPushConstants");
+}
+
+void VulkanRenderer::uploadPendingGPUEntities() {
+    if (gpuEntityManager) {
+        gpuEntityManager->uploadPendingEntities();
+    }
+}
+
+void VulkanRenderer::dispatchCompute(VkCommandBuffer commandBuffer, float deltaTime) {
+    if (!gpuEntityManager || !computePipeline || gpuEntityManager->getEntityCount() == 0) {
+        return;
+    }
+    
+    // Bind compute pipeline
+    vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, computePipeline->getMovementPipeline());
+    
+    // Bind descriptor sets
+    VkDescriptorSet descriptorSet = gpuEntityManager->getCurrentComputeDescriptorSet();
+    vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, 
+                           computePipeline->getMovementPipelineLayout(), 0, 1, &descriptorSet, 0, nullptr);
+    
+    // Push constants for time and entity count
+    struct PushConstants {
+        float deltaTime;
+        uint32_t entityCount;
+    } pushConstants = { deltaTime, gpuEntityManager->getEntityCount() };
+    
+    vkCmdPushConstants(commandBuffer, computePipeline->getMovementPipelineLayout(),
+                      VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(PushConstants), &pushConstants);
+    
+    // Dispatch compute shader (64 threads per workgroup)
+    uint32_t workgroupCount = (gpuEntityManager->getEntityCount() + 63) / 64;
+    vkCmdDispatch(commandBuffer, workgroupCount, 1, 1);
+    
+    // Swap buffers for next frame
+    gpuEntityManager->swapBuffers();
+}
+
+void VulkanRenderer::transitionBufferLayout(VkCommandBuffer commandBuffer) {
+    if (!gpuEntityManager || gpuEntityManager->getEntityCount() == 0) {
+        return;
+    }
+    
+    // Memory barrier to ensure compute write is finished before graphics read
+    VkMemoryBarrier barrier{};
+    barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+    barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+    barrier.dstAccessMask = VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT;
+    
+    vkCmdPipelineBarrier(commandBuffer,
+                        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                        VK_PIPELINE_STAGE_VERTEX_INPUT_BIT,
+                        0, 1, &barrier, 0, nullptr, 0, nullptr);
 }
 
 void VulkanRenderer::updateUniformBuffer(uint32_t currentImage) {

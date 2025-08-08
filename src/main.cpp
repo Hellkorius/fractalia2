@@ -13,6 +13,7 @@
 #include "ecs/systems/control_handler_system.hpp"
 #include "ecs/camera_component.hpp"
 #include "ecs/profiler.hpp"
+#include "ecs/gpu_entity_manager.h"
 
 int main(int argc, char* argv[]) {
     constexpr int TARGET_FPS = 60;
@@ -59,13 +60,12 @@ int main(int argc, char* argv[]) {
 
     World world;
 
-    // Simple petal movement system with dynamic colors
-    world.getFlecsWorld().system<Transform, MovementPattern>()
-        .each(movement_system);
-        
-    // Velocity-based movement for entities without movement patterns
-    world.getFlecsWorld().system<Transform, Velocity>()
-        .each(velocity_movement_system);
+    // NOTE: Movement systems disabled - now handled by GPU compute shader
+    // world.getFlecsWorld().system<Transform, MovementPattern>()
+    //     .each(movement_system);
+    //     
+    // world.getFlecsWorld().system<Transform, Velocity>()
+    //     .each(velocity_movement_system);
         
     world.getFlecsWorld().system<Lifetime>()
         .each(lifetime_system);
@@ -98,34 +98,22 @@ int main(int argc, char* argv[]) {
     // Configure profiler for 60 FPS
     Profiler::getInstance().setTargetFrameTime(TARGET_FRAME_TIME);
 
-    // Stress test configuration
-    constexpr size_t ENTITY_COUNT = 1000; // Start with 1000 entities
+    // GPU stress test configuration - scale up to 10k for initial test
+    constexpr size_t ENTITY_COUNT = 10000; // GPU can handle much more
     
-    std::cout << "Creating " << ENTITY_COUNT << " entities for stress testing..." << std::endl;
+    std::cout << "Creating " << ENTITY_COUNT << " GPU entities for stress testing..." << std::endl;
     
-    // Create a swarm of entities for stress testing
+    // Create a swarm of entities for stress testing - these will be uploaded to GPU
     auto swarmEntities = world.getEntityFactory().createSwarm(
         ENTITY_COUNT,
         glm::vec3(0.0f, 0.0f, 0.0f), // center
-        1.5f  // radius
+        2.0f  // larger radius for more spread
     );
     
-    // Create some hero entities with different behavior
-    auto triangleEntity = world.getEntityFactory().createTriangle(
-        glm::vec3(-1.5f, 0.0f, 0.0f),
-        glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
-        10  // higher layer
-    );
-    triangleEntity.set<Velocity>({{0.5f, 0.2f, 0.0f}, {0.0f, 0.0f, 1.0f}});
-
-    auto squareEntity = world.getEntityFactory().createSquare(
-        glm::vec3(1.5f, 0.0f, 0.0f),
-        glm::vec4(1.0f, 0.0f, 0.0f, 1.0f),
-        10  // higher layer
-    );
-    squareEntity.set<Velocity>({{-0.3f, 0.4f, 0.0f}, {0.0f, 0.0f, -0.5f}});
+    // Upload all entities to GPU immediately
+    renderer.getGPUEntityManager()->addEntitiesFromECS(swarmEntities);
     
-    std::cout << "Created " << (swarmEntities.size() + 2) << " total entities!" << std::endl;
+    std::cout << "Created " << swarmEntities.size() << " GPU entities!" << std::endl;
     
     // Initialize control handler system
     ControlHandler::initialize(world);
@@ -143,7 +131,7 @@ int main(int argc, char* argv[]) {
         InputManager::processSDLEvents(world.getFlecsWorld());
         
         // Handle all controls through the control handler system
-        ControlHandler::processControls(world, running);
+        ControlHandler::processControls(world, running, &renderer);
         
         // Handle window resize for camera aspect ratio
         auto inputEntity = world.getFlecsWorld().lookup("InputManager");
@@ -163,10 +151,12 @@ int main(int argc, char* argv[]) {
         // Profile the main update loop
         PROFILE_BEGIN_FRAME();
         
-        // Movement system update (no caches needed)
+        // Set deltaTime for GPU compute shader
+        renderer.setDeltaTime(deltaTime);
         
         {
             PROFILE_SCOPE("ECS Update");
+            // Only run non-movement systems (input, camera, etc.)
             world.progress(deltaTime);
         }
         

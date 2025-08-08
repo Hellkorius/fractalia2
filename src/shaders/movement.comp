@@ -1,0 +1,157 @@
+#version 450
+
+layout(local_size_x = 64) in;
+
+// Movement types
+#define MOVEMENT_PETAL 0
+#define MOVEMENT_ORBIT 1
+#define MOVEMENT_WAVE 2
+
+// GPU entity structure - matches CPU-side GPUEntity
+struct GPUEntity {
+    mat4 modelMatrix;        // Transform matrix
+    vec4 color;              // RGBA color
+    vec4 movementParams0;    // amplitude, frequency, phase, timeOffset  
+    vec4 movementParams1;    // center.xyz, movementType
+    vec4 runtimeState;       // totalTime, initialized, reserved, reserved
+};
+
+// Storage buffers - double buffered for compute/graphics
+layout(set = 0, binding = 0, std430) restrict buffer EntityBufferIn {
+    GPUEntity entitiesIn[];
+};
+
+layout(set = 0, binding = 1, std430) restrict buffer EntityBufferOut {
+    GPUEntity entitiesOut[];
+};
+
+// Push constants for frame data
+layout(push_constant) uniform PushConstants {
+    float deltaTime;
+    uint entityCount;
+} pc;
+
+// Movement pattern implementations
+vec3 computePetalMovement(vec3 center, float amplitude, float frequency, float phase, float totalTime) {
+    // Smooth radial oscillation from center
+    float radialOscillation = 0.5 + 0.5 * sin(totalTime * frequency * 0.3);
+    float currentRadius = amplitude * radialOscillation;
+    
+    // Petal angle rotation
+    float petalAngle = totalTime * frequency + phase;
+    
+    return center + vec3(
+        currentRadius * cos(petalAngle),
+        currentRadius * sin(petalAngle),
+        0.0
+    );
+}
+
+vec3 computeOrbitMovement(vec3 center, float amplitude, float frequency, float phase, float totalTime) {
+    // Circular orbit around center
+    float angle = totalTime * frequency + phase;
+    return center + vec3(
+        amplitude * cos(angle),
+        amplitude * sin(angle),
+        0.0
+    );
+}
+
+vec3 computeWaveMovement(vec3 center, float amplitude, float frequency, float phase, float totalTime) {
+    // Sinusoidal wave movement
+    float wave = sin(totalTime * frequency + phase);
+    return center + vec3(
+        amplitude * wave,
+        amplitude * cos(totalTime * frequency * 0.5 + phase),
+        0.0
+    );
+}
+
+// Dynamic color generation based on movement
+vec4 generateDynamicColor(float amplitude, float frequency, float phase, float totalTime) {
+    // HSV-style color generation
+    float hue = mod(phase + totalTime * 0.5, 6.28318530718) / 6.28318530718;
+    float saturation = 0.7 + 0.3 * sin(frequency * totalTime);
+    float brightness = 0.8 + 0.2 * sin(amplitude * totalTime * 0.5);
+    
+    // Convert HSV to RGB
+    float c = brightness * saturation;
+    float x = c * (1.0 - abs(mod(hue * 6.0, 2.0) - 1.0));
+    float m = brightness - c;
+    
+    vec3 rgb;
+    if (hue < 1.0/6.0) rgb = vec3(c, x, 0);
+    else if (hue < 2.0/6.0) rgb = vec3(x, c, 0);
+    else if (hue < 3.0/6.0) rgb = vec3(0, c, x);
+    else if (hue < 4.0/6.0) rgb = vec3(0, x, c);
+    else if (hue < 5.0/6.0) rgb = vec3(x, 0, c);
+    else rgb = vec3(c, 0, x);
+    
+    return vec4(rgb + m, 1.0);
+}
+
+void main() {
+    uint index = gl_GlobalInvocationID.x;
+    
+    // Bounds check
+    if (index >= pc.entityCount) {
+        return;
+    }
+    
+    // Read input entity
+    GPUEntity entity = entitiesIn[index];
+    
+    // Update runtime state
+    float totalTime = entity.runtimeState.x + pc.deltaTime;
+    bool initialized = entity.runtimeState.y > 0.5;
+    
+    // Extract movement parameters
+    float amplitude = entity.movementParams0.x;
+    float frequency = entity.movementParams0.y;
+    float phase = entity.movementParams0.z;
+    float timeOffset = entity.movementParams0.w;
+    vec3 center = entity.movementParams1.xyz;
+    uint movementType = uint(entity.movementParams1.w);
+    
+    // Initialize center if first frame
+    if (!initialized) {
+        center = vec3(entity.modelMatrix[3][0], entity.modelMatrix[3][1], entity.modelMatrix[3][2]);
+        entity.movementParams1.xyz = center;
+        initialized = true;
+    }
+    
+    // Apply time offset
+    float adjustedTime = totalTime + timeOffset;
+    
+    // Compute new position based on movement type
+    vec3 newPosition;
+    switch (movementType) {
+        case MOVEMENT_PETAL:
+            newPosition = computePetalMovement(center, amplitude, frequency, phase, adjustedTime);
+            break;
+        case MOVEMENT_ORBIT:
+            newPosition = computeOrbitMovement(center, amplitude, frequency, phase, adjustedTime);
+            break;
+        case MOVEMENT_WAVE:
+            newPosition = computeWaveMovement(center, amplitude, frequency, phase, adjustedTime);
+            break;
+        default:
+            newPosition = computePetalMovement(center, amplitude, frequency, phase, adjustedTime);
+            break;
+    }
+    
+    // Update transform matrix with new position
+    entity.modelMatrix[3][0] = newPosition.x;
+    entity.modelMatrix[3][1] = newPosition.y;
+    entity.modelMatrix[3][2] = newPosition.z;
+    
+    // Update dynamic color
+    entity.color = generateDynamicColor(amplitude, frequency, phase, adjustedTime);
+    
+    // Update runtime state
+    entity.runtimeState.x = totalTime;
+    entity.runtimeState.y = initialized ? 1.0 : 0.0;
+    
+    // Write to output buffer
+    entitiesOut[index] = entity;
+}
