@@ -5,6 +5,7 @@
 #include "component.hpp"
 #include "entity_factory.hpp"
 #include "memory_manager.hpp"
+#include "system_scheduler.hpp"
 #include <unordered_map>
 #include <memory>
 #include <chrono>
@@ -78,6 +79,7 @@ private:
     std::unique_ptr<EntityFactory> entityFactory;
     std::unique_ptr<ECSMemoryManager> memoryManager;
     std::unique_ptr<QueryCache> queryCache;
+    std::unique_ptr<SystemScheduler> systemScheduler;
     
     // Performance tracking
     std::chrono::steady_clock::time_point lastUpdateTime;
@@ -89,6 +91,7 @@ public:
         entityFactory = std::make_unique<EntityFactory>(flecsWorld);
         memoryManager = std::make_unique<ECSMemoryManager>(flecsWorld);
         queryCache = std::make_unique<QueryCache>();
+        systemScheduler = std::make_unique<SystemScheduler>(flecsWorld);
     }
     
     ~World() = default;
@@ -125,7 +128,8 @@ public:
         lastUpdateTime = now;
         frameCount++;
         
-        flecsWorld.progress(dt);
+        // Use system scheduler for proper system execution
+        systemScheduler->executeFrame(dt);
         
         // Periodic cleanup
         if (frameCount % 300 == 0) { // Every 5 seconds at 60fps
@@ -138,6 +142,9 @@ public:
     
     // Memory management
     ECSMemoryManager& getMemoryManager() { return *memoryManager; }
+    
+    // System scheduler access
+    SystemScheduler& getSystemScheduler() { return *systemScheduler; }
     
     // Direct access to flecs world for advanced usage
     flecs::world& getFlecsWorld() {

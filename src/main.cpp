@@ -6,6 +6,7 @@
 #include "vulkan_renderer.h"
 #include "PolygonFactory.h"
 #include "ecs/world.hpp"
+#include "ecs/system_registry.hpp"
 #include "ecs/systems/lifetime_system.hpp"
 #include "ecs/systems/input_system.hpp"
 #include "ecs/systems/camera_system.hpp"
@@ -65,23 +66,33 @@ int main(int argc, char* argv[]) {
 
     World world;
 
-    // NOTE: Movement systems removed - now handled by GPU compute shader
-        
-    world.getFlecsWorld().system<Lifetime>()
-        .each(lifetime_system);
+    // Initialize system scheduler with Flecs-native scheduling
+    auto& scheduler = world.getSystemScheduler();
     
-    // Input processing system
-    world.getFlecsWorld().system<InputState, KeyboardInput, MouseInput, InputEvents>()
-        .each(input_processing_system);
+    // Core ECS systems
+    scheduler.addSystem<FlecsSystem<Lifetime>>(
+        "LifetimeSystem", 
+        lifetime_system
+    );
     
-    // Camera systems - process camera input and update matrices
-    world.getFlecsWorld().system<Camera>()
-        .each([](flecs::entity e, Camera& camera) {
+    // Input systems
+    scheduler.addSystem<FlecsSystem<InputState, KeyboardInput, MouseInput, InputEvents>>(
+        "InputSystem",
+        input_processing_system
+    );
+    
+    // Camera systems
+    scheduler.addSystem<FlecsSystem<Camera>>(
+        "CameraControlSystem",
+        [](flecs::entity e, Camera& camera) {
             camera_control_system(e, camera, e.world().delta_time());
-        });
-        
-    world.getFlecsWorld().system<Camera>()
-        .each(camera_matrix_system);
+        }
+    );
+    
+    scheduler.addSystem<FlecsSystem<Camera>>(
+        "CameraMatrixSystem",
+        camera_matrix_system
+    );
     
     // Create input singleton entity and set window reference for accurate screen coordinates
     InputManager::createInputEntity(world.getFlecsWorld());
@@ -115,10 +126,36 @@ int main(int argc, char* argv[]) {
     
     std::cout << "Created " << swarmEntities.size() << " GPU entities!" << std::endl;
     
-    // Initialize control handler system
-    ControlHandler::initialize(world);
-
-    bool running = true;
+    // Manual systems for game logic
+    bool running = true; // Move declaration up here
+    
+    scheduler.addSystem<ManualSystem>(
+        "ControlHandler",
+        [&](flecs::world& flecsWorld, float deltaTime) {
+            static bool initialized = false;
+            if (!initialized) {
+                ControlHandler::initialize(world);
+                initialized = true;
+            }
+            ControlHandler::processControls(world, running, &renderer);
+        }
+    );
+    
+    scheduler.addSystem<ManualSystem>(
+        "GPUEntityUpload",
+        [&](flecs::world& flecsWorld, float deltaTime) {
+            if (renderer.getGPUEntityManager()) {
+                renderer.uploadPendingGPUEntities();
+                renderer.setDeltaTime(deltaTime);
+            }
+        }
+    );
+    
+    // Initialize all systems through scheduler
+    scheduler.initialize();
+    
+    std::cout << "\n🚀 Flecs System Scheduler initialized with " 
+              << scheduler.getSystemCount() << " systems\n" << std::endl;
     int frameCount = 0;
     auto lastFrameTime = std::chrono::high_resolution_clock::now();
     
@@ -130,8 +167,7 @@ int main(int argc, char* argv[]) {
         // Process SDL events through the input system
         InputManager::processSDLEvents(world.getFlecsWorld());
         
-        // Handle all controls through the control handler system
-        ControlHandler::processControls(world, running, &renderer);
+        // Systems now handle controls automatically through scheduler
         
         // Handle window resize for camera aspect ratio
         auto inputEntity = world.getFlecsWorld().lookup("InputManager");
@@ -151,12 +187,9 @@ int main(int argc, char* argv[]) {
         // Profile the main update loop
         PROFILE_BEGIN_FRAME();
         
-        // Set deltaTime for GPU compute shader
-        renderer.setDeltaTime(deltaTime);
-        
         {
             PROFILE_SCOPE("ECS Update");
-            // Only run non-movement systems (input, camera, etc.)
+            // Systems handle GPU upload and deltaTime automatically
             world.progress(deltaTime);
         }
         
