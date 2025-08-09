@@ -136,6 +136,10 @@ struct GPUEntity {
 
 ### Vulkan Rendering
 The project uses Vulkan with dynamic function loading for cross-platform compatibility:
+- **SDL-Vulkan Integration**: Pure Vulkan presentation, no SDL swap functions
+- **Low-Latency Optimizations**: MAILBOX/IMMEDIATE present modes, optimized fence waits
+- **Frame Synchronization**: Two-tier timeout strategy (immediate check → 16ms wait)
+- **Swapchain Buffering**: Optimized image count for smooth 60fps presentation
 - Vulkan functions are loaded at runtime using SDL3's Vulkan loader
 - Graphics + Compute pipelines with synchronized command buffer execution
 - Shaders are written in GLSL and compiled to SPIR-V using `glslangValidator`

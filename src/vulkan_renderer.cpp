@@ -180,11 +180,11 @@ void VulkanRenderer::drawFrame() {
     // Use immediate check first, then longer timeout if needed for smooth 60fps
     
     if (frame.computeInUse) {
-        // First try immediate check (0 timeout)
-        VkResult computeResult = functionLoader->vkWaitForFences(context->getDevice(), 1, &frame.computeDone, VK_TRUE, 0);
+        // First try immediate check
+        VkResult computeResult = functionLoader->vkWaitForFences(context->getDevice(), 1, &frame.computeDone, VK_TRUE, FENCE_TIMEOUT_IMMEDIATE);
         if (computeResult == VK_TIMEOUT) {
-            // If not ready immediately, wait up to ~16ms (one frame at 60fps)
-            computeResult = functionLoader->vkWaitForFences(context->getDevice(), 1, &frame.computeDone, VK_TRUE, 16000000);
+            // If not ready immediately, wait up to one frame time
+            computeResult = functionLoader->vkWaitForFences(context->getDevice(), 1, &frame.computeDone, VK_TRUE, FENCE_TIMEOUT_FRAME);
             if (computeResult == VK_TIMEOUT) {
                 // Only skip frame after a full frame time has passed
                 return;
@@ -194,11 +194,11 @@ void VulkanRenderer::drawFrame() {
     }
     
     if (frame.graphicsInUse) {
-        // First try immediate check (0 timeout)
-        VkResult graphicsResult = functionLoader->vkWaitForFences(context->getDevice(), 1, &frame.graphicsDone, VK_TRUE, 0);
+        // First try immediate check
+        VkResult graphicsResult = functionLoader->vkWaitForFences(context->getDevice(), 1, &frame.graphicsDone, VK_TRUE, FENCE_TIMEOUT_IMMEDIATE);
         if (graphicsResult == VK_TIMEOUT) {
-            // If not ready immediately, wait up to ~16ms (one frame at 60fps)
-            graphicsResult = functionLoader->vkWaitForFences(context->getDevice(), 1, &frame.graphicsDone, VK_TRUE, 16000000);
+            // If not ready immediately, wait up to one frame time
+            graphicsResult = functionLoader->vkWaitForFences(context->getDevice(), 1, &frame.graphicsDone, VK_TRUE, FENCE_TIMEOUT_FRAME);
             if (graphicsResult == VK_TIMEOUT) {
                 // Only skip frame after a full frame time has passed
                 return;

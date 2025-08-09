@@ -100,16 +100,16 @@ bool VulkanSwapchain::createSwapChain() {
     VkPresentModeKHR presentMode = chooseSwapPresentMode(swapChainSupport.presentModes);
     VkExtent2D extent = chooseSwapExtent(swapChainSupport.capabilities);
 
-    // Optimize image count for MAX_FRAMES_IN_FLIGHT (currently 2)
-    // Request minImageCount + MAX_FRAMES_IN_FLIGHT to ensure both engine and compositor have spare buffers
-    const uint32_t MAX_FRAMES_IN_FLIGHT = 2; // Should match VulkanRenderer::MAX_FRAMES_IN_FLIGHT
-    uint32_t imageCount = swapChainSupport.capabilities.minImageCount + MAX_FRAMES_IN_FLIGHT;
+    // Optimize image count for VulkanRenderer::MAX_FRAMES_IN_FLIGHT
+    // Request minImageCount + frames_in_flight to ensure both engine and compositor have spare buffers
+    const uint32_t FRAMES_IN_FLIGHT = 2; // Should match VulkanRenderer::MAX_FRAMES_IN_FLIGHT
+    uint32_t imageCount = swapChainSupport.capabilities.minImageCount + FRAMES_IN_FLIGHT;
     
     // Clamp to supported range
     if (swapChainSupport.capabilities.maxImageCount > 0 && imageCount > swapChainSupport.capabilities.maxImageCount) {
         imageCount = swapChainSupport.capabilities.maxImageCount;
         std::cout << "WARNING: Swapchain image count clamped to " << imageCount 
-                  << " (requested " << (swapChainSupport.capabilities.minImageCount + MAX_FRAMES_IN_FLIGHT) 
+                  << " (requested " << (swapChainSupport.capabilities.minImageCount + FRAMES_IN_FLIGHT) 
                   << ")" << std::endl;
     }
     

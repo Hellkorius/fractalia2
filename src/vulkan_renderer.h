@@ -22,6 +22,11 @@ class VulkanFunctionLoader;
 
 class VulkanRenderer {
 public:
+    // Frame synchronization constants for smooth 60fps
+    static constexpr uint32_t MAX_FRAMES_IN_FLIGHT = 2;
+    static constexpr uint64_t FENCE_TIMEOUT_IMMEDIATE = 0;           // Immediate check
+    static constexpr uint64_t FENCE_TIMEOUT_FRAME = 16000000;       // 16ms (one frame at 60fps)
+    
     VulkanRenderer();
     ~VulkanRenderer();
 
@@ -53,7 +58,7 @@ private:
     SDL_Window* window = nullptr;
     flecs::world* world = nullptr; // Reference to ECS world for camera access
     
-    static const int MAX_FRAMES_IN_FLIGHT = 2;
+    // Removed duplicate MAX_FRAMES_IN_FLIGHT - using public constant
     uint32_t currentFrame = 0;
     bool framebufferResized = false;
 
