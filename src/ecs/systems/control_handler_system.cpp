@@ -101,6 +101,11 @@ namespace ControlHandler {
             Profiler::getInstance().printReport();
         }
         
+        // Print system scheduler performance report
+        if (InputQuery::isKeyPressed(flecsWorld, SDL_SCANCODE_I)) {
+            world.getSystemScheduler().printPerformanceReport();
+        }
+        
         // Print current GPU stats
         if (InputQuery::isKeyPressed(flecsWorld, SDL_SCANCODE_MINUS) || 
             InputQuery::isKeyPressed(flecsWorld, SDL_SCANCODE_KP_MINUS)) {

@@ -20,8 +20,14 @@ public:
     virtual bool isEnabled() const { return enabled; }
     virtual void setEnabled(bool enable) { enabled = enable; }
     
+    // Phase and dependency management
+    virtual flecs::entity getFlecsEntity() const { return flecs::entity::null(); }
+    virtual void setPhase(flecs::entity phase) { this->phase = phase; }
+    virtual flecs::entity getPhase() const { return phase; }
+    
 protected:
     bool enabled = true;
+    flecs::entity phase;
 };
 
 // Flecs system wrapper - automatically registers and manages Flecs systems
@@ -46,6 +52,11 @@ public:
         } else if (systemLambda) {
             flecsSystem = world.system<Components...>(systemName.c_str()).each(systemLambda);
         }
+        
+        // Configure phase if set
+        if (phase && flecsSystem) {
+            flecsSystem.child_of(phase);
+        }
     }
     
     void update(flecs::world& world, float deltaTime) override {
@@ -54,6 +65,18 @@ public:
         (void)world; (void)deltaTime;
     }
     
+    void setEnabled(bool enable) override {
+        enabled = enable;
+        if (flecsSystem) {
+            if (enable) {
+                flecsSystem.enable();
+            } else {
+                flecsSystem.disable();
+            }
+        }
+    }
+    
+    flecs::entity getFlecsEntity() const override { return flecsSystem; }
     std::string getName() const override { return systemName; }
     
 private:
@@ -72,7 +95,8 @@ public:
         : systemName(name), updateFunction(updateFunc) {}
     
     void initialize(flecs::world& world) override {
-        // Manual systems don't auto-register with Flecs
+        // Manual systems don't auto-register with Flecs but we create an entity for tracking
+        manualEntity = world.entity(systemName.c_str());
         (void)world;
     }
     
@@ -82,11 +106,18 @@ public:
         }
     }
     
+    void setEnabled(bool enable) override {
+        enabled = enable;
+        // Manual systems handle their own enabled state in update()
+    }
+    
+    flecs::entity getFlecsEntity() const override { return manualEntity; }
     std::string getName() const override { return systemName; }
     
 private:
     std::string systemName;
     UpdateFunction updateFunction;
+    flecs::entity manualEntity;
 };
 
 // Utility system for one-time operations

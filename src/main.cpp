@@ -69,30 +69,30 @@ int main(int argc, char* argv[]) {
     // Initialize system scheduler with Flecs-native scheduling
     auto& scheduler = world.getSystemScheduler();
     
-    // Core ECS systems
+    // Core ECS systems - organized by phases
     scheduler.addSystem<FlecsSystem<Lifetime>>(
         "LifetimeSystem", 
         lifetime_system
-    );
+    ).inPhase("Logic");
     
-    // Input systems
+    // Input systems - run in Input phase
     scheduler.addSystem<FlecsSystem<InputState, KeyboardInput, MouseInput, InputEvents>>(
         "InputSystem",
         input_processing_system
-    );
+    ).inPhase("Input");
     
-    // Camera systems
+    // Camera systems - run in Logic phase with dependencies
     scheduler.addSystem<FlecsSystem<Camera>>(
         "CameraControlSystem",
         [](flecs::entity e, Camera& camera) {
             camera_control_system(e, camera, e.world().delta_time());
         }
-    );
+    ).inPhase("Logic");
     
     scheduler.addSystem<FlecsSystem<Camera>>(
         "CameraMatrixSystem",
         camera_matrix_system
-    );
+    ).inPhase("Logic");
     
     // Create input singleton entity and set window reference for accurate screen coordinates
     InputManager::createInputEntity(world.getFlecsWorld());
@@ -139,7 +139,7 @@ int main(int argc, char* argv[]) {
             }
             ControlHandler::processControls(world, running, &renderer);
         }
-    );
+    ).inPhase("Input");
     
     scheduler.addSystem<ManualSystem>(
         "GPUEntityUpload",
@@ -149,7 +149,11 @@ int main(int argc, char* argv[]) {
                 renderer.setDeltaTime(deltaTime);
             }
         }
-    );
+    ).inPhase("Render");
+    
+    // Add system dependencies
+    scheduler.addDependency("CameraMatrixSystem", "CameraControlSystem");
+    scheduler.addDependency("GPUEntityUpload", "ControlHandler");
     
     // Initialize all systems through scheduler
     scheduler.initialize();
