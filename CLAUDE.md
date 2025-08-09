@@ -14,9 +14,15 @@ Cross-compiled (Linux→Windows) toy engine built to stress-test **hundreds-of-t
 
 ### Hybrid CPU/GPU Architecture
 The project uses a hybrid approach:
-- **CPU (Flecs ECS)**: Entity creation, input handling, camera controls, system management
+- **CPU (Flecs ECS)**: Entity creation, input handling, camera controls, system scheduling
 - **GPU (Compute)**: All movement calculations, dynamic color generation, transform updates
 - **GPU (Graphics)**: Direct rendering from compute-updated entity buffers
+
+### System Architecture
+- **SystemScheduler**: Flecs-native scheduling with custom phases and dependencies
+- **FlecsSystem**: Wrapper for traditional Flecs systems (auto-registered)
+- **ManualSystem**: Explicit control systems (GPU upload, controls, etc.)
+- Systems self-register with Flecs during initialization
 
 #### Entity Components (CPU-side):
 - `Transform`: Entity transform matrix and position
@@ -55,9 +61,10 @@ fractalia2/
 	├── memory_manager.hpp		// memory manager for ECS
 	├── profiler.hpp			// performance data collection
 	├── render_batch.hpp		// RenderInstance and RenderBatch (legacy CPU path)
-	├── world.hpp               // World wrapper around flecs::world
-	├── system.hpp              // Base System interface
-	├── system_scheduler.hpp
+	├── world.hpp               // World wrapper around flecs::world + integrated scheduler
+	├── system.hpp              // SystemBase interface with FlecsSystem/ManualSystem wrappers
+	├── system_scheduler.hpp    // Flecs-native scheduler with phase/dependency support
+	├── system_registry.hpp     // System registration helper (optional)
 	├──	camera_component.hpp
 	└── systems/
 		├── lifetime_system.*  	// Entity lifetime management (renamed from physics_system)
