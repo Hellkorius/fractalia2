@@ -100,10 +100,22 @@ bool VulkanSwapchain::createSwapChain() {
     VkPresentModeKHR presentMode = chooseSwapPresentMode(swapChainSupport.presentModes);
     VkExtent2D extent = chooseSwapExtent(swapChainSupport.capabilities);
 
-    uint32_t imageCount = swapChainSupport.capabilities.minImageCount + 1;
+    // Optimize image count for MAX_FRAMES_IN_FLIGHT (currently 2)
+    // Request minImageCount + MAX_FRAMES_IN_FLIGHT to ensure both engine and compositor have spare buffers
+    const uint32_t MAX_FRAMES_IN_FLIGHT = 2; // Should match VulkanRenderer::MAX_FRAMES_IN_FLIGHT
+    uint32_t imageCount = swapChainSupport.capabilities.minImageCount + MAX_FRAMES_IN_FLIGHT;
+    
+    // Clamp to supported range
     if (swapChainSupport.capabilities.maxImageCount > 0 && imageCount > swapChainSupport.capabilities.maxImageCount) {
         imageCount = swapChainSupport.capabilities.maxImageCount;
+        std::cout << "WARNING: Swapchain image count clamped to " << imageCount 
+                  << " (requested " << (swapChainSupport.capabilities.minImageCount + MAX_FRAMES_IN_FLIGHT) 
+                  << ")" << std::endl;
     }
+    
+    std::cout << "Creating swapchain with " << imageCount << " images (min=" 
+              << swapChainSupport.capabilities.minImageCount 
+              << ", max=" << swapChainSupport.capabilities.maxImageCount << ")" << std::endl;
 
     VkSwapchainCreateInfoKHR createInfo{};
     createInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
@@ -276,11 +288,29 @@ VkSurfaceFormatKHR VulkanSwapchain::chooseSwapSurfaceFormat(const std::vector<Vk
 }
 
 VkPresentModeKHR VulkanSwapchain::chooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes) {
+    // Priority order for low-latency, tearing-free presentation:
+    // 1. MAILBOX - Low latency with triple buffering, no tearing
+    // 2. IMMEDIATE - Lowest latency but allows tearing
+    // 3. FIFO - Guaranteed no tearing, standard vsync
+    
+    // First choice: MAILBOX for optimal balance of low latency + no tearing
     for (const auto& availablePresentMode : availablePresentModes) {
         if (availablePresentMode == VK_PRESENT_MODE_MAILBOX_KHR) {
+            std::cout << "Using VK_PRESENT_MODE_MAILBOX_KHR for low-latency presentation" << std::endl;
             return availablePresentMode;
         }
     }
+    
+    // Second choice: IMMEDIATE for absolute minimum latency (allows tearing)
+    for (const auto& availablePresentMode : availablePresentModes) {
+        if (availablePresentMode == VK_PRESENT_MODE_IMMEDIATE_KHR) {
+            std::cout << "Using VK_PRESENT_MODE_IMMEDIATE_KHR for minimum latency (may tear)" << std::endl;
+            return availablePresentMode;
+        }
+    }
+    
+    // Fallback: FIFO is guaranteed to be available
+    std::cout << "Using VK_PRESENT_MODE_FIFO_KHR fallback" << std::endl;
     return VK_PRESENT_MODE_FIFO_KHR;
 }
 

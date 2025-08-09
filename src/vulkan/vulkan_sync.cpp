@@ -36,6 +36,9 @@ void VulkanSync::cleanup() {
         if (i < inFlightFences.size() && inFlightFences[i] != VK_NULL_HANDLE) {
             vkDestroyFence(context->getDevice(), inFlightFences[i], nullptr);
         }
+        if (i < computeFences.size() && computeFences[i] != VK_NULL_HANDLE) {
+            vkDestroyFence(context->getDevice(), computeFences[i], nullptr);
+        }
         if (i < renderFinishedSemaphores.size() && renderFinishedSemaphores[i] != VK_NULL_HANDLE) {
             vkDestroySemaphore(context->getDevice(), renderFinishedSemaphores[i], nullptr);
         }
@@ -68,7 +71,9 @@ bool VulkanSync::createCommandPool() {
 
 bool VulkanSync::createCommandBuffers() {
     commandBuffers.resize(MAX_FRAMES_IN_FLIGHT);
+    computeCommandBuffers.resize(MAX_FRAMES_IN_FLIGHT);
     
+    // Allocate graphics command buffers
     VkCommandBufferAllocateInfo allocInfo{};
     allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
     allocInfo.commandPool = commandPool;
@@ -76,7 +81,14 @@ bool VulkanSync::createCommandBuffers() {
     allocInfo.commandBufferCount = static_cast<uint32_t>(commandBuffers.size());
 
     if (vkAllocateCommandBuffers(context->getDevice(), &allocInfo, commandBuffers.data()) != VK_SUCCESS) {
-        std::cerr << "Failed to allocate command buffers" << std::endl;
+        std::cerr << "Failed to allocate graphics command buffers" << std::endl;
+        return false;
+    }
+    
+    // Allocate compute command buffers
+    allocInfo.commandBufferCount = static_cast<uint32_t>(computeCommandBuffers.size());
+    if (vkAllocateCommandBuffers(context->getDevice(), &allocInfo, computeCommandBuffers.data()) != VK_SUCCESS) {
+        std::cerr << "Failed to allocate compute command buffers" << std::endl;
         return false;
     }
 
@@ -87,6 +99,7 @@ bool VulkanSync::createSyncObjects() {
     imageAvailableSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
     renderFinishedSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
     inFlightFences.resize(MAX_FRAMES_IN_FLIGHT);
+    computeFences.resize(MAX_FRAMES_IN_FLIGHT);
     
     VkSemaphoreCreateInfo semaphoreInfo{};
     semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
@@ -98,7 +111,8 @@ bool VulkanSync::createSyncObjects() {
     for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
         if (vkCreateSemaphore(context->getDevice(), &semaphoreInfo, nullptr, &imageAvailableSemaphores[i]) != VK_SUCCESS ||
             vkCreateSemaphore(context->getDevice(), &semaphoreInfo, nullptr, &renderFinishedSemaphores[i]) != VK_SUCCESS ||
-            vkCreateFence(context->getDevice(), &fenceInfo, nullptr, &inFlightFences[i]) != VK_SUCCESS) {
+            vkCreateFence(context->getDevice(), &fenceInfo, nullptr, &inFlightFences[i]) != VK_SUCCESS ||
+            vkCreateFence(context->getDevice(), &fenceInfo, nullptr, &computeFences[i]) != VK_SUCCESS) {
             std::cerr << "Failed to create synchronization objects" << std::endl;
             return false;
         }

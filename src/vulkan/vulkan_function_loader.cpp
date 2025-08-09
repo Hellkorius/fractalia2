@@ -174,6 +174,14 @@ void VulkanFunctionLoader::loadSwapchainFunctions() {
         vkGetDeviceProcAddr(device, "vkAcquireNextImageKHR"));
     vkQueuePresentKHR = reinterpret_cast<PFN_vkQueuePresentKHR>(
         vkGetDeviceProcAddr(device, "vkQueuePresentKHR"));
+    
+    // Load VK_EXT_swapchain_maintenance1 extension functions (optional)
+    vkReleaseSwapchainImagesEXT = reinterpret_cast<PFN_vkReleaseSwapchainImagesEXT>(
+        vkGetDeviceProcAddr(device, "vkReleaseSwapchainImagesEXT"));
+    
+    if (vkReleaseSwapchainImagesEXT) {
+        std::cout << "VK_EXT_swapchain_maintenance1 functions loaded successfully" << std::endl;
+    }
 }
 
 void VulkanFunctionLoader::loadPipelineFunctions() {

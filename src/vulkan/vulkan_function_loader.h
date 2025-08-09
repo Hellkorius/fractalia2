@@ -87,6 +87,9 @@ public:
     PFN_vkAcquireNextImageKHR vkAcquireNextImageKHR = nullptr;
     PFN_vkQueuePresentKHR vkQueuePresentKHR = nullptr;
     
+    // VK_EXT_swapchain_maintenance1 extension functions (optional)
+    PFN_vkReleaseSwapchainImagesEXT vkReleaseSwapchainImagesEXT = nullptr;
+    
     // Render pass and pipeline functions
     PFN_vkCreateRenderPass vkCreateRenderPass = nullptr;
     PFN_vkDestroyRenderPass vkDestroyRenderPass = nullptr;

@@ -33,6 +33,9 @@ VulkanRenderer::~VulkanRenderer() {
 bool VulkanRenderer::initialize(SDL_Window* window) {
     this->window = window;
     
+    // Initialize per-frame data
+    frameData.resize(MAX_FRAMES_IN_FLIGHT);
+    
     // Initialize centralized function loader first
     functionLoader = std::make_unique<VulkanFunctionLoader>();
     if (!functionLoader->initialize(window)) {
@@ -126,6 +129,12 @@ bool VulkanRenderer::initialize(SDL_Window* window) {
     
     loadDrawingFunctions();
     
+    // Initialize per-frame fences
+    if (!initializeFrameFences()) {
+        std::cerr << "Failed to initialize frame fences" << std::endl;
+        return false;
+    }
+    
     initialized = true;
     return true;
 }
@@ -133,6 +142,18 @@ bool VulkanRenderer::initialize(SDL_Window* window) {
 void VulkanRenderer::cleanup() {
     if (functionLoader && context && context->getDevice() != VK_NULL_HANDLE) {
         functionLoader->vkDeviceWaitIdle(context->getDevice());
+        
+        // Clean up per-frame fences
+        for (auto& frame : frameData) {
+            if (frame.computeDone != VK_NULL_HANDLE) {
+                functionLoader->vkDestroyFence(context->getDevice(), frame.computeDone, nullptr);
+                frame.computeDone = VK_NULL_HANDLE;
+            }
+            if (frame.graphicsDone != VK_NULL_HANDLE) {
+                functionLoader->vkDestroyFence(context->getDevice(), frame.graphicsDone, nullptr);
+                frame.graphicsDone = VK_NULL_HANDLE;
+            }
+        }
     }
     
     gpuEntityManager.reset();
@@ -148,14 +169,45 @@ void VulkanRenderer::cleanup() {
 }
 
 void VulkanRenderer::drawFrame() {
-
-    const auto& fences = sync->getInFlightFences();
+    // Get current frame data and sync objects
+    FrameData& frame = frameData[currentFrame];
     const auto& imageAvailableSemaphores = sync->getImageAvailableSemaphores();
     const auto& renderFinishedSemaphores = sync->getRenderFinishedSemaphores();
     const auto& commandBuffers = sync->getCommandBuffers();
+    const auto& computeCommandBuffers = sync->getComputeCommandBuffers();
 
-    functionLoader->vkWaitForFences(context->getDevice(), 1, &fences[currentFrame], VK_TRUE, UINT64_MAX);
+    // 1. Ensure GPU is done with THIS frame's resources
+    // Use immediate check first, then longer timeout if needed for smooth 60fps
+    
+    if (frame.computeInUse) {
+        // First try immediate check (0 timeout)
+        VkResult computeResult = functionLoader->vkWaitForFences(context->getDevice(), 1, &frame.computeDone, VK_TRUE, 0);
+        if (computeResult == VK_TIMEOUT) {
+            // If not ready immediately, wait up to ~16ms (one frame at 60fps)
+            computeResult = functionLoader->vkWaitForFences(context->getDevice(), 1, &frame.computeDone, VK_TRUE, 16000000);
+            if (computeResult == VK_TIMEOUT) {
+                // Only skip frame after a full frame time has passed
+                return;
+            }
+        }
+        frame.computeInUse = false;
+    }
+    
+    if (frame.graphicsInUse) {
+        // First try immediate check (0 timeout)
+        VkResult graphicsResult = functionLoader->vkWaitForFences(context->getDevice(), 1, &frame.graphicsDone, VK_TRUE, 0);
+        if (graphicsResult == VK_TIMEOUT) {
+            // If not ready immediately, wait up to ~16ms (one frame at 60fps)
+            graphicsResult = functionLoader->vkWaitForFences(context->getDevice(), 1, &frame.graphicsDone, VK_TRUE, 16000000);
+            if (graphicsResult == VK_TIMEOUT) {
+                // Only skip frame after a full frame time has passed
+                return;
+            }
+        }
+        frame.graphicsInUse = false;
+    }
 
+    // 2. Acquire swapchain image
     uint32_t imageIndex;
     VkResult result = functionLoader->vkAcquireNextImageKHR(context->getDevice(), swapchain->getSwapchain(), UINT64_MAX, imageAvailableSemaphores[currentFrame], VK_NULL_HANDLE, &imageIndex);
 
@@ -167,53 +219,73 @@ void VulkanRenderer::drawFrame() {
         return;
     }
 
-    functionLoader->vkResetFences(context->getDevice(), 1, &fences[currentFrame]);
-
-    // Upload any pending GPU entities
+    // 3. Upload pending data and update buffers
     uploadPendingGPUEntities();
-    
     updateUniformBuffer(currentFrame);
     updateInstanceBuffer(currentFrame);
 
-    functionLoader->vkResetCommandBuffer(commandBuffers[currentFrame], 0);
+    // 4. Record compute command buffer
+    functionLoader->vkResetCommandBuffer(computeCommandBuffers[currentFrame], 0);
     
-    // Dispatch compute first, then record graphics commands
-    VkCommandBufferBeginInfo beginInfo{};
-    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    VkCommandBufferBeginInfo computeBeginInfo{};
+    computeBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     
-    if (functionLoader->vkBeginCommandBuffer(commandBuffers[currentFrame], &beginInfo) != VK_SUCCESS) {
-        std::cerr << "Failed to begin recording command buffer!" << std::endl;
+    if (functionLoader->vkBeginCommandBuffer(computeCommandBuffers[currentFrame], &computeBeginInfo) != VK_SUCCESS) {
+        std::cerr << "Failed to begin recording compute command buffer!" << std::endl;
         return;
     }
     
-    // Dispatch compute for entity movement
-    dispatchCompute(commandBuffers[currentFrame], deltaTime);
+    dispatchCompute(computeCommandBuffers[currentFrame], deltaTime);
+    transitionBufferLayout(computeCommandBuffers[currentFrame]);
     
-    // Transition buffer for graphics pipeline
-    transitionBufferLayout(commandBuffers[currentFrame]);
-    
+    if (functionLoader->vkEndCommandBuffer(computeCommandBuffers[currentFrame]) != VK_SUCCESS) {
+        std::cerr << "Failed to record compute command buffer" << std::endl;
+        return;
+    }
+
+    // 5. Record graphics command buffer
+    functionLoader->vkResetCommandBuffer(commandBuffers[currentFrame], 0);
     recordCommandBuffer(commandBuffers[currentFrame], imageIndex);
 
-    VkSubmitInfo submitInfo{};
-    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    // 6. Submit compute work with its own fence - NO BLOCKING
+    functionLoader->vkResetFences(context->getDevice(), 1, &frame.computeDone);
+    
+    VkSubmitInfo computeSubmitInfo{};
+    computeSubmitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    computeSubmitInfo.commandBufferCount = 1;
+    computeSubmitInfo.pCommandBuffers = &computeCommandBuffers[currentFrame];
+    
+    if (functionLoader->vkQueueSubmit(context->getGraphicsQueue(), 1, &computeSubmitInfo, frame.computeDone) != VK_SUCCESS) {
+        std::cerr << "Failed to submit compute command buffer" << std::endl;
+        return;
+    }
+    frame.computeInUse = true;
+
+    // 7. Submit graphics work with its own fence - NO BLOCKING
+    functionLoader->vkResetFences(context->getDevice(), 1, &frame.graphicsDone);
+    
+    VkSubmitInfo graphicsSubmitInfo{};
+    graphicsSubmitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 
     VkSemaphore waitSemaphores[] = {imageAvailableSemaphores[currentFrame]};
     VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
-    submitInfo.waitSemaphoreCount = 1;
-    submitInfo.pWaitSemaphores = waitSemaphores;
-    submitInfo.pWaitDstStageMask = waitStages;
-    submitInfo.commandBufferCount = 1;
-    submitInfo.pCommandBuffers = &commandBuffers[currentFrame];
+    graphicsSubmitInfo.waitSemaphoreCount = 1;
+    graphicsSubmitInfo.pWaitSemaphores = waitSemaphores;
+    graphicsSubmitInfo.pWaitDstStageMask = waitStages;
+    graphicsSubmitInfo.commandBufferCount = 1;
+    graphicsSubmitInfo.pCommandBuffers = &commandBuffers[currentFrame];
 
     VkSemaphore signalSemaphores[] = {renderFinishedSemaphores[currentFrame]};
-    submitInfo.signalSemaphoreCount = 1;
-    submitInfo.pSignalSemaphores = signalSemaphores;
+    graphicsSubmitInfo.signalSemaphoreCount = 1;
+    graphicsSubmitInfo.pSignalSemaphores = signalSemaphores;
 
-    if (functionLoader->vkQueueSubmit(context->getGraphicsQueue(), 1, &submitInfo, fences[currentFrame]) != VK_SUCCESS) {
-        std::cerr << "Failed to submit draw command buffer" << std::endl;
+    if (functionLoader->vkQueueSubmit(context->getGraphicsQueue(), 1, &graphicsSubmitInfo, frame.graphicsDone) != VK_SUCCESS) {
+        std::cerr << "Failed to submit graphics command buffer" << std::endl;
         return;
     }
+    frame.graphicsInUse = true;
 
+    // 8. Present immediately - no fence waiting
     VkPresentInfoKHR presentInfo{};
     presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
     presentInfo.waitSemaphoreCount = 1;
@@ -225,6 +297,18 @@ void VulkanRenderer::drawFrame() {
     presentInfo.pImageIndices = &imageIndex;
 
     result = functionLoader->vkQueuePresentKHR(context->getPresentQueue(), &presentInfo);
+    
+    // Low-latency optimization: release swapchain images immediately after present
+    // TEMPORARILY DISABLED - may be causing synchronization issues
+    // if (functionLoader->vkReleaseSwapchainImagesEXT && result == VK_SUCCESS) {
+    //     VkReleaseSwapchainImagesInfoEXT releaseInfo{};
+    //     releaseInfo.sType = VK_STRUCTURE_TYPE_RELEASE_SWAPCHAIN_IMAGES_INFO_EXT;
+    //     releaseInfo.swapchain = swapchain->getSwapchain();
+    //     releaseInfo.imageIndexCount = 1;
+    //     releaseInfo.pImageIndices = &imageIndex;
+    //     
+    //     functionLoader->vkReleaseSwapchainImagesEXT(context->getDevice(), &releaseInfo);
+    // }
 
     if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || framebufferResized) {
         framebufferResized = false;
@@ -253,7 +337,14 @@ bool VulkanRenderer::recreateSwapChain() {
 }
 
 void VulkanRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex) {
-    // Command buffer is already begun by drawFrame(), just record graphics commands
+    // Begin graphics command buffer
+    VkCommandBufferBeginInfo beginInfo{};
+    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    
+    if (functionLoader->vkBeginCommandBuffer(commandBuffer, &beginInfo) != VK_SUCCESS) {
+        std::cerr << "Failed to begin recording graphics command buffer!" << std::endl;
+        return;
+    }
 
     VkRenderPassBeginInfo renderPassInfo{};
     renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
@@ -355,7 +446,7 @@ void VulkanRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t
     functionLoader->vkCmdEndRenderPass(commandBuffer);
 
     if (functionLoader->vkEndCommandBuffer(commandBuffer) != VK_SUCCESS) {
-        std::cerr << "Failed to record command buffer" << std::endl;
+        std::cerr << "Failed to record graphics command buffer" << std::endl;
     }
 }
 
@@ -549,4 +640,24 @@ void VulkanRenderer::updateAspectRatio(int windowWidth, int windowHeight) {
     if (world != nullptr) {
         CameraManager::updateAspectRatio(*world, windowWidth, windowHeight);
     }
+}
+
+bool VulkanRenderer::initializeFrameFences() {
+    VkFenceCreateInfo fenceInfo{};
+    fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+    fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT; // Start signaled
+    
+    for (auto& frame : frameData) {
+        if (functionLoader->vkCreateFence(context->getDevice(), &fenceInfo, nullptr, &frame.computeDone) != VK_SUCCESS) {
+            std::cerr << "Failed to create compute fence" << std::endl;
+            return false;
+        }
+        
+        if (functionLoader->vkCreateFence(context->getDevice(), &fenceInfo, nullptr, &frame.graphicsDone) != VK_SUCCESS) {
+            std::cerr << "Failed to create graphics fence" << std::endl;
+            return false;
+        }
+    }
+    
+    return true;
 }

@@ -2,6 +2,7 @@
 #include <SDL3/SDL_vulkan.h>
 #include <iostream>
 #include <chrono>
+#include <thread>
 #include "vulkan_renderer.h"
 #include "PolygonFactory.h"
 #include "ecs/world.hpp"
@@ -17,6 +18,12 @@ int main(int argc, char* argv[]) {
     constexpr int TARGET_FPS = 60;
     constexpr float TARGET_FRAME_TIME = 1000.0f / TARGET_FPS; // 16.67ms
     
+    // For silky smooth rendering, we'll rely more on Vulkan present modes (MAILBOX/FIFO)
+    // and use a more relaxed frame cap to prevent conflicts
+    
+    
+    // Set SDL vsync hint to 0 for safety (ignored with pure Vulkan, but good practice)
+    SDL_SetHint(SDL_HINT_RENDER_VSYNC, "0");
     
     if (!SDL_Init(SDL_INIT_VIDEO)) {
         std::cerr << "Failed to initialize SDL: " << SDL_GetError() << std::endl;
@@ -194,15 +201,16 @@ int main(int argc, char* argv[]) {
                       << std::endl;
         }
         
-        // Cap framerate at TARGET_FPS
+        // Light frame pacing - let Vulkan present modes handle most of the timing
         auto frameEndTime = std::chrono::high_resolution_clock::now();
-        float frameTimeSeconds = std::chrono::duration<float>(frameEndTime - frameStartTime).count();
-        float frameTimeMs = frameTimeSeconds * 1000.0f;
+        float frameTimeMs = std::chrono::duration<float, std::milli>(frameEndTime - frameStartTime).count();
         
-        if (frameTimeMs < TARGET_FRAME_TIME) {
-            int delayMs = static_cast<int>(TARGET_FRAME_TIME - frameTimeMs);
-            if (delayMs > 0) {
-                SDL_Delay(delayMs);
+        // Only cap if we're running way too fast (>90fps) to prevent GPU overheating
+        constexpr float MIN_FRAME_TIME = 11.0f; // ~90fps cap
+        if (frameTimeMs < MIN_FRAME_TIME) {
+            float remainingMs = MIN_FRAME_TIME - frameTimeMs;
+            if (remainingMs > 0.5f) {
+                SDL_Delay(static_cast<int>(remainingMs));
             }
         }
     }

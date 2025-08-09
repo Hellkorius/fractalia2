@@ -18,6 +18,8 @@ public:
     const std::vector<VkSemaphore>& getImageAvailableSemaphores() const { return imageAvailableSemaphores; }
     const std::vector<VkSemaphore>& getRenderFinishedSemaphores() const { return renderFinishedSemaphores; }
     const std::vector<VkFence>& getInFlightFences() const { return inFlightFences; }
+    const std::vector<VkFence>& getComputeFences() const { return computeFences; }
+    const std::vector<VkCommandBuffer>& getComputeCommandBuffers() const { return computeCommandBuffers; }
 
 private:
     VulkanContext* context = nullptr;
@@ -25,10 +27,12 @@ private:
     static const int MAX_FRAMES_IN_FLIGHT = 2;
     
     VkCommandPool commandPool = VK_NULL_HANDLE;
-    std::vector<VkCommandBuffer> commandBuffers;
+    std::vector<VkCommandBuffer> commandBuffers;        // Graphics command buffers
+    std::vector<VkCommandBuffer> computeCommandBuffers; // Compute command buffers
     std::vector<VkSemaphore> imageAvailableSemaphores;
     std::vector<VkSemaphore> renderFinishedSemaphores;
-    std::vector<VkFence> inFlightFences;
+    std::vector<VkFence> inFlightFences;                // Graphics fences
+    std::vector<VkFence> computeFences;                 // Compute fences
 
     // Function pointers for sync operations
     PFN_vkCreateCommandPool vkCreateCommandPool = nullptr;

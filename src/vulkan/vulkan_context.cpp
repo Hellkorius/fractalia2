@@ -9,7 +9,9 @@ const std::vector<const char*> validationLayers = {
 };
 
 const std::vector<const char*> deviceExtensions = {
-    VK_KHR_SWAPCHAIN_EXTENSION_NAME
+    VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+    // Low-latency optimization extension (optional)
+    VK_EXT_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME
 };
 
 #ifdef NDEBUG
@@ -180,13 +182,30 @@ bool VulkanContext::createLogicalDevice() {
 
     VkPhysicalDeviceFeatures deviceFeatures{};
 
+    // Build list of actually supported extensions
+    uint32_t extensionCount;
+    vkEnumerateDeviceExtensionProperties(physicalDevice, nullptr, &extensionCount, nullptr);
+    std::vector<VkExtensionProperties> availableExtensions(extensionCount);
+    vkEnumerateDeviceExtensionProperties(physicalDevice, nullptr, &extensionCount, availableExtensions.data());
+    
+    std::vector<const char*> enabledExtensions;
+    enabledExtensions.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME); // Always required
+    
+    // Add optional extensions if supported
+    for (const auto& extension : availableExtensions) {
+        if (std::string(extension.extensionName) == VK_EXT_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME) {
+            enabledExtensions.push_back(VK_EXT_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME);
+            break;
+        }
+    }
+
     VkDeviceCreateInfo createInfo{};
     createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
     createInfo.queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.size());
     createInfo.pQueueCreateInfos = queueCreateInfos.data();
     createInfo.pEnabledFeatures = &deviceFeatures;
-    createInfo.enabledExtensionCount = static_cast<uint32_t>(deviceExtensions.size());
-    createInfo.ppEnabledExtensionNames = deviceExtensions.data();
+    createInfo.enabledExtensionCount = static_cast<uint32_t>(enabledExtensions.size());
+    createInfo.ppEnabledExtensionNames = enabledExtensions.data();
     createInfo.enabledLayerCount = 0;
     createInfo.ppEnabledLayerNames = nullptr;
 
@@ -243,25 +262,37 @@ bool VulkanContext::isDeviceSuitable(VkPhysicalDevice device) {
     VkPhysicalDeviceProperties deviceProperties;
     vkGetPhysicalDeviceProperties(device, &deviceProperties);
     
-    
+    // Check extension support
     uint32_t extensionCount;
     vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount, nullptr);
     std::vector<VkExtensionProperties> availableExtensions(extensionCount);
     vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount, availableExtensions.data());
     
-    std::set<std::string> requiredExtensions(deviceExtensions.begin(), deviceExtensions.end());
+    // Required extensions
+    std::set<std::string> requiredExtensions = { VK_KHR_SWAPCHAIN_EXTENSION_NAME };
+    
+    // Optional extensions for better performance
+    std::set<std::string> optionalExtensions = { VK_EXT_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME };
+    
+    // Check which extensions are available
+    std::set<std::string> supportedExtensions;
     for (const auto& extension : availableExtensions) {
+        supportedExtensions.insert(extension.extensionName);
         requiredExtensions.erase(extension.extensionName);
+        optionalExtensions.erase(extension.extensionName);
+    }
+    
+    // Log extension support for diagnostics
+    if (supportedExtensions.count(VK_EXT_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME)) {
+        std::cout << "VK_EXT_swapchain_maintenance1 supported - enabling low-latency optimizations" << std::endl;
+    } else {
+        std::cout << "VK_EXT_swapchain_maintenance1 not supported - using standard presentation" << std::endl;
     }
     
     bool extensionsSupported = requiredExtensions.empty();
-    
     QueueFamilyIndices indices = findQueueFamilies(device);
     
-    bool suitable = indices.isComplete() && extensionsSupported;
-    
-    
-    return suitable;
+    return indices.isComplete() && extensionsSupported;
 }
 
 std::vector<const char*> VulkanContext::getRequiredExtensions() {
