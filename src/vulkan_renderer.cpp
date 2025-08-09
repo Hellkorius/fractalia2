@@ -191,6 +191,11 @@ void VulkanRenderer::drawFrame() {
             }
         }
         frame.computeInUse = false;
+        
+        // Apply any pending movement updates now that compute is complete
+        if (gpuEntityManager) {
+            gpuEntityManager->applyPendingMovementUpdate();
+        }
     }
     
     if (frame.graphicsInUse) {

@@ -135,27 +135,27 @@ namespace ControlHandler {
             g_currentMovementType = 0;
             std::cout << "Movement type changed to: PETAL (0)" << std::endl;
             
-            // Update all existing GPU entities
+            // Schedule movement update (applied after compute dispatch)
             if (renderer && renderer->getGPUEntityManager()) {
-                renderer->getGPUEntityManager()->updateAllMovementTypes(0, g_angelModeEnabled);
+                renderer->getGPUEntityManager()->scheduleMovementUpdate(0, g_angelModeEnabled);
             }
         }
         else if (InputQuery::isKeyPressed(flecsWorld, SDL_SCANCODE_1)) {
             g_currentMovementType = 1;
             std::cout << "Movement type changed to: ORBIT (1)" << std::endl;
             
-            // Update all existing GPU entities
+            // Schedule movement update (applied after compute dispatch)
             if (renderer && renderer->getGPUEntityManager()) {
-                renderer->getGPUEntityManager()->updateAllMovementTypes(1, g_angelModeEnabled);
+                renderer->getGPUEntityManager()->scheduleMovementUpdate(1, g_angelModeEnabled);
             }
         }
         else if (InputQuery::isKeyPressed(flecsWorld, SDL_SCANCODE_2)) {
             g_currentMovementType = 2;
             std::cout << "Movement type changed to: WAVE (2)" << std::endl;
             
-            // Update all existing GPU entities
+            // Schedule movement update (applied after compute dispatch)
             if (renderer && renderer->getGPUEntityManager()) {
-                renderer->getGPUEntityManager()->updateAllMovementTypes(2, g_angelModeEnabled);
+                renderer->getGPUEntityManager()->scheduleMovementUpdate(2, g_angelModeEnabled);
             }
         }
     }

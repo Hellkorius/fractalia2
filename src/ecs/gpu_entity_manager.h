@@ -74,6 +74,8 @@ public:
     void uploadPendingEntities();
     void clearAllEntities();
     void updateAllMovementTypes(int newMovementType, bool angelMode = false);
+    void scheduleMovementUpdate(int newMovementType, bool angelMode = false);
+    void applyPendingMovementUpdate();
     
     // GPU buffer management  
     VkBuffer getCurrentEntityBuffer() const { return entityBuffers[currentBufferIndex]; }
@@ -108,6 +110,11 @@ private:
     // Entity state
     uint32_t activeEntityCount = 0;
     std::vector<GPUEntity> pendingEntities;
+    
+    // Pending movement update (to fix race condition at high entity counts)
+    bool hasPendingMovementUpdate = false;
+    int pendingMovementType = 0;
+    bool pendingAngelMode = false;
     
     // Compute descriptor sets for storage buffers
     VkDescriptorPool computeDescriptorPool = VK_NULL_HANDLE;
