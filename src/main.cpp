@@ -6,7 +6,6 @@
 #include "vulkan_renderer.h"
 #include "PolygonFactory.h"
 #include "ecs/world.hpp"
-#include "ecs/system_registry.hpp"
 #include "ecs/systems/lifetime_system.hpp"
 #include "ecs/systems/input_system.hpp"
 #include "ecs/systems/camera_system.hpp"
@@ -69,19 +68,13 @@ int main(int argc, char* argv[]) {
     // Initialize system scheduler with Flecs-native scheduling
     auto& scheduler = world.getSystemScheduler();
     
-    // Core ECS systems - organized by phases
-    scheduler.addSystem<FlecsSystem<Lifetime>>(
-        "LifetimeSystem", 
-        lifetime_system
-    ).inPhase("Logic");
-    
-    // Input systems - run in Input phase
+    // Input processing - first phase
     scheduler.addSystem<FlecsSystem<InputState, KeyboardInput, MouseInput, InputEvents>>(
         "InputSystem",
         input_processing_system
     ).inPhase("Input");
     
-    // Camera systems - run in Logic phase with dependencies
+    // Game logic - second phase
     scheduler.addSystem<FlecsSystem<Camera>>(
         "CameraControlSystem",
         [](flecs::entity e, Camera& camera) {
@@ -93,6 +86,12 @@ int main(int argc, char* argv[]) {
         "CameraMatrixSystem",
         camera_matrix_system
     ).inPhase("Logic");
+    
+    // Physics/lifetime - third phase
+    scheduler.addSystem<FlecsSystem<Lifetime>>(
+        "LifetimeSystem", 
+        lifetime_system
+    ).inPhase("Physics");
     
     // Create input singleton entity and set window reference for accurate screen coordinates
     InputManager::createInputEntity(world.getFlecsWorld());

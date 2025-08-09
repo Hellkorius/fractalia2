@@ -106,6 +106,26 @@ namespace ControlHandler {
             world.getSystemScheduler().printPerformanceReport();
         }
         
+        // Runtime system enable/disable controls
+        if (InputQuery::isKeyPressed(flecsWorld, SDL_SCANCODE_F1)) {
+            world.getSystemScheduler().toggleSystem("InputSystem");
+        }
+        if (InputQuery::isKeyPressed(flecsWorld, SDL_SCANCODE_F2)) {
+            world.getSystemScheduler().toggleSystem("CameraControlSystem");
+        }
+        if (InputQuery::isKeyPressed(flecsWorld, SDL_SCANCODE_F3)) {
+            world.getSystemScheduler().toggleSystem("CameraMatrixSystem");
+        }
+        if (InputQuery::isKeyPressed(flecsWorld, SDL_SCANCODE_F4)) {
+            world.getSystemScheduler().toggleSystem("LifetimeSystem");
+        }
+        if (InputQuery::isKeyPressed(flecsWorld, SDL_SCANCODE_F5)) {
+            world.getSystemScheduler().toggleSystem("ControlHandler");
+        }
+        if (InputQuery::isKeyPressed(flecsWorld, SDL_SCANCODE_F6)) {
+            world.getSystemScheduler().toggleSystem("GPUEntityUpload");
+        }
+        
         // Print current GPU stats
         if (InputQuery::isKeyPressed(flecsWorld, SDL_SCANCODE_MINUS) || 
             InputQuery::isKeyPressed(flecsWorld, SDL_SCANCODE_KP_MINUS)) {

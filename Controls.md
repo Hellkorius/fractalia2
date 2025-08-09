@@ -1,3 +1,11 @@
 ### Controls
-- ESC key: Exit application
-- Window close button: Exit application
+- **ESC**: Exit
+- **+/=**: Add 1000 more GPU entities (stress test up to 131k limit)
+- **-**: Show current GPU performance stats (CPU entities vs GPU entities)
+- **Left Click**: Create GPU entity with movement at mouse position
+- **P**: Print detailed performance report (Vulkan rendering, ECS update, input cleanup, memory)
+- **I**: Print system scheduler info (phases, dependencies, enable/disable status)
+- **F1-F6**: Toggle systems (InputSystem, CameraControlSystem, CameraMatrixSystem, LifetimeSystem, ControlHandler, GPUEntityUpload)
+- **WASD**: Move camera
+- **Mouse Wheel**: Zoom in/out
+- **Space**: Reset camera to origin

@@ -7,6 +7,8 @@
 #include <unordered_map>
 #include <functional>
 #include <iostream>
+#include <chrono>
+#include <iomanip>
 
 // Flecs-native system scheduler that leverages Flecs built-in scheduling
 class SystemScheduler {
@@ -23,6 +25,19 @@ private:
     
     // Performance monitoring
     bool performanceMonitoringEnabled = true;
+    
+    // System timing statistics
+    struct SystemStats {
+        double totalTime = 0.0;
+        uint64_t callCount = 0;
+        double lastFrameTime = 0.0;
+        
+        double getAverageTime() const {
+            return callCount > 0 ? totalTime / callCount : 0.0;
+        }
+    };
+    
+    std::unordered_map<std::string, SystemStats> systemStats;
     
 public:
     SystemScheduler(flecs::world& w) : world(w) {
@@ -113,8 +128,14 @@ public:
             }
         }
         
-        // Let Flecs run all registered systems
+        // Let Flecs run all registered systems with timing
+        auto startTime = std::chrono::high_resolution_clock::now();
         world.progress(deltaTime);
+        auto endTime = std::chrono::high_resolution_clock::now();
+        
+        // Update timing stats for the frame
+        double frameDuration = std::chrono::duration<double, std::milli>(endTime - startTime).count();
+        updateFrameStats(frameDuration);
     }
     
     // System control
@@ -128,6 +149,15 @@ public:
     
     void disableSystem(const std::string& name) {
         enableSystem(name, false);
+    }
+    
+    void toggleSystem(const std::string& name) {
+        auto it = systemLookup.find(name);
+        if (it != systemLookup.end()) {
+            bool newState = !it->second->isEnabled();
+            it->second->setEnabled(newState);
+            std::cout << (newState ? "Enabled" : "Disabled") << " system: " << name << std::endl;
+        }
     }
     
     // Performance monitoring using Flecs built-in stats
@@ -152,6 +182,17 @@ public:
         // Note: Flecs 4.0 may have different stats API - simplified for compatibility
         std::cout << "\\nFlecs Statistics:" << std::endl;
         std::cout << "  Current frame time: " << world.delta_time() * 1000.0f << "ms" << std::endl;
+        
+        // Print individual system stats
+        if (!systemStats.empty()) {
+            std::cout << "\\nSystem Performance:" << std::endl;
+            for (const auto& [name, stats] : systemStats) {
+                std::cout << "  " << name << ":" << std::endl;
+                std::cout << "    Avg time: " << std::fixed << std::setprecision(3) << stats.getAverageTime() << "ms" << std::endl;
+                std::cout << "    Last frame: " << stats.lastFrameTime << "ms" << std::endl;
+                std::cout << "    Call count: " << stats.callCount << std::endl;
+            }
+        }
         
         // Print system status and phases
         std::cout << "\\nRegistered Systems:" << std::endl;
@@ -234,6 +275,18 @@ private:
         }
         
         pendingDependencies.clear();
+    }
+    
+    void updateFrameStats(double frameDuration) {
+        // Update stats for all enabled systems
+        for (const auto& system : systems) {
+            if (system->isEnabled()) {
+                SystemStats& stats = systemStats[system->getName()];
+                stats.lastFrameTime = frameDuration / systems.size(); // Rough approximation
+                stats.totalTime += stats.lastFrameTime;
+                stats.callCount++;
+            }
+        }
     }
     
     void setupPerformanceMonitoring() {

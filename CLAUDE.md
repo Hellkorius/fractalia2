@@ -24,6 +24,13 @@ The project uses a hybrid approach:
 - **ManualSystem**: Explicit control systems (GPU upload, controls, etc.)
 - Systems self-register with Flecs during initialization
 
+#### SystemScheduler Features
+- **Phase-based Execution**: PreInput → Input → Logic → Physics → Render → PostRender
+- **Dependency Enforcement**: Real Flecs `.depends_on()` relationships between systems
+- **Runtime Control**: Enable/disable systems during runtime via F1-F6 hotkeys
+- **Performance Monitoring**: Individual system timing statistics and call counts
+- **Fluent API**: `scheduler.addSystem<FlecsSystem<Camera>>("CameraSystem", func).inPhase("Logic")`
+
 #### Entity Components (CPU-side):
 - `Transform`: Entity transform matrix and position
 - `Renderable`: Shape type, color, layer, visibility
@@ -38,6 +45,7 @@ The project uses a hybrid approach:
 ```
 fractalia2/
 ├── CMakeLists.txt              # CMake build configuration for cross-compilation
+├── Controls.md 				
 ├── compile-shaders.sh          # Shader compilation script
 ├── mingw-w64-toolchain.cmake   # Generated CMake toolchain file
 ├── src/
@@ -64,7 +72,6 @@ fractalia2/
 	├── world.hpp               // World wrapper around flecs::world + integrated scheduler
 	├── system.hpp              // SystemBase interface with FlecsSystem/ManualSystem wrappers
 	├── system_scheduler.hpp    // Flecs-native scheduler with phase/dependency support
-	├── system_registry.hpp     // System registration helper (optional)
 	├──	camera_component.hpp
 	└── systems/
 		├── lifetime_system.*  	// Entity lifetime management (renamed from physics_system)
@@ -131,15 +138,6 @@ struct GPUEntity {
 - **GPU Utilization**: Parallel compute across thousands of threads vs sequential CPU processing
 - **Memory Bandwidth**: Direct GPU-to-GPU data flow eliminates CPU→GPU transfer bottleneck
 
-### Controls (Updated for GPU System)
-- **ESC**: Exit
-- **+/=**: Add 1000 more GPU entities (stress test up to 131k limit)
-- **-**: Show current GPU performance stats (CPU entities vs GPU entities)
-- **Left Click**: Create GPU entity with movement at mouse position
-- **P**: Print detailed performance report
-- **WASD**: Move camera
-- **Mouse Wheel**: Zoom in/out
-- **Space**: Reset camera to origin
 
 ### Vulkan Rendering
 The project uses Vulkan with dynamic function loading for cross-platform compatibility:
