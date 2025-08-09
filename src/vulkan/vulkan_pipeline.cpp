@@ -92,7 +92,7 @@ bool VulkanPipeline::createRenderPass(VkFormat swapChainImageFormat) {
     std::array<VkAttachmentDescription, 3> attachments{};
     
     attachments[0].format = swapChainImageFormat;
-    attachments[0].samples = VK_SAMPLE_COUNT_4_BIT;
+    attachments[0].samples = VK_SAMPLE_COUNT_2_BIT;
     attachments[0].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
     attachments[0].storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
     attachments[0].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
@@ -110,7 +110,7 @@ bool VulkanPipeline::createRenderPass(VkFormat swapChainImageFormat) {
     attachments[1].finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
     
     attachments[2].format = VK_FORMAT_D32_SFLOAT;
-    attachments[2].samples = VK_SAMPLE_COUNT_4_BIT;
+    attachments[2].samples = VK_SAMPLE_COUNT_2_BIT;
     attachments[2].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
     attachments[2].storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
     attachments[2].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
@@ -329,7 +329,7 @@ bool VulkanPipeline::createGraphicsPipeline() {
     VkPipelineMultisampleStateCreateInfo multisampling{};
     multisampling.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
     multisampling.sampleShadingEnable = VK_FALSE;
-    multisampling.rasterizationSamples = VK_SAMPLE_COUNT_4_BIT;
+    multisampling.rasterizationSamples = VK_SAMPLE_COUNT_2_BIT;
 
     VkPipelineDepthStencilStateCreateInfo depthStencil{};
     depthStencil.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
