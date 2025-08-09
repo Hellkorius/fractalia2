@@ -271,10 +271,22 @@ void main() {
         }
     }
     
-    // Update transform matrix with new position
-    entity.modelMatrix[3][0] = newPosition.x;
-    entity.modelMatrix[3][1] = newPosition.y;
-    entity.modelMatrix[3][2] = newPosition.z;
+    // Calculate rotation based on amplitude (more amplitude = faster rotation)
+    float rotationSpeed = amplitude * 0.1; // Elegant, gentle scaling factor
+    float rotation = adjustedTime * rotationSpeed;
+    
+    // Create rotation matrix (Z-axis rotation for 2D)
+    float cosR = cos(rotation);
+    float sinR = sin(rotation);
+    
+    // Update transform matrix with rotation and position
+    entity.modelMatrix[0][0] = cosR;  // Scale X by cos
+    entity.modelMatrix[0][1] = sinR;  // Shear Y by sin  
+    entity.modelMatrix[1][0] = -sinR; // Shear X by -sin
+    entity.modelMatrix[1][1] = cosR;  // Scale Y by cos
+    entity.modelMatrix[3][0] = newPosition.x; // Translation X
+    entity.modelMatrix[3][1] = newPosition.y; // Translation Y
+    entity.modelMatrix[3][2] = newPosition.z; // Translation Z
     
     // Update dynamic color
     entity.color = generateDynamicColor(amplitude, frequency, phase, adjustedTime);
