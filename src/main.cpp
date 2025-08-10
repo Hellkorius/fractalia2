@@ -150,7 +150,7 @@ int main(int argc, char* argv[]) {
         }
     ).inPhase("Render");
     
-    // Add system dependencies
+    // Add system dependencies  
     scheduler.addDependency("CameraMatrixSystem", "CameraControlSystem");
     scheduler.addDependency("GPUEntityUpload", "ControlHandler");
     

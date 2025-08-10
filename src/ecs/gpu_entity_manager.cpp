@@ -178,18 +178,6 @@ void GPUEntityManager::updateAllMovementTypes(int newMovementType, bool angelMod
     }
 }
 
-void GPUEntityManager::scheduleMovementUpdate(int newMovementType, bool angelMode) {
-    hasPendingMovementUpdate = true;
-    pendingMovementType = newMovementType;
-    pendingAngelMode = angelMode;
-}
-
-void GPUEntityManager::applyPendingMovementUpdate() {
-    if (hasPendingMovementUpdate) {
-        updateAllMovementTypes(pendingMovementType, pendingAngelMode);
-        hasPendingMovementUpdate = false;
-    }
-}
 
 bool GPUEntityManager::createEntityBuffers() {
     for (int i = 0; i < 2; i++) {

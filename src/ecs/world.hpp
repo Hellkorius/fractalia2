@@ -177,30 +177,6 @@ public:
         memoryManager->updateStats();
         auto memStats = memoryManager->getStats();
         
-        // Use efficient Flecs queries to count components
-        size_t transformCount = flecsWorld.count<Transform>();
-        size_t renderableCount = flecsWorld.count<Renderable>();
-        size_t velocityCount = flecsWorld.count<Velocity>();
-        size_t boundsCount = flecsWorld.count<Bounds>();
-        size_t lifetimeCount = flecsWorld.count<Lifetime>();
-        size_t movementPatternCount = flecsWorld.count<MovementPattern>();
-        
-        // Get total entity count (entities with at least Transform as most have it)
-        size_t activeEntityCount = transformCount; // Use Transform count as proxy
-        
-        // Calculate actual memory usage based on real component counts
-        size_t actualMemoryUsage = 
-            transformCount * sizeof(Transform) +
-            renderableCount * sizeof(Renderable) +
-            velocityCount * sizeof(Velocity) +
-            boundsCount * sizeof(Bounds) +
-            lifetimeCount * sizeof(Lifetime) +
-            movementPatternCount * sizeof(MovementPattern);
-        
-        // Update memory stats with accurate data
-        const_cast<ECSMemoryManager::MemoryStats&>(memStats).activeEntities = activeEntityCount;
-        const_cast<ECSMemoryManager::MemoryStats&>(memStats).totalAllocated = actualMemoryUsage;
-        
         return {
             frameCount,
             deltaTime,

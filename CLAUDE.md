@@ -66,6 +66,7 @@ fractalia2/
 	├── entity.hpp              // Entity & EntityHandle aliases
 	├──	entity_factory.hpp		// Factory for creating and managing entities
 	├── gpu_entity_manager.*    // GPU entity storage and CPU->GPU handover
+	├── movement_command_system.* // Thread-safe movement command queue and processor
 	├── memory_manager.hpp		// memory manager for ECS
 	├── profiler.hpp			// performance data collection
 	├── render_batch.hpp		// RenderInstance and RenderBatch (legacy CPU path)
@@ -77,7 +78,7 @@ fractalia2/
 		├── lifetime_system.*  	// Entity lifetime management (renamed from physics_system)
 		├── input_system.*		// input handling
 		├── camera_system.*		// camera controls
-		└──	control_handler_system.* // controls + GPU entity creation
+		└──	control_handler_system.* // controls + thread-safe command enqueueing
 │   └── shaders/                # GLSL shader source files
 │       ├── vertex.vert         # Vertex shader (updated for GPUEntity)
 │       ├── fragment.frag       # Fragment shader
@@ -160,8 +161,16 @@ The project uses Vulkan with dynamic function loading for cross-platform compati
 ### GPU Entity Development
 1. **CPU Entity Creation**: Use `EntityFactory.createSwarm()` or `createMovingEntity()`
 2. **GPU Upload**: Call `renderer.getGPUEntityManager()->addEntitiesFromECS(entities)`
-3. **Runtime Creation**: Control handler automatically uploads new entities each frame
-4. **Debugging**: Use `-` key to monitor GPU entity count vs CPU entity count
+3. **Movement Commands**: Use thread-safe command queue via `renderer.getMovementCommandProcessor()`
+4. **Runtime Creation**: Control handler automatically uploads new entities each frame
+5. **Debugging**: Use `-` key to monitor GPU entity count vs CPU entity count
+
+### Movement Command System
+- **Thread-Safe Queue**: `MovementCommandQueue` with mutex-protected operations
+- **Command Processor**: `MovementCommandProcessor` with comprehensive error handling
+- **Synchronization**: Commands processed at GPU fence sync point (same timing as original workaround)
+- **Performance**: Pre-allocated buffers, atomic flags, batch processing limits
+- **Error Handling**: Validation, exception handling, monitoring statistics
 
 ### Shader Development
 1. Edit GLSL files in `src/shaders/` (vertex.vert, fragment.frag, movement.comp)

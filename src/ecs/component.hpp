@@ -74,7 +74,8 @@ struct Bounds {
 enum class MovementType {
     Petal = 0,  // Smooth radial oscillation from center
     Orbit = 1,  // Circular orbit around center point
-    Wave = 2    // Sinusoidal wave motion
+    Wave = 2,   // Sinusoidal wave motion
+    TriangleFormation = 3  // Non-Euclidean triangular orbit
 };
 
 struct MovementPattern {
@@ -223,6 +224,7 @@ struct InputState {
 struct KeyboardControlled {};   // Entity responds to keyboard input
 struct MouseControlled {};      // Entity responds to mouse input
 struct InputResponsive {};      // Entity responds to any input
+
 
 // Tag components for efficient filtering
 struct Static {}; // Non-moving entities

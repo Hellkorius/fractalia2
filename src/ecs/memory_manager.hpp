@@ -171,6 +171,9 @@ public:
 // Comprehensive memory manager for ECS
 class ECSMemoryManager {
 private:
+    // World reference for component counting
+    flecs::world& world;
+    
     // Component pools
     ComponentPool<Transform> transformPool;
     ComponentPool<Renderable> renderablePool;
@@ -195,7 +198,8 @@ private:
     
 public:
     ECSMemoryManager(flecs::world& world, size_t initialCapacity = 10000) 
-        : transformPool(initialCapacity),
+        : world(world),
+          transformPool(initialCapacity),
           renderablePool(initialCapacity),
           velocityPool(initialCapacity),
           boundsPool(initialCapacity),
@@ -268,12 +272,21 @@ public:
     const MemoryStats& getStats() const { return stats; }
     
     void updateStats() {
+        // Use Flecs component counts for consistent reporting
+        size_t transformCount = world.count<Transform>();
+        size_t renderableCount = world.count<Renderable>();
+        size_t velocityCount = world.count<Velocity>();
+        size_t boundsCount = world.count<Bounds>();
+        size_t lifetimeCount = world.count<Lifetime>();
+        size_t movementPatternCount = world.count<MovementPattern>();
+        
         stats.totalAllocated = 
-            transformPool.getAllocatedCount() * sizeof(Transform) +
-            renderablePool.getAllocatedCount() * sizeof(Renderable) +
-            velocityPool.getAllocatedCount() * sizeof(Velocity) +
-            boundsPool.getAllocatedCount() * sizeof(Bounds) +
-            lifetimePool.getAllocatedCount() * sizeof(Lifetime);
+            transformCount * sizeof(Transform) +
+            renderableCount * sizeof(Renderable) +
+            velocityCount * sizeof(Velocity) +
+            boundsCount * sizeof(Bounds) +
+            lifetimeCount * sizeof(Lifetime) +
+            movementPatternCount * sizeof(MovementPattern);
             
         stats.totalCapacity =
             transformPool.getMemoryUsage() +
@@ -283,7 +296,7 @@ public:
             lifetimePool.getMemoryUsage();
             
         stats.entityPoolSize = entityRecycler->getPoolSize();
-        // Note: activeEntities will be set by World::getStats() with proper Flecs count
+        stats.activeEntities = transformCount; // Use Transform count as entity proxy
     }
     
     // Configuration

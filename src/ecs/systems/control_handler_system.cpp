@@ -2,7 +2,9 @@
 #include "input_system.hpp"
 #include "../../vulkan_renderer.h"
 #include "../gpu_entity_manager.h"
+#include "../movement_command_system.hpp"
 #include <iostream>
+#include <chrono>
 
 namespace ControlHandler {
     
@@ -155,41 +157,61 @@ namespace ControlHandler {
                       << " - " << (g_angelModeEnabled ? "Biblical transitions via origin" : "Direct organic transitions") << std::endl;
         }
         
-        // Handle movement type switching (0, 1, 2)
+        // Handle movement type switching (0, 1, 2, 3) - Use thread-safe command queue
         if (InputQuery::isKeyPressed(flecsWorld, SDL_SCANCODE_0)) {
             g_currentMovementType = 0;
-            std::cout << "Movement type changed to: PETAL (0)" << std::endl;
+            std::cout << "Movement type command: PETAL (0)" << std::endl;
             
-            // Schedule movement update (applied after compute dispatch)
-            if (renderer && renderer->getGPUEntityManager()) {
-                renderer->getGPUEntityManager()->scheduleMovementUpdate(0, g_angelModeEnabled);
+            // Enqueue command through thread-safe command queue
+            if (renderer && renderer->getMovementCommandProcessor()) {
+                MovementCommand cmd;
+                cmd.targetType = MovementCommand::Type::Petal;
+                cmd.angelMode = g_angelModeEnabled;
+                cmd.timestamp = std::chrono::duration<double>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+                
+                renderer->getMovementCommandProcessor()->getCommandQueue().enqueue(cmd);
             }
         }
         else if (InputQuery::isKeyPressed(flecsWorld, SDL_SCANCODE_1)) {
             g_currentMovementType = 1;
-            std::cout << "Movement type changed to: ORBIT (1)" << std::endl;
+            std::cout << "Movement type command: ORBIT (1)" << std::endl;
             
-            // Schedule movement update (applied after compute dispatch)
-            if (renderer && renderer->getGPUEntityManager()) {
-                renderer->getGPUEntityManager()->scheduleMovementUpdate(1, g_angelModeEnabled);
+            // Enqueue command through thread-safe command queue
+            if (renderer && renderer->getMovementCommandProcessor()) {
+                MovementCommand cmd;
+                cmd.targetType = MovementCommand::Type::Orbit;
+                cmd.angelMode = g_angelModeEnabled;
+                cmd.timestamp = std::chrono::duration<double>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+                
+                renderer->getMovementCommandProcessor()->getCommandQueue().enqueue(cmd);
             }
         }
         else if (InputQuery::isKeyPressed(flecsWorld, SDL_SCANCODE_2)) {
             g_currentMovementType = 2;
-            std::cout << "Movement type changed to: WAVE (2)" << std::endl;
+            std::cout << "Movement type command: WAVE (2)" << std::endl;
             
-            // Schedule movement update (applied after compute dispatch)
-            if (renderer && renderer->getGPUEntityManager()) {
-                renderer->getGPUEntityManager()->scheduleMovementUpdate(2, g_angelModeEnabled);
+            // Enqueue command through thread-safe command queue
+            if (renderer && renderer->getMovementCommandProcessor()) {
+                MovementCommand cmd;
+                cmd.targetType = MovementCommand::Type::Wave;
+                cmd.angelMode = g_angelModeEnabled;
+                cmd.timestamp = std::chrono::duration<double>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+                
+                renderer->getMovementCommandProcessor()->getCommandQueue().enqueue(cmd);
             }
         }
         else if (InputQuery::isKeyPressed(flecsWorld, SDL_SCANCODE_3)) {
             g_currentMovementType = 3;
-            std::cout << "Movement type changed to: TRIANGLE FORMATION (3)" << std::endl;
+            std::cout << "Movement type command: TRIANGLE FORMATION (3)" << std::endl;
             
-            // Schedule movement update (applied after compute dispatch)
-            if (renderer && renderer->getGPUEntityManager()) {
-                renderer->getGPUEntityManager()->scheduleMovementUpdate(3, g_angelModeEnabled);
+            // Enqueue command through thread-safe command queue
+            if (renderer && renderer->getMovementCommandProcessor()) {
+                MovementCommand cmd;
+                cmd.targetType = MovementCommand::Type::TriangleFormation;
+                cmd.angelMode = g_angelModeEnabled;
+                cmd.timestamp = std::chrono::duration<double>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+                
+                renderer->getMovementCommandProcessor()->getCommandQueue().enqueue(cmd);
             }
         }
     }

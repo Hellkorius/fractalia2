@@ -18,6 +18,7 @@ class VulkanResources;
 class VulkanSync;
 class ComputePipeline;
 class GPUEntityManager;
+class MovementCommandProcessor;
 class VulkanFunctionLoader;
 
 class VulkanRenderer {
@@ -51,6 +52,9 @@ public:
     void setWorld(flecs::world* world) { this->world = world; }
     void updateAspectRatio(int windowWidth, int windowHeight);
     
+    // Movement command processing
+    class MovementCommandProcessor* getMovementCommandProcessor() { return movementCommandProcessor.get(); }
+    
     bool isInitialized() const { return initialized; }
 
 private:
@@ -71,6 +75,7 @@ private:
     std::unique_ptr<VulkanSync> sync;
     std::unique_ptr<ComputePipeline> computePipeline;
     std::unique_ptr<GPUEntityManager> gpuEntityManager;
+    std::unique_ptr<MovementCommandProcessor> movementCommandProcessor;
 
     // Note: Function pointers removed - now using centralized VulkanFunctionLoader
 

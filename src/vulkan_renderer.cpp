@@ -9,6 +9,7 @@
 #include "ecs/gpu_entity_manager.h"
 #include "ecs/systems/camera_system.hpp"
 #include "ecs/camera_component.hpp"
+#include "ecs/movement_command_system.hpp"
 #include <iostream>
 #include <array>
 #include <chrono>
@@ -115,6 +116,10 @@ bool VulkanRenderer::initialize(SDL_Window* window) {
         return false;
     }
     
+    // Initialize movement command processor
+    movementCommandProcessor = std::make_unique<MovementCommandProcessor>(gpuEntityManager.get());
+    std::cout << "Movement command processor initialized" << std::endl;
+    
     // Initialize compute pipeline
     computePipeline = std::make_unique<ComputePipeline>();
     if (!computePipeline->initialize(context.get(), functionLoader.get())) {
@@ -156,6 +161,7 @@ void VulkanRenderer::cleanup() {
         }
     }
     
+    movementCommandProcessor.reset();
     gpuEntityManager.reset();
     computePipeline.reset();
     sync.reset();
@@ -192,9 +198,9 @@ void VulkanRenderer::drawFrame() {
         }
         frame.computeInUse = false;
         
-        // Apply any pending movement updates now that compute is complete
-        if (gpuEntityManager) {
-            gpuEntityManager->applyPendingMovementUpdate();
+        // Process movement commands now that compute is complete - same timing as original workaround
+        if (movementCommandProcessor) {
+            movementCommandProcessor->processCommands();
         }
     }
     
@@ -666,3 +672,4 @@ bool VulkanRenderer::initializeFrameFences() {
     
     return true;
 }
+
