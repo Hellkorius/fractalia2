@@ -231,6 +231,27 @@ struct Static {}; // Non-moving entities
 struct Dynamic {}; // Moving entities  
 struct Pooled {}; // Can be recycled
 
+// Application state management component (singleton)
+struct ApplicationState {
+    bool running = true;
+    bool requestQuit = false;
+    float globalDeltaTime = 0.0f;
+    uint64_t frameCount = 0;
+};
+
+// GPU synchronization marker components
+struct GPUUploadPending {};        // Entity needs GPU upload
+struct GPUUploadComplete {};       // Entity has been uploaded to GPU
+struct GPUEntitySync {             // Singleton component for GPU sync operations
+    bool needsUpload = false;
+    uint32_t pendingCount = 0;
+    float deltaTime = 0.0f;
+};
+
+// Control system marker components  
+struct InputProcessed {};          // Marker for input processing completion
+struct ControlsProcessed {};       // Marker for control processing completion
+
 // Backward compatibility aliases
 using Position = Transform;
 using Color = Renderable;

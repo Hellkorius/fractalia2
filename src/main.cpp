@@ -9,7 +9,8 @@
 #include "ecs/systems/lifetime_system.hpp"
 #include "ecs/systems/input_system.hpp"
 #include "ecs/systems/camera_system.hpp"
-#include "ecs/systems/control_handler_system.hpp"
+#include "ecs/systems/simple_control_system.hpp"
+#include "ecs/movement_command_system.hpp"
 #include "ecs/camera_component.hpp"
 #include "ecs/profiler.hpp"
 #include "ecs/gpu_entity_manager.h"
@@ -120,39 +121,18 @@ int main(int argc, char* argv[]) {
         2.0f  // larger radius for more spread
     );
     
-    // Upload all entities to GPU immediately
+    // Upload all entities to GPU immediately (before Flecs systems are initialized)
     renderer.getGPUEntityManager()->addEntitiesFromECS(swarmEntities);
+    renderer.uploadPendingGPUEntities(); // Ensure they're actually uploaded to buffers
     
     std::cout << "Created " << swarmEntities.size() << " GPU entities!" << std::endl;
     
-    // Manual systems for game logic
-    bool running = true; // Move declaration up here
+    // Initialize simple Flecs control system (just handles input)
+    bool running = true;
+    SimpleControlSystem::initialize(world.getFlecsWorld());
     
-    scheduler.addSystem<ManualSystem>(
-        "ControlHandler",
-        [&](flecs::world& flecsWorld, float deltaTime) {
-            static bool initialized = false;
-            if (!initialized) {
-                ControlHandler::initialize(world);
-                initialized = true;
-            }
-            ControlHandler::processControls(world, running, &renderer);
-        }
-    ).inPhase("Input");
-    
-    scheduler.addSystem<ManualSystem>(
-        "GPUEntityUpload",
-        [&](flecs::world& flecsWorld, float deltaTime) {
-            if (renderer.getGPUEntityManager()) {
-                renderer.uploadPendingGPUEntities();
-                renderer.setDeltaTime(deltaTime);
-            }
-        }
-    ).inPhase("Render");
-    
-    // Add system dependencies  
+    // Add system dependencies for traditional Flecs systems
     scheduler.addDependency("CameraMatrixSystem", "CameraControlSystem");
-    scheduler.addDependency("GPUEntityUpload", "ControlHandler");
     
     // Initialize all systems through scheduler
     scheduler.initialize();
@@ -169,6 +149,92 @@ int main(int argc, char* argv[]) {
         
         // Process SDL events through the input system
         InputManager::processSDLEvents(world.getFlecsWorld());
+        
+        // Check application state from Flecs systems
+        auto* appState = world.getFlecsWorld().get<ApplicationState>();
+        if (appState && (appState->requestQuit || !appState->running)) {
+            running = false;
+        }
+        
+        // Update renderer delta time for GPU compute
+        renderer.setDeltaTime(deltaTime);
+        
+        // Handle GPU operations based on control state (after Flecs systems)
+        auto* controlState = world.getFlecsWorld().get_mut<SimpleControlSystem::ControlState>();
+        if (controlState) {
+            // Handle swarm creation with safety limits
+            if (controlState->requestSwarmCreation) {
+                uint32_t currentCount = renderer.getGPUEntityManager()->getEntityCount();
+                uint32_t maxEntities = renderer.getGPUEntityManager()->getMaxEntities();
+                
+                if (currentCount < maxEntities - 1000) {
+                    std::cout << "Adding 1000 more GPU entities..." << std::endl;
+                    MovementType currentType = static_cast<MovementType>(controlState->currentMovementType);
+                    auto newEntities = world.getEntityFactory().createSwarmWithType(1000, glm::vec3(0.0f), 2.0f, currentType);
+                    renderer.getGPUEntityManager()->addEntitiesFromECS(newEntities);
+                    renderer.uploadPendingGPUEntities();
+                    std::cout << "Total GPU entities now: " << renderer.getGPUEntityManager()->getEntityCount() << std::endl;
+                } else {
+                    std::cout << "Cannot add more entities - limit reached (" << currentCount << "/" << maxEntities << ")" << std::endl;
+                }
+            }
+            
+            // Handle single entity creation
+            if (controlState->requestEntityCreation) {
+                std::cout << "Mouse click at world: (" << controlState->entityCreationPos.x << ", " << controlState->entityCreationPos.y << ")" << std::endl;
+                MovementType currentType = static_cast<MovementType>(controlState->currentMovementType);
+                auto mouseEntity = world.getEntityFactory().createMovingEntityWithType(
+                    glm::vec3(controlState->entityCreationPos.x, controlState->entityCreationPos.y, 0.0f),
+                    currentType
+                );
+                if (mouseEntity.is_valid()) {
+                    std::vector<Entity> entityVec = {mouseEntity};
+                    renderer.getGPUEntityManager()->addEntitiesFromECS(entityVec);
+                    renderer.uploadPendingGPUEntities();
+                    std::cout << "Created GPU entity with movement pattern" << std::endl;
+                }
+            }
+            
+            // Handle movement commands
+            static int lastMovementType = -1;
+            if (controlState->currentMovementType != lastMovementType) {
+                std::cout << "Movement type command: " << controlState->currentMovementType << std::endl;
+                
+                if (renderer.getMovementCommandProcessor()) {
+                    MovementCommand cmd;
+                    switch (controlState->currentMovementType) {
+                        case 0: cmd.targetType = MovementCommand::Type::Petal; break;
+                        case 1: cmd.targetType = MovementCommand::Type::Orbit; break;
+                        case 2: cmd.targetType = MovementCommand::Type::Wave; break;
+                        case 3: cmd.targetType = MovementCommand::Type::TriangleFormation; break;
+                    }
+                    cmd.angelMode = controlState->angelModeEnabled;
+                    cmd.timestamp = std::chrono::duration<double>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+                    
+                    renderer.getMovementCommandProcessor()->getCommandQueue().enqueue(cmd);
+                }
+                lastMovementType = controlState->currentMovementType;
+            }
+            
+            // Handle performance stats request
+            if (controlState->requestPerformanceStats) {
+                uint32_t gpuEntityCount = renderer.getGPUEntityManager()->getEntityCount();
+                float avgFrameTime = Profiler::getInstance().getFrameTime();
+                float fps = avgFrameTime > 0.0f ? (1000.0f / avgFrameTime) : 0.0f;
+                auto worldStats = world.getStats();
+                
+                std::cout << "=== Performance Stats ===" << std::endl;
+                std::cout << "Frame: " << (appState ? appState->frameCount : 0) << std::endl;
+                std::cout << "FPS: " << fps << " (" << avgFrameTime << "ms avg)" << std::endl;
+                std::cout << "CPU Entities: " << worldStats.memoryStats.activeEntities << std::endl;
+                std::cout << "GPU Entities: " << gpuEntityCount << "/" << renderer.getGPUEntityManager()->getMaxEntities() << std::endl;
+                std::cout << "Memory: " << (worldStats.memoryStats.totalAllocated / 1024) << "KB" << std::endl;
+                std::cout << "=========================" << std::endl;
+            }
+            
+            // Reset request flags
+            controlState->resetFlags();
+        }
         
         // Systems now handle controls automatically through scheduler
         

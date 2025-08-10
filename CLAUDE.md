@@ -19,17 +19,15 @@ The project uses a hybrid approach:
 - **GPU (Graphics)**: Direct rendering from compute-updated entity buffers
 
 ### System Architecture
-- **SystemScheduler**: Flecs-native scheduling with custom phases and dependencies
-- **FlecsSystem**: Wrapper for traditional Flecs systems (auto-registered)
-- **ManualSystem**: Explicit control systems (GPU upload, controls, etc.)
-- Systems self-register with Flecs during initialization
+- **SystemScheduler**: Flecs-native scheduling with dependencies
+- **SimpleControlSystem**: Pure Flecs input handling with singleton state
+- **GPU Operations**: Direct calls in main loop after Flecs systems complete
+- **Clean Separation**: ECS for entities/input, main loop for GPU synchronization
 
-#### SystemScheduler Features
-- **Phase-based Execution**: PreInput → Input → Logic → Physics → Render → PostRender
-- **Dependency Enforcement**: Real Flecs `.depends_on()` relationships between systems
-- **Runtime Control**: Enable/disable systems during runtime via F1-F6 hotkeys
-- **Performance Monitoring**: Individual system timing statistics and call counts
-- **Fluent API**: `scheduler.addSystem<FlecsSystem<Camera>>("CameraSystem", func).inPhase("Logic")`
+#### Control Flow
+- **Flecs Systems**: Handle input, set request flags in `ControlState` singleton
+- **Main Loop**: Process flags, execute GPU operations with proper timing
+- **No Complex Observers**: Simple request/response pattern prevents threading issues
 
 #### Entity Components (CPU-side):
 - `Transform`: Entity transform matrix and position
@@ -75,10 +73,10 @@ fractalia2/
 	├── system_scheduler.hpp    // Flecs-native scheduler with phase/dependency support
 	├──	camera_component.hpp
 	└── systems/
-		├── lifetime_system.*  	// Entity lifetime management (renamed from physics_system)
-		├── input_system.*		// input handling
+		├── lifetime_system.*  	// Entity lifetime management
+		├── input_system.*		// input handling + screen-to-world conversion
 		├── camera_system.*		// camera controls
-		└──	control_handler_system.* // controls + thread-safe command enqueueing
+		└──	simple_control_system.* // **NEW: simplified Flecs input handling**
 │   └── shaders/                # GLSL shader source files
 │       ├── vertex.vert         # Vertex shader (updated for GPUEntity)
 │       ├── fragment.frag       # Fragment shader

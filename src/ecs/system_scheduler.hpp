@@ -1,6 +1,7 @@
 #pragma once
 
 #include "system.hpp"
+#include "component.hpp"
 #include <vector>
 #include <memory>
 #include <string>
@@ -101,6 +102,9 @@ public:
     void initialize() {
         std::cout << "Initializing " << systems.size() << " systems with Flecs scheduler..." << std::endl;
         
+        // Initialize global singleton components
+        world.set<ApplicationState>({});
+        
         for (auto& system : systems) {
             system->initialize(world);
             std::cout << "  Initialized system: " << system->getName() << std::endl;
@@ -116,19 +120,16 @@ public:
         std::cout << "SystemScheduler initialization complete. Flecs will handle execution." << std::endl;
     }
     
-    // Execute frame - Flecs handles this automatically
+    // Execute frame - Pure Flecs scheduling (no manual system loop)
     void executeFrame(float deltaTime) {
-        // Manual systems need explicit updates
-        for (auto& system : systems) {
-            // Only update manual systems - Flecs systems run automatically
-            if (auto* manualSystem = dynamic_cast<ManualSystem*>(system.get())) {
-                if (manualSystem->isEnabled()) {
-                    manualSystem->update(world, deltaTime);
-                }
-            }
+        // Update global application state for systems to access
+        auto* appState = world.get_mut<ApplicationState>();
+        if (appState) {
+            appState->globalDeltaTime = deltaTime;
+            appState->frameCount++;
         }
         
-        // Let Flecs run all registered systems with timing
+        // Let Flecs run all systems with proper phase ordering and dependencies
         auto startTime = std::chrono::high_resolution_clock::now();
         world.progress(deltaTime);
         auto endTime = std::chrono::high_resolution_clock::now();
