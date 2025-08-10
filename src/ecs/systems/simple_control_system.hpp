@@ -32,4 +32,7 @@ namespace SimpleControlSystem {
     // Initialize simple control system
     void initialize(flecs::world& world);
     
+    // Initialize with phase for integration with SystemScheduler
+    void initialize(flecs::world& world, flecs::entity phase);
+    
 }

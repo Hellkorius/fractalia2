@@ -6,9 +6,17 @@
 namespace SimpleControlSystem {
     
     void initialize(flecs::world& world) {
+        initialize(world, flecs::entity::null()); // Call with null phase for backward compatibility
+    }
+    
+    void initialize(flecs::world& world, flecs::entity phase) {
         // Create control state singleton
         world.set<ControlState>({});
-        world.set<ApplicationState>({});
+        
+        // Create ApplicationState if it doesn't exist
+        if (!world.has<ApplicationState>()) {
+            world.set<ApplicationState>({});
+        }
         
         std::cout << "\n=== Flecs GPU Compute Movement Demo Controls ===" << std::endl;
         std::cout << "ESC: Exit" << std::endl;
@@ -21,9 +29,8 @@ namespace SimpleControlSystem {
         std::cout << "CAPS LOCK: Toggle Angel Mode (epic transition effect)" << std::endl;
         std::cout << "===============================================\n" << std::endl;
         
-        // Simple input handling system
-        world.system("ControlInputSystem")
-            .kind(flecs::OnUpdate)
+        // Simple input handling system - register with appropriate phase
+        auto controlSystem = world.system("ControlInputSystem")
             .run([](flecs::iter& it) {
                 auto* controlState = it.world().get_mut<ControlState>();
                 auto* appState = it.world().get_mut<ApplicationState>();
@@ -96,7 +103,14 @@ namespace SimpleControlSystem {
                 appState->frameCount++;
             });
         
-        std::cout << "Simple Control System initialized!" << std::endl;
+        // Register with phase if provided
+        if (phase.is_valid()) {
+            controlSystem.child_of(phase);
+            std::cout << "Simple Control System initialized with phase!" << std::endl;
+        } else {
+            // Backward compatibility - system runs in default phase
+            std::cout << "Simple Control System initialized!" << std::endl;
+        }
     }
     
 }

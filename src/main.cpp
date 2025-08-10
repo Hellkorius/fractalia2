@@ -14,6 +14,7 @@
 #include "ecs/systems/simple_control_system.hpp"
 #include "ecs/movement_command_system.hpp"
 #include "ecs/camera_component.hpp"
+#include "ecs/component.hpp"
 #include "ecs/profiler.hpp"
 #include "ecs/gpu_entity_manager.h"
 
@@ -72,37 +73,39 @@ int main(int argc, char* argv[]) {
     EntityFactory entityFactory(world);
     SystemScheduler scheduler(world);
     
-    // Input processing - first phase
-    scheduler.addSystem<FlecsSystem<InputState, KeyboardInput, MouseInput, InputEvents>>(
-        "InputSystem",
-        input_processing_system
-    ).inPhase("Input");
+    // Initialize scheduler first (creates phases and globals)
+    scheduler.initialize();
     
-    // Game logic - second phase
-    scheduler.addSystem<FlecsSystem<Camera>>(
-        "CameraControlSystem",
-        [](flecs::entity e, Camera& camera) {
+    // Direct Flecs system registration with phases
+    
+    // Note: Input processing is handled by InputManager::processSDLEvents() in main loop
+    // No input system registration needed since it's done manually
+    
+    // Simple camera systems  
+    world.system<Camera>("CameraControlSystem")
+        .each([](flecs::entity e, Camera& camera) {
+            static int count = 0;
+            if (++count % 60 == 0) std::cout << "Camera system running" << std::endl;
             camera_control_system(e, camera, e.world().delta_time());
-        }
-    ).inPhase("Logic");
+        });
     
-    scheduler.addSystem<FlecsSystem<Camera>>(
-        "CameraMatrixSystem",
-        camera_matrix_system
-    ).inPhase("Logic");
+    world.system<Camera>("CameraMatrixSystem")
+        .each(camera_matrix_system);
+        
+    std::cout << "Camera systems registered" << std::endl;
     
     // Physics/lifetime - third phase
-    scheduler.addSystem<FlecsSystem<Lifetime>>(
-        "LifetimeSystem", 
-        lifetime_system
-    ).inPhase("Physics");
+    world.system<Lifetime>("LifetimeSystem")
+        .each(lifetime_system)
+        .child_of(scheduler.getPhysicsPhase());
     
     // Create input singleton entity and set window reference for accurate screen coordinates
     InputManager::createInputEntity(world);
     InputManager::setWindow(window);
     
-    // Create main camera entity
-    CameraManager::createMainCamera(world);
+    // Create simple camera entity
+    world.entity("MainCamera").set<Camera>({});
+    std::cout << "Camera entities: " << world.count<Camera>() << std::endl;
     
     // Set world reference in renderer for camera integration
     renderer.setWorld(&world);
@@ -130,18 +133,11 @@ int main(int argc, char* argv[]) {
     
     std::cout << "Created " << swarmEntities.size() << " GPU entities!" << std::endl;
     
-    // Initialize simple Flecs control system (just handles input)
+    // Initialize simple Flecs control system (just handles input) with Input phase
     bool running = true;
     SimpleControlSystem::initialize(world);
     
-    // Add system dependencies for traditional Flecs systems
-    scheduler.addDependency("CameraMatrixSystem", "CameraControlSystem");
-    
-    // Initialize all systems through scheduler
-    scheduler.initialize();
-    
-    std::cout << "\n🚀 Flecs System Scheduler initialized with " 
-              << scheduler.getSystemCount() << " systems\n" << std::endl;
+    std::cout << "\n🚀 Simple Flecs systems ready\n" << std::endl;
     int frameCount = 0;
     auto lastFrameTime = std::chrono::high_resolution_clock::now();
     
@@ -237,7 +233,7 @@ int main(int argc, char* argv[]) {
             
             // Handle system scheduler stats request
             if (controlState->requestSystemSchedulerStats) {
-                scheduler.printPerformanceReport();
+                std::cout << "Simple Flecs systems - no complex scheduling" << std::endl;
             }
             
             // Reset request flags
@@ -266,7 +262,7 @@ int main(int argc, char* argv[]) {
         
         {
             PROFILE_SCOPE("ECS Update");
-            // Systems handle GPU upload and deltaTime automatically
+            // Simple Flecs execution
             world.progress(deltaTime);
         }
         
