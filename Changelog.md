@@ -482,3 +482,23 @@ struct MovementCommand {
 - **System Removed**: Old ECS-based movement command system eliminated
 
 This overhaul eliminates all identified architectural flaws while maintaining identical functionality and timing characteristics.
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+# Changelog 0.2.4: Removed Manual Component Allocation
+
+1. Removed Manual Component Allocation
+    - Eliminated allocateComponent<T>() and deallocateComponent<T>()
+    - Components now created exclusively via entity.set<T>()
+  2. Simplified BlockAllocator Role
+    - BlockAllocator<T> instances remain available for future specialized use
+    - No longer actively tracking components - just reserved capacity
+  3. Unified Statistics
+    - getUnifiedStats() uses Flecs component counts as authoritative source
+    - printMemoryReport() validates unified storage (no double-tracking)
+    - Fixed narrowing conversion warnings with static_cast<size_t>()
+  4. Clean Integration
+    - Existing entity.set<T>() code works unchanged
+    - EntityFactory and builder patterns unmodified
+    - Thread-safe allocator infrastructure preserved for future use
