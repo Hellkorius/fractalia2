@@ -13,6 +13,7 @@ namespace SimpleControlSystem {
         std::cout << "\n=== Flecs GPU Compute Movement Demo Controls ===" << std::endl;
         std::cout << "ESC: Exit" << std::endl;
         std::cout << "P: Print detailed performance report" << std::endl;
+        std::cout << "I: Print system scheduler performance report" << std::endl;
         std::cout << "+/=: Add 1000 more GPU entities" << std::endl;
         std::cout << "-: Show current GPU performance stats" << std::endl;
         std::cout << "Left Click: Create GPU entity with movement at mouse position" << std::endl;
@@ -77,6 +78,16 @@ namespace SimpleControlSystem {
                 }
                 
                 // Performance stats - frame-based
+                if (keyboard->isKeyPressed(SDL_SCANCODE_P)) {
+                    controlState->requestPerformanceStats = true;
+                }
+                
+                // System scheduler performance report
+                if (keyboard->isKeyPressed(SDL_SCANCODE_I)) {
+                    controlState->requestSystemSchedulerStats = true;
+                }
+                
+                // Quick stats with minus key
                 if (keyboard->isKeyPressed(SDL_SCANCODE_MINUS) || 
                     keyboard->isKeyPressed(SDL_SCANCODE_KP_MINUS)) {
                     controlState->requestPerformanceStats = true;

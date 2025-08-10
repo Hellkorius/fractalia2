@@ -232,6 +232,11 @@ int main(int argc, char* argv[]) {
                 std::cout << "=========================" << std::endl;
             }
             
+            // Handle system scheduler stats request
+            if (controlState->requestSystemSchedulerStats) {
+                world.getSystemScheduler().printPerformanceReport();
+            }
+            
             // Reset request flags
             controlState->resetFlags();
         }

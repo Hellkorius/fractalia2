@@ -17,6 +17,7 @@ namespace SimpleControlSystem {
         bool requestEntityCreation = false;
         bool requestSwarmCreation = false;
         bool requestPerformanceStats = false;
+        bool requestSystemSchedulerStats = false;
         glm::vec2 entityCreationPos{0.0f, 0.0f};
         
         // Reset request flags after processing
@@ -24,6 +25,7 @@ namespace SimpleControlSystem {
             requestEntityCreation = false;
             requestSwarmCreation = false;
             requestPerformanceStats = false;
+            requestSystemSchedulerStats = false;
         }
     };
     
