@@ -17,7 +17,7 @@ namespace ControlHandler {
         std::cout << "+/=: Add 1000 more GPU entities" << std::endl;
         std::cout << "-: Show current GPU performance stats" << std::endl;
         std::cout << "Left Click: Create GPU entity with movement at mouse position" << std::endl;
-        std::cout << "0/1/2: Switch movement pattern (0=Petal, 1=Orbit, 2=Wave)" << std::endl;
+        std::cout << "0/1/2/3: Switch movement pattern (0=Petal, 1=Orbit, 2=Wave, 3=Triangle)" << std::endl;
         std::cout << "CAPS LOCK: Toggle Angel Mode (epic transition effect)" << std::endl;
         std::cout << "\nCamera Controls:" << std::endl;
         std::cout << "WASD: Move camera" << std::endl;
@@ -181,6 +181,15 @@ namespace ControlHandler {
             // Schedule movement update (applied after compute dispatch)
             if (renderer && renderer->getGPUEntityManager()) {
                 renderer->getGPUEntityManager()->scheduleMovementUpdate(2, g_angelModeEnabled);
+            }
+        }
+        else if (InputQuery::isKeyPressed(flecsWorld, SDL_SCANCODE_3)) {
+            g_currentMovementType = 3;
+            std::cout << "Movement type changed to: TRIANGLE FORMATION (3)" << std::endl;
+            
+            // Schedule movement update (applied after compute dispatch)
+            if (renderer && renderer->getGPUEntityManager()) {
+                renderer->getGPUEntityManager()->scheduleMovementUpdate(3, g_angelModeEnabled);
             }
         }
     }

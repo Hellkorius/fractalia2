@@ -1,4 +1,5 @@
 #include "compute_pipeline.h"
+#include "vulkan_function_loader.h"
 #include <iostream>
 #include <fstream>
 #include <stdexcept>
@@ -10,20 +11,26 @@ ComputePipeline::~ComputePipeline() {
     cleanup();
 }
 
-bool ComputePipeline::initialize(VulkanContext* context) {
+bool ComputePipeline::initialize(VulkanContext* context, VulkanFunctionLoader* loader) {
     this->context = context;
-    loadFunctions();
+    this->loader = loader;
+    
+    if (!loader) {
+        std::cerr << "ComputePipeline requires VulkanFunctionLoader" << std::endl;
+        return false;
+    }
+    
     return true;
 }
 
 void ComputePipeline::cleanup() {
     if (movementPipeline != VK_NULL_HANDLE) {
-        vkDestroyPipeline(context->getDevice(), movementPipeline, nullptr);
+        loader->vkDestroyPipeline(context->getDevice(), movementPipeline, nullptr);
         movementPipeline = VK_NULL_HANDLE;
     }
     
     if (movementPipelineLayout != VK_NULL_HANDLE) {
-        vkDestroyPipelineLayout(context->getDevice(), movementPipelineLayout, nullptr);
+        loader->vkDestroyPipelineLayout(context->getDevice(), movementPipelineLayout, nullptr);
         movementPipelineLayout = VK_NULL_HANDLE;
     }
 }
@@ -44,7 +51,7 @@ bool ComputePipeline::createMovementPipeline(VkDescriptorSetLayout descriptorSet
     pipelineLayoutInfo.pushConstantRangeCount = 1;
     pipelineLayoutInfo.pPushConstantRanges = &pushConstantRange;
 
-    if (vkCreatePipelineLayout(context->getDevice(), &pipelineLayoutInfo, nullptr, &movementPipelineLayout) != VK_SUCCESS) {
+    if (loader->vkCreatePipelineLayout(context->getDevice(), &pipelineLayoutInfo, nullptr, &movementPipelineLayout) != VK_SUCCESS) {
         std::cerr << "Failed to create compute pipeline layout!" << std::endl;
         return false;
     }
@@ -70,32 +77,16 @@ bool ComputePipeline::createMovementPipeline(VkDescriptorSetLayout descriptorSet
     pipelineInfo.stage = computeShaderStageInfo;
     pipelineInfo.layout = movementPipelineLayout;
 
-    if (vkCreateComputePipelines(context->getDevice(), VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &movementPipeline) != VK_SUCCESS) {
+    if (loader->vkCreateComputePipelines(context->getDevice(), VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &movementPipeline) != VK_SUCCESS) {
         std::cerr << "Failed to create compute pipeline!" << std::endl;
-        vkDestroyShaderModule(context->getDevice(), computeShaderModule, nullptr);
+        loader->vkDestroyShaderModule(context->getDevice(), computeShaderModule, nullptr);
         return false;
     }
 
-    vkDestroyShaderModule(context->getDevice(), computeShaderModule, nullptr);
+    loader->vkDestroyShaderModule(context->getDevice(), computeShaderModule, nullptr);
     return true;
 }
 
-void ComputePipeline::loadFunctions() {
-    VkInstance instance = context->getInstance();
-    
-    vkCreateComputePipelines = reinterpret_cast<PFN_vkCreateComputePipelines>(
-        context->vkGetInstanceProcAddr(instance, "vkCreateComputePipelines"));
-    vkCreatePipelineLayout = reinterpret_cast<PFN_vkCreatePipelineLayout>(
-        context->vkGetInstanceProcAddr(instance, "vkCreatePipelineLayout"));
-    vkDestroyPipeline = reinterpret_cast<PFN_vkDestroyPipeline>(
-        context->vkGetInstanceProcAddr(instance, "vkDestroyPipeline"));
-    vkDestroyPipelineLayout = reinterpret_cast<PFN_vkDestroyPipelineLayout>(
-        context->vkGetInstanceProcAddr(instance, "vkDestroyPipelineLayout"));
-    vkCreateShaderModule = reinterpret_cast<PFN_vkCreateShaderModule>(
-        context->vkGetInstanceProcAddr(instance, "vkCreateShaderModule"));
-    vkDestroyShaderModule = reinterpret_cast<PFN_vkDestroyShaderModule>(
-        context->vkGetInstanceProcAddr(instance, "vkDestroyShaderModule"));
-}
 
 VkShaderModule ComputePipeline::createShaderModule(const std::vector<char>& code) {
     VkShaderModuleCreateInfo createInfo{};
@@ -104,7 +95,7 @@ VkShaderModule ComputePipeline::createShaderModule(const std::vector<char>& code
     createInfo.pCode = reinterpret_cast<const uint32_t*>(code.data());
 
     VkShaderModule shaderModule;
-    if (vkCreateShaderModule(context->getDevice(), &createInfo, nullptr, &shaderModule) != VK_SUCCESS) {
+    if (loader->vkCreateShaderModule(context->getDevice(), &createInfo, nullptr, &shaderModule) != VK_SUCCESS) {
         std::cerr << "Failed to create shader module!" << std::endl;
         return VK_NULL_HANDLE;
     }

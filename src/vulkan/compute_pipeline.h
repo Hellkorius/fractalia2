@@ -6,12 +6,14 @@
 #include <string>
 #include "vulkan_context.h"
 
+class VulkanFunctionLoader;
+
 class ComputePipeline {
 public:
     ComputePipeline();
     ~ComputePipeline();
 
-    bool initialize(VulkanContext* context);
+    bool initialize(VulkanContext* context, VulkanFunctionLoader* loader = nullptr);
     void cleanup();
     
     // Create compute pipeline for entity movement
@@ -22,19 +24,12 @@ public:
 
 private:
     VulkanContext* context = nullptr;
+    VulkanFunctionLoader* loader = nullptr;
     
     VkPipeline movementPipeline = VK_NULL_HANDLE;
     VkPipelineLayout movementPipelineLayout = VK_NULL_HANDLE;
 
-    // Function pointers for compute operations
-    PFN_vkCreateComputePipelines vkCreateComputePipelines = nullptr;
-    PFN_vkCreatePipelineLayout vkCreatePipelineLayout = nullptr;
-    PFN_vkDestroyPipeline vkDestroyPipeline = nullptr;
-    PFN_vkDestroyPipelineLayout vkDestroyPipelineLayout = nullptr;
-    PFN_vkCreateShaderModule vkCreateShaderModule = nullptr;
-    PFN_vkDestroyShaderModule vkDestroyShaderModule = nullptr;
-
-    void loadFunctions();
+    // Note: Function pointers removed - now using centralized VulkanFunctionLoader
     VkShaderModule createShaderModule(const std::vector<char>& code);
     std::vector<char> readFile(const std::string& filename);
 };

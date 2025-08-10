@@ -6,6 +6,7 @@ layout(local_size_x = 64) in;
 #define MOVEMENT_PETAL 0
 #define MOVEMENT_ORBIT 1
 #define MOVEMENT_WAVE 2
+#define MOVEMENT_TRIANGLE_FORMATION 3
 
 // Transition system constants
 #define TRANSITION_DURATION 2.0  // Total transition time in seconds
@@ -79,6 +80,54 @@ vec3 computeWaveMovement(vec3 center, float amplitude, float frequency, float ph
         amplitude * cos(totalTime * frequency * 0.5 + phase),
         0.0
     );
+}
+
+vec3 computeTriangleFormation(vec3 center, float amplitude, float frequency, float phase, float totalTime) {
+    // Non-Euclidean triangular orbit around origin
+    float orbitRadius = amplitude * 2.0;
+    
+    // Primary orbital motion around origin (like orbit movement)
+    float orbitAngle = totalTime * frequency + phase;
+    vec3 orbitPosition = vec3(
+        orbitRadius * cos(orbitAngle),
+        orbitRadius * sin(orbitAngle),
+        0.0
+    );
+    
+    // Add triangular warping to the orbit path
+    // Create 3 "nodes" in the orbit that correspond to triangle vertices
+    float trianglePhase = orbitAngle * 1.5; // 1.5x faster creates triangular resonance
+    float triangleWarp = sin(trianglePhase) * 0.4; // Triangular warping strength
+    
+    // Apply triangular distortion to the circular orbit
+    float warpedRadius = orbitRadius * (1.0 + triangleWarp);
+    vec3 triangularOrbit = vec3(
+        warpedRadius * cos(orbitAngle),
+        warpedRadius * sin(orbitAngle),
+        0.0
+    );
+    
+    // Add non-Euclidean effects
+    float cosmicTime = totalTime * frequency + phase;
+    
+    // Add dimensional folding: entities occasionally "fold" through higher dimensions
+    float foldingPhase = sin(cosmicTime * 0.7 + phase * 2.0);
+    float dimensionalFold = pow(abs(foldingPhase), 3.0) * sign(foldingPhase);
+    
+    // Add interweaving radial oscillation (like petal movement)
+    float radialOscillation = 0.5 + 0.5 * sin(totalTime * frequency * 0.3 + phase * 2.0);
+    float interweavingScale = 0.8 + 0.4 * radialOscillation; // Entities weave in and out
+    
+    // Add hyperbolic curvature to the orbital path
+    float distanceFromCenter = length(triangularOrbit);
+    float curvature = sin(orbitAngle * 3.0 + totalTime * frequency * 0.3) * orbitRadius * 0.1;
+    vec3 curvatureVector = vec3(-sin(orbitAngle), cos(orbitAngle), 0.0) * curvature;
+    
+    // Apply all transformations to create non-Euclidean triangular orbit
+    vec3 finalPosition = triangularOrbit * interweavingScale + curvatureVector;
+    finalPosition += vec3(dimensionalFold * 0.1, dimensionalFold * 0.15, 0.0);
+    
+    return center + finalPosition;
 }
 
 // Smooth transition system - entities move to origin, then to new center (Angel Mode)
@@ -189,6 +238,9 @@ void main() {
             case MOVEMENT_WAVE:
                 targetPatternPosition = computeWaveMovement(center, amplitude, frequency, phase, adjustedTime);
                 break;
+            case MOVEMENT_TRIANGLE_FORMATION:
+                targetPatternPosition = computeTriangleFormation(center, amplitude, frequency, phase, adjustedTime);
+                break;
             default:
                 targetPatternPosition = computePetalMovement(center, amplitude, frequency, phase, adjustedTime);
                 break;
@@ -239,6 +291,9 @@ void main() {
             case MOVEMENT_WAVE:
                 targetPosition = computeWaveMovement(center, amplitude, frequency, phase, adjustedTime);
                 break;
+            case MOVEMENT_TRIANGLE_FORMATION:
+                targetPosition = computeTriangleFormation(center, amplitude, frequency, phase, adjustedTime);
+                break;
             default:
                 targetPosition = computePetalMovement(center, amplitude, frequency, phase, adjustedTime);
                 break;
@@ -264,6 +319,9 @@ void main() {
                 break;
             case MOVEMENT_WAVE:
                 newPosition = computeWaveMovement(center, amplitude, frequency, phase, adjustedTime);
+                break;
+            case MOVEMENT_TRIANGLE_FORMATION:
+                newPosition = computeTriangleFormation(center, amplitude, frequency, phase, adjustedTime);
                 break;
             default:
                 newPosition = computePetalMovement(center, amplitude, frequency, phase, adjustedTime);

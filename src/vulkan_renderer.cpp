@@ -117,7 +117,7 @@ bool VulkanRenderer::initialize(SDL_Window* window) {
     
     // Initialize compute pipeline
     computePipeline = std::make_unique<ComputePipeline>();
-    if (!computePipeline->initialize(context.get())) {
+    if (!computePipeline->initialize(context.get(), functionLoader.get())) {
         std::cerr << "Failed to initialize compute pipeline" << std::endl;
         return false;
     }
