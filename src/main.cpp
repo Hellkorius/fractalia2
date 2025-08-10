@@ -5,7 +5,9 @@
 #include <thread>
 #include "vulkan_renderer.h"
 #include "PolygonFactory.h"
-#include "ecs/world.hpp"
+#include <flecs.h>
+#include "ecs/entity_factory.hpp"
+#include "ecs/system_scheduler.hpp"
 #include "ecs/systems/lifetime_system.hpp"
 #include "ecs/systems/input_system.hpp"
 #include "ecs/systems/camera_system.hpp"
@@ -64,10 +66,11 @@ int main(int argc, char* argv[]) {
         return -1;
     }
 
-    World world;
-
-    // Initialize system scheduler with Flecs-native scheduling
-    auto& scheduler = world.getSystemScheduler();
+    flecs::world world;
+    
+    // Create entity factory and system scheduler directly
+    EntityFactory entityFactory(world);
+    SystemScheduler scheduler(world);
     
     // Input processing - first phase
     scheduler.addSystem<FlecsSystem<InputState, KeyboardInput, MouseInput, InputEvents>>(
@@ -95,14 +98,14 @@ int main(int argc, char* argv[]) {
     ).inPhase("Physics");
     
     // Create input singleton entity and set window reference for accurate screen coordinates
-    InputManager::createInputEntity(world.getFlecsWorld());
+    InputManager::createInputEntity(world);
     InputManager::setWindow(window);
     
     // Create main camera entity
-    CameraManager::createMainCamera(world.getFlecsWorld());
+    CameraManager::createMainCamera(world);
     
     // Set world reference in renderer for camera integration
-    renderer.setWorld(&world.getFlecsWorld());
+    renderer.setWorld(&world);
     
     // NOTE: Legacy CPU render system removed - entities now render directly via GPU compute
     
@@ -115,7 +118,7 @@ int main(int argc, char* argv[]) {
     std::cout << "Creating " << ENTITY_COUNT << " GPU entities for stress testing..." << std::endl;
     
     // Create a swarm of entities for stress testing - these will be uploaded to GPU
-    auto swarmEntities = world.getEntityFactory().createSwarm(
+    auto swarmEntities = entityFactory.createSwarm(
         ENTITY_COUNT,
         glm::vec3(0.0f, 0.0f, 0.0f), // center
         2.0f  // larger radius for more spread
@@ -129,7 +132,7 @@ int main(int argc, char* argv[]) {
     
     // Initialize simple Flecs control system (just handles input)
     bool running = true;
-    SimpleControlSystem::initialize(world.getFlecsWorld());
+    SimpleControlSystem::initialize(world);
     
     // Add system dependencies for traditional Flecs systems
     scheduler.addDependency("CameraMatrixSystem", "CameraControlSystem");
@@ -148,10 +151,10 @@ int main(int argc, char* argv[]) {
         lastFrameTime = frameStartTime;
         
         // Process SDL events through the input system
-        InputManager::processSDLEvents(world.getFlecsWorld());
+        InputManager::processSDLEvents(world);
         
         // Check application state from Flecs systems
-        auto* appState = world.getFlecsWorld().get<ApplicationState>();
+        auto* appState = world.get<ApplicationState>();
         if (appState && (appState->requestQuit || !appState->running)) {
             running = false;
         }
@@ -160,7 +163,7 @@ int main(int argc, char* argv[]) {
         renderer.setDeltaTime(deltaTime);
         
         // Handle GPU operations based on control state (after Flecs systems)
-        auto* controlState = world.getFlecsWorld().get_mut<SimpleControlSystem::ControlState>();
+        auto* controlState = world.get_mut<SimpleControlSystem::ControlState>();
         if (controlState) {
             // Handle swarm creation with safety limits
             if (controlState->requestSwarmCreation) {
@@ -170,7 +173,7 @@ int main(int argc, char* argv[]) {
                 if (currentCount < maxEntities - 1000) {
                     std::cout << "Adding 1000 more GPU entities..." << std::endl;
                     MovementType currentType = static_cast<MovementType>(controlState->currentMovementType);
-                    auto newEntities = world.getEntityFactory().createSwarmWithType(1000, glm::vec3(0.0f), 2.0f, currentType);
+                    auto newEntities = entityFactory.createSwarmWithType(1000, glm::vec3(0.0f), 2.0f, currentType);
                     renderer.getGPUEntityManager()->addEntitiesFromECS(newEntities);
                     renderer.uploadPendingGPUEntities();
                     std::cout << "Total GPU entities now: " << renderer.getGPUEntityManager()->getEntityCount() << std::endl;
@@ -183,7 +186,7 @@ int main(int argc, char* argv[]) {
             if (controlState->requestEntityCreation) {
                 std::cout << "Mouse click at world: (" << controlState->entityCreationPos.x << ", " << controlState->entityCreationPos.y << ")" << std::endl;
                 MovementType currentType = static_cast<MovementType>(controlState->currentMovementType);
-                auto mouseEntity = world.getEntityFactory().createMovingEntityWithType(
+                auto mouseEntity = entityFactory.createMovingEntityWithType(
                     glm::vec3(controlState->entityCreationPos.x, controlState->entityCreationPos.y, 0.0f),
                     currentType
                 );
@@ -221,20 +224,20 @@ int main(int argc, char* argv[]) {
                 uint32_t gpuEntityCount = renderer.getGPUEntityManager()->getEntityCount();
                 float avgFrameTime = Profiler::getInstance().getFrameTime();
                 float fps = avgFrameTime > 0.0f ? (1000.0f / avgFrameTime) : 0.0f;
-                auto worldStats = world.getStats();
+                // Simple entity count from Flecs directly
+                size_t activeEntities = static_cast<size_t>(world.count<Transform>());
                 
                 std::cout << "=== Performance Stats ===" << std::endl;
                 std::cout << "Frame: " << (appState ? appState->frameCount : 0) << std::endl;
                 std::cout << "FPS: " << fps << " (" << avgFrameTime << "ms avg)" << std::endl;
-                std::cout << "CPU Entities: " << worldStats.memoryStats.activeEntities << std::endl;
+                std::cout << "CPU Entities: " << activeEntities << std::endl;
                 std::cout << "GPU Entities: " << gpuEntityCount << "/" << renderer.getGPUEntityManager()->getMaxEntities() << std::endl;
-                std::cout << "Memory: " << (worldStats.memoryStats.totalAllocated / 1024) << "KB" << std::endl;
                 std::cout << "=========================" << std::endl;
             }
             
             // Handle system scheduler stats request
             if (controlState->requestSystemSchedulerStats) {
-                world.getSystemScheduler().printPerformanceReport();
+                scheduler.printPerformanceReport();
             }
             
             // Reset request flags
@@ -244,7 +247,7 @@ int main(int argc, char* argv[]) {
         // Systems now handle controls automatically through scheduler
         
         // Handle window resize for camera aspect ratio
-        auto inputEntity = world.getFlecsWorld().lookup("InputManager");
+        auto inputEntity = world.lookup("InputManager");
         if (inputEntity.is_valid()) {
             auto* events = inputEntity.get<InputEvents>();
             if (events) {
@@ -270,7 +273,7 @@ int main(int argc, char* argv[]) {
         // Clear input frame states AFTER all systems have processed input
         {
             PROFILE_SCOPE("Input Cleanup");
-            auto inputEntity = world.getFlecsWorld().lookup("InputManager");
+            auto inputEntity = world.lookup("InputManager");
             if (inputEntity.is_valid()) {
                 auto* keyboard = inputEntity.get_mut<KeyboardInput>();
                 auto* mouse = inputEntity.get_mut<MouseInput>();
@@ -295,16 +298,18 @@ int main(int argc, char* argv[]) {
         // Show periodic performance info
         if (frameCount % 300 == 0) { // Every 5 seconds at 60fps
             float avgFrameTime = Profiler::getInstance().getFrameTime();
-            auto worldStats = world.getStats();
+            size_t activeEntities = static_cast<size_t>(world.count<Transform>());
+            size_t estimatedMemory = activeEntities * (sizeof(Transform) + sizeof(Renderable) + sizeof(MovementPattern));
             
-            // Update profiler with current memory usage
-            Profiler::getInstance().updateMemoryUsage(worldStats.memoryStats.totalAllocated);
+            // Update profiler with estimated memory usage
+            Profiler::getInstance().updateMemoryUsage(estimatedMemory);
             
             float fps = avgFrameTime > 0.0f ? (1000.0f / avgFrameTime) : 0.0f;
             std::cout << "Frame " << frameCount 
                       << ": Avg " << avgFrameTime << "ms"
                       << " (" << fps << " FPS)"
-                      << " | Memory: " << (worldStats.memoryStats.totalAllocated / 1024) << "KB"
+                      << " | Entities: " << activeEntities
+                      << " | Est Memory: " << (estimatedMemory / 1024) << "KB"
                       << std::endl;
         }
         
