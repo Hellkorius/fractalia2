@@ -140,6 +140,10 @@ bool VulkanRenderer::initialize(SDL_Window* window) {
         return false;
     }
     
+    // Initialize buffer capacity limits after all resources are created
+    maxCpuInstances = resources->getMaxInstancesPerBuffer();
+    std::cout << "CPU instance buffer capacity: " << maxCpuInstances << " entities" << std::endl;
+    
     initialized = true;
     return true;
 }
@@ -396,23 +400,49 @@ void VulkanRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t
     // Render all entities by type
     uint32_t instanceOffset = 0;
     
-    // Count entities by type with bounds checking
+    // Count entities by type with robust bounds checking
     uint32_t triangleCount = 0;
     uint32_t squareCount = 0;
     const uint32_t maxInstances = resources->getMaxInstancesPerBuffer();
+    const uint32_t entityCount = static_cast<uint32_t>(renderEntities.size());
     
-    for (const auto& [pos, shapeType, color] : renderEntities) {
-        if (triangleCount + squareCount >= maxInstances) {
-            // Prevent overflow - stop counting if we exceed buffer capacity
-            break;
-        }
-        if (shapeType == ShapeType::Triangle) triangleCount++;
-        else if (shapeType == ShapeType::Square) squareCount++;
+    // Validate that renderEntities hasn't exceeded buffer capacity (should never happen after our fixes)
+    if (entityCount > maxInstances) {
+        std::cerr << "FATAL: renderEntities size (" << entityCount 
+                  << ") exceeds buffer capacity (" << maxInstances 
+                  << ") in recordCommandBuffer!" << std::endl;
+        std::cerr << "This indicates a critical bug in entity capacity validation!" << std::endl;
     }
     
-    // Clamp counts to prevent buffer overflow
+    // Count entities with safety bounds - process only what actually fits
+    uint32_t totalProcessed = 0;
+    for (const auto& [pos, shapeType, color] : renderEntities) {
+        if (totalProcessed >= maxInstances) {
+            std::cerr << "CRITICAL: Stopping entity counting at " << totalProcessed 
+                      << " to prevent buffer overflow" << std::endl;
+            break;
+        }
+        
+        if (shapeType == ShapeType::Triangle) {
+            triangleCount++;
+        } else if (shapeType == ShapeType::Square) {
+            squareCount++;
+        }
+        totalProcessed++;
+    }
+    
+    // Final safety clamps (should be redundant but provides extra protection)
     triangleCount = std::min(triangleCount, maxInstances);
     squareCount = std::min(squareCount, maxInstances - triangleCount);
+    
+    // Log entity counts for debugging
+    static uint32_t lastTriangleCount = 0, lastSquareCount = 0;
+    if (triangleCount != lastTriangleCount || squareCount != lastSquareCount) {
+        std::cout << "Render counts - Triangles: " << triangleCount 
+                  << ", Squares: " << squareCount << "/" << maxInstances << std::endl;
+        lastTriangleCount = triangleCount;
+        lastSquareCount = squareCount;
+    }
     
     
     // Render triangles using GPU entity buffer
@@ -560,19 +590,23 @@ void VulkanRenderer::updateInstanceBuffer(uint32_t currentFrame) {
     uint32_t instanceIndex = 0;
     const uint32_t maxInstances = resources->getMaxInstancesPerBuffer();
     
-    // Count total entities first for bounds checking
+    // Early bounds validation - this should never fail if updateEntities() is working correctly
     uint32_t totalEntities = static_cast<uint32_t>(renderEntities.size());
     if (totalEntities > maxInstances) {
-        std::cerr << "WARNING: Too many entities (" << totalEntities 
-                  << ") for instance buffer capacity (" << maxInstances 
-                  << "). Limiting to maximum." << std::endl;
-        // Note: This will cause some entities to not render, but prevents crashes
+        std::cerr << "FATAL: Instance buffer overflow detected in updateInstanceBuffer!" << std::endl;
+        std::cerr << "  This indicates a bug in entity capacity validation." << std::endl;
+        std::cerr << "  Entities: " << totalEntities << ", Buffer capacity: " << maxInstances << std::endl;
+        // Emergency truncation to prevent memory corruption
+        std::cerr << "  Emergency truncation activated to prevent crashes." << std::endl;
+        // We'll still process entities but with strict bounds checking below
     }
     
-    // Process triangles first (to match render order)
+    // Process triangles first (to match render order) - with strict bounds enforcement
     for (const auto& [pos, shapeType, color] : renderEntities) {
+        // Critical bounds check - this is our last line of defense against buffer overflow
         if (instanceIndex >= maxInstances) {
-            std::cerr << "Instance buffer overflow prevented. Some entities will not render." << std::endl;
+            std::cerr << "CRITICAL: Hard limit reached at instance " << instanceIndex 
+                      << "/" << maxInstances << ". Stopping processing to prevent memory corruption." << std::endl;
             break;
         }
         
@@ -598,15 +632,24 @@ void VulkanRenderer::updateInstanceBuffer(uint32_t currentFrame) {
             safeColor.b = glm::clamp(safeColor.b, 0.0f, 1.0f);
             safeColor.a = glm::clamp(safeColor.a, 0.0f, 1.0f);
             
-            instances[instanceIndex].transform = model;
-            instances[instanceIndex].color = safeColor;
-            instanceIndex++;
+            // Final safety check before writing to buffer
+            if (instanceIndex < maxInstances) {
+                instances[instanceIndex].transform = model;
+                instances[instanceIndex].color = safeColor;
+                instanceIndex++;
+            } else {
+                std::cerr << "EMERGENCY: Buffer bounds exceeded at triangle write. Skipping entity." << std::endl;
+                break;
+            }
         }
     }
     
-    // Process squares second (to match render order)
+    // Process squares second (to match render order) - with strict bounds enforcement
     for (const auto& [pos, shapeType, color] : renderEntities) {
+        // Critical bounds check - this is our last line of defense against buffer overflow
         if (instanceIndex >= maxInstances) {
+            std::cerr << "CRITICAL: Hard limit reached at instance " << instanceIndex 
+                      << "/" << maxInstances << ". Stopping square processing to prevent memory corruption." << std::endl;
             break;
         }
         
@@ -632,10 +675,23 @@ void VulkanRenderer::updateInstanceBuffer(uint32_t currentFrame) {
             safeColor.b = glm::clamp(safeColor.b, 0.0f, 1.0f);
             safeColor.a = glm::clamp(safeColor.a, 0.0f, 1.0f);
             
-            instances[instanceIndex].transform = model;
-            instances[instanceIndex].color = safeColor;
-            instanceIndex++;
+            // Final safety check before writing to buffer
+            if (instanceIndex < maxInstances) {
+                instances[instanceIndex].transform = model;
+                instances[instanceIndex].color = safeColor;
+                instanceIndex++;
+            } else {
+                std::cerr << "EMERGENCY: Buffer bounds exceeded at square write. Skipping entity." << std::endl;
+                break;
+            }
         }
+    }
+    
+    // Log final instance count for debugging
+    static uint32_t lastInstanceCount = 0;
+    if (instanceIndex != lastInstanceCount) {
+        std::cout << "Instance buffer updated: " << instanceIndex << "/" << maxInstances << " entities processed" << std::endl;
+        lastInstanceCount = instanceIndex;
     }
 }
 
@@ -644,7 +700,120 @@ void VulkanRenderer::setEntityPosition(float x, float y, float z) {
 }
 
 void VulkanRenderer::updateEntities(const std::vector<std::tuple<glm::vec3, ShapeType, glm::vec4>>& entities) {
-    renderEntities = entities;
+    // Early validation: Check capacity before accepting entities
+    uint32_t entityCount = static_cast<uint32_t>(entities.size());
+    
+    if (!validateEntityCapacity(entityCount, "updateEntities")) {
+        // Truncate entities to fit within buffer capacity
+        if (entityCount > maxCpuInstances) {
+            renderEntities.clear();
+            renderEntities.reserve(maxCpuInstances);
+            
+            // Copy only what fits, maintaining original order
+            auto endIt = entities.begin() + maxCpuInstances;
+            renderEntities.assign(entities.begin(), endIt);
+            
+            std::cerr << "ENTITY OVERFLOW: Truncated " << entityCount << " entities to " 
+                      << maxCpuInstances << " to prevent buffer overflow" << std::endl;
+        } else {
+            renderEntities = entities;
+        }
+    } else {
+        renderEntities = entities;
+    }
+}
+
+bool VulkanRenderer::validateEntityCapacity(uint32_t entityCount, const char* source) const {
+    if (entityCount > maxCpuInstances) {
+        if (!hasBufferCapacityWarningShown) {
+            std::cerr << "CRITICAL: Buffer capacity exceeded in " << source << "!" << std::endl;
+            std::cerr << "  Requested: " << entityCount << " entities" << std::endl;
+            std::cerr << "  Available: " << maxCpuInstances << " entities" << std::endl;
+            std::cerr << "  This will cause memory corruption if not handled!" << std::endl;
+            const_cast<VulkanRenderer*>(this)->hasBufferCapacityWarningShown = true;
+        }
+        return false;
+    }
+    return true;
+}
+
+bool VulkanRenderer::testBufferOverflowProtection() const {
+    std::cout << "\n=== TESTING BUFFER OVERFLOW PROTECTION ===" << std::endl;
+    std::cout << "Max CPU instances: " << maxCpuInstances << std::endl;
+    
+    if (!initialized) {
+        std::cerr << "Cannot test - renderer not initialized!" << std::endl;
+        return false;
+    }
+    
+    bool allTestsPassed = true;
+    
+    // Test 1: Capacity validation function
+    std::cout << "Test 1: Capacity validation function..." << std::endl;
+    bool test1a = validateEntityCapacity(maxCpuInstances - 1, "test1a"); // Should pass
+    bool test1b = validateEntityCapacity(maxCpuInstances, "test1b");     // Should pass (at limit)
+    bool test1c = validateEntityCapacity(maxCpuInstances + 1, "test1c"); // Should fail
+    
+    if (test1a && test1b && !test1c) {
+        std::cout << "  ✓ Capacity validation working correctly" << std::endl;
+    } else {
+        std::cerr << "  ✗ Capacity validation failed!" << std::endl;
+        allTestsPassed = false;
+    }
+    
+    // Test 2: Entity vector size validation
+    std::cout << "Test 2: Current entity vector state..." << std::endl;
+    uint32_t currentEntityCount = static_cast<uint32_t>(renderEntities.size());
+    if (currentEntityCount <= maxCpuInstances) {
+        std::cout << "  ✓ Current entities (" << currentEntityCount << ") within limits" << std::endl;
+    } else {
+        std::cerr << "  ✗ Current entities (" << currentEntityCount << ") exceed limits!" << std::endl;
+        allTestsPassed = false;
+    }
+    
+    // Test 3: GPU buffer limits
+    std::cout << "Test 3: GPU entity buffer state..." << std::endl;
+    if (gpuEntityManager) {
+        uint32_t gpuEntityCount = gpuEntityManager->getEntityCount();
+        uint32_t maxGpuEntities = gpuEntityManager->getMaxEntities();
+        std::cout << "  GPU entities: " << gpuEntityCount << "/" << maxGpuEntities << std::endl;
+        
+        if (gpuEntityCount <= maxGpuEntities) {
+            std::cout << "  ✓ GPU entities within limits" << std::endl;
+        } else {
+            std::cerr << "  ✗ GPU entities exceed buffer capacity!" << std::endl;
+            allTestsPassed = false;
+        }
+    } else {
+        std::cout << "  - GPU entity manager not available (using CPU path)" << std::endl;
+    }
+    
+    // Test 4: Resource buffer consistency
+    std::cout << "Test 4: Buffer consistency check..." << std::endl;
+    if (resources) {
+        uint32_t resourceMaxInstances = resources->getMaxInstancesPerBuffer();
+        if (resourceMaxInstances == maxCpuInstances) {
+            std::cout << "  ✓ Buffer size consistency verified" << std::endl;
+        } else {
+            std::cerr << "  ✗ Buffer size mismatch: cached=" << maxCpuInstances 
+                      << ", actual=" << resourceMaxInstances << std::endl;
+            allTestsPassed = false;
+        }
+    } else {
+        std::cerr << "  ✗ Resources not available for testing!" << std::endl;
+        allTestsPassed = false;
+    }
+    
+    std::cout << "\n=== TEST RESULTS ===" << std::endl;
+    if (allTestsPassed) {
+        std::cout << "✅ ALL TESTS PASSED - Buffer overflow protection is working correctly!" << std::endl;
+        std::cout << "Memory safety fixes have been successfully validated." << std::endl;
+    } else {
+        std::cerr << "❌ SOME TESTS FAILED - Buffer overflow protection needs attention!" << std::endl;
+    }
+    std::cout << "========================================\n" << std::endl;
+    
+    return allTestsPassed;
 }
 
 void VulkanRenderer::updateAspectRatio(int windowWidth, int windowHeight) {

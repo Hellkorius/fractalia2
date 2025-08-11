@@ -43,6 +43,13 @@ public:
     
     void updateEntities(const std::vector<std::tuple<glm::vec3, ShapeType, glm::vec4>>& entities);
     
+    // Buffer capacity management
+    bool validateEntityCapacity(uint32_t entityCount, const char* source = "unknown") const;
+    uint32_t getMaxCpuInstances() const { return maxCpuInstances; }
+    
+    // Memory safety validation for testing
+    bool testBufferOverflowProtection() const;
+    
     // GPU entity management
     GPUEntityManager* getGPUEntityManager() { return gpuEntityManager.get(); }
     void uploadPendingGPUEntities();
@@ -94,6 +101,10 @@ private:
     
     // Multiple entities for rendering
     std::vector<std::tuple<glm::vec3, ShapeType, glm::vec4>> renderEntities;
+    
+    // Buffer capacity management
+    uint32_t maxCpuInstances = 0;
+    bool hasBufferCapacityWarningShown = false;
     
     // GPU compute state
     float deltaTime = 0.0f;

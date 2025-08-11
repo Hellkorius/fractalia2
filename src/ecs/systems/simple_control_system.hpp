@@ -18,6 +18,7 @@ namespace SimpleControlSystem {
         bool requestSwarmCreation = false;
         bool requestPerformanceStats = false;
         bool requestSystemSchedulerStats = false;
+        bool requestGraphicsTests = false;  // New flag for graphics buffer overflow tests
         glm::vec2 entityCreationPos{0.0f, 0.0f};
         int lastProcessedMovementType = -1;  // Track movement type changes
         
@@ -27,6 +28,7 @@ namespace SimpleControlSystem {
             requestSwarmCreation = false;
             requestPerformanceStats = false;
             requestSystemSchedulerStats = false;
+            requestGraphicsTests = false;
         }
     };
     

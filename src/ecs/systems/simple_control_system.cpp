@@ -1,6 +1,7 @@
 #include "simple_control_system.hpp"
 #include "input_system.hpp"
 #include "systems_common.hpp"
+#include "../../graphicstests.h"
 #include <SDL3/SDL.h>
 
 namespace SimpleControlSystem {
@@ -27,6 +28,7 @@ namespace SimpleControlSystem {
         std::cout << "Left Click: Create GPU entity with movement at mouse position" << std::endl;
         std::cout << "0/1/2/3: Switch movement pattern (0=Petal, 1=Orbit, 2=Wave, 3=Triangle)" << std::endl;
         std::cout << "CAPS LOCK: Toggle Angel Mode (epic transition effect)" << std::endl;
+        std::cout << "T: Run graphics buffer overflow tests" << std::endl;
         std::cout << "===============================================\n" << std::endl;
         
         // Simple input handling system - register with appropriate phase
@@ -98,6 +100,11 @@ namespace SimpleControlSystem {
                 if (keyboard->isKeyPressed(SDL_SCANCODE_MINUS) || 
                     keyboard->isKeyPressed(SDL_SCANCODE_KP_MINUS)) {
                     controlState->requestPerformanceStats = true;
+                }
+                
+                // Graphics tests with T key
+                if (keyboard->isKeyPressed(SDL_SCANCODE_T)) {
+                    controlState->requestGraphicsTests = true;
                 }
                 
                 appState->frameCount++;
@@ -214,6 +221,11 @@ namespace SimpleControlSystem {
         // Handle system scheduler stats request
         if (controlState->requestSystemSchedulerStats) {
             std::cout << "Simple Flecs systems - no complex scheduling" << std::endl;
+        }
+        
+        // Handle graphics tests request
+        if (controlState->requestGraphicsTests) {
+            GraphicsTests::runAllTests(&renderer);
         }
         
         // Note: Flags are automatically reset by ControlStateGuard destructor
