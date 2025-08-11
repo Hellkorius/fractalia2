@@ -95,6 +95,7 @@ private:
     void dispatchCompute(VkCommandBuffer commandBuffer, float deltaTime);
     void transitionBufferLayout(VkCommandBuffer commandBuffer);
     bool initializeFrameFences();
+    void cleanupPartialFrameFences();
     
     // Entity position for rendering (backward compatibility)
     glm::vec3 entityPosition = glm::vec3(0.0f, 0.0f, 0.0f);
@@ -115,6 +116,7 @@ private:
         VkFence graphicsDone = VK_NULL_HANDLE;
         bool computeInUse = false;
         bool graphicsInUse = false;
+        bool fencesInitialized = false;
     };
     std::vector<FrameData> frameData;
 };

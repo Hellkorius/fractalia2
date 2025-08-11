@@ -152,15 +152,18 @@ void VulkanRenderer::cleanup() {
     if (functionLoader && context && context->getDevice() != VK_NULL_HANDLE) {
         functionLoader->vkDeviceWaitIdle(context->getDevice());
         
-        // Clean up per-frame fences
+        // Clean up per-frame fences with proper state validation
         for (auto& frame : frameData) {
-            if (frame.computeDone != VK_NULL_HANDLE) {
-                functionLoader->vkDestroyFence(context->getDevice(), frame.computeDone, nullptr);
-                frame.computeDone = VK_NULL_HANDLE;
-            }
-            if (frame.graphicsDone != VK_NULL_HANDLE) {
-                functionLoader->vkDestroyFence(context->getDevice(), frame.graphicsDone, nullptr);
-                frame.graphicsDone = VK_NULL_HANDLE;
+            if (frame.fencesInitialized) {
+                if (frame.computeDone != VK_NULL_HANDLE) {
+                    functionLoader->vkDestroyFence(context->getDevice(), frame.computeDone, nullptr);
+                    frame.computeDone = VK_NULL_HANDLE;
+                }
+                if (frame.graphicsDone != VK_NULL_HANDLE) {
+                    functionLoader->vkDestroyFence(context->getDevice(), frame.graphicsDone, nullptr);
+                    frame.graphicsDone = VK_NULL_HANDLE;
+                }
+                frame.fencesInitialized = false;
             }
         }
     }
@@ -830,15 +833,40 @@ bool VulkanRenderer::initializeFrameFences() {
     for (auto& frame : frameData) {
         if (functionLoader->vkCreateFence(context->getDevice(), &fenceInfo, nullptr, &frame.computeDone) != VK_SUCCESS) {
             std::cerr << "Failed to create compute fence" << std::endl;
+            // Clean up any previously created fences before returning
+            cleanupPartialFrameFences();
             return false;
         }
         
         if (functionLoader->vkCreateFence(context->getDevice(), &fenceInfo, nullptr, &frame.graphicsDone) != VK_SUCCESS) {
             std::cerr << "Failed to create graphics fence" << std::endl;
+            // Clean up compute fence just created and any previously created fences
+            functionLoader->vkDestroyFence(context->getDevice(), frame.computeDone, nullptr);
+            frame.computeDone = VK_NULL_HANDLE;
+            cleanupPartialFrameFences();
             return false;
         }
+        
+        // Mark fences as successfully initialized for this frame
+        frame.fencesInitialized = true;
     }
     
     return true;
+}
+
+void VulkanRenderer::cleanupPartialFrameFences() {
+    for (auto& frame : frameData) {
+        if (frame.fencesInitialized) {
+            if (frame.computeDone != VK_NULL_HANDLE) {
+                functionLoader->vkDestroyFence(context->getDevice(), frame.computeDone, nullptr);
+                frame.computeDone = VK_NULL_HANDLE;
+            }
+            if (frame.graphicsDone != VK_NULL_HANDLE) {
+                functionLoader->vkDestroyFence(context->getDevice(), frame.graphicsDone, nullptr);
+                frame.graphicsDone = VK_NULL_HANDLE;
+            }
+            frame.fencesInitialized = false;
+        }
+    }
 }
 

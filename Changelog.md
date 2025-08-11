@@ -514,3 +514,30 @@ This overhaul eliminates all identified architectural flaws while maintaining id
   - File Structure: Updated component counts, removed obsolete wrappers
   - Performance Scale: Updated to 90k entities (current stress test)
   - Control Flow: Simplified to standard world.progress() execution
+  
+----------------------------------------------------------------------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+# Changelog 0.2.6:
+ 
+    1. Added initialization state tracking (vulkan_renderer.h:118): Added fencesInitialized flag to FrameData
+  structure to track fence creation success
+  2. Improved cleanup validation (vulkan_renderer.cpp:157): Modified cleanup function to only destroy fences that
+  were successfully initialized, preventing attempts to destroy invalid handles
+  3. Added proper error handling (vulkan_renderer.cpp:834-847): Enhanced initializeFrameFences() with partial
+  cleanup on failure, ensuring no resource leaks when fence creation fails midway through initialization
+  4. Added cleanup helper (vulkan_renderer.cpp:857-871): Created cleanupPartialFrameFences() method to properly
+  clean up any successfully created fences when initialization fails
+   
+  5. Critical Buffer Overflow Protection - vulkan_renderer.cpp:552-670
+    - Before: Inadequate bounds checking, entities could overflow buffers
+    - After: Multi-layer validation with early detection and emergency truncation
+  6.  Comprehensive Validation Pipeline :
+    - Entry Point Protection: updateEntities() now validates capacity before accepting entities
+    - Pipeline Protection: updateInstanceBuffer() has strict bounds enforcement at every step
+    - GPU Buffer Protection: Enhanced uploadPendingEntities() with detailed overflow prevention
+    - Rendering Protection: recordCommandBuffer() validates counts before GPU operations
+  7.  Real-time Testing & Validation :
+    - Test Framework: Added graphicstests.cpp/h with comprehensive buffer overflow tests
+    - Keyboard Integration: Press 'T' key to run tests in real-time
+    - Validation Functions: testBufferOverflowProtection() provides immediate feedback
