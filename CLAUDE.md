@@ -19,15 +19,15 @@ The project uses a hybrid approach:
 - **GPU (Graphics)**: Direct rendering from compute-updated entity buffers
 
 ### System Architecture
-- **SystemScheduler**: Flecs-native scheduling with dependencies
-- **SimpleControlSystem**: Pure Flecs input handling with singleton state
-- **GPU Operations**: Direct calls in main loop after Flecs systems complete
-- **Clean Separation**: ECS for entities/input, main loop for GPU synchronization
+- **Direct Flecs Systems**: Native `world.system<>().each()` pattern, no wrappers
+- **SimpleControlSystem**: Singleton state pattern for control flags
+- **GPU Operations**: Direct calls in main loop after Flecs execution
+- **Minimal ECS**: Pure Flecs idioms, ~200 lines total ECS infrastructure
 
 #### Control Flow
-- **Flecs Systems**: Handle input, set request flags in `ControlState` singleton
-- **Main Loop**: Process flags, execute GPU operations with proper timing
-- **No Complex Observers**: Simple request/response pattern prevents threading issues
+- **Flecs Systems**: Direct `.each()` execution via `world.progress(deltaTime)`
+- **Main Loop**: Process control flags, execute GPU operations
+- **No Scheduling Complexity**: Standard Flecs system ordering
 
 #### Entity Components (CPU-side):
 - `Transform`: Entity transform matrix and position
@@ -65,26 +65,23 @@ fractalia2/
 	├──	entity_factory.hpp		// Factory for creating and managing entities
 	├── gpu_entity_manager.*    // GPU entity storage and CPU->GPU handover
 	├── movement_command_system.* // Thread-safe movement command queue and processor
-	├── memory_manager.hpp		// memory manager for ECS
+	├── memory_manager.hpp		// minimal statistics helper (69 lines)
 	├── profiler.hpp			// performance data collection
-	├── render_batch.hpp		// RenderInstance and RenderBatch (legacy CPU path)
-	├── world.hpp               // World wrapper around flecs::world + integrated scheduler
-	├── system.hpp              // SystemBase interface with FlecsSystem/ManualSystem wrappers
-	├── system_scheduler.hpp    // Flecs-native scheduler with phase/dependency support
+	├── system_scheduler.hpp    // phase manager for direct system registration (110 lines)
 	├──	camera_component.hpp
 	└── systems/
 		├── lifetime_system.*  	// Entity lifetime management
 		├── input_system.*		// input handling + screen-to-world conversion
 		├── camera_system.*		// camera controls
-		└──	simple_control_system.* // **NEW: simplified Flecs input handling**
+		└──	simple_control_system.* // simplified Flecs input handling
 │   └── shaders/                # GLSL shader source files
 │       ├── vertex.vert         # Vertex shader (updated for GPUEntity)
 │       ├── fragment.frag       # Fragment shader
-│       ├── movement.comp       # **NEW: GPU compute shader for entity movement**
+│       ├── movement.comp       # GPU compute shader for entity movement
 │       └── compiled/           # Compiled SPIR-V shaders
 │           ├── vertex.spv      # Compiled vertex shader
 │           ├── fragment.spv    # Compiled fragment shader
-│           └── movement.spv    # **NEW: Compiled compute shader**
+│           └── movement.spv    # Compiled compute shader
 ├── include/                    # Header files directory
 └── ../vendored/                # External libraries
     ├── SDL3-3.1.6/             # SDL3 source and binaries
@@ -132,7 +129,7 @@ struct GPUEntity {
 - **Shader Path**: Compute shader loaded from `shaders/compiled/movement.spv` (not `src/shaders/compiled/`)
 
 ### Performance Characteristics
-- **Current Scale**: 10,000 entities at 60 FPS with smooth movement and dynamic colors
+- **Current Scale**: 90,000 entities at 60 FPS with smooth movement and dynamic colors
 - **Theoretical Limit**: 131k entities (16MB buffer / 128 bytes per entity)
 - **GPU Utilization**: Parallel compute across thousands of threads vs sequential CPU processing
 - **Memory Bandwidth**: Direct GPU-to-GPU data flow eliminates CPU→GPU transfer bottleneck

@@ -502,3 +502,15 @@ This overhaul eliminates all identified architectural flaws while maintaining id
     - Existing entity.set<T>() code works unchanged
     - EntityFactory and builder patterns unmodified
     - Thread-safe allocator infrastructure preserved for future use
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+# Changelog 0.2.5: 
+	
+	
+  - System Architecture: Removed complex scheduling, emphasized direct Flecs patterns
+  - ECS Infrastructure: Noted ~200 lines total (was ~1000+)
+  - File Structure: Updated component counts, removed obsolete wrappers
+  - Performance Scale: Updated to 90k entities (current stress test)
+  - Control Flow: Simplified to standard world.progress() execution

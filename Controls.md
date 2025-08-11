@@ -5,7 +5,7 @@
 - **Left Click**: Create GPU entity with movement at mouse position
 - **P**: Print detailed performance report (Vulkan rendering, ECS update, input cleanup, memory)
 - **I**: Print system scheduler info (phases, dependencies, enable/disable status)
-- **F1-F6**: Toggle systems (InputSystem, CameraControlSystem, CameraMatrixSystem, LifetimeSystem, ControlHandler, GPUEntityUpload)
+- **F1-F6**: Toggle systems (InputSystem, CameraControlSystem, CameraMatrixSystem, LifetimeSystem, ControlHandler, GPUEntityUpload) ##Remove this
 - **WASD**: Move camera
 - **Mouse Wheel**: Zoom in/out
 - **Space**: Reset camera to origin
