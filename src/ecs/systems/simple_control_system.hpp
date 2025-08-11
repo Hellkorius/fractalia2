@@ -10,7 +10,7 @@ class EntityFactory;
 // Simple Flecs control system - just handles input, delegates GPU work to renderer
 namespace SimpleControlSystem {
     
-    // Simple state singleton
+    // Simple state singleton with GPU operation capabilities
     struct ControlState {
         int currentMovementType = 0;  // 0=Petal, 1=Orbit, 2=Wave, 3=Triangle
         bool angelModeEnabled = false;
@@ -34,5 +34,8 @@ namespace SimpleControlSystem {
     
     // Initialize with phase for integration with SystemScheduler
     void initialize(flecs::world& world, flecs::entity phase);
+    
+    // Process control actions (called from main loop with renderer/factory references)
+    void processControlActions(flecs::world& world, VulkanRenderer& renderer, EntityFactory& entityFactory);
     
 }

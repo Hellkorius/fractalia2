@@ -73,7 +73,7 @@ fractalia2/
 		├── lifetime_system.*  	// Entity lifetime management
 		├── input_system.*		// input handling + screen-to-world conversion
 		├── camera_system.*		// camera controls
-		└──	simple_control_system.* // simplified Flecs input handling
+		└──	simple_control_system.* // input handling + GPU entity operations
 │   └── shaders/                # GLSL shader source files
 │       ├── vertex.vert         # Vertex shader (updated for GPUEntity)
 │       ├── fragment.frag       # Fragment shader
