@@ -3,6 +3,13 @@
 #include <iostream>
 #include <chrono>
 #include <thread>
+
+// Debug output control
+#ifdef NDEBUG
+#define DEBUG_LOG(x) do {} while(0)
+#else
+#define DEBUG_LOG(x) std::cout << x << std::endl
+#endif
 #include "vulkan_renderer.h"
 #include "PolygonFactory.h"
 #include <flecs.h>
@@ -81,18 +88,18 @@ int main(int argc, char* argv[]) {
     // Note: Input processing is handled by InputManager::processSDLEvents() in main loop
     // No input system registration needed since it's done manually
     
-    // Simple camera systems  
+    // Camera systems - registered with input phase for proper ordering
     world.system<Camera>("CameraControlSystem")
         .each([](flecs::entity e, Camera& camera) {
-            static int count = 0;
-            if (++count % 60 == 0) std::cout << "Camera system running" << std::endl;
             camera_control_system(e, camera, e.world().delta_time());
-        });
+        })
+        .child_of(scheduler.getInputPhase());
     
     world.system<Camera>("CameraMatrixSystem")
-        .each(camera_matrix_system);
+        .each(camera_matrix_system)
+        .child_of(scheduler.getLogicPhase());
         
-    std::cout << "Camera systems registered" << std::endl;
+    DEBUG_LOG("Camera systems registered");
     
     // Physics/lifetime - third phase
     world.system<Lifetime>("LifetimeSystem")
@@ -105,7 +112,7 @@ int main(int argc, char* argv[]) {
     
     // Create simple camera entity
     world.entity("MainCamera").set<Camera>({});
-    std::cout << "Camera entities: " << world.count<Camera>() << std::endl;
+    DEBUG_LOG("Camera entities: " << world.count<Camera>());
     
     // Set world reference in renderer for camera integration
     renderer.setWorld(&world);
@@ -118,7 +125,7 @@ int main(int argc, char* argv[]) {
     // GPU stress test configuration - scale up to 10k for initial test
     constexpr size_t ENTITY_COUNT = 90000; // GPU can handle much more
     
-    std::cout << "Creating " << ENTITY_COUNT << " GPU entities for stress testing..." << std::endl;
+    DEBUG_LOG("Creating " << ENTITY_COUNT << " GPU entities for stress testing...");
     
     // Create a swarm of entities for stress testing - these will be uploaded to GPU
     auto swarmEntities = entityFactory.createSwarm(
@@ -131,13 +138,13 @@ int main(int argc, char* argv[]) {
     renderer.getGPUEntityManager()->addEntitiesFromECS(swarmEntities);
     renderer.uploadPendingGPUEntities(); // Ensure they're actually uploaded to buffers
     
-    std::cout << "Created " << swarmEntities.size() << " GPU entities!" << std::endl;
+    DEBUG_LOG("Created " << swarmEntities.size() << " GPU entities!");
     
     // Initialize simple Flecs control system (just handles input) with Input phase
     bool running = true;
     SimpleControlSystem::initialize(world);
     
-    std::cout << "\n🚀 Simple Flecs systems ready\n" << std::endl;
+    DEBUG_LOG("\n🚀 Simple Flecs systems ready\n");
     int frameCount = 0;
     auto lastFrameTime = std::chrono::high_resolution_clock::now();
     
@@ -167,20 +174,20 @@ int main(int argc, char* argv[]) {
                 uint32_t maxEntities = renderer.getGPUEntityManager()->getMaxEntities();
                 
                 if (currentCount < maxEntities - 1000) {
-                    std::cout << "Adding 1000 more GPU entities..." << std::endl;
+                    DEBUG_LOG("Adding 1000 more GPU entities...");
                     MovementType currentType = static_cast<MovementType>(controlState->currentMovementType);
                     auto newEntities = entityFactory.createSwarmWithType(1000, glm::vec3(0.0f), 2.0f, currentType);
                     renderer.getGPUEntityManager()->addEntitiesFromECS(newEntities);
                     renderer.uploadPendingGPUEntities();
-                    std::cout << "Total GPU entities now: " << renderer.getGPUEntityManager()->getEntityCount() << std::endl;
+                    DEBUG_LOG("Total GPU entities now: " << renderer.getGPUEntityManager()->getEntityCount());
                 } else {
-                    std::cout << "Cannot add more entities - limit reached (" << currentCount << "/" << maxEntities << ")" << std::endl;
+                    DEBUG_LOG("Cannot add more entities - limit reached (" << currentCount << "/" << maxEntities << ")");
                 }
             }
             
             // Handle single entity creation
             if (controlState->requestEntityCreation) {
-                std::cout << "Mouse click at world: (" << controlState->entityCreationPos.x << ", " << controlState->entityCreationPos.y << ")" << std::endl;
+                DEBUG_LOG("Mouse click at world: (" << controlState->entityCreationPos.x << ", " << controlState->entityCreationPos.y << ")");
                 MovementType currentType = static_cast<MovementType>(controlState->currentMovementType);
                 auto mouseEntity = entityFactory.createMovingEntityWithType(
                     glm::vec3(controlState->entityCreationPos.x, controlState->entityCreationPos.y, 0.0f),
@@ -190,14 +197,14 @@ int main(int argc, char* argv[]) {
                     std::vector<Entity> entityVec = {mouseEntity};
                     renderer.getGPUEntityManager()->addEntitiesFromECS(entityVec);
                     renderer.uploadPendingGPUEntities();
-                    std::cout << "Created GPU entity with movement pattern" << std::endl;
+                    DEBUG_LOG("Created GPU entity with movement pattern");
                 }
             }
             
             // Handle movement commands
             static int lastMovementType = -1;
             if (controlState->currentMovementType != lastMovementType) {
-                std::cout << "Movement type command: " << controlState->currentMovementType << std::endl;
+                DEBUG_LOG("Movement type command: " << controlState->currentMovementType);
                 
                 if (renderer.getMovementCommandProcessor()) {
                     MovementCommand cmd;
@@ -251,7 +258,7 @@ int main(int argc, char* argv[]) {
                     const auto& event = events->events[i];
                     if (event.type == InputEvents::Event::WINDOW_RESIZE) {
                         renderer.updateAspectRatio(event.windowResizeEvent.width, event.windowResizeEvent.height);
-                        std::cout << "Window resized to " << event.windowResizeEvent.width << "x" << event.windowResizeEvent.height << std::endl;
+                        DEBUG_LOG("Window resized to " << event.windowResizeEvent.width << "x" << event.windowResizeEvent.height);
                     }
                 }
             }
