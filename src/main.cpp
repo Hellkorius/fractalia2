@@ -4,13 +4,8 @@
 #include <chrono>
 #include <thread>
 
-// Debug output control
-#ifdef NDEBUG
-#define DEBUG_LOG(x) do {} while(0)
-#else
-#define DEBUG_LOG(x) std::cout << x << std::endl
-#endif
 #include "vulkan_renderer.h"
+#include "ecs/debug.hpp"
 #include "PolygonFactory.h"
 #include <flecs.h>
 #include "ecs/entity_factory.hpp"

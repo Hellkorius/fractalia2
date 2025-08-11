@@ -19,6 +19,7 @@ namespace SimpleControlSystem {
         bool requestPerformanceStats = false;
         bool requestSystemSchedulerStats = false;
         glm::vec2 entityCreationPos{0.0f, 0.0f};
+        int lastProcessedMovementType = -1;  // Track movement type changes
         
         // Reset request flags after processing
         void resetFlags() {
@@ -27,6 +28,23 @@ namespace SimpleControlSystem {
             requestPerformanceStats = false;
             requestSystemSchedulerStats = false;
         }
+    };
+    
+    // RAII helper for automatic control state reset
+    class ControlStateGuard {
+    private:
+        ControlState* state;
+    public:
+        explicit ControlStateGuard(ControlState* controlState) : state(controlState) {}
+        ~ControlStateGuard() {
+            if (state) {
+                state->resetFlags();
+            }
+        }
+        
+        // Non-copyable
+        ControlStateGuard(const ControlStateGuard&) = delete;
+        ControlStateGuard& operator=(const ControlStateGuard&) = delete;
     };
     
     // Initialize simple control system

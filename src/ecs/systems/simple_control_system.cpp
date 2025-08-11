@@ -1,20 +1,7 @@
 #include "simple_control_system.hpp"
 #include "input_system.hpp"
-#include "../../vulkan_renderer.h"
-#include "../entity_factory.hpp"
-#include "../movement_command_system.hpp"
-#include "../profiler.hpp"
-#include "../gpu_entity_manager.h"
-#include <iostream>
+#include "systems_common.hpp"
 #include <SDL3/SDL.h>
-#include <chrono>
-
-// Debug output control
-#ifdef NDEBUG
-#define DEBUG_LOG(x) do {} while(0)
-#else
-#define DEBUG_LOG(x) std::cout << x << std::endl
-#endif
 
 namespace SimpleControlSystem {
     
@@ -132,18 +119,27 @@ namespace SimpleControlSystem {
             return;
         }
         
+        // RAII guard ensures flags are reset even if we return early
+        ControlStateGuard guard(controlState);
+        
         // Handle swarm creation with safety limits
         if (controlState->requestSwarmCreation) {
-            uint32_t currentCount = renderer.getGPUEntityManager()->getEntityCount();
-            uint32_t maxEntities = renderer.getGPUEntityManager()->getMaxEntities();
+            auto* gpuManager = renderer.getGPUEntityManager();
+            if (!gpuManager) {
+                DEBUG_LOG("Error: GPU Entity Manager is null");
+                return;
+            }
             
-            if (currentCount < maxEntities - 1000) {
-                DEBUG_LOG("Adding 1000 more GPU entities...");
+            uint32_t currentCount = gpuManager->getEntityCount();
+            uint32_t maxEntities = gpuManager->getMaxEntities();
+            
+            if (currentCount < maxEntities - SystemConstants::MIN_ENTITY_RESERVE_COUNT) {
+                DEBUG_LOG("Adding " << SystemConstants::DEFAULT_ENTITY_BATCH_SIZE << " more GPU entities...");
                 MovementType currentType = static_cast<MovementType>(controlState->currentMovementType);
-                auto newEntities = entityFactory.createSwarmWithType(1000, glm::vec3(0.0f), 2.0f, currentType);
-                renderer.getGPUEntityManager()->addEntitiesFromECS(newEntities);
+                auto newEntities = entityFactory.createSwarmWithType(SystemConstants::DEFAULT_ENTITY_BATCH_SIZE, glm::vec3(0.0f), 2.0f, currentType);
+                gpuManager->addEntitiesFromECS(newEntities);
                 renderer.uploadPendingGPUEntities();
-                DEBUG_LOG("Total GPU entities now: " << renderer.getGPUEntityManager()->getEntityCount());
+                DEBUG_LOG("Total GPU entities now: " << gpuManager->getEntityCount());
             } else {
                 DEBUG_LOG("Cannot add more entities - limit reached (" << currentCount << "/" << maxEntities << ")");
             }
@@ -151,6 +147,12 @@ namespace SimpleControlSystem {
         
         // Handle single entity creation
         if (controlState->requestEntityCreation) {
+            auto* gpuManager = renderer.getGPUEntityManager();
+            if (!gpuManager) {
+                DEBUG_LOG("Error: GPU Entity Manager is null");
+                return;
+            }
+            
             DEBUG_LOG("Mouse click at world: (" << controlState->entityCreationPos.x << ", " << controlState->entityCreationPos.y << ")");
             MovementType currentType = static_cast<MovementType>(controlState->currentMovementType);
             auto mouseEntity = entityFactory.createMovingEntityWithType(
@@ -159,36 +161,41 @@ namespace SimpleControlSystem {
             );
             if (mouseEntity.is_valid()) {
                 std::vector<Entity> entityVec = {mouseEntity};
-                renderer.getGPUEntityManager()->addEntitiesFromECS(entityVec);
+                gpuManager->addEntitiesFromECS(entityVec);
                 renderer.uploadPendingGPUEntities();
                 DEBUG_LOG("Created GPU entity with movement pattern");
             }
         }
         
         // Handle movement commands
-        static int lastMovementType = -1;
-        if (controlState->currentMovementType != lastMovementType) {
+        if (controlState->currentMovementType != controlState->lastProcessedMovementType) {
             DEBUG_LOG("Movement type command: " << controlState->currentMovementType);
             
             if (renderer.getMovementCommandProcessor()) {
                 MovementCommand cmd;
                 switch (controlState->currentMovementType) {
-                    case 0: cmd.targetType = MovementCommand::Type::Petal; break;
-                    case 1: cmd.targetType = MovementCommand::Type::Orbit; break;
-                    case 2: cmd.targetType = MovementCommand::Type::Wave; break;
-                    case 3: cmd.targetType = MovementCommand::Type::TriangleFormation; break;
+                    case SystemConstants::MOVEMENT_TYPE_PETAL: cmd.targetType = MovementCommand::Type::Petal; break;
+                    case SystemConstants::MOVEMENT_TYPE_ORBIT: cmd.targetType = MovementCommand::Type::Orbit; break;
+                    case SystemConstants::MOVEMENT_TYPE_WAVE: cmd.targetType = MovementCommand::Type::Wave; break;
+                    case SystemConstants::MOVEMENT_TYPE_TRIANGLE: cmd.targetType = MovementCommand::Type::TriangleFormation; break;
                 }
                 cmd.angelMode = controlState->angelModeEnabled;
                 cmd.timestamp = std::chrono::duration<double>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
                 
                 renderer.getMovementCommandProcessor()->getCommandQueue().enqueue(cmd);
             }
-            lastMovementType = controlState->currentMovementType;
+            controlState->lastProcessedMovementType = controlState->currentMovementType;
         }
         
         // Handle performance stats request
         if (controlState->requestPerformanceStats) {
-            uint32_t gpuEntityCount = renderer.getGPUEntityManager()->getEntityCount();
+            auto* gpuManager = renderer.getGPUEntityManager();
+            if (!gpuManager) {
+                DEBUG_LOG("Error: GPU Entity Manager is null");
+                return;
+            }
+            
+            uint32_t gpuEntityCount = gpuManager->getEntityCount();
             float avgFrameTime = Profiler::getInstance().getFrameTime();
             float fps = avgFrameTime > 0.0f ? (1000.0f / avgFrameTime) : 0.0f;
             // Simple entity count from Flecs directly
@@ -200,7 +207,7 @@ namespace SimpleControlSystem {
             std::cout << "Frame: " << (appState ? appState->frameCount : 0) << std::endl;
             std::cout << "FPS: " << fps << " (" << avgFrameTime << "ms avg)" << std::endl;
             std::cout << "CPU Entities: " << activeEntities << std::endl;
-            std::cout << "GPU Entities: " << gpuEntityCount << "/" << renderer.getGPUEntityManager()->getMaxEntities() << std::endl;
+            std::cout << "GPU Entities: " << gpuEntityCount << "/" << gpuManager->getMaxEntities() << std::endl;
             std::cout << "=========================" << std::endl;
         }
         
@@ -209,8 +216,7 @@ namespace SimpleControlSystem {
             std::cout << "Simple Flecs systems - no complex scheduling" << std::endl;
         }
         
-        // Reset request flags
-        controlState->resetFlags();
+        // Note: Flags are automatically reset by ControlStateGuard destructor
     }
     
 }

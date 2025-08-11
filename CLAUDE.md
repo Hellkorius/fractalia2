@@ -69,11 +69,14 @@ fractalia2/
 	├── profiler.hpp			// performance data collection
 	├── system_scheduler.hpp    // phase manager for direct system registration (110 lines)
 	├──	camera_component.hpp
+	├── debug.hpp				// unified DEBUG_LOG macro for project
+	├── constants.hpp			// system-wide constants (batch sizes, movement types)
 	└── systems/
 		├── lifetime_system.*  	// Entity lifetime management
 		├── input_system.*		// input handling + screen-to-world conversion
 		├── camera_system.*		// camera controls
-		└──	simple_control_system.* // input handling + GPU entity operations
+		├── simple_control_system.* // input handling + GPU entity operations
+		└── systems_common.hpp	// shared headers for system files
 │   └── shaders/                # GLSL shader source files
 │       ├── vertex.vert         # Vertex shader (updated for GPUEntity)
 │       ├── fragment.frag       # Fragment shader
