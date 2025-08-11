@@ -193,16 +193,16 @@ void VulkanRenderer::drawFrame() {
     // Use immediate check first, then longer timeout if needed for smooth 60fps
     
     if (frame.computeInUse) {
-        // First try immediate check
-        VkResult computeResult = functionLoader->vkWaitForFences(context->getDevice(), 1, &frame.computeDone, VK_TRUE, FENCE_TIMEOUT_IMMEDIATE);
-        if (computeResult == VK_TIMEOUT) {
-            // If not ready immediately, wait up to one frame time
-            computeResult = functionLoader->vkWaitForFences(context->getDevice(), 1, &frame.computeDone, VK_TRUE, FENCE_TIMEOUT_FRAME);
-            if (computeResult == VK_TIMEOUT) {
-                // Only skip frame after a full frame time has passed
-                return;
-            }
+        VkResult computeResult = waitForFenceRobust(frame.computeDone, "compute");
+        if (computeResult == VK_ERROR_DEVICE_LOST) {
+            frame.computeInUse = false;
+            return; // Critical error, skip frame
         }
+        if (computeResult != VK_SUCCESS) {
+            std::cerr << "Error: Compute fence wait failed: " << computeResult << std::endl;
+            return;
+        }
+        
         frame.computeInUse = false;
         
         // Process movement commands now that compute is complete - same timing as original workaround
@@ -212,16 +212,16 @@ void VulkanRenderer::drawFrame() {
     }
     
     if (frame.graphicsInUse) {
-        // First try immediate check
-        VkResult graphicsResult = functionLoader->vkWaitForFences(context->getDevice(), 1, &frame.graphicsDone, VK_TRUE, FENCE_TIMEOUT_IMMEDIATE);
-        if (graphicsResult == VK_TIMEOUT) {
-            // If not ready immediately, wait up to one frame time
-            graphicsResult = functionLoader->vkWaitForFences(context->getDevice(), 1, &frame.graphicsDone, VK_TRUE, FENCE_TIMEOUT_FRAME);
-            if (graphicsResult == VK_TIMEOUT) {
-                // Only skip frame after a full frame time has passed
-                return;
-            }
+        VkResult graphicsResult = waitForFenceRobust(frame.graphicsDone, "graphics");
+        if (graphicsResult == VK_ERROR_DEVICE_LOST) {
+            frame.graphicsInUse = false;
+            return; // Critical error, skip frame
         }
+        if (graphicsResult != VK_SUCCESS) {
+            std::cerr << "Error: Graphics fence wait failed: " << graphicsResult << std::endl;
+            return;
+        }
+        
         frame.graphicsInUse = false;
     }
 
@@ -868,5 +868,29 @@ void VulkanRenderer::cleanupPartialFrameFences() {
             frame.fencesInitialized = false;
         }
     }
+}
+
+VkResult VulkanRenderer::waitForFenceRobust(VkFence fence, const char* fenceName) {
+    // First try immediate check
+    VkResult result = functionLoader->vkWaitForFences(context->getDevice(), 1, &fence, VK_TRUE, FENCE_TIMEOUT_IMMEDIATE);
+    if (result == VK_TIMEOUT) {
+        // If not ready immediately, wait up to one frame time
+        result = functionLoader->vkWaitForFences(context->getDevice(), 1, &fence, VK_TRUE, FENCE_TIMEOUT_FRAME);
+        if (result == VK_TIMEOUT) {
+            // Proper timeout handling: reset fence and maintain synchronization
+            std::cerr << "Warning: " << fenceName << " fence timeout, forcing synchronization" << std::endl;
+            
+            // Force wait with longer timeout to prevent desync
+            result = functionLoader->vkWaitForFences(context->getDevice(), 1, &fence, VK_TRUE, UINT64_MAX);
+            if (result != VK_SUCCESS) {
+                std::cerr << "Critical: Failed to synchronize " << fenceName << " pipeline: " << result << std::endl;
+                // Reset state to prevent further issues
+                functionLoader->vkResetFences(context->getDevice(), 1, &fence);
+                return VK_ERROR_DEVICE_LOST; // Signal critical error
+            }
+        }
+    }
+    
+    return result;
 }
 

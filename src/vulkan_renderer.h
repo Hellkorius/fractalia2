@@ -96,6 +96,7 @@ private:
     void transitionBufferLayout(VkCommandBuffer commandBuffer);
     bool initializeFrameFences();
     void cleanupPartialFrameFences();
+    VkResult waitForFenceRobust(VkFence fence, const char* fenceName);
     
     // Entity position for rendering (backward compatibility)
     glm::vec3 entityPosition = glm::vec3(0.0f, 0.0f, 0.0f);
