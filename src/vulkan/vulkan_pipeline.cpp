@@ -1,9 +1,11 @@
 #include "vulkan_pipeline.h"
 #include "vulkan_function_loader.h"
 #include "vulkan_utils.h"
+#include "../ecs/gpu_entity_manager.h"
 #include <iostream>
 #include <fstream>
 #include <array>
+#include <cstddef>
 #include <glm/glm.hpp>
 
 VulkanPipeline::VulkanPipeline() {
@@ -199,7 +201,7 @@ std::array<VkVertexInputBindingDescription, 2> VulkanPipeline::getVertexBindingD
     bindingDescriptions[0].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
     
     bindingDescriptions[1].binding = 1;
-    bindingDescriptions[1].stride = 128; // Full GPUEntity size: mat4(64) + vec4(16) + vec4(16) + vec4(16) + vec4(16)
+    bindingDescriptions[1].stride = sizeof(GPUEntity);
     bindingDescriptions[1].inputRate = VK_VERTEX_INPUT_RATE_INSTANCE;
     
     return bindingDescriptions;
@@ -224,46 +226,46 @@ std::array<VkVertexInputAttributeDescription, 10> VulkanPipeline::getVertexAttri
     attributeDescriptions[2].binding = 1;
     attributeDescriptions[2].location = 2;
     attributeDescriptions[2].format = VK_FORMAT_R32G32B32A32_SFLOAT;
-    attributeDescriptions[2].offset = 0;
+    attributeDescriptions[2].offset = offsetof(GPUEntity, modelMatrix) + 0 * sizeof(glm::vec4);
     
     attributeDescriptions[3].binding = 1;
     attributeDescriptions[3].location = 3;
     attributeDescriptions[3].format = VK_FORMAT_R32G32B32A32_SFLOAT;
-    attributeDescriptions[3].offset = sizeof(glm::vec4);
+    attributeDescriptions[3].offset = offsetof(GPUEntity, modelMatrix) + 1 * sizeof(glm::vec4);
     
     attributeDescriptions[4].binding = 1;
     attributeDescriptions[4].location = 4;
     attributeDescriptions[4].format = VK_FORMAT_R32G32B32A32_SFLOAT;
-    attributeDescriptions[4].offset = 2 * sizeof(glm::vec4);
+    attributeDescriptions[4].offset = offsetof(GPUEntity, modelMatrix) + 2 * sizeof(glm::vec4);
     
     attributeDescriptions[5].binding = 1;
     attributeDescriptions[5].location = 5;
     attributeDescriptions[5].format = VK_FORMAT_R32G32B32A32_SFLOAT;
-    attributeDescriptions[5].offset = 3 * sizeof(glm::vec4);
+    attributeDescriptions[5].offset = offsetof(GPUEntity, modelMatrix) + 3 * sizeof(glm::vec4);
     
     // color - location 6 (16 bytes)
     attributeDescriptions[6].binding = 1;
     attributeDescriptions[6].location = 6;
     attributeDescriptions[6].format = VK_FORMAT_R32G32B32A32_SFLOAT;
-    attributeDescriptions[6].offset = 4 * sizeof(glm::vec4);
+    attributeDescriptions[6].offset = offsetof(GPUEntity, color);
     
     // movementParams0 - location 7 (16 bytes)
     attributeDescriptions[7].binding = 1;
     attributeDescriptions[7].location = 7;
     attributeDescriptions[7].format = VK_FORMAT_R32G32B32A32_SFLOAT;
-    attributeDescriptions[7].offset = 5 * sizeof(glm::vec4);
+    attributeDescriptions[7].offset = offsetof(GPUEntity, movementParams0);
     
     // movementParams1 - location 8 (16 bytes)
     attributeDescriptions[8].binding = 1;
     attributeDescriptions[8].location = 8;
     attributeDescriptions[8].format = VK_FORMAT_R32G32B32A32_SFLOAT;
-    attributeDescriptions[8].offset = 6 * sizeof(glm::vec4);
+    attributeDescriptions[8].offset = offsetof(GPUEntity, movementParams1);
     
     // runtimeState - location 9 (16 bytes)
     attributeDescriptions[9].binding = 1;
     attributeDescriptions[9].location = 9;
     attributeDescriptions[9].format = VK_FORMAT_R32G32B32A32_SFLOAT;
-    attributeDescriptions[9].offset = 7 * sizeof(glm::vec4);
+    attributeDescriptions[9].offset = offsetof(GPUEntity, runtimeState);
     
     return attributeDescriptions;
 }

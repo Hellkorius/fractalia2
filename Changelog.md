@@ -541,3 +541,25 @@ This overhaul eliminates all identified architectural flaws while maintaining id
     - Test Framework: Added graphicstests.cpp/h with comprehensive buffer overflow tests
     - Keyboard Integration: Press 'T' key to run tests in real-time
     - Validation Functions: testBufferOverflowProtection() provides immediate feedback
+	
+----------------------------------------------------------------------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+# Changelog 0.2.7:
+
+ 1. Replaced frame skipping with proper synchronization - Instead of just returning on timeout, the code now:
+    - Forces synchronization with UINT64_MAX timeout to prevent desync
+    - Resets fence state on critical errors
+    - Provides detailed error logging
+  2. Added robust fence waiting helper - waitForFenceRobust() method centralizes:
+    - Two-tier timeout strategy (immediate → frame time → infinite)
+    - Proper error handling and state recovery
+    - Consistent logging across compute/graphics pipelines
+  3. Enhanced error handling - Now handles:
+    - Validation of all fence wait results
+    - Critical error detection (VK_ERROR_DEVICE_LOST)
+    - Proper state cleanup on failure
+	
+  4. ☐ Fix pipeline vertex attribute offsets to use offsetof() instead of hard-coded calculations
+     ☐ Update binding stride to use sizeof(GPUEntity) instead of hard-coded 128
+	 src/vulkan/vulkan_pipeline.cpp
