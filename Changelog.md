@@ -560,6 +560,30 @@ This overhaul eliminates all identified architectural flaws while maintaining id
     - Critical error detection (VK_ERROR_DEVICE_LOST)
     - Proper state cleanup on failure
 	
-  4. ☐ Fix pipeline vertex attribute offsets to use offsetof() instead of hard-coded calculations
-     ☐ Update binding stride to use sizeof(GPUEntity) instead of hard-coded 128
+  4. ☐ Fix pipeline vertex attribute offsets to use offsetof() instead of hard-coded calculations and Update binding stride to use sizeof(GPUEntity) instead of hard-coded 128
 	 src/vulkan/vulkan_pipeline.cpp
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+# Changelog 0.2.8:
+
+  1. Migrated GPU entity system from double-buffered to triple-buffered architecture:
+    - Eliminated redundant entity uploads (50% memory bandwidth reduction)  
+    - Maintained proper compute/graphics pipeline synchronization
+    - Graphics reads from rotating buffer, compute processes input→output rotation
+
+  2. Implemented absolute entity control for movement pattern switching:
+    - GPU synchronization barrier ensures complete buffer control during updates
+    - All entities transition simultaneously with smooth lerping
+    - No frame delays or "catching up" behavior
+
+  3. Optimized entity upload strategy:
+    - New entities: Single buffer upload (performance optimization)
+    - Movement updates: All buffers with GPU sync (reliability guarantee)
+    - Triple-buffer rotation maintains data flow through compute pipeline
+
+  4. Enhanced movement command timing:
+    - Commands processed at frame start for immediate application
+    - Proper synchronization with compute dispatch timing
+    - Consistent entity behavior across all movement pattern switches

@@ -76,9 +76,10 @@ public:
     void updateAllMovementTypes(int newMovementType, bool angelMode = false);
     
     // GPU buffer management  
-    VkBuffer getCurrentEntityBuffer() const { return entityBuffers[currentBufferIndex]; }
-    VkBuffer getNextEntityBuffer() const { return entityBuffers[1 - currentBufferIndex]; }
-    void swapBuffers() { currentBufferIndex = 1 - currentBufferIndex; }
+    VkBuffer getCurrentEntityBuffer() const { return entityBuffers[currentGraphicsBuffer]; }
+    uint32_t getComputeInputIndex() const { return currentGraphicsBuffer; }
+    uint32_t getComputeOutputIndex() const { return (currentGraphicsBuffer + 1) % 3; }
+    void advanceFrame() { currentGraphicsBuffer = (currentGraphicsBuffer + 1) % 3; }
     
     // Getters
     uint32_t getEntityCount() const { return activeEntityCount; }
@@ -87,7 +88,7 @@ public:
     
     // Descriptor set management
     VkDescriptorSetLayout getComputeDescriptorSetLayout() const { return computeDescriptorSetLayout; }
-    VkDescriptorSet getCurrentComputeDescriptorSet() const { return computeDescriptorSets[currentBufferIndex]; }
+    VkDescriptorSet getCurrentComputeDescriptorSet() const { return computeDescriptorSets[currentGraphicsBuffer]; }
     
     bool createComputeDescriptorSets();
 
@@ -99,11 +100,11 @@ private:
     VulkanSync* sync = nullptr;
     VulkanFunctionLoader* loader = nullptr;
     
-    // Double-buffered storage for compute pipeline
-    VkBuffer entityBuffers[2] = {VK_NULL_HANDLE, VK_NULL_HANDLE};
-    VkDeviceMemory entityBufferMemory[2] = {VK_NULL_HANDLE, VK_NULL_HANDLE}; 
-    void* entityBufferMapped[2] = {nullptr, nullptr};
-    uint32_t currentBufferIndex = 0;
+    // Triple-buffered storage for compute pipeline
+    VkBuffer entityBuffers[3] = {VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE};
+    VkDeviceMemory entityBufferMemory[3] = {VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE}; 
+    void* entityBufferMapped[3] = {nullptr, nullptr, nullptr};
+    uint32_t currentGraphicsBuffer = 0;
     
     // Entity state
     uint32_t activeEntityCount = 0;
@@ -113,7 +114,7 @@ private:
     // Compute descriptor sets for storage buffers
     VkDescriptorPool computeDescriptorPool = VK_NULL_HANDLE;
     VkDescriptorSetLayout computeDescriptorSetLayout = VK_NULL_HANDLE;
-    VkDescriptorSet computeDescriptorSets[2] = {VK_NULL_HANDLE, VK_NULL_HANDLE};
+    VkDescriptorSet computeDescriptorSets[3] = {VK_NULL_HANDLE, VK_NULL_HANDLE, VK_NULL_HANDLE};
     
     // Note: Function pointers removed - now using centralized VulkanFunctionLoader
     

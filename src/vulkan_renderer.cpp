@@ -204,11 +204,6 @@ void VulkanRenderer::drawFrame() {
         }
         
         frame.computeInUse = false;
-        
-        // Process movement commands now that compute is complete - same timing as original workaround
-        if (movementCommandProcessor) {
-            movementCommandProcessor->processCommands();
-        }
     }
     
     if (frame.graphicsInUse) {
@@ -225,7 +220,12 @@ void VulkanRenderer::drawFrame() {
         frame.graphicsInUse = false;
     }
 
-    // 2. Acquire swapchain image
+    // 2. Process movement commands at very beginning of frame for complete buffer coverage
+    if (movementCommandProcessor) {
+        movementCommandProcessor->processCommands();
+    }
+
+    // 3. Acquire swapchain image
     uint32_t imageIndex;
     VkResult result = functionLoader->vkAcquireNextImageKHR(context->getDevice(), swapchain->getSwapchain(), UINT64_MAX, imageAvailableSemaphores[currentFrame], VK_NULL_HANDLE, &imageIndex);
 
@@ -237,12 +237,12 @@ void VulkanRenderer::drawFrame() {
         return;
     }
 
-    // 3. Upload pending data and update buffers
+    // 4. Upload pending data and update buffers
     uploadPendingGPUEntities();
     updateUniformBuffer(currentFrame);
     updateInstanceBuffer(currentFrame);
 
-    // 4. Record compute command buffer
+    // 5. Record compute command buffer
     functionLoader->vkResetCommandBuffer(computeCommandBuffers[currentFrame], 0);
     
     VkCommandBufferBeginInfo computeBeginInfo{};
@@ -261,11 +261,11 @@ void VulkanRenderer::drawFrame() {
         return;
     }
 
-    // 5. Record graphics command buffer
+    // 6. Record graphics command buffer
     functionLoader->vkResetCommandBuffer(commandBuffers[currentFrame], 0);
     recordCommandBuffer(commandBuffers[currentFrame], imageIndex);
 
-    // 6. Submit compute work with its own fence - NO BLOCKING
+    // 7. Submit compute work with its own fence - NO BLOCKING
     functionLoader->vkResetFences(context->getDevice(), 1, &frame.computeDone);
     
     VkSubmitInfo computeSubmitInfo{};
@@ -279,7 +279,7 @@ void VulkanRenderer::drawFrame() {
     }
     frame.computeInUse = true;
 
-    // 7. Submit graphics work with its own fence - NO BLOCKING
+    // 8. Submit graphics work with its own fence - NO BLOCKING
     functionLoader->vkResetFences(context->getDevice(), 1, &frame.graphicsDone);
     
     VkSubmitInfo graphicsSubmitInfo{};
@@ -303,7 +303,7 @@ void VulkanRenderer::drawFrame() {
     }
     frame.graphicsInUse = true;
 
-    // 8. Present immediately - no fence waiting
+    // 9. Present immediately - no fence waiting
     VkPresentInfoKHR presentInfo{};
     presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
     presentInfo.waitSemaphoreCount = 1;
@@ -531,8 +531,8 @@ void VulkanRenderer::dispatchCompute(VkCommandBuffer commandBuffer, float deltaT
     uint32_t workgroupCount = (gpuEntityManager->getEntityCount() + 63) / 64;
     functionLoader->vkCmdDispatch(commandBuffer, workgroupCount, 1, 1);
     
-    // Swap buffers for next frame
-    gpuEntityManager->swapBuffers();
+    // Advance frame counter for next frame
+    gpuEntityManager->advanceFrame();
 }
 
 void VulkanRenderer::transitionBufferLayout(VkCommandBuffer commandBuffer) {

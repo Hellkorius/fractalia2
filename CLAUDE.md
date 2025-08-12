@@ -101,11 +101,12 @@ fractalia2/
 
 ## GPU Compute Architecture
 
-### Entity Data Flow
+### Triple-Buffer Entity Data Flow
 1. **Entity Creation**: CPU creates entities via `EntityFactory` with `Transform`, `Renderable`, `MovementPattern`
-2. **GPU Handover**: `GPUEntityManager.addEntitiesFromECS()` converts to `GPUEntity` format and uploads to GPU storage buffers
-3. **Compute Dispatch**: Each frame, `movement.comp` shader processes all entities in parallel (64 threads/workgroup)
-4. **Graphics Rendering**: Vertex shader reads directly from compute-updated `GPUEntity` buffers
+2. **GPU Handover**: `GPUEntityManager.addEntitiesFromECS()` converts to `GPUEntity` format and uploads to current graphics buffer (single buffer for performance)
+3. **Compute Dispatch**: Each frame, `movement.comp` shader processes current buffer → writes to next buffer in rotation
+4. **Graphics Rendering**: Vertex shader reads from current graphics buffer (rotates each frame to fresh compute output)
+5. **Movement Updates**: All 3 buffers updated simultaneously with GPU sync barrier for absolute entity control
 
 ### GPUEntity Structure (128 bytes)
 ```cpp
@@ -125,7 +126,8 @@ struct GPUEntity {
 - Easy to add new patterns by extending the compute shader switch statement
 
 ### Critical Implementation Details
-- **Double-buffered Storage**: Compute reads from buffer N, writes to buffer N+1, graphics renders buffer N+1
+- **Triple-buffered Storage**: Graphics reads rotating buffer, compute processes input→output, eliminates redundant uploads
+- **GPU Sync Barrier**: Movement pattern updates use `vkDeviceWaitIdle()` for absolute entity control
 - **Memory Barriers**: `VK_ACCESS_SHADER_WRITE_BIT` → `VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT` synchronization between compute/graphics
 - **Buffer Layout**: Vertex shader attributes match `GPUEntity` exactly (locations 2-9 for instance data)
 - **Centralized Function Loading**: `VulkanFunctionLoader` provides single source of truth for all Vulkan function pointers

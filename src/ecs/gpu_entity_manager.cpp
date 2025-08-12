@@ -53,7 +53,7 @@ void GPUEntityManager::cleanup() {
     if (!loader || !context) return;
     
     // Clean up entity buffers
-    for (int i = 0; i < 2; i++) {
+    for (int i = 0; i < 3; i++) {
         if (entityBufferMapped[i] != nullptr) {
             loader->vkUnmapMemory(context->getDevice(), entityBufferMemory[i]);
             entityBufferMapped[i] = nullptr;
@@ -122,30 +122,29 @@ void GPUEntityManager::uploadPendingEntities() {
         std::cerr << "  Only uploading " << newEntityCount << " entities to prevent overflow." << std::endl;
     }
     
-    // Copy to both buffers (current and next) with bounds validation
-    for (int bufferIndex = 0; bufferIndex < 2; bufferIndex++) {
-        GPUEntity* bufferPtr = static_cast<GPUEntity*>(entityBufferMapped[bufferIndex]);
-        
-        // Final safety check before memory copy
-        if (activeEntityCount + newEntityCount > MAX_ENTITIES) {
-            std::cerr << "FATAL: Buffer overflow detected before GPU memory copy!" << std::endl;
-            std::cerr << "  Active: " << activeEntityCount << ", New: " << newEntityCount 
-                      << ", Max: " << MAX_ENTITIES << std::endl;
-            return; // Abort upload to prevent corruption
-        }
-        
-        // Validate buffer pointer
-        if (!bufferPtr) {
-            std::cerr << "FATAL: GPU entity buffer " << bufferIndex << " is null!" << std::endl;
-            return;
-        }
-        
-        std::memcpy(
-            bufferPtr + activeEntityCount,
-            pendingEntities.data(),
-            newEntityCount * sizeof(GPUEntity)
-        );
+    // Final safety check before memory copy
+    if (activeEntityCount + newEntityCount > MAX_ENTITIES) {
+        std::cerr << "FATAL: Buffer overflow detected before GPU memory copy!" << std::endl;
+        std::cerr << "  Active: " << activeEntityCount << ", New: " << newEntityCount 
+                  << ", Max: " << MAX_ENTITIES << std::endl;
+        return; // Abort upload to prevent corruption
     }
+    
+    // Upload new entities only to current graphics buffer (triple-buffer optimization)
+    // Compute will process this buffer and write to output buffer in the same frame
+    uint32_t targetBufferIndex = currentGraphicsBuffer;
+    
+    GPUEntity* targetBufferPtr = static_cast<GPUEntity*>(entityBufferMapped[targetBufferIndex]);
+    if (!targetBufferPtr) {
+        std::cerr << "FATAL: GPU target buffer " << targetBufferIndex << " is null!" << std::endl;
+        return;
+    }
+    
+    std::memcpy(
+        targetBufferPtr + activeEntityCount,
+        pendingEntities.data(),
+        newEntityCount * sizeof(GPUEntity)
+    );
     
     activeEntityCount += newEntityCount;
     
@@ -159,6 +158,7 @@ void GPUEntityManager::uploadPendingEntities() {
     std::cout << "Uploaded " << newEntityCount << " entities to GPU. Total: " << activeEntityCount << std::endl;
 }
 
+
 void GPUEntityManager::clearAllEntities() {
     activeEntityCount = 0;
     pendingEntities.clear();
@@ -169,9 +169,20 @@ void GPUEntityManager::updateAllMovementTypes(int newMovementType, bool angelMod
         return;
     }
     
-    // Update both buffers to keep them in sync
-    for (int bufferIndex = 0; bufferIndex < 2; bufferIndex++) {
+    // Force GPU synchronization to ensure no buffers are being actively processed
+    // This gives us absolute control over buffer contents
+    if (context && loader) {
+        loader->vkDeviceWaitIdle(context->getDevice());
+    }
+    
+    // IMMEDIATE synchronization: Update ALL buffers instantly for absolute entity control
+    // This ensures every entity receives the movement pattern change regardless of buffer state
+    for (int bufferIndex = 0; bufferIndex < 3; bufferIndex++) {
         GPUEntity* bufferPtr = static_cast<GPUEntity*>(entityBufferMapped[bufferIndex]);
+        
+        if (!bufferPtr) {
+            continue;
+        }
         
         for (uint32_t i = 0; i < activeEntityCount; i++) {
             // Update the movementType field (w component of movementParams1)
@@ -202,8 +213,9 @@ void GPUEntityManager::updateAllMovementTypes(int newMovementType, bool angelMod
 }
 
 
+
 bool GPUEntityManager::createEntityBuffers() {
-    for (int i = 0; i < 2; i++) {
+    for (int i = 0; i < 3; i++) {
         if (!VulkanUtils::createBuffer(
             context->getDevice(),
             *loader,
@@ -229,13 +241,13 @@ bool GPUEntityManager::createEntityBuffers() {
 bool GPUEntityManager::createComputeDescriptorPool() {
     VkDescriptorPoolSize poolSize{};
     poolSize.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    poolSize.descriptorCount = 4; // 2 sets * 2 buffers each
+    poolSize.descriptorCount = 6; // 3 sets * 2 buffers each
     
     VkDescriptorPoolCreateInfo poolInfo{};
     poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
     poolInfo.poolSizeCount = 1;
     poolInfo.pPoolSizes = &poolSize;
-    poolInfo.maxSets = 2; // One set per double buffer
+    poolInfo.maxSets = 3; // One set per triple buffer
     
     return loader->vkCreateDescriptorPool(context->getDevice(), &poolInfo, nullptr, &computeDescriptorPool) == VK_SUCCESS;
 }
@@ -266,27 +278,30 @@ bool GPUEntityManager::createComputeDescriptorSetLayout() {
 
 bool GPUEntityManager::createComputeDescriptorSets() {
     // Allocate descriptor sets
-    VkDescriptorSetLayout layouts[2] = {computeDescriptorSetLayout, computeDescriptorSetLayout};
+    VkDescriptorSetLayout layouts[3] = {computeDescriptorSetLayout, computeDescriptorSetLayout, computeDescriptorSetLayout};
     
     VkDescriptorSetAllocateInfo allocInfo{};
     allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
     allocInfo.descriptorPool = computeDescriptorPool;
-    allocInfo.descriptorSetCount = 2;
+    allocInfo.descriptorSetCount = 3;
     allocInfo.pSetLayouts = layouts;
     
     if (loader->vkAllocateDescriptorSets(context->getDevice(), &allocInfo, computeDescriptorSets) != VK_SUCCESS) {
         return false;
     }
     
-    // Update descriptor sets for double buffering
-    for (int i = 0; i < 2; i++) {
+    // Update descriptor sets for triple buffering
+    // Descriptor set i: reads from buffer[i], writes to buffer[(i+1)%3]
+    
+    for (int i = 0; i < 3; i++) {
+        // Each descriptor set i should: read from buffer i, write to buffer (i+1)%3
         VkDescriptorBufferInfo inputBufferInfo{};
         inputBufferInfo.buffer = entityBuffers[i];
         inputBufferInfo.offset = 0;
         inputBufferInfo.range = ENTITY_BUFFER_SIZE;
         
         VkDescriptorBufferInfo outputBufferInfo{};
-        outputBufferInfo.buffer = entityBuffers[1 - i]; // Opposite buffer
+        outputBufferInfo.buffer = entityBuffers[(i + 1) % 3];
         outputBufferInfo.offset = 0;
         outputBufferInfo.range = ENTITY_BUFFER_SIZE;
         
