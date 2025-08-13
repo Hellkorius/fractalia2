@@ -12,9 +12,9 @@ layout(binding = 1, std430) readonly buffer KeyframeBuffer {
 
 // Push constants for keyframe interpolation
 layout(push_constant) uniform PushConstants {
-    uint bufferLength;      // Total keyframe buffer length (20)
     float totalTime;        // Current simulation time
     float deltaTime;        // Time per frame
+    float predictionTime;   // Time the keyframes were predicted for
     uint entityCount;       // Total number of entities
 } pc;
 
@@ -37,42 +37,31 @@ void main() {
     // Get entity ID from instance index
     uint entityID = gl_InstanceIndex;
     
-    // Calculate frame index and interpolation alpha using rolling indexing
-    float frameIndex = pc.totalTime / pc.deltaTime;
-    uint currentFrameIndex = uint(frameIndex) % pc.bufferLength;
-    uint nextFrameIndex = (currentFrameIndex + 1) % pc.bufferLength;
-    float alpha = fract(frameIndex);
+    // Calculate interpolation alpha: how far from current time to prediction time
+    float alpha = (pc.totalTime - (pc.predictionTime - 20.0 * pc.deltaTime)) / (20.0 * pc.deltaTime);
+    alpha = clamp(alpha, 0.0, 1.0);
     
-    // Calculate keyframe base indices
-    uint baseIndex1 = (currentFrameIndex * pc.entityCount + entityID) * 8;
-    uint baseIndex2 = (nextFrameIndex * pc.entityCount + entityID) * 8;
+    // Read predicted keyframe data
+    uint baseIndex = entityID * 8;
+    vec3 predictedPos = vec3(keyframes[baseIndex + 0], keyframes[baseIndex + 1], keyframes[baseIndex + 2]);
+    float predictedRotation = keyframes[baseIndex + 3];
+    vec4 predictedColor = vec4(keyframes[baseIndex + 4], keyframes[baseIndex + 5], keyframes[baseIndex + 6], keyframes[baseIndex + 7]);
     
-    // Read current keyframe data: position(3) + rotation(1) + color(4)
-    vec3 keyframePos1 = vec3(keyframes[baseIndex1 + 0], keyframes[baseIndex1 + 1], keyframes[baseIndex1 + 2]);
-    float keyframeRotation1 = keyframes[baseIndex1 + 3];
-    vec4 keyframeColor1 = vec4(keyframes[baseIndex1 + 4], keyframes[baseIndex1 + 5], keyframes[baseIndex1 + 6], keyframes[baseIndex1 + 7]);
+    // Compute current position using same movement logic as compute shader
+    // For now, use the predicted values directly (no interpolation)
+    // TODO: Add real-time position computation for smooth interpolation
     
-    // Read next keyframe data: position(3) + rotation(1) + color(4)
-    vec3 keyframePos2 = vec3(keyframes[baseIndex2 + 0], keyframes[baseIndex2 + 1], keyframes[baseIndex2 + 2]);
-    float keyframeRotation2 = keyframes[baseIndex2 + 3];
-    vec4 keyframeColor2 = vec4(keyframes[baseIndex2 + 4], keyframes[baseIndex2 + 5], keyframes[baseIndex2 + 6], keyframes[baseIndex2 + 7]);
-    
-    // Interpolate between keyframes
-    vec3 interpolatedPos = mix(keyframePos1, keyframePos2, alpha);
-    float interpolatedRotation = mix(keyframeRotation1, keyframeRotation2, alpha);
-    vec4 interpolatedColor = mix(keyframeColor1, keyframeColor2, alpha);
-    
-    // Build transform matrix with interpolated rotation and position
-    float cosR = cos(interpolatedRotation);
-    float sinR = sin(interpolatedRotation);
+    // Build transform matrix
+    float cosR = cos(predictedRotation);
+    float sinR = sin(predictedRotation);
     
     mat4 keyframeMatrix = mat4(
         cosR, sinR, 0.0, 0.0,
         -sinR, cosR, 0.0, 0.0,
         0.0, 0.0, 1.0, 0.0,
-        interpolatedPos.x, interpolatedPos.y, interpolatedPos.z, 1.0
+        predictedPos.x, predictedPos.y, predictedPos.z, 1.0
     );
     
     gl_Position = ubo.proj * ubo.view * keyframeMatrix * vec4(inPosition, 1.0);
-    fragColor = interpolatedColor.rgb; // Use interpolated color
+    fragColor = predictedColor.rgb;
 }

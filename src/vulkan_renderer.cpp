@@ -287,11 +287,12 @@ void VulkanRenderer::drawFrame() {
     // Update total simulation time
     totalTime += deltaTime;
     
-    // Frame-based keyframe updates: compute keyframes for (currentFrame + lookAhead) % bufferLength
-    uint32_t keyframeSlot = (frameCounter + KEYFRAME_LOOKAHEAD_FRAMES) % KEYFRAME_LOOKAHEAD_FRAMES;
+    // Staggered updates: only update entities whose ID matches current frame modulo
+    // Each entity gets updated every KEYFRAME_LOOKAHEAD_FRAMES frames
+    uint32_t entityBatch = frameCounter % KEYFRAME_LOOKAHEAD_FRAMES;
+    float futureTime = totalTime + KEYFRAME_LOOKAHEAD_FRAMES * deltaTime;
     
-    // Dispatch keyframe computation for the target keyframe slot
-    dispatchKeyframeCompute(computeCommandBuffers[currentFrame], totalTime, deltaTime, keyframeSlot);
+    dispatchKeyframeCompute(computeCommandBuffers[currentFrame], futureTime, deltaTime, entityBatch);
     
     transitionBufferLayout(computeCommandBuffers[currentFrame]);
     
@@ -428,15 +429,17 @@ void VulkanRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t
     functionLoader->vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->getPipelineLayout(), 0, 1, &descriptorSets[currentFrame], 0, nullptr);
 
     // Push constants for vertex shader keyframe interpolation
+    static float lastPredictionTime = totalTime + KEYFRAME_LOOKAHEAD_FRAMES * deltaTime;
+    
     struct VertexPushConstants {
-        uint32_t bufferLength;      // Total keyframe buffer length (20)
         float totalTime;            // Current simulation time
         float deltaTime;            // Time per frame
+        float predictionTime;       // Time the keyframes were predicted for
         uint32_t entityCount;       // Total number of entities
     } vertexPushConstants = { 
-        KEYFRAME_LOOKAHEAD_FRAMES,
         totalTime,
         deltaTime,
+        lastPredictionTime,
         gpuEntityManager ? gpuEntityManager->getEntityCount() : 0
     };
     
@@ -599,7 +602,7 @@ void VulkanRenderer::dispatchCompute(VkCommandBuffer commandBuffer, float deltaT
     gpuEntityManager->advanceFrame();
 }
 
-void VulkanRenderer::dispatchKeyframeCompute(VkCommandBuffer commandBuffer, float baseTime, float deltaTime, uint32_t keyframeSlot) {
+void VulkanRenderer::dispatchKeyframeCompute(VkCommandBuffer commandBuffer, float futureTime, float deltaTime, uint32_t entityBatch) {
     if (!gpuEntityManager || !computePipeline || gpuEntityManager->getEntityCount() == 0) {
         return;
     }
@@ -614,15 +617,15 @@ void VulkanRenderer::dispatchKeyframeCompute(VkCommandBuffer commandBuffer, floa
     
     // Push constants for keyframe generation
     struct KeyframePushConstants {
-        uint32_t keyframeSlot;      // Which keyframe slot to compute (0-19)
-        float deltaTime;            // Time per frame for proper time mapping
+        uint32_t entityBatch;       // Which entity batch to update (0-19)
+        float deltaTime;            // Time per frame
         uint32_t entityCount;       // Total number of entities
-        float baseTime;             // Current simulation time (start point for keyframes)
+        float futureTime;           // Future prediction time
     } pushConstants = { 
-        keyframeSlot, 
+        entityBatch, 
         deltaTime,
         gpuEntityManager->getEntityCount(),
-        baseTime 
+        futureTime 
     };
     
     functionLoader->vkCmdPushConstants(commandBuffer, computePipeline->getKeyframePipelineLayout(),

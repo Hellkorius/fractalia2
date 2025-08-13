@@ -30,10 +30,10 @@ layout(set = 0, binding = 1, std430) restrict writeonly buffer KeyframeBuffer {
 
 // Push constants for frame data
 layout(push_constant) uniform PushConstants {
-    uint keyframeSlot;      // Which keyframe slot to compute (0-19)
-    float deltaTime;        // Time per frame for proper time mapping
+    uint entityBatch;       // Which entity batch to update (0-19)
+    float deltaTime;        // Time per frame
     uint entityCount;       // Total number of entities
-    float baseTime;         // Current simulation time (start point for keyframes)
+    float futureTime;       // Future prediction time
 } pc;
 
 // Movement pattern implementations (same as regular movement shader)
@@ -110,6 +110,11 @@ void main() {
         return;
     }
     
+    // Staggered update: only process entities in current batch
+    if ((entityID % 20) != pc.entityBatch) {
+        return;
+    }
+    
     // Read entity data
     GPUEntity entity = entities[entityID];
     
@@ -121,8 +126,8 @@ void main() {
     vec3 center = entity.movementParams1.xyz;
     uint movementType = uint(entity.movementParams1.w);
     
-    // Proper time mapping: keyframe[i] = baseTime + i*deltaTime
-    float keyframeTime = pc.baseTime + float(pc.keyframeSlot) * pc.deltaTime + timeOffset;
+    // Predict future position
+    float keyframeTime = pc.futureTime + timeOffset;
     
     // Compute future position based on movement pattern
     vec3 keyframePosition;
@@ -168,8 +173,8 @@ void main() {
     
     vec4 dynamicColor = vec4(rgb + m, 1.0);
     
-    // Calculate keyframe buffer index: (keyframeSlot * entityCount + entityID) * 8 floats per keyframe
-    uint baseIndex = (pc.keyframeSlot * pc.entityCount + entityID) * 8;
+    // Store prediction directly for this entity (no slots, just entity-based indexing)
+    uint baseIndex = entityID * 8;
     
     // Write keyframe data: position(3) + rotation(1) + color(4)
     keyframes[baseIndex + 0] = keyframePosition.x;
