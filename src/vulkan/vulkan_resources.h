@@ -104,9 +104,9 @@ private:
     std::vector<void*> instanceBuffersMapped;
     int currentStagingBuffer = 0;
     
-    // Key-frame look-ahead buffer (100 frames × N entities × keyframe data)
+    // Key-frame look-ahead buffer (20 frames × N entities × keyframe data)
     // Each keyframe: vec3 position + float rotation + vec4 color = 8 floats = 32 bytes
-    static const uint32_t MAX_KEYFRAMES = 100 * 131072; // 100 frames × max entities
+    static const uint32_t MAX_KEYFRAMES = 20 * 131072; // 20 frames × max entities
     static const uint32_t KEYFRAME_SIZE = 8 * sizeof(float); // pos(3) + rotation(1) + color(4)
     VkBuffer keyframeBuffer = VK_NULL_HANDLE;
     VkDeviceMemory keyframeBufferMemory = VK_NULL_HANDLE;

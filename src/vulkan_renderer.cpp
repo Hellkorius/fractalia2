@@ -284,15 +284,14 @@ void VulkanRenderer::drawFrame() {
     // Use keyframe-based rendering instead of regular compute
     // dispatchCompute(computeCommandBuffers[currentFrame], deltaTime);
     
-    // CPU flow for keyframe generation (100-frame look-ahead)
-    uint32_t keyframeFrame = frameCounter % KEYFRAME_LOOKAHEAD_FRAMES;
-    float totalFutureTime = 0.0f; // This should track accumulated time + 100 frames worth of delta
-    static float accumulatedTime = 0.0f;
-    accumulatedTime += deltaTime;
-    totalFutureTime = accumulatedTime + KEYFRAME_LOOKAHEAD_FRAMES * deltaTime;
+    // Update total simulation time
+    totalTime += deltaTime;
     
-    // Dispatch keyframe computation for current frame slice
-    dispatchKeyframeCompute(computeCommandBuffers[currentFrame], totalFutureTime, keyframeFrame);
+    // Frame-based keyframe updates: compute keyframes for (currentFrame + lookAhead) % bufferLength
+    uint32_t keyframeSlot = (frameCounter + KEYFRAME_LOOKAHEAD_FRAMES) % KEYFRAME_LOOKAHEAD_FRAMES;
+    
+    // Dispatch keyframe computation for the target keyframe slot
+    dispatchKeyframeCompute(computeCommandBuffers[currentFrame], totalTime, deltaTime, keyframeSlot);
     
     transitionBufferLayout(computeCommandBuffers[currentFrame]);
     
@@ -430,12 +429,14 @@ void VulkanRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t
 
     // Push constants for vertex shader keyframe interpolation
     struct VertexPushConstants {
-        uint32_t currentFrame;      // Current frame in 100-frame cycle (0-99)
-        float alpha;                // Interpolation alpha
+        uint32_t bufferLength;      // Total keyframe buffer length (20)
+        float totalTime;            // Current simulation time
+        float deltaTime;            // Time per frame
         uint32_t entityCount;       // Total number of entities
     } vertexPushConstants = { 
-        frameCounter % KEYFRAME_LOOKAHEAD_FRAMES,
-        0.0f,  // For now, always use exact keyframes (no interpolation)
+        KEYFRAME_LOOKAHEAD_FRAMES,
+        totalTime,
+        deltaTime,
         gpuEntityManager ? gpuEntityManager->getEntityCount() : 0
     };
     
@@ -598,7 +599,7 @@ void VulkanRenderer::dispatchCompute(VkCommandBuffer commandBuffer, float deltaT
     gpuEntityManager->advanceFrame();
 }
 
-void VulkanRenderer::dispatchKeyframeCompute(VkCommandBuffer commandBuffer, float totalTime, uint32_t keyframeFrame) {
+void VulkanRenderer::dispatchKeyframeCompute(VkCommandBuffer commandBuffer, float baseTime, float deltaTime, uint32_t keyframeSlot) {
     if (!gpuEntityManager || !computePipeline || gpuEntityManager->getEntityCount() == 0) {
         return;
     }
@@ -613,15 +614,15 @@ void VulkanRenderer::dispatchKeyframeCompute(VkCommandBuffer commandBuffer, floa
     
     // Push constants for keyframe generation
     struct KeyframePushConstants {
-        uint32_t currentFrame;      // Current frame in 100-frame cycle (0-99)
-        float alpha;                // Interpolation alpha
+        uint32_t keyframeSlot;      // Which keyframe slot to compute (0-19)
+        float deltaTime;            // Time per frame for proper time mapping
         uint32_t entityCount;       // Total number of entities
-        float totalTime;            // Total simulation time + 100*deltaTime
+        float baseTime;             // Current simulation time (start point for keyframes)
     } pushConstants = { 
-        keyframeFrame, 
-        (frameCounter % KEYFRAME_LOOKAHEAD_FRAMES) / 100.0f,
+        keyframeSlot, 
+        deltaTime,
         gpuEntityManager->getEntityCount(),
-        totalTime 
+        baseTime 
     };
     
     functionLoader->vkCmdPushConstants(commandBuffer, computePipeline->getKeyframePipelineLayout(),
@@ -659,11 +660,12 @@ void VulkanRenderer::initializeAllKeyframes() {
         return;
     }
     
-    // Compute all 100 keyframes 
+    // Compute all keyframe slots sequentially at startup
     float baseTime = 0.0f;
-    for (uint32_t frame = 0; frame < KEYFRAME_LOOKAHEAD_FRAMES; frame++) {
-        float futureTime = baseTime + frame * (1.0f / 60.0f); // Assume 60 FPS
-        dispatchKeyframeCompute(initCommandBuffer, futureTime, frame);
+    float deltaTime = 1.0f / 60.0f; // Assume 60 FPS
+    
+    for (uint32_t slot = 0; slot < KEYFRAME_LOOKAHEAD_FRAMES; slot++) {
+        dispatchKeyframeCompute(initCommandBuffer, baseTime, deltaTime, slot);
         
         // Add memory barrier between dispatches
         VkMemoryBarrier barrier{};

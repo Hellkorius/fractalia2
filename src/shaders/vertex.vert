@@ -12,8 +12,9 @@ layout(binding = 1, std430) readonly buffer KeyframeBuffer {
 
 // Push constants for keyframe interpolation
 layout(push_constant) uniform PushConstants {
-    uint currentFrame;      // Current frame in 100-frame cycle (0-99)
-    float alpha;            // Interpolation alpha (currentFrame % 100) / 100.0
+    uint bufferLength;      // Total keyframe buffer length (20)
+    float totalTime;        // Current simulation time
+    float deltaTime;        // Time per frame
     uint entityCount;       // Total number of entities
 } pc;
 
@@ -36,25 +37,42 @@ void main() {
     // Get entity ID from instance index
     uint entityID = gl_InstanceIndex;
     
-    // Calculate keyframe base index: (frame * entityCount + entityID) * 8 floats per keyframe
-    uint baseIndex = (pc.currentFrame * pc.entityCount + entityID) * 8;
+    // Calculate frame index and interpolation alpha using rolling indexing
+    float frameIndex = pc.totalTime / pc.deltaTime;
+    uint currentFrameIndex = uint(frameIndex) % pc.bufferLength;
+    uint nextFrameIndex = (currentFrameIndex + 1) % pc.bufferLength;
+    float alpha = fract(frameIndex);
     
-    // Read keyframe data: position(3) + rotation(1) + color(4)
-    vec3 keyframePos = vec3(keyframes[baseIndex + 0], keyframes[baseIndex + 1], keyframes[baseIndex + 2]);
-    float keyframeRotation = keyframes[baseIndex + 3];
-    vec4 keyframeColor = vec4(keyframes[baseIndex + 4], keyframes[baseIndex + 5], keyframes[baseIndex + 6], keyframes[baseIndex + 7]);
+    // Calculate keyframe base indices
+    uint baseIndex1 = (currentFrameIndex * pc.entityCount + entityID) * 8;
+    uint baseIndex2 = (nextFrameIndex * pc.entityCount + entityID) * 8;
     
-    // Build transform matrix with keyframe rotation and position
-    float cosR = cos(keyframeRotation);
-    float sinR = sin(keyframeRotation);
+    // Read current keyframe data: position(3) + rotation(1) + color(4)
+    vec3 keyframePos1 = vec3(keyframes[baseIndex1 + 0], keyframes[baseIndex1 + 1], keyframes[baseIndex1 + 2]);
+    float keyframeRotation1 = keyframes[baseIndex1 + 3];
+    vec4 keyframeColor1 = vec4(keyframes[baseIndex1 + 4], keyframes[baseIndex1 + 5], keyframes[baseIndex1 + 6], keyframes[baseIndex1 + 7]);
+    
+    // Read next keyframe data: position(3) + rotation(1) + color(4)
+    vec3 keyframePos2 = vec3(keyframes[baseIndex2 + 0], keyframes[baseIndex2 + 1], keyframes[baseIndex2 + 2]);
+    float keyframeRotation2 = keyframes[baseIndex2 + 3];
+    vec4 keyframeColor2 = vec4(keyframes[baseIndex2 + 4], keyframes[baseIndex2 + 5], keyframes[baseIndex2 + 6], keyframes[baseIndex2 + 7]);
+    
+    // Interpolate between keyframes
+    vec3 interpolatedPos = mix(keyframePos1, keyframePos2, alpha);
+    float interpolatedRotation = mix(keyframeRotation1, keyframeRotation2, alpha);
+    vec4 interpolatedColor = mix(keyframeColor1, keyframeColor2, alpha);
+    
+    // Build transform matrix with interpolated rotation and position
+    float cosR = cos(interpolatedRotation);
+    float sinR = sin(interpolatedRotation);
     
     mat4 keyframeMatrix = mat4(
         cosR, sinR, 0.0, 0.0,
         -sinR, cosR, 0.0, 0.0,
         0.0, 0.0, 1.0, 0.0,
-        keyframePos.x, keyframePos.y, keyframePos.z, 1.0
+        interpolatedPos.x, interpolatedPos.y, interpolatedPos.z, 1.0
     );
     
     gl_Position = ubo.proj * ubo.view * keyframeMatrix * vec4(inPosition, 1.0);
-    fragColor = keyframeColor.rgb; // Use keyframe color
+    fragColor = interpolatedColor.rgb; // Use interpolated color
 }

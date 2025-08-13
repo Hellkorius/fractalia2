@@ -22,7 +22,7 @@ layout(set = 0, binding = 0, std430) restrict readonly buffer EntityBuffer {
     GPUEntity entities[];
 };
 
-// Keyframe buffer (100 frames × N entities × keyframe data)
+// Keyframe buffer (20 frames × N entities × keyframe data)
 // Each keyframe: vec3 position + float rotation + vec4 color = 8 floats
 layout(set = 0, binding = 1, std430) restrict writeonly buffer KeyframeBuffer {
     float keyframes[]; // Raw float array to store position + rotation + color
@@ -30,10 +30,10 @@ layout(set = 0, binding = 1, std430) restrict writeonly buffer KeyframeBuffer {
 
 // Push constants for frame data
 layout(push_constant) uniform PushConstants {
-    uint currentFrame;      // Current frame in 100-frame cycle (0-99)
-    float alpha;            // Interpolation alpha (currentFrame % 100) / 100.0
+    uint keyframeSlot;      // Which keyframe slot to compute (0-19)
+    float deltaTime;        // Time per frame for proper time mapping
     uint entityCount;       // Total number of entities
-    float totalTime;        // Total simulation time + 100*deltaTime (future time)
+    float baseTime;         // Current simulation time (start point for keyframes)
 } pc;
 
 // Movement pattern implementations (same as regular movement shader)
@@ -110,13 +110,6 @@ void main() {
         return;
     }
     
-    // For staggered updates: only compute for a subset of entities each frame
-    // Note: During initialization, this should be disabled to compute all keyframes
-    bool isInitialization = (pc.totalTime < 2.0); // First 2 seconds are initialization
-    if (!isInitialization && (entityID + pc.currentFrame) % 100 != 0) {
-        return;
-    }
-    
     // Read entity data
     GPUEntity entity = entities[entityID];
     
@@ -128,37 +121,37 @@ void main() {
     vec3 center = entity.movementParams1.xyz;
     uint movementType = uint(entity.movementParams1.w);
     
-    // Apply time offset for future prediction
-    float adjustedTime = pc.totalTime + timeOffset;
+    // Proper time mapping: keyframe[i] = baseTime + i*deltaTime
+    float keyframeTime = pc.baseTime + float(pc.keyframeSlot) * pc.deltaTime + timeOffset;
     
     // Compute future position based on movement pattern
     vec3 keyframePosition;
     switch (movementType) {
         case MOVEMENT_PETAL:
-            keyframePosition = computePetalMovement(center, amplitude, frequency, phase, adjustedTime);
+            keyframePosition = computePetalMovement(center, amplitude, frequency, phase, keyframeTime);
             break;
         case MOVEMENT_ORBIT:
-            keyframePosition = computeOrbitMovement(center, amplitude, frequency, phase, adjustedTime);
+            keyframePosition = computeOrbitMovement(center, amplitude, frequency, phase, keyframeTime);
             break;
         case MOVEMENT_WAVE:
-            keyframePosition = computeWaveMovement(center, amplitude, frequency, phase, adjustedTime);
+            keyframePosition = computeWaveMovement(center, amplitude, frequency, phase, keyframeTime);
             break;
         case MOVEMENT_TRIANGLE_FORMATION:
-            keyframePosition = computeTriangleFormation(center, amplitude, frequency, phase, adjustedTime);
+            keyframePosition = computeTriangleFormation(center, amplitude, frequency, phase, keyframeTime);
             break;
         default:
-            keyframePosition = computePetalMovement(center, amplitude, frequency, phase, adjustedTime);
+            keyframePosition = computePetalMovement(center, amplitude, frequency, phase, keyframeTime);
             break;
     }
     
     // Calculate rotation based on amplitude (same as original movement shader)
     float rotationSpeed = amplitude * 0.1;
-    float rotation = adjustedTime * rotationSpeed;
+    float rotation = keyframeTime * rotationSpeed;
     
     // Generate dynamic color (same as original movement shader)
-    float hue = mod(phase + adjustedTime * 0.5, 6.28318530718) / 6.28318530718;
-    float saturation = 0.7 + 0.3 * sin(frequency * adjustedTime);
-    float brightness = 0.8 + 0.2 * sin(amplitude * adjustedTime * 0.5);
+    float hue = mod(phase + keyframeTime * 0.5, 6.28318530718) / 6.28318530718;
+    float saturation = 0.7 + 0.3 * sin(frequency * keyframeTime);
+    float brightness = 0.8 + 0.2 * sin(amplitude * keyframeTime * 0.5);
     
     // Convert HSV to RGB
     float c = brightness * saturation;
@@ -175,8 +168,8 @@ void main() {
     
     vec4 dynamicColor = vec4(rgb + m, 1.0);
     
-    // Calculate keyframe buffer index: (frame * entityCount + entityID) * 8 floats per keyframe
-    uint baseIndex = (pc.currentFrame * pc.entityCount + entityID) * 8;
+    // Calculate keyframe buffer index: (keyframeSlot * entityCount + entityID) * 8 floats per keyframe
+    uint baseIndex = (pc.keyframeSlot * pc.entityCount + entityID) * 8;
     
     // Write keyframe data: position(3) + rotation(1) + color(4)
     keyframes[baseIndex + 0] = keyframePosition.x;
