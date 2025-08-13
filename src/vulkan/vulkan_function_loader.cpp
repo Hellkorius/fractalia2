@@ -246,6 +246,8 @@ void VulkanFunctionLoader::loadCommandFunctions() {
         vkGetDeviceProcAddr(device, "vkDestroyCommandPool"));
     vkAllocateCommandBuffers = reinterpret_cast<PFN_vkAllocateCommandBuffers>(
         vkGetDeviceProcAddr(device, "vkAllocateCommandBuffers"));
+    vkFreeCommandBuffers = reinterpret_cast<PFN_vkFreeCommandBuffers>(
+        vkGetDeviceProcAddr(device, "vkFreeCommandBuffers"));
     vkResetCommandBuffer = reinterpret_cast<PFN_vkResetCommandBuffer>(
         vkGetDeviceProcAddr(device, "vkResetCommandBuffer"));
     vkBeginCommandBuffer = reinterpret_cast<PFN_vkBeginCommandBuffer>(

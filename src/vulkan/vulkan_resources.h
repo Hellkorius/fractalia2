@@ -20,10 +20,15 @@ public:
     bool createVertexBuffer();
     bool createIndexBuffer();
     bool createInstanceBuffers();
+    bool createKeyframeBuffers();
     bool createMultiShapeBuffers();
     bool createPolygonBuffers(const PolygonMesh& polygon);
     bool createDescriptorPool(VkDescriptorSetLayout descriptorSetLayout);
     bool createDescriptorSets(VkDescriptorSetLayout descriptorSetLayout);
+    bool createKeyframeDescriptorPool();
+    bool createKeyframeDescriptorSetLayout();
+    bool createKeyframeDescriptorSets();
+    void updateKeyframeDescriptorSet(VkBuffer entityBuffer);
 
     const std::vector<VkBuffer>& getUniformBuffers() const { return uniformBuffers; }
     const std::vector<void*>& getUniformBuffersMapped() const { return uniformBuffersMapped; }
@@ -42,6 +47,13 @@ public:
     
     VkDescriptorPool getDescriptorPool() const { return descriptorPool; }
     const std::vector<VkDescriptorSet>& getDescriptorSets() const { return descriptorSets; }
+    
+    // Key-frame buffer access
+    VkBuffer getKeyframeBuffer() const { return keyframeBuffer; }
+    void* getKeyframeBufferMapped() const { return keyframeBufferMapped; }
+    uint32_t getMaxKeyframes() const { return MAX_KEYFRAMES; }
+    VkDescriptorSetLayout getKeyframeDescriptorSetLayout() const { return keyframeDescriptorSetLayout; }
+    VkDescriptorSet getKeyframeDescriptorSet() const { return keyframeDescriptorSet; }
 
     static uint32_t findMemoryType(VulkanContext* context, uint32_t typeFilter, VkMemoryPropertyFlags properties);
     static void createImage(VulkanContext* context, uint32_t width, uint32_t height, VkFormat format, VkImageTiling tiling,
@@ -92,8 +104,21 @@ private:
     std::vector<void*> instanceBuffersMapped;
     int currentStagingBuffer = 0;
     
+    // Key-frame look-ahead buffer (100 frames × N entities × keyframe data)
+    // Each keyframe: vec3 position + float rotation + vec4 color = 8 floats = 32 bytes
+    static const uint32_t MAX_KEYFRAMES = 100 * 131072; // 100 frames × max entities
+    static const uint32_t KEYFRAME_SIZE = 8 * sizeof(float); // pos(3) + rotation(1) + color(4)
+    VkBuffer keyframeBuffer = VK_NULL_HANDLE;
+    VkDeviceMemory keyframeBufferMemory = VK_NULL_HANDLE;
+    void* keyframeBufferMapped = nullptr;
+    
     VkDescriptorPool descriptorPool = VK_NULL_HANDLE;
     std::vector<VkDescriptorSet> descriptorSets;
+    
+    // Keyframe descriptor sets
+    VkDescriptorPool keyframeDescriptorPool = VK_NULL_HANDLE;
+    VkDescriptorSetLayout keyframeDescriptorSetLayout = VK_NULL_HANDLE;
+    VkDescriptorSet keyframeDescriptorSet = VK_NULL_HANDLE;
 
     // Function pointers for resource operations
     PFN_vkCreateBuffer vkCreateBuffer = nullptr;
@@ -106,6 +131,8 @@ private:
     PFN_vkUnmapMemory vkUnmapMemory = nullptr;
     PFN_vkCreateDescriptorPool vkCreateDescriptorPool = nullptr;
     PFN_vkDestroyDescriptorPool vkDestroyDescriptorPool = nullptr;
+    PFN_vkCreateDescriptorSetLayout vkCreateDescriptorSetLayout = nullptr;
+    PFN_vkDestroyDescriptorSetLayout vkDestroyDescriptorSetLayout = nullptr;
     PFN_vkAllocateDescriptorSets vkAllocateDescriptorSets = nullptr;
     PFN_vkUpdateDescriptorSets vkUpdateDescriptorSets = nullptr;
     PFN_vkCreateImage vkCreateImage = nullptr;

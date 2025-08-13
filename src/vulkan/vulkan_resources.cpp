@@ -94,6 +94,26 @@ void VulkanResources::cleanup() {
         indexBufferMemory = VK_NULL_HANDLE;
     }
     
+    // Clean up keyframe buffer
+    if (keyframeBuffer != VK_NULL_HANDLE) {
+        vkDestroyBuffer(context->getDevice(), keyframeBuffer, nullptr);
+        keyframeBuffer = VK_NULL_HANDLE;
+    }
+    if (keyframeBufferMemory != VK_NULL_HANDLE) {
+        vkFreeMemory(context->getDevice(), keyframeBufferMemory, nullptr);
+        keyframeBufferMemory = VK_NULL_HANDLE;
+    }
+    
+    // Clean up keyframe descriptor sets
+    if (keyframeDescriptorPool != VK_NULL_HANDLE) {
+        vkDestroyDescriptorPool(context->getDevice(), keyframeDescriptorPool, nullptr);
+        keyframeDescriptorPool = VK_NULL_HANDLE;
+    }
+    if (keyframeDescriptorSetLayout != VK_NULL_HANDLE && this->vkDestroyDescriptorSetLayout) {
+        this->vkDestroyDescriptorSetLayout(context->getDevice(), keyframeDescriptorSetLayout, nullptr);
+        keyframeDescriptorSetLayout = VK_NULL_HANDLE;
+    }
+    
     if (descriptorPool != VK_NULL_HANDLE) {
         vkDestroyDescriptorPool(context->getDevice(), descriptorPool, nullptr);
         descriptorPool = VK_NULL_HANDLE;
@@ -140,6 +160,19 @@ bool VulkanResources::createInstanceBuffers() {
         
         vkMapMemory(context->getDevice(), instanceBuffersMemory[i], 0, STAGING_BUFFER_SIZE, 0, &instanceBuffersMapped[i]);
     }
+    
+    return true;
+}
+
+bool VulkanResources::createKeyframeBuffers() {
+    VkDeviceSize bufferSize = MAX_KEYFRAMES * KEYFRAME_SIZE; // 100 frames × max entities × keyframe data
+    
+    createBuffer(context, bufferSize, 
+                 VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+                 VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                 keyframeBuffer, keyframeBufferMemory);
+    
+    vkMapMemory(context->getDevice(), keyframeBufferMemory, 0, bufferSize, 0, &keyframeBufferMapped);
     
     return true;
 }
@@ -291,14 +324,20 @@ bool VulkanResources::createPolygonBuffers(const PolygonMesh& polygon) {
 bool VulkanResources::createDescriptorPool(VkDescriptorSetLayout descriptorSetLayout) {
     const uint32_t maxSets = 1024;
     
-    VkDescriptorPoolSize poolSize{};
-    poolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    poolSize.descriptorCount = maxSets;
+    std::array<VkDescriptorPoolSize, 2> poolSizes{};
+    
+    // Uniform buffers
+    poolSizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    poolSizes[0].descriptorCount = maxSets;
+    
+    // Storage buffers (for keyframes)
+    poolSizes[1].type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    poolSizes[1].descriptorCount = maxSets;
     
     VkDescriptorPoolCreateInfo poolInfo{};
     poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-    poolInfo.poolSizeCount = 1;
-    poolInfo.pPoolSizes = &poolSize;
+    poolInfo.poolSizeCount = poolSizes.size();
+    poolInfo.pPoolSizes = poolSizes.data();
     poolInfo.maxSets = maxSets;
     
     if (vkCreateDescriptorPool(context->getDevice(), &poolInfo, nullptr, &descriptorPool) != VK_SUCCESS) {
@@ -324,21 +363,37 @@ bool VulkanResources::createDescriptorSets(VkDescriptorSetLayout descriptorSetLa
     }
     
     for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+        std::array<VkWriteDescriptorSet, 2> descriptorWrites{};
+        
+        // UBO binding
         VkDescriptorBufferInfo bufferInfo{};
         bufferInfo.buffer = uniformBuffers[i];
         bufferInfo.offset = 0;
         bufferInfo.range = sizeof(glm::mat4) * 2;
         
-        VkWriteDescriptorSet descriptorWrite{};
-        descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        descriptorWrite.dstSet = descriptorSets[i];
-        descriptorWrite.dstBinding = 0;
-        descriptorWrite.dstArrayElement = 0;
-        descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        descriptorWrite.descriptorCount = 1;
-        descriptorWrite.pBufferInfo = &bufferInfo;
+        descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        descriptorWrites[0].dstSet = descriptorSets[i];
+        descriptorWrites[0].dstBinding = 0;
+        descriptorWrites[0].dstArrayElement = 0;
+        descriptorWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        descriptorWrites[0].descriptorCount = 1;
+        descriptorWrites[0].pBufferInfo = &bufferInfo;
         
-        vkUpdateDescriptorSets(context->getDevice(), 1, &descriptorWrite, 0, nullptr);
+        // Keyframe buffer binding
+        VkDescriptorBufferInfo keyframeBufferInfo{};
+        keyframeBufferInfo.buffer = keyframeBuffer;
+        keyframeBufferInfo.offset = 0;
+        keyframeBufferInfo.range = MAX_KEYFRAMES * KEYFRAME_SIZE;
+        
+        descriptorWrites[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        descriptorWrites[1].dstSet = descriptorSets[i];
+        descriptorWrites[1].dstBinding = 1;
+        descriptorWrites[1].dstArrayElement = 0;
+        descriptorWrites[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        descriptorWrites[1].descriptorCount = 1;
+        descriptorWrites[1].pBufferInfo = &keyframeBufferInfo;
+        
+        vkUpdateDescriptorSets(context->getDevice(), descriptorWrites.size(), descriptorWrites.data(), 0, nullptr);
     }
     
     return true;
@@ -355,6 +410,8 @@ void VulkanResources::loadFunctions() {
     vkUnmapMemory = (PFN_vkUnmapMemory)context->vkGetDeviceProcAddr(context->getDevice(), "vkUnmapMemory");
     vkCreateDescriptorPool = (PFN_vkCreateDescriptorPool)context->vkGetDeviceProcAddr(context->getDevice(), "vkCreateDescriptorPool");
     vkDestroyDescriptorPool = (PFN_vkDestroyDescriptorPool)context->vkGetDeviceProcAddr(context->getDevice(), "vkDestroyDescriptorPool");
+    vkCreateDescriptorSetLayout = (PFN_vkCreateDescriptorSetLayout)context->vkGetDeviceProcAddr(context->getDevice(), "vkCreateDescriptorSetLayout");
+    vkDestroyDescriptorSetLayout = (PFN_vkDestroyDescriptorSetLayout)context->vkGetDeviceProcAddr(context->getDevice(), "vkDestroyDescriptorSetLayout");
     vkAllocateDescriptorSets = (PFN_vkAllocateDescriptorSets)context->vkGetDeviceProcAddr(context->getDevice(), "vkAllocateDescriptorSets");
     vkUpdateDescriptorSets = (PFN_vkUpdateDescriptorSets)context->vkGetDeviceProcAddr(context->getDevice(), "vkUpdateDescriptorSets");
     vkCreateImage = (PFN_vkCreateImage)context->vkGetDeviceProcAddr(context->getDevice(), "vkCreateImage");
@@ -510,4 +567,98 @@ void VulkanResources::copyBuffer(VulkanContext* context, VkCommandPool commandPo
     
     PFN_vkFreeCommandBuffers vkFreeCommandBuffers = (PFN_vkFreeCommandBuffers)context->vkGetDeviceProcAddr(context->getDevice(), "vkFreeCommandBuffers");
     vkFreeCommandBuffers(context->getDevice(), commandPool, 1, &commandBuffer);
+}
+
+// Keyframe descriptor set methods
+bool VulkanResources::createKeyframeDescriptorPool() {
+    std::array<VkDescriptorPoolSize, 2> poolSizes{};
+    
+    // Entity storage buffer (read-only)
+    poolSizes[0].type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    poolSizes[0].descriptorCount = 1;
+    
+    // Keyframe storage buffer (write-only)
+    poolSizes[1].type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    poolSizes[1].descriptorCount = 1;
+    
+    VkDescriptorPoolCreateInfo poolInfo{};
+    poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    poolInfo.poolSizeCount = poolSizes.size();
+    poolInfo.pPoolSizes = poolSizes.data();
+    poolInfo.maxSets = 1;
+    
+    return vkCreateDescriptorPool(context->getDevice(), &poolInfo, nullptr, &keyframeDescriptorPool) == VK_SUCCESS;
+}
+
+bool VulkanResources::createKeyframeDescriptorSetLayout() {
+    std::array<VkDescriptorSetLayoutBinding, 2> bindings{};
+    
+    // Entity buffer binding (binding = 0, read-only)
+    bindings[0].binding = 0;
+    bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    bindings[0].descriptorCount = 1;
+    bindings[0].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+    
+    // Keyframe buffer binding (binding = 1, write-only)
+    bindings[1].binding = 1;
+    bindings[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    bindings[1].descriptorCount = 1;
+    bindings[1].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+    
+    VkDescriptorSetLayoutCreateInfo layoutInfo{};
+    layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    layoutInfo.bindingCount = bindings.size();
+    layoutInfo.pBindings = bindings.data();
+    
+    return this->vkCreateDescriptorSetLayout(context->getDevice(), &layoutInfo, nullptr, &keyframeDescriptorSetLayout) == VK_SUCCESS;
+}
+
+bool VulkanResources::createKeyframeDescriptorSets() {
+    VkDescriptorSetAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    allocInfo.descriptorPool = keyframeDescriptorPool;
+    allocInfo.descriptorSetCount = 1;
+    allocInfo.pSetLayouts = &keyframeDescriptorSetLayout;
+    
+    if (this->vkAllocateDescriptorSets(context->getDevice(), &allocInfo, &keyframeDescriptorSet) != VK_SUCCESS) {
+        return false;
+    }
+    
+    // This will need to be updated with actual entity buffer from GPU entity manager
+    // For now, just create the descriptor set - it will be updated later
+    return true;
+}
+
+void VulkanResources::updateKeyframeDescriptorSet(VkBuffer entityBuffer) {
+    std::array<VkWriteDescriptorSet, 2> descriptorWrites{};
+    
+    // Entity buffer binding (binding = 0, read-only)
+    VkDescriptorBufferInfo entityBufferInfo{};
+    entityBufferInfo.buffer = entityBuffer;
+    entityBufferInfo.offset = 0;
+    entityBufferInfo.range = VK_WHOLE_SIZE;
+    
+    descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    descriptorWrites[0].dstSet = keyframeDescriptorSet;
+    descriptorWrites[0].dstBinding = 0;
+    descriptorWrites[0].dstArrayElement = 0;
+    descriptorWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    descriptorWrites[0].descriptorCount = 1;
+    descriptorWrites[0].pBufferInfo = &entityBufferInfo;
+    
+    // Keyframe buffer binding (binding = 1, write-only)
+    VkDescriptorBufferInfo keyframeBufferInfo{};
+    keyframeBufferInfo.buffer = keyframeBuffer;
+    keyframeBufferInfo.offset = 0;
+    keyframeBufferInfo.range = MAX_KEYFRAMES * KEYFRAME_SIZE;
+    
+    descriptorWrites[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    descriptorWrites[1].dstSet = keyframeDescriptorSet;
+    descriptorWrites[1].dstBinding = 1;
+    descriptorWrites[1].dstArrayElement = 0;
+    descriptorWrites[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    descriptorWrites[1].descriptorCount = 1;
+    descriptorWrites[1].pBufferInfo = &keyframeBufferInfo;
+    
+    this->vkUpdateDescriptorSets(context->getDevice(), descriptorWrites.size(), descriptorWrites.data(), 0, nullptr);
 }

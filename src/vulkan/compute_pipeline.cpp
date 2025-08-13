@@ -33,6 +33,16 @@ void ComputePipeline::cleanup() {
         loader->vkDestroyPipelineLayout(context->getDevice(), movementPipelineLayout, nullptr);
         movementPipelineLayout = VK_NULL_HANDLE;
     }
+    
+    if (keyframePipeline != VK_NULL_HANDLE) {
+        loader->vkDestroyPipeline(context->getDevice(), keyframePipeline, nullptr);
+        keyframePipeline = VK_NULL_HANDLE;
+    }
+    
+    if (keyframePipelineLayout != VK_NULL_HANDLE) {
+        loader->vkDestroyPipelineLayout(context->getDevice(), keyframePipelineLayout, nullptr);
+        keyframePipelineLayout = VK_NULL_HANDLE;
+    }
 }
 
 bool ComputePipeline::createMovementPipeline(VkDescriptorSetLayout descriptorSetLayout) {
@@ -87,6 +97,57 @@ bool ComputePipeline::createMovementPipeline(VkDescriptorSetLayout descriptorSet
     return true;
 }
 
+bool ComputePipeline::createKeyframePipeline(VkDescriptorSetLayout descriptorSetLayout) {
+    // Create pipeline layout
+    VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
+    pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    pipelineLayoutInfo.setLayoutCount = 1;
+    pipelineLayoutInfo.pSetLayouts = &descriptorSetLayout;
+    
+    // Add push constants for keyframe generation (currentFrame, alpha, entityCount, totalTime)
+    VkPushConstantRange pushConstantRange{};
+    pushConstantRange.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+    pushConstantRange.offset = 0;
+    pushConstantRange.size = sizeof(uint32_t) + sizeof(float) + sizeof(uint32_t) + sizeof(float); // currentFrame + alpha + entityCount + totalTime
+    
+    pipelineLayoutInfo.pushConstantRangeCount = 1;
+    pipelineLayoutInfo.pPushConstantRanges = &pushConstantRange;
+
+    if (loader->vkCreatePipelineLayout(context->getDevice(), &pipelineLayoutInfo, nullptr, &keyframePipelineLayout) != VK_SUCCESS) {
+        std::cerr << "Failed to create keyframe compute pipeline layout!" << std::endl;
+        return false;
+    }
+
+    // Load compute shader
+    auto computeShaderCode = readFile("shaders/compiled/movement_keyframe.spv");
+    VkShaderModule computeShaderModule = createShaderModule(computeShaderCode);
+
+    if (computeShaderModule == VK_NULL_HANDLE) {
+        std::cerr << "Failed to create keyframe compute shader module!" << std::endl;
+        return false;
+    }
+
+    // Create compute pipeline
+    VkPipelineShaderStageCreateInfo computeShaderStageInfo{};
+    computeShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    computeShaderStageInfo.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+    computeShaderStageInfo.module = computeShaderModule;
+    computeShaderStageInfo.pName = "main";
+
+    VkComputePipelineCreateInfo pipelineInfo{};
+    pipelineInfo.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+    pipelineInfo.stage = computeShaderStageInfo;
+    pipelineInfo.layout = keyframePipelineLayout;
+
+    if (loader->vkCreateComputePipelines(context->getDevice(), VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &keyframePipeline) != VK_SUCCESS) {
+        std::cerr << "Failed to create keyframe compute pipeline!" << std::endl;
+        loader->vkDestroyShaderModule(context->getDevice(), computeShaderModule, nullptr);
+        return false;
+    }
+
+    loader->vkDestroyShaderModule(context->getDevice(), computeShaderModule, nullptr);
+    return true;
+}
 
 VkShaderModule ComputePipeline::createShaderModule(const std::vector<char>& code) {
     VkShaderModuleCreateInfo createInfo{};

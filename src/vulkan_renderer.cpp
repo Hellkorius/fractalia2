@@ -99,6 +99,26 @@ bool VulkanRenderer::initialize(SDL_Window* window) {
         return false;
     }
     
+    if (!resources->createKeyframeBuffers()) {
+        std::cerr << "Failed to create keyframe buffers" << std::endl;
+        return false;
+    }
+    
+    if (!resources->createKeyframeDescriptorPool()) {
+        std::cerr << "Failed to create keyframe descriptor pool" << std::endl;
+        return false;
+    }
+    
+    if (!resources->createKeyframeDescriptorSetLayout()) {
+        std::cerr << "Failed to create keyframe descriptor set layout" << std::endl;
+        return false;
+    }
+    
+    if (!resources->createKeyframeDescriptorSets()) {
+        std::cerr << "Failed to create keyframe descriptor sets" << std::endl;
+        return false;
+    }
+    
     if (!resources->createDescriptorPool(pipeline->getDescriptorSetLayout())) {
         std::cerr << "Failed to create descriptor pool" << std::endl;
         return false;
@@ -116,6 +136,9 @@ bool VulkanRenderer::initialize(SDL_Window* window) {
         return false;
     }
     
+    // Update keyframe descriptor set with entity buffer
+    resources->updateKeyframeDescriptorSet(gpuEntityManager->getCurrentEntityBuffer());
+    
     // Initialize movement command processor
     movementCommandProcessor = std::make_unique<MovementCommandProcessor>(gpuEntityManager.get());
     std::cout << "Movement command processor initialized" << std::endl;
@@ -129,6 +152,11 @@ bool VulkanRenderer::initialize(SDL_Window* window) {
     
     if (!computePipeline->createMovementPipeline(gpuEntityManager->getComputeDescriptorSetLayout())) {
         std::cerr << "Failed to create movement compute pipeline" << std::endl;
+        return false;
+    }
+    
+    if (!computePipeline->createKeyframePipeline(resources->getKeyframeDescriptorSetLayout())) {
+        std::cerr << "Failed to create keyframe compute pipeline" << std::endl;
         return false;
     }
     
@@ -253,8 +281,23 @@ void VulkanRenderer::drawFrame() {
         return;
     }
     
-    dispatchCompute(computeCommandBuffers[currentFrame], deltaTime);
+    // Use keyframe-based rendering instead of regular compute
+    // dispatchCompute(computeCommandBuffers[currentFrame], deltaTime);
+    
+    // CPU flow for keyframe generation (100-frame look-ahead)
+    uint32_t keyframeFrame = frameCounter % KEYFRAME_LOOKAHEAD_FRAMES;
+    float totalFutureTime = 0.0f; // This should track accumulated time + 100 frames worth of delta
+    static float accumulatedTime = 0.0f;
+    accumulatedTime += deltaTime;
+    totalFutureTime = accumulatedTime + KEYFRAME_LOOKAHEAD_FRAMES * deltaTime;
+    
+    // Dispatch keyframe computation for current frame slice
+    dispatchKeyframeCompute(computeCommandBuffers[currentFrame], totalFutureTime, keyframeFrame);
+    
     transitionBufferLayout(computeCommandBuffers[currentFrame]);
+    
+    // Update frame counter
+    frameCounter++;
     
     if (functionLoader->vkEndCommandBuffer(computeCommandBuffers[currentFrame]) != VK_SUCCESS) {
         std::cerr << "Failed to record compute command buffer" << std::endl;
@@ -385,6 +428,20 @@ void VulkanRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t
     const auto& descriptorSets = resources->getDescriptorSets();
     functionLoader->vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->getPipelineLayout(), 0, 1, &descriptorSets[currentFrame], 0, nullptr);
 
+    // Push constants for vertex shader keyframe interpolation
+    struct VertexPushConstants {
+        uint32_t currentFrame;      // Current frame in 100-frame cycle (0-99)
+        float alpha;                // Interpolation alpha
+        uint32_t entityCount;       // Total number of entities
+    } vertexPushConstants = { 
+        frameCounter % KEYFRAME_LOOKAHEAD_FRAMES,
+        0.0f,  // For now, always use exact keyframes (no interpolation)
+        gpuEntityManager ? gpuEntityManager->getEntityCount() : 0
+    };
+    
+    functionLoader->vkCmdPushConstants(commandBuffer, pipeline->getPipelineLayout(),
+                      VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(VertexPushConstants), &vertexPushConstants);
+
     VkViewport viewport{};
     viewport.x = 0.0f;
     viewport.y = 0.0f;
@@ -501,7 +558,13 @@ void VulkanRenderer::loadDrawingFunctions() {
 
 void VulkanRenderer::uploadPendingGPUEntities() {
     if (gpuEntityManager) {
+        bool hadEntities = gpuEntityManager->getEntityCount() > 0;
         gpuEntityManager->uploadPendingEntities();
+        
+        // Initialize keyframes when entities are first uploaded
+        if (!hadEntities && gpuEntityManager->getEntityCount() > 0) {
+            initializeAllKeyframes();
+        }
     }
 }
 
@@ -533,6 +596,107 @@ void VulkanRenderer::dispatchCompute(VkCommandBuffer commandBuffer, float deltaT
     
     // Advance frame counter for next frame
     gpuEntityManager->advanceFrame();
+}
+
+void VulkanRenderer::dispatchKeyframeCompute(VkCommandBuffer commandBuffer, float totalTime, uint32_t keyframeFrame) {
+    if (!gpuEntityManager || !computePipeline || gpuEntityManager->getEntityCount() == 0) {
+        return;
+    }
+    
+    // Bind keyframe compute pipeline
+    functionLoader->vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, computePipeline->getKeyframePipeline());
+    
+    // Bind keyframe descriptor set
+    VkDescriptorSet keyframeDescriptorSet = resources->getKeyframeDescriptorSet();
+    functionLoader->vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, 
+                           computePipeline->getKeyframePipelineLayout(), 0, 1, &keyframeDescriptorSet, 0, nullptr);
+    
+    // Push constants for keyframe generation
+    struct KeyframePushConstants {
+        uint32_t currentFrame;      // Current frame in 100-frame cycle (0-99)
+        float alpha;                // Interpolation alpha
+        uint32_t entityCount;       // Total number of entities
+        float totalTime;            // Total simulation time + 100*deltaTime
+    } pushConstants = { 
+        keyframeFrame, 
+        (frameCounter % KEYFRAME_LOOKAHEAD_FRAMES) / 100.0f,
+        gpuEntityManager->getEntityCount(),
+        totalTime 
+    };
+    
+    functionLoader->vkCmdPushConstants(commandBuffer, computePipeline->getKeyframePipelineLayout(),
+                      VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(KeyframePushConstants), &pushConstants);
+    
+    // Dispatch compute shader (64 threads per workgroup)
+    uint32_t workgroupCount = (gpuEntityManager->getEntityCount() + 63) / 64;
+    functionLoader->vkCmdDispatch(commandBuffer, workgroupCount, 1, 1);
+}
+
+void VulkanRenderer::initializeAllKeyframes() {
+    if (!gpuEntityManager || !computePipeline || gpuEntityManager->getEntityCount() == 0) {
+        return;
+    }
+    
+    // Create a temporary command buffer for keyframe initialization
+    VkCommandBufferAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    allocInfo.commandPool = sync->getCommandPool();
+    allocInfo.commandBufferCount = 1;
+    
+    VkCommandBuffer initCommandBuffer;
+    if (functionLoader->vkAllocateCommandBuffers(context->getDevice(), &allocInfo, &initCommandBuffer) != VK_SUCCESS) {
+        std::cerr << "Failed to allocate keyframe initialization command buffer" << std::endl;
+        return;
+    }
+    
+    VkCommandBufferBeginInfo beginInfo{};
+    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    
+    if (functionLoader->vkBeginCommandBuffer(initCommandBuffer, &beginInfo) != VK_SUCCESS) {
+        std::cerr << "Failed to begin keyframe initialization command buffer" << std::endl;
+        return;
+    }
+    
+    // Compute all 100 keyframes 
+    float baseTime = 0.0f;
+    for (uint32_t frame = 0; frame < KEYFRAME_LOOKAHEAD_FRAMES; frame++) {
+        float futureTime = baseTime + frame * (1.0f / 60.0f); // Assume 60 FPS
+        dispatchKeyframeCompute(initCommandBuffer, futureTime, frame);
+        
+        // Add memory barrier between dispatches
+        VkMemoryBarrier barrier{};
+        barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+        barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+        barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+        
+        functionLoader->vkCmdPipelineBarrier(initCommandBuffer,
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+            0, 1, &barrier, 0, nullptr, 0, nullptr);
+    }
+    
+    if (functionLoader->vkEndCommandBuffer(initCommandBuffer) != VK_SUCCESS) {
+        std::cerr << "Failed to end keyframe initialization command buffer" << std::endl;
+        return;
+    }
+    
+    // Submit and wait
+    VkSubmitInfo submitInfo{};
+    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submitInfo.commandBufferCount = 1;
+    submitInfo.pCommandBuffers = &initCommandBuffer;
+    
+    if (functionLoader->vkQueueSubmit(context->getGraphicsQueue(), 1, &submitInfo, VK_NULL_HANDLE) != VK_SUCCESS) {
+        std::cerr << "Failed to submit keyframe initialization" << std::endl;
+        return;
+    }
+    
+    functionLoader->vkQueueWaitIdle(context->getGraphicsQueue());
+    
+    // Clean up
+    functionLoader->vkFreeCommandBuffers(context->getDevice(), sync->getCommandPool(), 1, &initCommandBuffer);
 }
 
 void VulkanRenderer::transitionBufferLayout(VkCommandBuffer commandBuffer) {

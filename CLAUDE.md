@@ -78,13 +78,15 @@ fractalia2/
 		├── simple_control_system.* // input handling + GPU entity operations
 		└── systems_common.hpp	// shared headers for system files
 │   └── shaders/                # GLSL shader source files
-│       ├── vertex.vert         # Vertex shader (updated for GPUEntity)
+│       ├── vertex.vert         # Vertex shader (keyframe-based rendering)
 │       ├── fragment.frag       # Fragment shader
-│       ├── movement.comp       # GPU compute shader for entity movement
+│       ├── movement.comp       # GPU compute shader for entity movement (legacy)
+│       ├── movement_keyframe.comp # GPU compute shader for keyframe generation
 │       └── compiled/           # Compiled SPIR-V shaders
 │           ├── vertex.spv      # Compiled vertex shader
 │           ├── fragment.spv    # Compiled fragment shader
-│           └── movement.spv    # Compiled compute shader
+│           ├── movement.spv    # Compiled compute shader (legacy)
+│           └── movement_keyframe.spv # Compiled keyframe shader
 ├── include/                    # Header files directory
 └── ../vendored/                # External libraries
     ├── SDL3-3.1.6/             # SDL3 source and binaries
@@ -101,12 +103,12 @@ fractalia2/
 
 ## GPU Compute Architecture
 
-### Triple-Buffer Entity Data Flow
+### Keyframe-Based Rendering System
 1. **Entity Creation**: CPU creates entities via `EntityFactory` with `Transform`, `Renderable`, `MovementPattern`
-2. **GPU Handover**: `GPUEntityManager.addEntitiesFromECS()` converts to `GPUEntity` format and uploads to current graphics buffer (single buffer for performance)
-3. **Compute Dispatch**: Each frame, `movement.comp` shader processes current buffer → writes to next buffer in rotation
-4. **Graphics Rendering**: Vertex shader reads from current graphics buffer (rotates each frame to fresh compute output)
-5. **Movement Updates**: All 3 buffers updated simultaneously with GPU sync barrier for absolute entity control
+2. **GPU Handover**: `GPUEntityManager.addEntitiesFromECS()` converts to `GPUEntity` format and uploads to entity buffer
+3. **Keyframe Generation**: `movement_keyframe.comp` pre-computes 100 frames of position, rotation, and color data
+4. **Graphics Rendering**: Vertex shader reads from keyframe buffer and interpolates between frames
+5. **Staggered Updates**: Only 1% of keyframes updated per frame for performance
 
 ### GPUEntity Structure (128 bytes)
 ```cpp
@@ -126,12 +128,12 @@ struct GPUEntity {
 - Easy to add new patterns by extending the compute shader switch statement
 
 ### Critical Implementation Details
-- **Triple-buffered Storage**: Graphics reads rotating buffer, compute processes input→output, eliminates redundant uploads
-- **GPU Sync Barrier**: Movement pattern updates use `vkDeviceWaitIdle()` for absolute entity control
-- **Memory Barriers**: `VK_ACCESS_SHADER_WRITE_BIT` → `VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT` synchronization between compute/graphics
-- **Buffer Layout**: Vertex shader attributes match `GPUEntity` exactly (locations 2-9 for instance data)
+- **Keyframe Buffer**: 100 frames × N entities × 32 bytes (position + rotation + color)
+- **Staggered Computation**: Only updates keyframes for entities where `(entityID + frame) % 100 == 0`
+- **Memory Barriers**: Synchronization between keyframe compute and vertex shader reads
+- **Vertex Shader**: Reads keyframe data directly, builds transform matrix on-the-fly
 - **Centralized Function Loading**: `VulkanFunctionLoader` provides single source of truth for all Vulkan function pointers
-- **Shader Path**: Compute shader loaded from `shaders/compiled/movement.spv` (not `src/shaders/compiled/`)
+- **Shader Paths**: `movement_keyframe.spv` for keyframe generation, `vertex.vert` for keyframe rendering
 
 ### Performance Characteristics
 - **Current Scale**: 90,000 entities at 60 FPS with smooth movement and dynamic colors
@@ -173,7 +175,7 @@ The project uses Vulkan with dynamic function loading for cross-platform compati
 - **Error Handling**: Validation, exception handling, monitoring statistics
 
 ### Shader Development
-1. Edit GLSL files in `src/shaders/` (vertex.vert, fragment.frag, movement.comp)
+1. Edit GLSL files in `src/shaders/` (vertex.vert, fragment.frag, movement_keyframe.comp)
 2. Run `./compile-shaders.sh` to compile to SPIR-V
 3. Rebuild project to include updated shaders
-4. **Note**: Compute shader path is `shaders/compiled/movement.spv` (not `src/shaders/compiled/`)
+4. **Note**: Keyframe shader path is `shaders/compiled/movement_keyframe.spv`

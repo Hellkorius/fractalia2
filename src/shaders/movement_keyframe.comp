@@ -1,0 +1,190 @@
+#version 450
+
+layout(local_size_x = 64) in;
+
+// Movement types
+#define MOVEMENT_PETAL 0
+#define MOVEMENT_ORBIT 1
+#define MOVEMENT_WAVE 2
+#define MOVEMENT_TRIANGLE_FORMATION 3
+
+// GPU entity structure - matches CPU-side GPUEntity
+struct GPUEntity {
+    mat4 modelMatrix;        // Transform matrix
+    vec4 color;              // RGBA color
+    vec4 movementParams0;    // amplitude, frequency, phase, timeOffset  
+    vec4 movementParams1;    // center.xyz, movementType
+    vec4 runtimeState;       // totalTime, initialized, stateTimer, entityState
+};
+
+// Entity buffer (read-only for keyframe generation)
+layout(set = 0, binding = 0, std430) restrict readonly buffer EntityBuffer {
+    GPUEntity entities[];
+};
+
+// Keyframe buffer (100 frames × N entities × keyframe data)
+// Each keyframe: vec3 position + float rotation + vec4 color = 8 floats
+layout(set = 0, binding = 1, std430) restrict writeonly buffer KeyframeBuffer {
+    float keyframes[]; // Raw float array to store position + rotation + color
+};
+
+// Push constants for frame data
+layout(push_constant) uniform PushConstants {
+    uint currentFrame;      // Current frame in 100-frame cycle (0-99)
+    float alpha;            // Interpolation alpha (currentFrame % 100) / 100.0
+    uint entityCount;       // Total number of entities
+    float totalTime;        // Total simulation time + 100*deltaTime (future time)
+} pc;
+
+// Movement pattern implementations (same as regular movement shader)
+vec3 computePetalMovement(vec3 center, float amplitude, float frequency, float phase, float totalTime) {
+    float radialOscillation = 0.5 + 0.5 * sin(totalTime * frequency * 0.3);
+    float currentRadius = amplitude * radialOscillation;
+    float petalAngle = totalTime * frequency + phase;
+    
+    return center + vec3(
+        currentRadius * cos(petalAngle),
+        currentRadius * sin(petalAngle),
+        0.0
+    );
+}
+
+vec3 computeOrbitMovement(vec3 center, float amplitude, float frequency, float phase, float totalTime) {
+    float angle = totalTime * frequency + phase;
+    return center + vec3(
+        amplitude * cos(angle),
+        amplitude * sin(angle),
+        0.0
+    );
+}
+
+vec3 computeWaveMovement(vec3 center, float amplitude, float frequency, float phase, float totalTime) {
+    float wave = sin(totalTime * frequency + phase);
+    return center + vec3(
+        amplitude * wave,
+        amplitude * cos(totalTime * frequency * 0.5 + phase),
+        0.0
+    );
+}
+
+vec3 computeTriangleFormation(vec3 center, float amplitude, float frequency, float phase, float totalTime) {
+    float orbitRadius = amplitude * 2.0;
+    float orbitAngle = totalTime * frequency + phase;
+    vec3 orbitPosition = vec3(
+        orbitRadius * cos(orbitAngle),
+        orbitRadius * sin(orbitAngle),
+        0.0
+    );
+    
+    float trianglePhase = orbitAngle * 1.5;
+    float triangleWarp = sin(trianglePhase) * 0.4;
+    float warpedRadius = orbitRadius * (1.0 + triangleWarp);
+    vec3 triangularOrbit = vec3(
+        warpedRadius * cos(orbitAngle),
+        warpedRadius * sin(orbitAngle),
+        0.0
+    );
+    
+    float cosmicTime = totalTime * frequency + phase;
+    float foldingPhase = sin(cosmicTime * 0.7 + phase * 2.0);
+    float dimensionalFold = pow(abs(foldingPhase), 3.0) * sign(foldingPhase);
+    
+    float radialOscillation = 0.5 + 0.5 * sin(totalTime * frequency * 0.3 + phase * 2.0);
+    float interweavingScale = 0.8 + 0.4 * radialOscillation;
+    
+    float distanceFromCenter = length(triangularOrbit);
+    float curvature = sin(orbitAngle * 3.0 + totalTime * frequency * 0.3) * orbitRadius * 0.1;
+    vec3 curvatureVector = vec3(-sin(orbitAngle), cos(orbitAngle), 0.0) * curvature;
+    
+    vec3 finalPosition = triangularOrbit * interweavingScale + curvatureVector;
+    finalPosition += vec3(dimensionalFold * 0.1, dimensionalFold * 0.15, 0.0);
+    
+    return center + finalPosition;
+}
+
+void main() {
+    uint entityID = gl_GlobalInvocationID.x;
+    
+    // Bounds check
+    if (entityID >= pc.entityCount) {
+        return;
+    }
+    
+    // For staggered updates: only compute for a subset of entities each frame
+    // Note: During initialization, this should be disabled to compute all keyframes
+    bool isInitialization = (pc.totalTime < 2.0); // First 2 seconds are initialization
+    if (!isInitialization && (entityID + pc.currentFrame) % 100 != 0) {
+        return;
+    }
+    
+    // Read entity data
+    GPUEntity entity = entities[entityID];
+    
+    // Extract movement parameters
+    float amplitude = entity.movementParams0.x;
+    float frequency = entity.movementParams0.y;
+    float phase = entity.movementParams0.z;
+    float timeOffset = entity.movementParams0.w;
+    vec3 center = entity.movementParams1.xyz;
+    uint movementType = uint(entity.movementParams1.w);
+    
+    // Apply time offset for future prediction
+    float adjustedTime = pc.totalTime + timeOffset;
+    
+    // Compute future position based on movement pattern
+    vec3 keyframePosition;
+    switch (movementType) {
+        case MOVEMENT_PETAL:
+            keyframePosition = computePetalMovement(center, amplitude, frequency, phase, adjustedTime);
+            break;
+        case MOVEMENT_ORBIT:
+            keyframePosition = computeOrbitMovement(center, amplitude, frequency, phase, adjustedTime);
+            break;
+        case MOVEMENT_WAVE:
+            keyframePosition = computeWaveMovement(center, amplitude, frequency, phase, adjustedTime);
+            break;
+        case MOVEMENT_TRIANGLE_FORMATION:
+            keyframePosition = computeTriangleFormation(center, amplitude, frequency, phase, adjustedTime);
+            break;
+        default:
+            keyframePosition = computePetalMovement(center, amplitude, frequency, phase, adjustedTime);
+            break;
+    }
+    
+    // Calculate rotation based on amplitude (same as original movement shader)
+    float rotationSpeed = amplitude * 0.1;
+    float rotation = adjustedTime * rotationSpeed;
+    
+    // Generate dynamic color (same as original movement shader)
+    float hue = mod(phase + adjustedTime * 0.5, 6.28318530718) / 6.28318530718;
+    float saturation = 0.7 + 0.3 * sin(frequency * adjustedTime);
+    float brightness = 0.8 + 0.2 * sin(amplitude * adjustedTime * 0.5);
+    
+    // Convert HSV to RGB
+    float c = brightness * saturation;
+    float x = c * (1.0 - abs(mod(hue * 6.0, 2.0) - 1.0));
+    float m = brightness - c;
+    
+    vec3 rgb;
+    if (hue < 1.0/6.0) rgb = vec3(c, x, 0);
+    else if (hue < 2.0/6.0) rgb = vec3(x, c, 0);
+    else if (hue < 3.0/6.0) rgb = vec3(0, c, x);
+    else if (hue < 4.0/6.0) rgb = vec3(0, x, c);
+    else if (hue < 5.0/6.0) rgb = vec3(x, 0, c);
+    else rgb = vec3(c, 0, x);
+    
+    vec4 dynamicColor = vec4(rgb + m, 1.0);
+    
+    // Calculate keyframe buffer index: (frame * entityCount + entityID) * 8 floats per keyframe
+    uint baseIndex = (pc.currentFrame * pc.entityCount + entityID) * 8;
+    
+    // Write keyframe data: position(3) + rotation(1) + color(4)
+    keyframes[baseIndex + 0] = keyframePosition.x;
+    keyframes[baseIndex + 1] = keyframePosition.y;
+    keyframes[baseIndex + 2] = keyframePosition.z;
+    keyframes[baseIndex + 3] = rotation;
+    keyframes[baseIndex + 4] = dynamicColor.r;
+    keyframes[baseIndex + 5] = dynamicColor.g;
+    keyframes[baseIndex + 6] = dynamicColor.b;
+    keyframes[baseIndex + 7] = dynamicColor.a;
+}

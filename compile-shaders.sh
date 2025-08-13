@@ -13,6 +13,10 @@ glslangValidator -V src/shaders/fragment.frag -o src/shaders/compiled/fragment.s
 cp src/shaders/compiled/fragment.spv build/shaders/compiled/
 
 # Compile compute shader
+glslangValidator -V src/shaders/movement_keyframe.comp -o src/shaders/compiled/movement_keyframe.spv
+cp src/shaders/compiled/movement_keyframe.spv build/shaders/compiled/
+
+# Compile compute shader
 glslangValidator -V src/shaders/movement.comp -o src/shaders/compiled/movement.spv
 cp src/shaders/compiled/movement.spv build/shaders/compiled/
 
