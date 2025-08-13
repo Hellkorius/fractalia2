@@ -80,12 +80,10 @@ fractalia2/
 │   └── shaders/                # GLSL shader source files
 │       ├── vertex.vert         # Vertex shader (keyframe-based rendering)
 │       ├── fragment.frag       # Fragment shader
-│       ├── movement.comp       # GPU compute shader for entity movement (legacy)
 │       ├── movement_keyframe.comp # GPU compute shader for keyframe generation
 │       └── compiled/           # Compiled SPIR-V shaders
 │           ├── vertex.spv      # Compiled vertex shader
 │           ├── fragment.spv    # Compiled fragment shader
-│           ├── movement.spv    # Compiled compute shader (legacy)
 │           └── movement_keyframe.spv # Compiled keyframe shader
 ├── include/                    # Header files directory
 └── ../vendored/                # External libraries
@@ -155,7 +153,7 @@ The project uses Vulkan with dynamic function loading for cross-platform compati
 - Run `./compile-shaders.sh` to compile all shaders after making changes
 
 ### Adding New GPU Movement Patterns
-1. Add new `MOVEMENT_TYPE` constant in `movement.comp`
+1. Add new `MOVEMENT_TYPE` constant in `movement_keyframe.comp`
 2. Implement movement function in compute shader (e.g., `computeSpiral()`)
 3. Add to switch statement in `main()` function
 4. Update entity creation to use new movement type

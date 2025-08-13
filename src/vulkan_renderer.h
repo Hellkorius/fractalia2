@@ -92,7 +92,6 @@ private:
     void loadDrawingFunctions();
     void updateUniformBuffer(uint32_t currentImage);
     void updateInstanceBuffer(uint32_t currentFrame);
-    void dispatchCompute(VkCommandBuffer commandBuffer, float deltaTime);
     void dispatchKeyframeCompute(VkCommandBuffer commandBuffer, float futureTime, float deltaTime, uint32_t entityBatch);
     void initializeAllKeyframes();
     void transitionBufferLayout(VkCommandBuffer commandBuffer);

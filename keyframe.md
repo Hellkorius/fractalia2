@@ -23,7 +23,7 @@ Implemented a 100-frame look-ahead keyframe system to replace direct movement co
 - **No Interpolation**: Currently uses exact keyframe (alpha = 0.0) to avoid jitter
 
 ### 4. Renderer Integration
-- **Disabled Legacy Compute**: Commented out regular `movement.comp` dispatch
+- **Replaced Legacy Compute**: Now using keyframe system instead of per-frame compute
 - **Keyframe Initialization**: Computes all 100 keyframes for all entities on startup
 - **Staggered Runtime**: Updates only 1% of keyframes per frame after initialization
 

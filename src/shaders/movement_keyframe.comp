@@ -8,6 +8,19 @@ layout(local_size_x = 64) in;
 #define MOVEMENT_WAVE 2
 #define MOVEMENT_TRIANGLE_FORMATION 3
 
+// Transition system constants
+#define TRANSITION_DURATION 2.0  // Total transition time in seconds
+#define TRANSITION_TO_ORIGIN 0.0   // Phase 0: Moving to origin (0,0)
+#define TRANSITION_TO_TARGET 1.0   // Phase 1: Moving from origin to target center
+#define ORGANIC_TRANSITION_DURATION 1.0  // Organic transition time
+#define SPAWN_LERP_DURATION 0.5  // Time to lerp from spawn to pattern position
+
+// Entity states
+#define STATE_SPAWN_LERP 0.0
+#define STATE_NORMAL 1.0
+#define STATE_ANGEL_TRANSITION 2.0
+#define STATE_ORGANIC_TRANSITION 3.0
+
 // GPU entity structure - matches CPU-side GPUEntity
 struct GPUEntity {
     mat4 modelMatrix;        // Transform matrix
@@ -102,6 +115,33 @@ vec3 computeTriangleFormation(vec3 center, float amplitude, float frequency, flo
     return center + finalPosition;
 }
 
+// Smooth transition system - entities move to origin, then to new center (Angel Mode)
+vec3 computeTransitionMovement(vec3 currentPos, vec3 targetCenter, float transitionTime, float transitionPhase) {
+    float halfDuration = TRANSITION_DURATION * 0.5;
+    
+    if (transitionPhase < 0.5) {
+        // Phase 0: Move from current position to origin (0,0)
+        float t = clamp(transitionTime / halfDuration, 0.0, 1.0);
+        // Smooth easing function (ease-in-out)
+        t = t * t * (3.0 - 2.0 * t);
+        return mix(currentPos, vec3(0.0, 0.0, 0.0), t);
+    } else {
+        // Phase 1: Move from origin to target center
+        float t = clamp((transitionTime - halfDuration) / halfDuration, 0.0, 1.0);
+        // Smooth easing function (ease-in-out)
+        t = t * t * (3.0 - 2.0 * t);
+        return mix(vec3(0.0, 0.0, 0.0), targetCenter, t);
+    }
+}
+
+// Organic transition system - entities move directly to their target position in the new pattern
+vec3 computeOrganicTransition(vec3 currentPos, vec3 targetPos, float transitionTime) {
+    float t = clamp(transitionTime / ORGANIC_TRANSITION_DURATION, 0.0, 1.0);
+    // Smooth easing function (ease-in-out)
+    t = t * t * (3.0 - 2.0 * t);
+    return mix(currentPos, targetPos, t);
+}
+
 void main() {
     uint entityID = gl_GlobalInvocationID.x;
     
@@ -126,27 +166,139 @@ void main() {
     vec3 center = entity.movementParams1.xyz;
     uint movementType = uint(entity.movementParams1.w);
     
-    // Predict future position
-    float keyframeTime = pc.futureTime + timeOffset;
+    // Extract runtime state
+    float totalTime = entity.runtimeState.x;
+    bool initialized = entity.runtimeState.y > 0.5;
+    float stateTimer = entity.runtimeState.z;
+    float entityState = entity.runtimeState.w;
     
-    // Compute future position based on movement pattern
+    // Get current position from model matrix
+    vec3 currentPos = vec3(entity.modelMatrix[3][0], entity.modelMatrix[3][1], entity.modelMatrix[3][2]);
+    
+    // Predict future time
+    float keyframeTime = pc.futureTime + timeOffset;
+    float adjustedTime = keyframeTime;
+    
+    // Predict future state timer
+    float futureStateTimer = stateTimer + pc.deltaTime * 20.0; // Approximate 20 frames ahead
+    
     vec3 keyframePosition;
-    switch (movementType) {
-        case MOVEMENT_PETAL:
-            keyframePosition = computePetalMovement(center, amplitude, frequency, phase, keyframeTime);
-            break;
-        case MOVEMENT_ORBIT:
-            keyframePosition = computeOrbitMovement(center, amplitude, frequency, phase, keyframeTime);
-            break;
-        case MOVEMENT_WAVE:
-            keyframePosition = computeWaveMovement(center, amplitude, frequency, phase, keyframeTime);
-            break;
-        case MOVEMENT_TRIANGLE_FORMATION:
-            keyframePosition = computeTriangleFormation(center, amplitude, frequency, phase, keyframeTime);
-            break;
-        default:
-            keyframePosition = computePetalMovement(center, amplitude, frequency, phase, keyframeTime);
-            break;
+    
+    // State machine for keyframe prediction
+    if (!initialized || entityState == STATE_SPAWN_LERP) {
+        // Spawn lerp state: predict lerp to pattern position
+        
+        // Calculate where entity should be in movement pattern at future time
+        vec3 targetPatternPosition;
+        switch (movementType) {
+            case MOVEMENT_PETAL:
+                targetPatternPosition = computePetalMovement(center, amplitude, frequency, phase, adjustedTime);
+                break;
+            case MOVEMENT_ORBIT:
+                targetPatternPosition = computeOrbitMovement(center, amplitude, frequency, phase, adjustedTime);
+                break;
+            case MOVEMENT_WAVE:
+                targetPatternPosition = computeWaveMovement(center, amplitude, frequency, phase, adjustedTime);
+                break;
+            case MOVEMENT_TRIANGLE_FORMATION:
+                targetPatternPosition = computeTriangleFormation(center, amplitude, frequency, phase, adjustedTime);
+                break;
+            default:
+                targetPatternPosition = computePetalMovement(center, amplitude, frequency, phase, adjustedTime);
+                break;
+        }
+        
+        // Predict lerp progress at future time
+        float t = clamp(futureStateTimer / SPAWN_LERP_DURATION, 0.0, 1.0);
+        t = t * t * (3.0 - 2.0 * t); // Smooth step easing
+        
+        if (futureStateTimer >= SPAWN_LERP_DURATION) {
+            // Will be in normal state by keyframe time
+            keyframePosition = targetPatternPosition;
+        } else {
+            // Still lerping at keyframe time
+            keyframePosition = mix(center, targetPatternPosition, t);
+        }
+    }
+    else if (entityState == STATE_ANGEL_TRANSITION) {
+        // Angel transition state: predict transition movement
+        float transitionPhase = (futureStateTimer >= TRANSITION_DURATION * 0.5) ? 1.0 : 0.0;
+        
+        if (futureStateTimer >= TRANSITION_DURATION) {
+            // Will be in normal state by keyframe time - compute normal movement
+            vec3 transitionCenter = vec3(0.0, 0.0, 0.0); // After angel transition, center is origin
+            switch (movementType) {
+                case MOVEMENT_PETAL:
+                    keyframePosition = computePetalMovement(transitionCenter, amplitude, frequency, phase, adjustedTime);
+                    break;
+                case MOVEMENT_ORBIT:
+                    keyframePosition = computeOrbitMovement(transitionCenter, amplitude, frequency, phase, adjustedTime);
+                    break;
+                case MOVEMENT_WAVE:
+                    keyframePosition = computeWaveMovement(transitionCenter, amplitude, frequency, phase, adjustedTime);
+                    break;
+                case MOVEMENT_TRIANGLE_FORMATION:
+                    keyframePosition = computeTriangleFormation(transitionCenter, amplitude, frequency, phase, adjustedTime);
+                    break;
+                default:
+                    keyframePosition = computePetalMovement(transitionCenter, amplitude, frequency, phase, adjustedTime);
+                    break;
+            }
+        } else {
+            // Still transitioning at keyframe time
+            keyframePosition = computeTransitionMovement(currentPos, center, futureStateTimer, transitionPhase);
+        }
+    }
+    else if (entityState == STATE_ORGANIC_TRANSITION) {
+        // Organic transition state: predict organic movement
+        
+        // Calculate where entity should be in movement pattern at future time
+        vec3 targetPosition;
+        switch (movementType) {
+            case MOVEMENT_PETAL:
+                targetPosition = computePetalMovement(center, amplitude, frequency, phase, adjustedTime);
+                break;
+            case MOVEMENT_ORBIT:
+                targetPosition = computeOrbitMovement(center, amplitude, frequency, phase, adjustedTime);
+                break;
+            case MOVEMENT_WAVE:
+                targetPosition = computeWaveMovement(center, amplitude, frequency, phase, adjustedTime);
+                break;
+            case MOVEMENT_TRIANGLE_FORMATION:
+                targetPosition = computeTriangleFormation(center, amplitude, frequency, phase, adjustedTime);
+                break;
+            default:
+                targetPosition = computePetalMovement(center, amplitude, frequency, phase, adjustedTime);
+                break;
+        }
+        
+        if (futureStateTimer >= ORGANIC_TRANSITION_DURATION) {
+            // Will be in normal state by keyframe time
+            keyframePosition = targetPosition;
+        } else {
+            // Still transitioning at keyframe time
+            keyframePosition = computeOrganicTransition(currentPos, targetPosition, futureStateTimer);
+        }
+    }
+    else { // STATE_NORMAL or default
+        // Normal movement pattern computation
+        switch (movementType) {
+            case MOVEMENT_PETAL:
+                keyframePosition = computePetalMovement(center, amplitude, frequency, phase, adjustedTime);
+                break;
+            case MOVEMENT_ORBIT:
+                keyframePosition = computeOrbitMovement(center, amplitude, frequency, phase, adjustedTime);
+                break;
+            case MOVEMENT_WAVE:
+                keyframePosition = computeWaveMovement(center, amplitude, frequency, phase, adjustedTime);
+                break;
+            case MOVEMENT_TRIANGLE_FORMATION:
+                keyframePosition = computeTriangleFormation(center, amplitude, frequency, phase, adjustedTime);
+                break;
+            default:
+                keyframePosition = computePetalMovement(center, amplitude, frequency, phase, adjustedTime);
+                break;
+        }
     }
     
     // Calculate rotation based on amplitude (same as original movement shader)

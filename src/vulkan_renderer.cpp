@@ -150,10 +150,6 @@ bool VulkanRenderer::initialize(SDL_Window* window) {
         return false;
     }
     
-    if (!computePipeline->createMovementPipeline(gpuEntityManager->getComputeDescriptorSetLayout())) {
-        std::cerr << "Failed to create movement compute pipeline" << std::endl;
-        return false;
-    }
     
     if (!computePipeline->createKeyframePipeline(resources->getKeyframeDescriptorSetLayout())) {
         std::cerr << "Failed to create keyframe compute pipeline" << std::endl;
@@ -281,8 +277,7 @@ void VulkanRenderer::drawFrame() {
         return;
     }
     
-    // Use keyframe-based rendering instead of regular compute
-    // dispatchCompute(computeCommandBuffers[currentFrame], deltaTime);
+    // Using keyframe-based rendering
     
     // Update total simulation time
     totalTime += deltaTime;
@@ -572,35 +567,6 @@ void VulkanRenderer::uploadPendingGPUEntities() {
     }
 }
 
-void VulkanRenderer::dispatchCompute(VkCommandBuffer commandBuffer, float deltaTime) {
-    if (!gpuEntityManager || !computePipeline || gpuEntityManager->getEntityCount() == 0) {
-        return;
-    }
-    
-    // Bind compute pipeline
-    functionLoader->vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, computePipeline->getMovementPipeline());
-    
-    // Bind descriptor sets
-    VkDescriptorSet descriptorSet = gpuEntityManager->getCurrentComputeDescriptorSet();
-    functionLoader->vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, 
-                           computePipeline->getMovementPipelineLayout(), 0, 1, &descriptorSet, 0, nullptr);
-    
-    // Push constants for time and entity count
-    struct PushConstants {
-        float deltaTime;
-        uint32_t entityCount;
-    } pushConstants = { deltaTime, gpuEntityManager->getEntityCount() };
-    
-    functionLoader->vkCmdPushConstants(commandBuffer, computePipeline->getMovementPipelineLayout(),
-                      VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(PushConstants), &pushConstants);
-    
-    // Dispatch compute shader (64 threads per workgroup)
-    uint32_t workgroupCount = (gpuEntityManager->getEntityCount() + 63) / 64;
-    functionLoader->vkCmdDispatch(commandBuffer, workgroupCount, 1, 1);
-    
-    // Advance frame counter for next frame
-    gpuEntityManager->advanceFrame();
-}
 
 void VulkanRenderer::dispatchKeyframeCompute(VkCommandBuffer commandBuffer, float futureTime, float deltaTime, uint32_t entityBatch) {
     if (!gpuEntityManager || !computePipeline || gpuEntityManager->getEntityCount() == 0) {
