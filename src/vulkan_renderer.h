@@ -111,7 +111,6 @@ private:
     
     // GPU compute state
     float deltaTime = 0.0f;
-    float totalTime = 0.0f; // Accumulated simulation time
     
     // Key-frame look-ahead system
     static constexpr uint32_t KEYFRAME_LOOKAHEAD_FRAMES = 20;

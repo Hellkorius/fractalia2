@@ -279,13 +279,13 @@ void VulkanRenderer::drawFrame() {
     
     // Using keyframe-based rendering
     
-    // Update total simulation time
-    totalTime += deltaTime;
+    // Get current time from SDL instead of manual accumulation
+    float currentTime = SDL_GetTicks() * 0.001f; // Convert milliseconds to seconds
     
     // Staggered updates: only update entities whose ID matches current frame modulo
     // Each entity gets updated every KEYFRAME_LOOKAHEAD_FRAMES frames
     uint32_t entityBatch = frameCounter % KEYFRAME_LOOKAHEAD_FRAMES;
-    float futureTime = totalTime + KEYFRAME_LOOKAHEAD_FRAMES * deltaTime;
+    float futureTime = currentTime + KEYFRAME_LOOKAHEAD_FRAMES * deltaTime;
     
     dispatchKeyframeCompute(computeCommandBuffers[currentFrame], futureTime, deltaTime, entityBatch);
     
@@ -423,8 +423,9 @@ void VulkanRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t
     const auto& descriptorSets = resources->getDescriptorSets();
     functionLoader->vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->getPipelineLayout(), 0, 1, &descriptorSets[currentFrame], 0, nullptr);
 
-    // Push constants for vertex shader keyframe interpolation
-    static float lastPredictionTime = totalTime + KEYFRAME_LOOKAHEAD_FRAMES * deltaTime;
+    // Push constants for vertex shader
+    float currentTime = SDL_GetTicks() * 0.001f; // Current time from SDL
+    static float lastPredictionTime = currentTime + KEYFRAME_LOOKAHEAD_FRAMES * deltaTime;
     
     struct VertexPushConstants {
         float totalTime;            // Current simulation time
@@ -432,7 +433,7 @@ void VulkanRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t
         float predictionTime;       // Time the keyframes were predicted for
         uint32_t entityCount;       // Total number of entities
     } vertexPushConstants = { 
-        totalTime,
+        currentTime,
         deltaTime,
         lastPredictionTime,
         gpuEntityManager ? gpuEntityManager->getEntityCount() : 0
