@@ -13,7 +13,7 @@ Implemented a 100-frame look-ahead keyframe system to replace direct movement co
   - `color` (vec4): RGBA color values
 
 ### 2. Compute Pipeline Changes
-- **New Shader**: `movement_keyframe.comp` - generates keyframe data
+- **New Shader**: `movement.comp` - generates keyframe data
 - **Descriptor Sets**: Separate descriptor layout for entity + keyframe buffer binding
 - **Staggered Updates**: Only computes keyframes for `(entityID + frame) % 100 == 0` entities per frame
 

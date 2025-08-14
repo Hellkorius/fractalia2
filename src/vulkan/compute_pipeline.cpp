@@ -59,7 +59,7 @@ bool ComputePipeline::createKeyframePipeline(VkDescriptorSetLayout descriptorSet
     }
 
     // Load compute shader
-    auto computeShaderCode = readFile("shaders/compiled/movement_keyframe.spv");
+    auto computeShaderCode = readFile("shaders/compiled/movement.spv");
     VkShaderModule computeShaderModule = createShaderModule(computeShaderCode);
 
     if (computeShaderModule == VK_NULL_HANDLE) {

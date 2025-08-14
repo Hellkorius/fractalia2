@@ -80,11 +80,11 @@ fractalia2/
 │   └── shaders/                # GLSL shader source files
 │       ├── vertex.vert         # Vertex shader (keyframe-based rendering)
 │       ├── fragment.frag       # Fragment shader
-│       ├── movement_keyframe.comp # GPU compute shader for keyframe generation
+│       ├── movement.comp # GPU compute shader for keyframe generation
 │       └── compiled/           # Compiled SPIR-V shaders
 │           ├── vertex.spv      # Compiled vertex shader
 │           ├── fragment.spv    # Compiled fragment shader
-│           └── movement_keyframe.spv # Compiled keyframe shader
+│           └── movement.spv # Compiled keyframe shader
 ├── include/                    # Header files directory
 └── ../vendored/                # External libraries
     ├── SDL3-3.1.6/             # SDL3 source and binaries
@@ -104,7 +104,7 @@ fractalia2/
 ### Hybrid Keyframe System
 1. **Entity Creation**: CPU creates entities via `EntityFactory` with `Transform`, `Renderable`, `MovementPattern`
 2. **GPU Handover**: `GPUEntityManager.addEntitiesFromECS()` converts to `GPUEntity` format and uploads to entity buffer
-3. **Staggered Keyframe Updates**: `movement_keyframe.comp` updates 1/20th of entities per frame (90% compute reduction)
+3. **Staggered Keyframe Updates**: `movement.comp` updates 1/20th of entities per frame (90% compute reduction)
 4. **Real-time Rendering**: Vertex shader computes smooth movement in real-time using movement parameters
 5. **Hybrid Performance**: Massive compute savings with perfect visual smoothness
 
@@ -119,46 +119,6 @@ struct GPUEntity {
 };
 ```
 
-### Movement Patterns (Extensible)
-- **MOVEMENT_PETAL** (0): Smooth radial oscillation from center
-- **MOVEMENT_ORBIT** (1): Circular orbit around center point
-- **MOVEMENT_WAVE** (2): Sinusoidal wave motion
-- Easy to add new patterns by extending the compute shader switch statement
-
-### Critical Implementation Details
-- **Staggered Updates**: Only updates keyframes for entities where `(entityID % 20) == frameCounter % 20`
-- **20-Frame Buffer**: Reduced from 100 to 20 frames (80% memory reduction)
-- **Vertex Computation**: Real-time movement calculation in vertex shader for perfect smoothness
-- **Hybrid Architecture**: Compute optimization separate from rendering quality
-- **Centralized Function Loading**: `VulkanFunctionLoader` provides single source of truth for all Vulkan function pointers
-- **Shader Paths**: `movement_keyframe.spv` for staggered updates, `vertex.vert` for real-time rendering
-
-### Performance Characteristics
-- **Current Scale**: 90,000 entities at 60 FPS with smooth movement and dynamic colors
-- **Compute Efficiency**: 90% reduction in GPU compute workload via staggered updates
-- **Memory Efficiency**: 80% reduction in keyframe buffer size (20 vs 100 frames)
-- **Rendering Quality**: Perfect smoothness via real-time vertex shader computation
-- **Theoretical Limit**: 131k entities (16MB buffer / 128 bytes per entity)
-
-
-### Vulkan Rendering
-The project uses Vulkan with dynamic function loading for cross-platform compatibility:
-- **SDL-Vulkan Integration**: Pure Vulkan presentation, no SDL swap functions
-- **Low-Latency Optimizations**: MAILBOX/IMMEDIATE present modes, optimized fence waits
-- **Frame Synchronization**: Two-tier timeout strategy (immediate check → 16ms wait)
-- **Swapchain Buffering**: Optimized image count for smooth 60fps presentation
-- Vulkan functions are loaded at runtime using SDL3's Vulkan loader
-- Graphics + Compute pipelines with synchronized command buffer execution
-- Shaders are written in GLSL and compiled to SPIR-V using `glslangValidator`
-- Run `./compile-shaders.sh` to compile all shaders after making changes
-
-### Adding New GPU Movement Patterns
-1. Add new `MOVEMENT_TYPE` constant in `movement_keyframe.comp`
-2. Implement movement function in compute shader (e.g., `computeSpiral()`)
-3. Add to switch statement in `main()` function
-4. Update entity creation to use new movement type
-5. Recompile shaders with `./compile-shaders.sh`
-
 ### GPU Entity Development
 1. **CPU Entity Creation**: Use `EntityFactory.createSwarm()` or `createMovingEntity()`
 2. **GPU Upload**: Call `renderer.getGPUEntityManager()->addEntitiesFromECS(entities)`
@@ -172,9 +132,3 @@ The project uses Vulkan with dynamic function loading for cross-platform compati
 - **Synchronization**: Commands processed at GPU fence sync point (same timing as original workaround)
 - **Performance**: Pre-allocated buffers, atomic flags, batch processing limits
 - **Error Handling**: Validation, exception handling, monitoring statistics
-
-### Shader Development
-1. Edit GLSL files in `src/shaders/` (vertex.vert, fragment.frag, movement_keyframe.comp)
-2. Run `./compile-shaders.sh` to compile to SPIR-V
-3. Rebuild project to include updated shaders
-4. **Note**: Keyframe shader path is `shaders/compiled/movement_keyframe.spv`
