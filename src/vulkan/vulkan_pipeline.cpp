@@ -216,8 +216,8 @@ std::array<VkVertexInputBindingDescription, 2> VulkanPipeline::getVertexBindingD
     return bindingDescriptions;
 }
 
-std::array<VkVertexInputAttributeDescription, 10> VulkanPipeline::getVertexAttributeDescriptions() {
-    std::array<VkVertexInputAttributeDescription, 10> attributeDescriptions{};
+std::array<VkVertexInputAttributeDescription, 7> VulkanPipeline::getVertexAttributeDescriptions() {
+    std::array<VkVertexInputAttributeDescription, 7> attributeDescriptions{};
     
     // Vertex attributes (binding 0)
     attributeDescriptions[0].binding = 0;
@@ -257,24 +257,6 @@ std::array<VkVertexInputAttributeDescription, 10> VulkanPipeline::getVertexAttri
     attributeDescriptions[6].location = 6;
     attributeDescriptions[6].format = VK_FORMAT_R32G32B32A32_SFLOAT;
     attributeDescriptions[6].offset = offsetof(GPUEntity, color);
-    
-    // movementParams0 - location 7 (16 bytes)
-    attributeDescriptions[7].binding = 1;
-    attributeDescriptions[7].location = 7;
-    attributeDescriptions[7].format = VK_FORMAT_R32G32B32A32_SFLOAT;
-    attributeDescriptions[7].offset = offsetof(GPUEntity, movementParams0);
-    
-    // movementParams1 - location 8 (16 bytes)
-    attributeDescriptions[8].binding = 1;
-    attributeDescriptions[8].location = 8;
-    attributeDescriptions[8].format = VK_FORMAT_R32G32B32A32_SFLOAT;
-    attributeDescriptions[8].offset = offsetof(GPUEntity, movementParams1);
-    
-    // runtimeState - location 9 (16 bytes)
-    attributeDescriptions[9].binding = 1;
-    attributeDescriptions[9].location = 9;
-    attributeDescriptions[9].format = VK_FORMAT_R32G32B32A32_SFLOAT;
-    attributeDescriptions[9].offset = offsetof(GPUEntity, runtimeState);
     
     return attributeDescriptions;
 }
@@ -374,18 +356,13 @@ bool VulkanPipeline::createGraphicsPipeline() {
     dynamicState.dynamicStateCount = static_cast<uint32_t>(dynamicStates.size());
     dynamicState.pDynamicStates = dynamicStates.data();
 
-    // Add push constants for keyframe interpolation
-    VkPushConstantRange pushConstantRange{};
-    pushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-    pushConstantRange.offset = 0;
-    pushConstantRange.size = sizeof(uint32_t) + sizeof(float) + sizeof(uint32_t); // currentFrame + alpha + entityCount
-    
+    // No push constants needed for simplified vertex shader
     VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
     pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
     pipelineLayoutInfo.setLayoutCount = 1;
     pipelineLayoutInfo.pSetLayouts = &descriptorSetLayout;
-    pipelineLayoutInfo.pushConstantRangeCount = 1;
-    pipelineLayoutInfo.pPushConstantRanges = &pushConstantRange;
+    pipelineLayoutInfo.pushConstantRangeCount = 0;
+    pipelineLayoutInfo.pPushConstantRanges = nullptr;
 
     if (loader->vkCreatePipelineLayout(context->getDevice(), &pipelineLayoutInfo, nullptr, &pipelineLayout) != VK_SUCCESS) {
         std::cerr << "Failed to create pipeline layout" << std::endl;

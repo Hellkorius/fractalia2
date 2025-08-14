@@ -591,19 +591,13 @@ bool VulkanResources::createKeyframeDescriptorPool() {
 }
 
 bool VulkanResources::createKeyframeDescriptorSetLayout() {
-    std::array<VkDescriptorSetLayoutBinding, 2> bindings{};
+    std::array<VkDescriptorSetLayoutBinding, 1> bindings{};
     
-    // Entity buffer binding (binding = 0, read-only)
+    // Entity buffer binding (binding = 0, read/write)
     bindings[0].binding = 0;
     bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
     bindings[0].descriptorCount = 1;
     bindings[0].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
-    
-    // Keyframe buffer binding (binding = 1, write-only)
-    bindings[1].binding = 1;
-    bindings[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    bindings[1].descriptorCount = 1;
-    bindings[1].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
     
     VkDescriptorSetLayoutCreateInfo layoutInfo{};
     layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
@@ -630,9 +624,9 @@ bool VulkanResources::createKeyframeDescriptorSets() {
 }
 
 void VulkanResources::updateKeyframeDescriptorSet(VkBuffer entityBuffer) {
-    std::array<VkWriteDescriptorSet, 2> descriptorWrites{};
+    std::array<VkWriteDescriptorSet, 1> descriptorWrites{};
     
-    // Entity buffer binding (binding = 0, read-only)
+    // Entity buffer binding (binding = 0, read/write)
     VkDescriptorBufferInfo entityBufferInfo{};
     entityBufferInfo.buffer = entityBuffer;
     entityBufferInfo.offset = 0;
@@ -645,20 +639,6 @@ void VulkanResources::updateKeyframeDescriptorSet(VkBuffer entityBuffer) {
     descriptorWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
     descriptorWrites[0].descriptorCount = 1;
     descriptorWrites[0].pBufferInfo = &entityBufferInfo;
-    
-    // Keyframe buffer binding (binding = 1, write-only)
-    VkDescriptorBufferInfo keyframeBufferInfo{};
-    keyframeBufferInfo.buffer = keyframeBuffer;
-    keyframeBufferInfo.offset = 0;
-    keyframeBufferInfo.range = MAX_KEYFRAMES * KEYFRAME_SIZE;
-    
-    descriptorWrites[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    descriptorWrites[1].dstSet = keyframeDescriptorSet;
-    descriptorWrites[1].dstBinding = 1;
-    descriptorWrites[1].dstArrayElement = 0;
-    descriptorWrites[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    descriptorWrites[1].descriptorCount = 1;
-    descriptorWrites[1].pBufferInfo = &keyframeBufferInfo;
     
     this->vkUpdateDescriptorSets(context->getDevice(), descriptorWrites.size(), descriptorWrites.data(), 0, nullptr);
 }

@@ -92,8 +92,7 @@ private:
     void loadDrawingFunctions();
     void updateUniformBuffer(uint32_t currentImage);
     void updateInstanceBuffer(uint32_t currentFrame);
-    void dispatchKeyframeCompute(VkCommandBuffer commandBuffer, float futureTime, float deltaTime, uint32_t entityBatch);
-    void initializeAllKeyframes();
+    void dispatchMovementCompute(VkCommandBuffer commandBuffer);
     void transitionBufferLayout(VkCommandBuffer commandBuffer);
     bool initializeFrameFences();
     void cleanupPartialFrameFences();
@@ -112,9 +111,6 @@ private:
     // GPU compute state
     float deltaTime = 0.0f;
     
-    // Key-frame look-ahead system
-    static constexpr uint32_t KEYFRAME_LOOKAHEAD_FRAMES = 20;
-    uint32_t frameCounter = 0;
     
     // Per-frame fence management for independent compute/graphics timelines
     struct FrameData {

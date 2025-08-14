@@ -37,24 +37,24 @@ void ComputePipeline::cleanup() {
 }
 
 
-bool ComputePipeline::createKeyframePipeline(VkDescriptorSetLayout descriptorSetLayout) {
+bool ComputePipeline::createMovementPipeline(VkDescriptorSetLayout descriptorSetLayout) {
     // Create pipeline layout
     VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
     pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
     pipelineLayoutInfo.setLayoutCount = 1;
     pipelineLayoutInfo.pSetLayouts = &descriptorSetLayout;
     
-    // Add push constants for keyframe generation (currentFrame, alpha, entityCount, totalTime)
+    // Add push constants for entity count only
     VkPushConstantRange pushConstantRange{};
     pushConstantRange.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
     pushConstantRange.offset = 0;
-    pushConstantRange.size = sizeof(uint32_t) + sizeof(float) + sizeof(uint32_t) + sizeof(float); // currentFrame + alpha + entityCount + totalTime
+    pushConstantRange.size = sizeof(uint32_t) * 4; // entityCount + 3 padding
     
     pipelineLayoutInfo.pushConstantRangeCount = 1;
     pipelineLayoutInfo.pPushConstantRanges = &pushConstantRange;
 
     if (loader->vkCreatePipelineLayout(context->getDevice(), &pipelineLayoutInfo, nullptr, &keyframePipelineLayout) != VK_SUCCESS) {
-        std::cerr << "Failed to create keyframe compute pipeline layout!" << std::endl;
+        std::cerr << "Failed to create movement compute pipeline layout!" << std::endl;
         return false;
     }
 
@@ -63,7 +63,7 @@ bool ComputePipeline::createKeyframePipeline(VkDescriptorSetLayout descriptorSet
     VkShaderModule computeShaderModule = createShaderModule(computeShaderCode);
 
     if (computeShaderModule == VK_NULL_HANDLE) {
-        std::cerr << "Failed to create keyframe compute shader module!" << std::endl;
+        std::cerr << "Failed to create movement compute shader module!" << std::endl;
         return false;
     }
 
@@ -80,7 +80,7 @@ bool ComputePipeline::createKeyframePipeline(VkDescriptorSetLayout descriptorSet
     pipelineInfo.layout = keyframePipelineLayout;
 
     if (loader->vkCreateComputePipelines(context->getDevice(), VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &keyframePipeline) != VK_SUCCESS) {
-        std::cerr << "Failed to create keyframe compute pipeline!" << std::endl;
+        std::cerr << "Failed to create movement compute pipeline!" << std::endl;
         loader->vkDestroyShaderModule(context->getDevice(), computeShaderModule, nullptr);
         return false;
     }

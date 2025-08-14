@@ -17,11 +17,11 @@ public:
     void cleanup();
     
     
-    // Create compute pipeline for keyframe generation
-    bool createKeyframePipeline(VkDescriptorSetLayout descriptorSetLayout);
+    // Create compute pipeline for entity movement
+    bool createMovementPipeline(VkDescriptorSetLayout descriptorSetLayout);
     
-    VkPipeline getKeyframePipeline() const { return keyframePipeline; }
-    VkPipelineLayout getKeyframePipelineLayout() const { return keyframePipelineLayout; }
+    VkPipeline getMovementPipeline() const { return keyframePipeline; }
+    VkPipelineLayout getMovementPipelineLayout() const { return keyframePipelineLayout; }
 
 private:
     VulkanContext* context = nullptr;

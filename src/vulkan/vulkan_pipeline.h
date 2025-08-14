@@ -43,5 +43,5 @@ private:
     // Note: readFile removed - now using VulkanUtils::readFile
     
     std::array<VkVertexInputBindingDescription, 2> getVertexBindingDescriptions();
-    std::array<VkVertexInputAttributeDescription, 10> getVertexAttributeDescriptions();
+    std::array<VkVertexInputAttributeDescription, 7> getVertexAttributeDescriptions();
 };

@@ -151,8 +151,8 @@ bool VulkanRenderer::initialize(SDL_Window* window) {
     }
     
     
-    if (!computePipeline->createKeyframePipeline(resources->getKeyframeDescriptorSetLayout())) {
-        std::cerr << "Failed to create keyframe compute pipeline" << std::endl;
+    if (!computePipeline->createMovementPipeline(resources->getKeyframeDescriptorSetLayout())) {
+        std::cerr << "Failed to create movement compute pipeline" << std::endl;
         return false;
     }
     
@@ -277,22 +277,10 @@ void VulkanRenderer::drawFrame() {
         return;
     }
     
-    // Using keyframe-based rendering
-    
-    // Get current time from SDL instead of manual accumulation
-    float currentTime = SDL_GetTicks() * 0.001f; // Convert milliseconds to seconds
-    
-    // Staggered updates: only update entities whose ID matches current frame modulo
-    // Each entity gets updated every KEYFRAME_LOOKAHEAD_FRAMES frames
-    uint32_t entityBatch = frameCounter % KEYFRAME_LOOKAHEAD_FRAMES;
-    float futureTime = currentTime + KEYFRAME_LOOKAHEAD_FRAMES * deltaTime;
-    
-    dispatchKeyframeCompute(computeCommandBuffers[currentFrame], futureTime, deltaTime, entityBatch);
+    // Dispatch movement compute
+    dispatchMovementCompute(computeCommandBuffers[currentFrame]);
     
     transitionBufferLayout(computeCommandBuffers[currentFrame]);
-    
-    // Update frame counter
-    frameCounter++;
     
     if (functionLoader->vkEndCommandBuffer(computeCommandBuffers[currentFrame]) != VK_SUCCESS) {
         std::cerr << "Failed to record compute command buffer" << std::endl;
@@ -423,24 +411,7 @@ void VulkanRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t
     const auto& descriptorSets = resources->getDescriptorSets();
     functionLoader->vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->getPipelineLayout(), 0, 1, &descriptorSets[currentFrame], 0, nullptr);
 
-    // Push constants for vertex shader
-    float currentTime = SDL_GetTicks() * 0.001f; // Current time from SDL
-    static float lastPredictionTime = currentTime + KEYFRAME_LOOKAHEAD_FRAMES * deltaTime;
-    
-    struct VertexPushConstants {
-        float totalTime;            // Current simulation time
-        float deltaTime;            // Time per frame
-        float predictionTime;       // Time the keyframes were predicted for
-        uint32_t entityCount;       // Total number of entities
-    } vertexPushConstants = { 
-        currentTime,
-        deltaTime,
-        lastPredictionTime,
-        gpuEntityManager ? gpuEntityManager->getEntityCount() : 0
-    };
-    
-    functionLoader->vkCmdPushConstants(commandBuffer, pipeline->getPipelineLayout(),
-                      VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(VertexPushConstants), &vertexPushConstants);
+    // No push constants needed for simplified vertex shader
 
     VkViewport viewport{};
     viewport.x = 0.0f;
@@ -507,6 +478,14 @@ void VulkanRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t
     
     // Render triangles using GPU entity buffer
     uint32_t gpuEntityCount = gpuEntityManager ? gpuEntityManager->getEntityCount() : 0;
+    
+    // Debug output
+    static uint32_t lastGpuEntityCount = 0;
+    if (gpuEntityCount != lastGpuEntityCount) {
+        std::cout << "GPU Entity Count: " << gpuEntityCount << std::endl;
+        lastGpuEntityCount = gpuEntityCount;
+    }
+    
     if (gpuEntityCount > 0) {
         VkBuffer triangleVertexBuffers[] = {resources->getTriangleVertexBuffer(), gpuEntityManager->getCurrentEntityBuffer()};
         VkDeviceSize offsets[] = {0, 0}; // GPU entities start at beginning of buffer
@@ -536,7 +515,8 @@ void VulkanRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t
 	}
 
     // Emergency test: Draw a simple triangle without instancing
-    if (triangleCount == 0 && squareCount == 0) {
+    if (triangleCount == 0 && squareCount == 0 && gpuEntityCount == 0) {
+        std::cout << "Drawing emergency triangle - no entities found" << std::endl;
         VkBuffer testVertexBuffer = resources->getTriangleVertexBuffer();
         VkDeviceSize testOffset = 0;
         functionLoader->vkCmdBindVertexBuffers(commandBuffer, 0, 1, &testVertexBuffer, &testOffset);
@@ -558,118 +538,57 @@ void VulkanRenderer::loadDrawingFunctions() {
 
 void VulkanRenderer::uploadPendingGPUEntities() {
     if (gpuEntityManager) {
-        bool hadEntities = gpuEntityManager->getEntityCount() > 0;
+        uint32_t beforeCount = gpuEntityManager->getEntityCount();
         gpuEntityManager->uploadPendingEntities();
+        uint32_t afterCount = gpuEntityManager->getEntityCount();
         
-        // Initialize keyframes when entities are first uploaded
-        if (!hadEntities && gpuEntityManager->getEntityCount() > 0) {
-            initializeAllKeyframes();
+        if (afterCount != beforeCount) {
+            std::cout << "Uploaded entities: " << beforeCount << " -> " << afterCount << std::endl;
         }
     }
 }
 
 
-void VulkanRenderer::dispatchKeyframeCompute(VkCommandBuffer commandBuffer, float futureTime, float deltaTime, uint32_t entityBatch) {
+void VulkanRenderer::dispatchMovementCompute(VkCommandBuffer commandBuffer) {
     if (!gpuEntityManager || !computePipeline || gpuEntityManager->getEntityCount() == 0) {
         return;
     }
     
-    // Bind keyframe compute pipeline
-    functionLoader->vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, computePipeline->getKeyframePipeline());
+    // Bind movement compute pipeline
+    functionLoader->vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, computePipeline->getMovementPipeline());
     
-    // Bind keyframe descriptor set
+    // Bind movement descriptor set
     VkDescriptorSet keyframeDescriptorSet = resources->getKeyframeDescriptorSet();
     functionLoader->vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, 
-                           computePipeline->getKeyframePipelineLayout(), 0, 1, &keyframeDescriptorSet, 0, nullptr);
+                           computePipeline->getMovementPipelineLayout(), 0, 1, &keyframeDescriptorSet, 0, nullptr);
     
-    // Push constants for keyframe generation
-    struct KeyframePushConstants {
-        uint32_t entityBatch;       // Which entity batch to update (0-19)
-        float deltaTime;            // Time per frame
+    // Push constants for movement computation
+    struct MovementPushConstants {
         uint32_t entityCount;       // Total number of entities
-        float futureTime;           // Future prediction time
+        uint32_t padding1;          // Alignment
+        uint32_t padding2;          // Alignment
+        uint32_t padding3;          // Alignment
     } pushConstants = { 
-        entityBatch, 
-        deltaTime,
         gpuEntityManager->getEntityCount(),
-        futureTime 
+        0, 0, 0
     };
     
-    functionLoader->vkCmdPushConstants(commandBuffer, computePipeline->getKeyframePipelineLayout(),
-                      VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(KeyframePushConstants), &pushConstants);
+    functionLoader->vkCmdPushConstants(commandBuffer, computePipeline->getMovementPipelineLayout(),
+                      VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(MovementPushConstants), &pushConstants);
     
     // Dispatch compute shader (64 threads per workgroup)
     uint32_t workgroupCount = (gpuEntityManager->getEntityCount() + 63) / 64;
+    
+    // Debug output
+    static uint32_t lastWorkgroupCount = 0;
+    if (workgroupCount != lastWorkgroupCount) {
+        std::cout << "Dispatching compute: " << workgroupCount << " workgroups for " << gpuEntityManager->getEntityCount() << " entities" << std::endl;
+        lastWorkgroupCount = workgroupCount;
+    }
+    
     functionLoader->vkCmdDispatch(commandBuffer, workgroupCount, 1, 1);
 }
 
-void VulkanRenderer::initializeAllKeyframes() {
-    if (!gpuEntityManager || !computePipeline || gpuEntityManager->getEntityCount() == 0) {
-        return;
-    }
-    
-    // Create a temporary command buffer for keyframe initialization
-    VkCommandBufferAllocateInfo allocInfo{};
-    allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    allocInfo.commandPool = sync->getCommandPool();
-    allocInfo.commandBufferCount = 1;
-    
-    VkCommandBuffer initCommandBuffer;
-    if (functionLoader->vkAllocateCommandBuffers(context->getDevice(), &allocInfo, &initCommandBuffer) != VK_SUCCESS) {
-        std::cerr << "Failed to allocate keyframe initialization command buffer" << std::endl;
-        return;
-    }
-    
-    VkCommandBufferBeginInfo beginInfo{};
-    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-    
-    if (functionLoader->vkBeginCommandBuffer(initCommandBuffer, &beginInfo) != VK_SUCCESS) {
-        std::cerr << "Failed to begin keyframe initialization command buffer" << std::endl;
-        return;
-    }
-    
-    // Compute all keyframe slots sequentially at startup
-    float baseTime = 0.0f;
-    float deltaTime = 1.0f / 60.0f; // Assume 60 FPS
-    
-    for (uint32_t slot = 0; slot < KEYFRAME_LOOKAHEAD_FRAMES; slot++) {
-        dispatchKeyframeCompute(initCommandBuffer, baseTime, deltaTime, slot);
-        
-        // Add memory barrier between dispatches
-        VkMemoryBarrier barrier{};
-        barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
-        barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-        barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-        
-        functionLoader->vkCmdPipelineBarrier(initCommandBuffer,
-            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-            0, 1, &barrier, 0, nullptr, 0, nullptr);
-    }
-    
-    if (functionLoader->vkEndCommandBuffer(initCommandBuffer) != VK_SUCCESS) {
-        std::cerr << "Failed to end keyframe initialization command buffer" << std::endl;
-        return;
-    }
-    
-    // Submit and wait
-    VkSubmitInfo submitInfo{};
-    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    submitInfo.commandBufferCount = 1;
-    submitInfo.pCommandBuffers = &initCommandBuffer;
-    
-    if (functionLoader->vkQueueSubmit(context->getGraphicsQueue(), 1, &submitInfo, VK_NULL_HANDLE) != VK_SUCCESS) {
-        std::cerr << "Failed to submit keyframe initialization" << std::endl;
-        return;
-    }
-    
-    functionLoader->vkQueueWaitIdle(context->getGraphicsQueue());
-    
-    // Clean up
-    functionLoader->vkFreeCommandBuffers(context->getDevice(), sync->getCommandPool(), 1, &initCommandBuffer);
-}
 
 void VulkanRenderer::transitionBufferLayout(VkCommandBuffer commandBuffer) {
     if (!gpuEntityManager || gpuEntityManager->getEntityCount() == 0) {

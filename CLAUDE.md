@@ -42,10 +42,8 @@ The project uses a hybrid approach:
 
 ```
 fractalia2/
-├── CMakeLists.txt              # CMake build configuration for cross-compilation
+├── CMakeLists.txt              # CMake build configuration for cross-compilation. Recursive glob.
 ├── Controls.md 				
-├── compile-shaders.sh          # Shader compilation script
-├── mingw-w64-toolchain.cmake   # Generated CMake toolchain file
 ├── src/
 │   ├── main.cpp                # Main application entry point
 	├─ PolygonFactory.*			# Polygon generation
@@ -78,13 +76,9 @@ fractalia2/
 		├── simple_control_system.* // input handling + GPU entity operations
 		└── systems_common.hpp	// shared headers for system files
 │   └── shaders/                # GLSL shader source files
-│       ├── vertex.vert         # Vertex shader (keyframe-based rendering)
+│       ├── vertex.vert         # Pure rendering - just applies the pre-computed transforms
 │       ├── fragment.frag       # Fragment shader
-│       ├── movement.comp # GPU compute shader for keyframe generation
-│       └── compiled/           # Compiled SPIR-V shaders
-│           ├── vertex.spv      # Compiled vertex shader
-│           ├── fragment.spv    # Compiled fragment shader
-│           └── movement.spv # Compiled keyframe shader
+│       ├── movement.comp # GPU compute shader for movement
 ├── include/                    # Header files directory
 └── ../vendored/                # External libraries
     ├── SDL3-3.1.6/             # SDL3 source and binaries
@@ -100,13 +94,6 @@ fractalia2/
 ## Development Notes
 
 ## GPU Compute Architecture
-
-### Hybrid Keyframe System
-1. **Entity Creation**: CPU creates entities via `EntityFactory` with `Transform`, `Renderable`, `MovementPattern`
-2. **GPU Handover**: `GPUEntityManager.addEntitiesFromECS()` converts to `GPUEntity` format and uploads to entity buffer
-3. **Staggered Keyframe Updates**: `movement.comp` updates 1/20th of entities per frame (90% compute reduction)
-4. **Real-time Rendering**: Vertex shader computes smooth movement in real-time using movement parameters
-5. **Hybrid Performance**: Massive compute savings with perfect visual smoothness
 
 ### GPUEntity Structure (128 bytes)
 ```cpp

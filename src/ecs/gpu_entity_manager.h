@@ -21,8 +21,8 @@ struct GPUEntity {
     static GPUEntity fromECS(const Transform& transform, const Renderable& renderable, const MovementPattern& pattern) {
         GPUEntity entity{};
         
-        // Copy transform matrix
-        entity.modelMatrix = transform.getMatrix();
+        // Initialize with identity matrix - compute shader will update position
+        entity.modelMatrix = glm::mat4(1.0f);
         
         // Copy color
         entity.color = renderable.color;
@@ -32,7 +32,7 @@ struct GPUEntity {
             pattern.amplitude,
             pattern.frequency, 
             pattern.phase,
-            pattern.timeOffset
+            pattern.frequency * 0.05f  // Convert frequency to speed
         );
         
         entity.movementParams1 = glm::vec4(
@@ -44,10 +44,10 @@ struct GPUEntity {
         
         // Initialize runtime state
         entity.runtimeState = glm::vec4(
-            pattern.totalTime,
+            0.0f,  // angle - start at 0
             pattern.initialized ? 1.0f : 0.0f,
-            -1.0f, // transitionTime: -1 means no transition
-            0.0f   // transitionPhase
+            0.0f,  // reserved
+            0.0f   // reserved
         );
         
         return entity;
