@@ -5,28 +5,23 @@ layout(binding = 0) uniform UniformBufferObject {
     mat4 proj;
 } ubo;
 
-// Keyframe buffer for position + rotation + color data
-layout(binding = 1, std430) readonly buffer KeyframeBuffer {
-    float keyframes[]; // Raw float array: position(3) + rotation(1) + color(4) per keyframe
-};
-
-// Push constants for keyframe interpolation
+// Push constants
 layout(push_constant) uniform PushConstants {
     float totalTime;        // Current simulation time
     float deltaTime;        // Time per frame
-    float predictionTime;   // Time the keyframes were predicted for
+    float predictionTime;   // Unused - kept for compatibility
     uint entityCount;       // Total number of entities
 } pc;
 
 layout(location = 0) in vec3 inPosition;
 layout(location = 1) in vec3 inColor;
 
-// GPU Entity instance data (matches GPUEntity struct from compute shader)
-layout(location = 2) in vec4 instanceMatrix0;    // modelMatrix row 0 (for rotation/scale only)
-layout(location = 3) in vec4 instanceMatrix1;    // modelMatrix row 1  
-layout(location = 4) in vec4 instanceMatrix2;    // modelMatrix row 2
-layout(location = 5) in vec4 instanceMatrix3;    // modelMatrix row 3 (position ignored, using keyframes)
-layout(location = 6) in vec4 instanceColor;      // color
+// GPU Entity instance data (updated by compute shader each frame)
+layout(location = 2) in vec4 instanceMatrix0;    // modelMatrix row 0 (unused)
+layout(location = 3) in vec4 instanceMatrix1;    // modelMatrix row 1 (unused) 
+layout(location = 4) in vec4 instanceMatrix2;    // modelMatrix row 2 (unused)
+layout(location = 5) in vec4 instanceMatrix3;    // modelMatrix row 3 (unused)
+layout(location = 6) in vec4 instanceColor;      // color (unused)
 layout(location = 7) in vec4 movementParams0;    // amplitude, frequency, phase, timeOffset
 layout(location = 8) in vec4 movementParams1;    // center.xyz, movementType
 layout(location = 9) in vec4 runtimeState;       // totalTime, initialized, reserved, reserved
@@ -105,10 +100,7 @@ vec3 computeTriangleFormation(vec3 center, float amplitude, float frequency, flo
 }
 
 void main() {
-    // Get entity ID from instance index
-    uint entityID = gl_InstanceIndex;
-    
-    // Extract movement parameters from instance data
+    // Read movement parameters (updated by compute shader)
     float amplitude = movementParams0.x;
     float frequency = movementParams0.y;
     float phase = movementParams0.z;
@@ -116,7 +108,7 @@ void main() {
     vec3 center = movementParams1.xyz;
     uint movementType = uint(movementParams1.w);
     
-    // Compute current real-time position
+    // Calculate current position using updated parameters
     float currentTime = pc.totalTime + timeOffset;
     vec3 currentPos;
     switch (movementType) {
@@ -137,16 +129,15 @@ void main() {
             break;
     }
     
-    // Compute current rotation and color
+    // Calculate rotation and color
     float rotationSpeed = amplitude * 0.1;
     float currentRotation = currentTime * rotationSpeed;
     
-    // Generate current dynamic color
     float hue = mod(phase + currentTime * 0.5, 6.28318530718) / 6.28318530718;
     float saturation = 0.7 + 0.3 * sin(frequency * currentTime);
     float brightness = 0.8 + 0.2 * sin(amplitude * currentTime * 0.5);
     
-    // Convert HSV to RGB
+    // HSV to RGB conversion
     float c = brightness * saturation;
     float x = c * (1.0 - abs(mod(hue * 6.0, 2.0) - 1.0));
     float m = brightness - c;
@@ -159,12 +150,7 @@ void main() {
     else if (hue < 5.0/6.0) rgb = vec3(x, 0, c);
     else rgb = vec3(c, 0, x);
     
-    vec4 currentColor = vec4(rgb + m, 1.0);
-    
-    // Use current real-time values for perfectly smooth movement
-    // The keyframe system now only provides computational savings, not rendering
-    
-    // Build transform matrix with current rotation and position
+    // Build final transform matrix
     float cosR = cos(currentRotation);
     float sinR = sin(currentRotation);
     
@@ -176,5 +162,5 @@ void main() {
     );
     
     gl_Position = ubo.proj * ubo.view * transformMatrix * vec4(inPosition, 1.0);
-    fragColor = currentColor.rgb;
+    fragColor = (rgb + m);
 }
