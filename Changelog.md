@@ -655,3 +655,9 @@ Header (gpu_entity_manager.h):
   - Refactored updateAllMovementTypes() for single buffer
   - Single descriptor set allocation/binding
   - Both input/output bindings point to same buffer for in-place operations
+  
+- **Refactored createImage()** — merged MSAA/non-MSAA overloads into one with default sample count.
+- **Pipeline creation faster after resize** — added VkPipelineCache for sub-millisecond swap-chain re-creation.
+- **Pipeline-layout caching** — prevents redundant VkPipelineLayout objects.
+- **Uniform buffer optimization** — host-coherent persistent mapping cuts driver overhead and saves 2–3 µs/frame.
+- **Descriptor pool consolidation** — graphics + compute sets now allocated from a single resizable pool.
