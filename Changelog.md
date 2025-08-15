@@ -676,3 +676,14 @@ Fencing:
   2. Replaced bespoke FrameData struct with std::array<VkFence, MAX_FRAMES_IN_FLIGHT>
   3. Better resource management: Automatic cleanup via destructor, proper exception safety
   4. Cleaner interface: Type-safe fence access with clear frame indexing
+  
+  add CommandExecutor for GPU buffer copies
+
+- Introduced lightweight CommandExecutor class holding refs to VulkanContext and VkCommandPool
+- Implemented copyBufferToBuffer with single-time command buffers and full validation
+- Integrated CommandExecutor into ResourceContext as a direct member with init/cleanup
+- Replaced ResourceContext::copyBufferToBuffer stub with delegation to CommandExecutor
+- Updated initialization to receive command pool from VulkanSync
+- Fixed compilation via direct header includes for a clean build
+
+ResourceContext can now perform staging buffer copies using VulkanSync’s command pool.
