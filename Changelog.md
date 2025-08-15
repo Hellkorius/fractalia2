@@ -636,3 +636,22 @@ moved createImage, createBuffer, createImageView, findMemoryType, etc into stati
 
 ----------------------------------------------------------------------------------------------------------------------------------------------------------------
 ----------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+# Changelog 0.3.1
+
+Header (gpu_entity_manager.h):
+  - Replaced entityBuffers[3] → entityStorage
+  - Replaced entityBufferMemory[3] → entityMemory
+  - Replaced entityBufferMapped[3] → entityBufferMapped
+  - Removed currentGraphicsBuffer tracking
+  - Simplified getCurrentEntityBuffer() to return entityStorage
+  - Updated getComputeInputIndex()/getComputeOutputIndex() to return 0
+  - Converted computeDescriptorSets[3] → single computeDescriptorSet
+
+  Implementation (gpu_entity_manager.cpp):
+  - Single buffer creation instead of 3 buffers
+  - Simplified cleanup logic
+  - Updated uploadPendingEntities() to use single buffer
+  - Refactored updateAllMovementTypes() for single buffer
+  - Single descriptor set allocation/binding
+  - Both input/output bindings point to same buffer for in-place operations

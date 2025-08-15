@@ -53,22 +53,20 @@ bool GPUEntityManager::initialize(VulkanContext* context, VulkanSync* sync, Vulk
 void GPUEntityManager::cleanup() {
     if (!loader || !context) return;
     
-    // Clean up entity buffers
-    for (int i = 0; i < 3; i++) {
-        if (entityBufferMapped[i] != nullptr) {
-            loader->vkUnmapMemory(context->getDevice(), entityBufferMemory[i]);
-            entityBufferMapped[i] = nullptr;
-        }
-        
-        if (entityBuffers[i] != VK_NULL_HANDLE) {
-            loader->vkDestroyBuffer(context->getDevice(), entityBuffers[i], nullptr);
-            entityBuffers[i] = VK_NULL_HANDLE;
-        }
-        
-        if (entityBufferMemory[i] != VK_NULL_HANDLE) {
-            loader->vkFreeMemory(context->getDevice(), entityBufferMemory[i], nullptr);
-            entityBufferMemory[i] = VK_NULL_HANDLE;
-        }
+    // Clean up entity buffer
+    if (entityBufferMapped != nullptr) {
+        loader->vkUnmapMemory(context->getDevice(), entityMemory);
+        entityBufferMapped = nullptr;
+    }
+    
+    if (entityStorage != VK_NULL_HANDLE) {
+        loader->vkDestroyBuffer(context->getDevice(), entityStorage, nullptr);
+        entityStorage = VK_NULL_HANDLE;
+    }
+    
+    if (entityMemory != VK_NULL_HANDLE) {
+        loader->vkFreeMemory(context->getDevice(), entityMemory, nullptr);
+        entityMemory = VK_NULL_HANDLE;
     }
     
     // Clean up descriptor resources
@@ -119,11 +117,8 @@ void GPUEntityManager::uploadPendingEntities() {
         return;
     }
     
-    // Upload new entities only to current graphics buffer (triple-buffer optimization)
-    // Compute will process this buffer and write to output buffer in the same frame
-    uint32_t targetBufferIndex = currentGraphicsBuffer;
-    
-    GPUEntity* targetBufferPtr = static_cast<GPUEntity*>(entityBufferMapped[targetBufferIndex]);
+    // Upload new entities to single buffer
+    GPUEntity* targetBufferPtr = static_cast<GPUEntity*>(entityBufferMapped);
 #ifdef _DEBUG
     assert(targetBufferPtr && "GPU target buffer must be mapped");
 #endif
@@ -165,15 +160,10 @@ void GPUEntityManager::updateAllMovementTypes(int newMovementType, bool angelMod
         loader->vkDeviceWaitIdle(context->getDevice());
     }
     
-    // IMMEDIATE synchronization: Update ALL buffers instantly for absolute entity control
-    // This ensures every entity receives the movement pattern change regardless of buffer state
-    for (int bufferIndex = 0; bufferIndex < 3; bufferIndex++) {
-        GPUEntity* bufferPtr = static_cast<GPUEntity*>(entityBufferMapped[bufferIndex]);
-        
-        if (!bufferPtr) {
-            continue;
-        }
-        
+    // Update single buffer entities
+    GPUEntity* bufferPtr = static_cast<GPUEntity*>(entityBufferMapped);
+    
+    if (bufferPtr) {
         for (uint32_t i = 0; i < activeEntityCount; i++) {
             // Update the movementType field (w component of movementParams1)
             bufferPtr[i].movementParams1.w = static_cast<float>(newMovementType);
@@ -205,24 +195,22 @@ void GPUEntityManager::updateAllMovementTypes(int newMovementType, bool angelMod
 
 
 bool GPUEntityManager::createEntityBuffers() {
-    for (int i = 0; i < 3; i++) {
-        if (!VulkanUtils::createBuffer(
-            context->getDevice(),
-            *loader,
-            ENTITY_BUFFER_SIZE,
-            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-            entityBuffers[i],
-            entityBufferMemory[i])) {
-            std::cerr << "Failed to create entity buffer " << i << "!" << std::endl;
-            return false;
-        }
-        
-        // Map memory for CPU access
-        if (loader->vkMapMemory(context->getDevice(), entityBufferMemory[i], 0, ENTITY_BUFFER_SIZE, 0, &entityBufferMapped[i]) != VK_SUCCESS) {
-            std::cerr << "Failed to map entity buffer memory " << i << "!" << std::endl;
-            return false;
-        }
+    if (!VulkanUtils::createBuffer(
+        context->getDevice(),
+        *loader,
+        ENTITY_BUFFER_SIZE,
+        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+        entityStorage,
+        entityMemory)) {
+        std::cerr << "Failed to create entity buffer!" << std::endl;
+        return false;
+    }
+    
+    // Map memory for CPU access
+    if (loader->vkMapMemory(context->getDevice(), entityMemory, 0, ENTITY_BUFFER_SIZE, 0, &entityBufferMapped) != VK_SUCCESS) {
+        std::cerr << "Failed to map entity buffer memory!" << std::endl;
+        return false;
     }
     
     return true;
@@ -231,13 +219,13 @@ bool GPUEntityManager::createEntityBuffers() {
 bool GPUEntityManager::createComputeDescriptorPool() {
     VkDescriptorPoolSize poolSize{};
     poolSize.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    poolSize.descriptorCount = 6; // 3 sets * 2 buffers each
+    poolSize.descriptorCount = 2; // 1 set * 2 buffers (input/output)
     
     VkDescriptorPoolCreateInfo poolInfo{};
     poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
     poolInfo.poolSizeCount = 1;
     poolInfo.pPoolSizes = &poolSize;
-    poolInfo.maxSets = 3; // One set per triple buffer
+    poolInfo.maxSets = 1; // Single descriptor set
     
     return loader->vkCreateDescriptorPool(context->getDevice(), &poolInfo, nullptr, &computeDescriptorPool) == VK_SUCCESS;
 }
@@ -267,56 +255,44 @@ bool GPUEntityManager::createComputeDescriptorSetLayout() {
 }
 
 bool GPUEntityManager::createComputeDescriptorSets() {
-    // Allocate descriptor sets
-    VkDescriptorSetLayout layouts[3] = {computeDescriptorSetLayout, computeDescriptorSetLayout, computeDescriptorSetLayout};
-    
+    // Allocate single descriptor set
     VkDescriptorSetAllocateInfo allocInfo{};
     allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
     allocInfo.descriptorPool = computeDescriptorPool;
-    allocInfo.descriptorSetCount = 3;
-    allocInfo.pSetLayouts = layouts;
+    allocInfo.descriptorSetCount = 1;
+    allocInfo.pSetLayouts = &computeDescriptorSetLayout;
     
-    if (loader->vkAllocateDescriptorSets(context->getDevice(), &allocInfo, computeDescriptorSets) != VK_SUCCESS) {
+    if (loader->vkAllocateDescriptorSets(context->getDevice(), &allocInfo, &computeDescriptorSet) != VK_SUCCESS) {
         return false;
     }
     
-    // Update descriptor sets for triple buffering
-    // Descriptor set i: reads from buffer[i], writes to buffer[(i+1)%3]
+    // Update descriptor set - both input and output point to same buffer
+    VkDescriptorBufferInfo bufferInfo{};
+    bufferInfo.buffer = entityStorage;
+    bufferInfo.offset = 0;
+    bufferInfo.range = ENTITY_BUFFER_SIZE;
     
-    for (int i = 0; i < 3; i++) {
-        // Each descriptor set i should: read from buffer i, write to buffer (i+1)%3
-        VkDescriptorBufferInfo inputBufferInfo{};
-        inputBufferInfo.buffer = entityBuffers[i];
-        inputBufferInfo.offset = 0;
-        inputBufferInfo.range = ENTITY_BUFFER_SIZE;
-        
-        VkDescriptorBufferInfo outputBufferInfo{};
-        outputBufferInfo.buffer = entityBuffers[(i + 1) % 3];
-        outputBufferInfo.offset = 0;
-        outputBufferInfo.range = ENTITY_BUFFER_SIZE;
-        
-        VkWriteDescriptorSet descriptorWrites[2] = {};
-        
-        // Input buffer
-        descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        descriptorWrites[0].dstSet = computeDescriptorSets[i];
-        descriptorWrites[0].dstBinding = 0;
-        descriptorWrites[0].dstArrayElement = 0;
-        descriptorWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-        descriptorWrites[0].descriptorCount = 1;
-        descriptorWrites[0].pBufferInfo = &inputBufferInfo;
-        
-        // Output buffer
-        descriptorWrites[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        descriptorWrites[1].dstSet = computeDescriptorSets[i];
-        descriptorWrites[1].dstBinding = 1;
-        descriptorWrites[1].dstArrayElement = 0;
-        descriptorWrites[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-        descriptorWrites[1].descriptorCount = 1;
-        descriptorWrites[1].pBufferInfo = &outputBufferInfo;
-        
-        loader->vkUpdateDescriptorSets(context->getDevice(), 2, descriptorWrites, 0, nullptr);
-    }
+    VkWriteDescriptorSet descriptorWrites[2] = {};
+    
+    // Input buffer (binding 0)
+    descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    descriptorWrites[0].dstSet = computeDescriptorSet;
+    descriptorWrites[0].dstBinding = 0;
+    descriptorWrites[0].dstArrayElement = 0;
+    descriptorWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    descriptorWrites[0].descriptorCount = 1;
+    descriptorWrites[0].pBufferInfo = &bufferInfo;
+    
+    // Output buffer (binding 1) - same buffer for in-place operations
+    descriptorWrites[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    descriptorWrites[1].dstSet = computeDescriptorSet;
+    descriptorWrites[1].dstBinding = 1;
+    descriptorWrites[1].dstArrayElement = 0;
+    descriptorWrites[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    descriptorWrites[1].descriptorCount = 1;
+    descriptorWrites[1].pBufferInfo = &bufferInfo;
+    
+    loader->vkUpdateDescriptorSets(context->getDevice(), 2, descriptorWrites, 0, nullptr);
     
     return true;
 }
