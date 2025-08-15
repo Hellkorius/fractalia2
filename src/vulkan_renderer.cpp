@@ -68,7 +68,7 @@ bool VulkanRenderer::initialize(SDL_Window* window) {
     }
     
     resources = std::make_unique<VulkanResources>();
-    if (!resources->initialize(context.get(), sync.get())) {
+    if (!resources->initialize(context.get(), sync.get(), functionLoader.get())) {
         std::cerr << "Failed to initialize Vulkan resources" << std::endl;
         return false;
     }

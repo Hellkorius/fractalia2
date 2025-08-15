@@ -7,13 +7,14 @@
 #include "../PolygonFactory.h"
 
 class VulkanSync;
+class VulkanFunctionLoader;
 
 class VulkanResources {
 public:
     VulkanResources();
     ~VulkanResources();
 
-    bool initialize(VulkanContext* context, VulkanSync* sync);
+    bool initialize(VulkanContext* context, VulkanSync* sync, VulkanFunctionLoader* loader);
     void cleanup();
     
     bool createUniformBuffers();
@@ -98,28 +99,5 @@ private:
     std::vector<VkDescriptorSet> descriptorSets;
     
 
-    // Function pointers for resource operations
-    PFN_vkCreateBuffer vkCreateBuffer = nullptr;
-    PFN_vkDestroyBuffer vkDestroyBuffer = nullptr;
-    PFN_vkGetBufferMemoryRequirements vkGetBufferMemoryRequirements = nullptr;
-    PFN_vkBindBufferMemory vkBindBufferMemory = nullptr;
-    PFN_vkAllocateMemory vkAllocateMemory = nullptr;
-    PFN_vkFreeMemory vkFreeMemory = nullptr;
-    PFN_vkMapMemory vkMapMemory = nullptr;
-    PFN_vkUnmapMemory vkUnmapMemory = nullptr;
-    PFN_vkCreateDescriptorPool vkCreateDescriptorPool = nullptr;
-    PFN_vkDestroyDescriptorPool vkDestroyDescriptorPool = nullptr;
-    PFN_vkCreateDescriptorSetLayout vkCreateDescriptorSetLayout = nullptr;
-    PFN_vkDestroyDescriptorSetLayout vkDestroyDescriptorSetLayout = nullptr;
-    PFN_vkAllocateDescriptorSets vkAllocateDescriptorSets = nullptr;
-    PFN_vkUpdateDescriptorSets vkUpdateDescriptorSets = nullptr;
-    PFN_vkCreateImage vkCreateImage = nullptr;
-    PFN_vkDestroyImage vkDestroyImage = nullptr;
-    PFN_vkGetImageMemoryRequirements vkGetImageMemoryRequirements = nullptr;
-    PFN_vkBindImageMemory vkBindImageMemory = nullptr;
-    PFN_vkCreateImageView vkCreateImageView = nullptr;
-    PFN_vkDestroyImageView vkDestroyImageView = nullptr;
-    PFN_vkCmdCopyBuffer vkCmdCopyBuffer = nullptr;
-    
-    void loadFunctions();
+    VulkanFunctionLoader* loader = nullptr;
 };
