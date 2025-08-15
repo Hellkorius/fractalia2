@@ -60,7 +60,6 @@ private:
     bool framebufferResized = false;
 
     // Module instances
-    std::unique_ptr<VulkanFunctionLoader> functionLoader;
     std::unique_ptr<VulkanContext> context;
     std::unique_ptr<VulkanSwapchain> swapchain;
     std::unique_ptr<VulkanPipeline> pipeline;

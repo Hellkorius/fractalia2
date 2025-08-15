@@ -18,19 +18,13 @@ VulkanPipeline::~VulkanPipeline() {
     cleanup();
 }
 
-bool VulkanPipeline::initialize(VulkanContext* context, VkFormat swapChainImageFormat, VulkanFunctionLoader* loader) {
-    this->context = context;
-    this->loader = loader;
-    
-    if (!loader) {
-        std::cerr << "VulkanPipeline requires VulkanFunctionLoader" << std::endl;
-        return false;
-    }
+bool VulkanPipeline::initialize(const VulkanContext& context, VkFormat swapChainImageFormat) {
+    this->context = &context;
     
     std::cout << "Creating pipeline cache..." << std::endl;
     VkPipelineCacheCreateInfo pipelineCacheInfo{};
     pipelineCacheInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
-    if (loader->vkCreatePipelineCache(context->getDevice(), &pipelineCacheInfo, nullptr, &pipelineCache) != VK_SUCCESS) {
+    if (context.getLoader().vkCreatePipelineCache(context.getDevice(), &pipelineCacheInfo, nullptr, &pipelineCache) != VK_SUCCESS) {
         std::cerr << "Failed to create pipeline cache" << std::endl;
         return false;
     }
@@ -61,26 +55,26 @@ bool VulkanPipeline::initialize(VulkanContext* context, VkFormat swapChainImageF
 }
 
 void VulkanPipeline::cleanup() {
-    if (!loader || !context) return;
+    if (!context) return;
     
     if (graphicsPipeline != VK_NULL_HANDLE) {
-        loader->vkDestroyPipeline(context->getDevice(), graphicsPipeline, nullptr);
+        context->getLoader().vkDestroyPipeline(context->getDevice(), graphicsPipeline, nullptr);
         graphicsPipeline = VK_NULL_HANDLE;
     }
     if (pipelineLayout != VK_NULL_HANDLE) {
-        loader->vkDestroyPipelineLayout(context->getDevice(), pipelineLayout, nullptr);
+        context->getLoader().vkDestroyPipelineLayout(context->getDevice(), pipelineLayout, nullptr);
         pipelineLayout = VK_NULL_HANDLE;
     }
     if (renderPass != VK_NULL_HANDLE) {
-        loader->vkDestroyRenderPass(context->getDevice(), renderPass, nullptr);
+        context->getLoader().vkDestroyRenderPass(context->getDevice(), renderPass, nullptr);
         renderPass = VK_NULL_HANDLE;
     }
     if (descriptorSetLayout != VK_NULL_HANDLE) {
-        loader->vkDestroyDescriptorSetLayout(context->getDevice(), descriptorSetLayout, nullptr);
+        context->getLoader().vkDestroyDescriptorSetLayout(context->getDevice(), descriptorSetLayout, nullptr);
         descriptorSetLayout = VK_NULL_HANDLE;
     }
     if (pipelineCache != VK_NULL_HANDLE) {
-        loader->vkDestroyPipelineCache(context->getDevice(), pipelineCache, nullptr);
+        context->getLoader().vkDestroyPipelineCache(context->getDevice(), pipelineCache, nullptr);
         pipelineCache = VK_NULL_HANDLE;
     }
 }
@@ -180,7 +174,7 @@ bool VulkanPipeline::createRenderPass(VkFormat swapChainImageFormat) {
     renderPassInfo.dependencyCount = static_cast<uint32_t>(dependencies.size());
     renderPassInfo.pDependencies = dependencies.data();
 
-    if (loader->vkCreateRenderPass(context->getDevice(), &renderPassInfo, nullptr, &renderPass) != VK_SUCCESS) {
+    if (context->getLoader().vkCreateRenderPass(context->getDevice(), &renderPassInfo, nullptr, &renderPass) != VK_SUCCESS) {
         std::cerr << "Failed to create render pass" << std::endl;
         return false;
     }
@@ -203,7 +197,7 @@ bool VulkanPipeline::createDescriptorSetLayout() {
     layoutInfo.bindingCount = bindings.size();
     layoutInfo.pBindings = bindings.data();
     
-    if (loader->vkCreateDescriptorSetLayout(context->getDevice(), &layoutInfo, nullptr, &descriptorSetLayout) != VK_SUCCESS) {
+    if (context->getLoader().vkCreateDescriptorSetLayout(context->getDevice(), &layoutInfo, nullptr, &descriptorSetLayout) != VK_SUCCESS) {
         std::cerr << "Failed to create descriptor set layout!" << std::endl;
         return false;
     }
@@ -299,8 +293,8 @@ bool VulkanPipeline::createGraphicsPipeline() {
         return false;
     }
 
-    VkShaderModule vertShaderModule = VulkanUtils::createShaderModule(context->getDevice(), *loader, vertShaderCode);
-    VkShaderModule fragShaderModule = VulkanUtils::createShaderModule(context->getDevice(), *loader, fragShaderCode);
+    VkShaderModule vertShaderModule = VulkanUtils::createShaderModule(context->getDevice(), context->getLoader(), vertShaderCode);
+    VkShaderModule fragShaderModule = VulkanUtils::createShaderModule(context->getDevice(), context->getLoader(), fragShaderCode);
 
     VkPipelineShaderStageCreateInfo vertShaderStageInfo{};
     vertShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
@@ -402,13 +396,13 @@ bool VulkanPipeline::createGraphicsPipeline() {
     pipelineInfo.subpass = 0;
     pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
 
-    if (loader->vkCreateGraphicsPipelines(context->getDevice(), pipelineCache, 1, &pipelineInfo, nullptr, &graphicsPipeline) != VK_SUCCESS) {
+    if (context->getLoader().vkCreateGraphicsPipelines(context->getDevice(), pipelineCache, 1, &pipelineInfo, nullptr, &graphicsPipeline) != VK_SUCCESS) {
         std::cerr << "Failed to create graphics pipeline" << std::endl;
         return false;
     }
 
-    loader->vkDestroyShaderModule(context->getDevice(), fragShaderModule, nullptr);
-    loader->vkDestroyShaderModule(context->getDevice(), vertShaderModule, nullptr);
+    context->getLoader().vkDestroyShaderModule(context->getDevice(), fragShaderModule, nullptr);
+    context->getLoader().vkDestroyShaderModule(context->getDevice(), vertShaderModule, nullptr);
 
     return true;
 }
@@ -443,7 +437,7 @@ VkPipelineLayout VulkanPipeline::getOrCreatePipelineLayout(VkDescriptorSetLayout
     }
     
     VkPipelineLayout newLayout;
-    if (loader->vkCreatePipelineLayout(context->getDevice(), &pipelineLayoutInfo, nullptr, &newLayout) != VK_SUCCESS) {
+    if (context->getLoader().vkCreatePipelineLayout(context->getDevice(), &pipelineLayoutInfo, nullptr, &newLayout) != VK_SUCCESS) {
         throw std::runtime_error("Failed to create pipeline layout");
     }
     

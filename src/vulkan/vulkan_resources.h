@@ -15,7 +15,7 @@ public:
     VulkanResources();
     ~VulkanResources();
 
-    bool initialize(VulkanContext* context, VulkanSync* sync, VulkanFunctionLoader* loader);
+    bool initialize(const VulkanContext& context, VulkanSync* sync);
     void cleanup();
     
     bool createUniformBuffers();
@@ -39,7 +39,7 @@ public:
 
 
 private:
-    VulkanContext* context = nullptr;
+    const VulkanContext* context = nullptr;
     VulkanSync* sync = nullptr;
     
     std::vector<VkBuffer> uniformBuffers;
@@ -57,5 +57,4 @@ private:
     std::vector<VkDescriptorSet> descriptorSets;
     
 
-    VulkanFunctionLoader* loader = nullptr;
 };

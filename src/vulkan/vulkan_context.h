@@ -6,6 +6,7 @@
 #include <SDL3/SDL_vulkan.h>
 #include <optional>
 #include <vector>
+#include <memory>
 
 struct QueueFamilyIndices {
     std::optional<uint32_t> graphicsFamily;
@@ -21,7 +22,7 @@ public:
     VulkanContext();
     ~VulkanContext();
 
-    bool initialize(SDL_Window* window, class VulkanFunctionLoader* loader = nullptr);
+    bool initialize(SDL_Window* window);
     void cleanup();
 
     VkInstance getInstance() const { return instance; }
@@ -31,7 +32,9 @@ public:
     VkQueue getGraphicsQueue() const { return graphicsQueue; }
     VkQueue getPresentQueue() const { return presentQueue; }
     
-    QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device);
+    class VulkanFunctionLoader& getLoader() const { return *loader; }
+    
+    QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device) const;
     void getDeviceQueues(); // Call this after device functions are loaded
 
 
@@ -45,6 +48,8 @@ private:
     VkQueue presentQueue = VK_NULL_HANDLE;
     QueueFamilyIndices queueFamilyIndices; // Store indices for queue retrieval after device creation
 
+    std::unique_ptr<class VulkanFunctionLoader> loader;
+
     bool createInstance();
     bool createSurface();
     bool pickPhysicalDevice();
@@ -52,6 +57,4 @@ private:
     bool isDeviceSuitable(VkPhysicalDevice device);
     
     std::vector<const char*> getRequiredExtensions();
-    
-    class VulkanFunctionLoader* functionLoader = nullptr;
 };

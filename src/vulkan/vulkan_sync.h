@@ -12,7 +12,7 @@ public:
     VulkanSync();
     ~VulkanSync();
 
-    bool initialize(VulkanContext* context, VulkanFunctionLoader* loader);
+    bool initialize(const VulkanContext& context);
     void cleanup();
 
     VkCommandPool getCommandPool() const { return commandPool; }
@@ -24,8 +24,7 @@ public:
     const std::vector<VkCommandBuffer>& getComputeCommandBuffers() const { return computeCommandBuffers; }
 
 private:
-    VulkanContext* context = nullptr;
-    VulkanFunctionLoader* loader = nullptr;
+    const VulkanContext* context = nullptr;
     
     VkCommandPool commandPool = VK_NULL_HANDLE;
     std::vector<VkCommandBuffer> commandBuffers;        // Graphics command buffers

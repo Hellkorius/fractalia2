@@ -27,12 +27,13 @@ VulkanContext::~VulkanContext() {
     cleanup();
 }
 
-bool VulkanContext::initialize(SDL_Window* window, VulkanFunctionLoader* loader) {
+bool VulkanContext::initialize(SDL_Window* window) {
     this->window = window;
-    this->functionLoader = loader;
     
-    if (!functionLoader) {
-        std::cerr << "VulkanFunctionLoader is required" << std::endl;
+    // Create the loader
+    loader = std::make_unique<VulkanFunctionLoader>();
+    if (!loader->initialize(window)) {
+        std::cerr << "Failed to initialize VulkanFunctionLoader" << std::endl;
         return false;
     }
     
@@ -42,10 +43,8 @@ bool VulkanContext::initialize(SDL_Window* window, VulkanFunctionLoader* loader)
     }
     
     // Update shared function loader with instance handle
-    if (loader) {
-        loader->setInstance(instance);
-        loader->loadPostInstanceFunctions();
-    }
+    loader->setInstance(instance);
+    loader->loadPostInstanceFunctions();
     
     if (!createSurface()) {
         std::cerr << "Failed to create surface" << std::endl;
@@ -63,12 +62,10 @@ bool VulkanContext::initialize(SDL_Window* window, VulkanFunctionLoader* loader)
     }
     
     // Update shared function loader with device handles
-    if (loader) {
-        loader->setDevice(device, physicalDevice);
-        if (!loader->loadPostDeviceFunctions()) {
-            std::cerr << "Failed to load device functions in shared loader" << std::endl;
-            return false;
-        }
+    loader->setDevice(device, physicalDevice);
+    if (!loader->loadPostDeviceFunctions()) {
+        std::cerr << "Failed to load device functions in shared loader" << std::endl;
+        return false;
     }
     
     // Now that device functions are loaded, we can get the queues
@@ -78,20 +75,25 @@ bool VulkanContext::initialize(SDL_Window* window, VulkanFunctionLoader* loader)
 }
 
 void VulkanContext::cleanup() {
-    if (device != VK_NULL_HANDLE && functionLoader) {
-        functionLoader->vkDeviceWaitIdle(device);
-        functionLoader->vkDestroyDevice(device, nullptr);
+    if (device != VK_NULL_HANDLE && loader) {
+        loader->vkDeviceWaitIdle(device);
+        loader->vkDestroyDevice(device, nullptr);
         device = VK_NULL_HANDLE;
     }
     
-    if (surface != VK_NULL_HANDLE && instance != VK_NULL_HANDLE && functionLoader) {
-        functionLoader->vkDestroySurfaceKHR(instance, surface, nullptr);
+    if (surface != VK_NULL_HANDLE && instance != VK_NULL_HANDLE && loader) {
+        loader->vkDestroySurfaceKHR(instance, surface, nullptr);
         surface = VK_NULL_HANDLE;
     }
     
-    if (instance != VK_NULL_HANDLE && functionLoader) {
-        functionLoader->vkDestroyInstance(instance, nullptr);
+    if (instance != VK_NULL_HANDLE && loader) {
+        loader->vkDestroyInstance(instance, nullptr);
         instance = VK_NULL_HANDLE;
+    }
+    
+    if (loader) {
+        loader->cleanup();
+        loader.reset();
     }
 }
 
@@ -123,11 +125,11 @@ bool VulkanContext::createInstance() {
         createInfo.enabledLayerCount = 0;
     }
 
-    if (!functionLoader->vkCreateInstance) {
+    if (!loader->vkCreateInstance) {
         std::cerr << "vkCreateInstance is null!" << std::endl;
         return false;
     }
-    if (functionLoader->vkCreateInstance(&createInfo, nullptr, &instance) != VK_SUCCESS) {
+    if (loader->vkCreateInstance(&createInfo, nullptr, &instance) != VK_SUCCESS) {
         std::cerr << "Failed to create Vulkan instance" << std::endl;
         return false;
     }
@@ -145,7 +147,7 @@ bool VulkanContext::createSurface() {
 
 bool VulkanContext::pickPhysicalDevice() {
     uint32_t deviceCount = 0;
-    functionLoader->vkEnumeratePhysicalDevices(instance, &deviceCount, nullptr);
+    loader->vkEnumeratePhysicalDevices(instance, &deviceCount, nullptr);
 
     if (deviceCount == 0) {
         std::cerr << "Failed to find GPUs with Vulkan support" << std::endl;
@@ -153,7 +155,7 @@ bool VulkanContext::pickPhysicalDevice() {
     }
 
     std::vector<VkPhysicalDevice> devices(deviceCount);
-    functionLoader->vkEnumeratePhysicalDevices(instance, &deviceCount, devices.data());
+    loader->vkEnumeratePhysicalDevices(instance, &deviceCount, devices.data());
 
     for (const auto& device : devices) {
         if (isDeviceSuitable(device)) {
@@ -191,9 +193,9 @@ bool VulkanContext::createLogicalDevice() {
 
     // Build list of actually supported extensions
     uint32_t extensionCount;
-    functionLoader->vkEnumerateDeviceExtensionProperties(physicalDevice, nullptr, &extensionCount, nullptr);
+    loader->vkEnumerateDeviceExtensionProperties(physicalDevice, nullptr, &extensionCount, nullptr);
     std::vector<VkExtensionProperties> availableExtensions(extensionCount);
-    functionLoader->vkEnumerateDeviceExtensionProperties(physicalDevice, nullptr, &extensionCount, availableExtensions.data());
+    loader->vkEnumerateDeviceExtensionProperties(physicalDevice, nullptr, &extensionCount, availableExtensions.data());
     
     std::vector<const char*> enabledExtensions;
     enabledExtensions.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME); // Always required
@@ -216,7 +218,7 @@ bool VulkanContext::createLogicalDevice() {
     createInfo.enabledLayerCount = 0;
     createInfo.ppEnabledLayerNames = nullptr;
 
-    VkResult result = functionLoader->vkCreateDevice(physicalDevice, &createInfo, nullptr, &device);
+    VkResult result = loader->vkCreateDevice(physicalDevice, &createInfo, nullptr, &device);
     if (result != VK_SUCCESS) {
         std::cerr << "Failed to create logical device (VkResult: " << result << ")" << std::endl;
         return false;
@@ -240,27 +242,27 @@ void VulkanContext::getDeviceQueues() {
         return;
     }
     
-    functionLoader->vkGetDeviceQueue(device, queueFamilyIndices.graphicsFamily.value(), 0, &graphicsQueue);
-    functionLoader->vkGetDeviceQueue(device, queueFamilyIndices.presentFamily.value(), 0, &presentQueue);
+    loader->vkGetDeviceQueue(device, queueFamilyIndices.graphicsFamily.value(), 0, &graphicsQueue);
+    loader->vkGetDeviceQueue(device, queueFamilyIndices.presentFamily.value(), 0, &presentQueue);
 }
 
-QueueFamilyIndices VulkanContext::findQueueFamilies(VkPhysicalDevice device) {
+QueueFamilyIndices VulkanContext::findQueueFamilies(VkPhysicalDevice device) const {
     QueueFamilyIndices indices;
 
-    if (!functionLoader) {
-        std::cerr << "functionLoader is null!" << std::endl;
+    if (!loader) {
+        std::cerr << "loader is null!" << std::endl;
         return indices;
     }
-    if (!functionLoader->vkGetPhysicalDeviceQueueFamilyProperties) {
+    if (!loader->vkGetPhysicalDeviceQueueFamilyProperties) {
         std::cerr << "vkGetPhysicalDeviceQueueFamilyProperties is null!" << std::endl;
         return indices;
     }
 
     uint32_t queueFamilyCount = 0;
-    functionLoader->vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, nullptr);
+    loader->vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, nullptr);
 
     std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
-    functionLoader->vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, queueFamilies.data());
+    loader->vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, queueFamilies.data());
 
     int i = 0;
     for (const auto& queueFamily : queueFamilies) {
@@ -269,7 +271,7 @@ QueueFamilyIndices VulkanContext::findQueueFamilies(VkPhysicalDevice device) {
         }
 
         VkBool32 presentSupport = false;
-        if (!functionLoader->vkGetPhysicalDeviceSurfaceSupportKHR) {
+        if (!loader->vkGetPhysicalDeviceSurfaceSupportKHR) {
             std::cerr << "vkGetPhysicalDeviceSurfaceSupportKHR is null!" << std::endl;
             return indices;
         }
@@ -277,7 +279,7 @@ QueueFamilyIndices VulkanContext::findQueueFamilies(VkPhysicalDevice device) {
             std::cerr << "surface is VK_NULL_HANDLE!" << std::endl;
             return indices;
         }
-        functionLoader->vkGetPhysicalDeviceSurfaceSupportKHR(device, i, surface, &presentSupport);
+        loader->vkGetPhysicalDeviceSurfaceSupportKHR(device, i, surface, &presentSupport);
 
         if (presentSupport) {
             indices.presentFamily = i;
@@ -294,13 +296,13 @@ QueueFamilyIndices VulkanContext::findQueueFamilies(VkPhysicalDevice device) {
 
 bool VulkanContext::isDeviceSuitable(VkPhysicalDevice device) {
     VkPhysicalDeviceProperties deviceProperties;
-    functionLoader->vkGetPhysicalDeviceProperties(device, &deviceProperties);
+    loader->vkGetPhysicalDeviceProperties(device, &deviceProperties);
     
     // Check extension support
     uint32_t extensionCount;
-    functionLoader->vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount, nullptr);
+    loader->vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount, nullptr);
     std::vector<VkExtensionProperties> availableExtensions(extensionCount);
-    functionLoader->vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount, availableExtensions.data());
+    loader->vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount, availableExtensions.data());
     
     // Required extensions
     std::set<std::string> requiredExtensions = { VK_KHR_SWAPCHAIN_EXTENSION_NAME };

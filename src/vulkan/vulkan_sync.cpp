@@ -8,9 +8,8 @@ VulkanSync::~VulkanSync() {
     cleanup();
 }
 
-bool VulkanSync::initialize(VulkanContext* context, VulkanFunctionLoader* loader) {
-    this->context = context;
-    this->loader = loader;
+bool VulkanSync::initialize(const VulkanContext& context) {
+    this->context = &context;
     
     if (!createCommandPool()) {
         std::cerr << "Failed to create command pool" << std::endl;
@@ -32,22 +31,22 @@ bool VulkanSync::initialize(VulkanContext* context, VulkanFunctionLoader* loader
 
 void VulkanSync::cleanup() {
     for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-        if (i < inFlightFences.size() && inFlightFences[i] != VK_NULL_HANDLE && loader) {
-            loader->vkDestroyFence(context->getDevice(), inFlightFences[i], nullptr);
+        if (i < inFlightFences.size() && inFlightFences[i] != VK_NULL_HANDLE && context) {
+            context->getLoader().vkDestroyFence(context->getDevice(), inFlightFences[i], nullptr);
         }
-        if (i < computeFences.size() && computeFences[i] != VK_NULL_HANDLE && loader) {
-            loader->vkDestroyFence(context->getDevice(), computeFences[i], nullptr);
+        if (i < computeFences.size() && computeFences[i] != VK_NULL_HANDLE && context) {
+            context->getLoader().vkDestroyFence(context->getDevice(), computeFences[i], nullptr);
         }
-        if (i < renderFinishedSemaphores.size() && renderFinishedSemaphores[i] != VK_NULL_HANDLE && loader) {
-            loader->vkDestroySemaphore(context->getDevice(), renderFinishedSemaphores[i], nullptr);
+        if (i < renderFinishedSemaphores.size() && renderFinishedSemaphores[i] != VK_NULL_HANDLE && context) {
+            context->getLoader().vkDestroySemaphore(context->getDevice(), renderFinishedSemaphores[i], nullptr);
         }
-        if (i < imageAvailableSemaphores.size() && imageAvailableSemaphores[i] != VK_NULL_HANDLE && loader) {
-            loader->vkDestroySemaphore(context->getDevice(), imageAvailableSemaphores[i], nullptr);
+        if (i < imageAvailableSemaphores.size() && imageAvailableSemaphores[i] != VK_NULL_HANDLE && context) {
+            context->getLoader().vkDestroySemaphore(context->getDevice(), imageAvailableSemaphores[i], nullptr);
         }
     }
     
-    if (commandPool != VK_NULL_HANDLE && loader) {
-        loader->vkDestroyCommandPool(context->getDevice(), commandPool, nullptr);
+    if (commandPool != VK_NULL_HANDLE && context) {
+        context->getLoader().vkDestroyCommandPool(context->getDevice(), commandPool, nullptr);
         commandPool = VK_NULL_HANDLE;
     }
 }
@@ -62,7 +61,7 @@ bool VulkanSync::createCommandPool() {
     poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
     poolInfo.queueFamilyIndex = queueFamilyIndices.graphicsFamily.value();
 
-    if (loader->vkCreateCommandPool(context->getDevice(), &poolInfo, nullptr, &commandPool) != VK_SUCCESS) {
+    if (context->getLoader().vkCreateCommandPool(context->getDevice(), &poolInfo, nullptr, &commandPool) != VK_SUCCESS) {
         std::cerr << "Failed to create command pool" << std::endl;
         return false;
     }
@@ -81,14 +80,14 @@ bool VulkanSync::createCommandBuffers() {
     allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
     allocInfo.commandBufferCount = static_cast<uint32_t>(commandBuffers.size());
 
-    if (loader->vkAllocateCommandBuffers(context->getDevice(), &allocInfo, commandBuffers.data()) != VK_SUCCESS) {
+    if (context->getLoader().vkAllocateCommandBuffers(context->getDevice(), &allocInfo, commandBuffers.data()) != VK_SUCCESS) {
         std::cerr << "Failed to allocate graphics command buffers" << std::endl;
         return false;
     }
     
     // Allocate compute command buffers
     allocInfo.commandBufferCount = static_cast<uint32_t>(computeCommandBuffers.size());
-    if (loader->vkAllocateCommandBuffers(context->getDevice(), &allocInfo, computeCommandBuffers.data()) != VK_SUCCESS) {
+    if (context->getLoader().vkAllocateCommandBuffers(context->getDevice(), &allocInfo, computeCommandBuffers.data()) != VK_SUCCESS) {
         std::cerr << "Failed to allocate compute command buffers" << std::endl;
         return false;
     }
@@ -110,10 +109,10 @@ bool VulkanSync::createSyncObjects() {
     fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
 
     for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-        if (loader->vkCreateSemaphore(context->getDevice(), &semaphoreInfo, nullptr, &imageAvailableSemaphores[i]) != VK_SUCCESS ||
-            loader->vkCreateSemaphore(context->getDevice(), &semaphoreInfo, nullptr, &renderFinishedSemaphores[i]) != VK_SUCCESS ||
-            loader->vkCreateFence(context->getDevice(), &fenceInfo, nullptr, &inFlightFences[i]) != VK_SUCCESS ||
-            loader->vkCreateFence(context->getDevice(), &fenceInfo, nullptr, &computeFences[i]) != VK_SUCCESS) {
+        if (context->getLoader().vkCreateSemaphore(context->getDevice(), &semaphoreInfo, nullptr, &imageAvailableSemaphores[i]) != VK_SUCCESS ||
+            context->getLoader().vkCreateSemaphore(context->getDevice(), &semaphoreInfo, nullptr, &renderFinishedSemaphores[i]) != VK_SUCCESS ||
+            context->getLoader().vkCreateFence(context->getDevice(), &fenceInfo, nullptr, &inFlightFences[i]) != VK_SUCCESS ||
+            context->getLoader().vkCreateFence(context->getDevice(), &fenceInfo, nullptr, &computeFences[i]) != VK_SUCCESS) {
             std::cerr << "Failed to create synchronization objects" << std::endl;
             return false;
         }

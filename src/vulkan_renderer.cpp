@@ -32,27 +32,20 @@ bool VulkanRenderer::initialize(SDL_Window* window) {
     // Initialize per-frame data
     frameData.resize(MAX_FRAMES_IN_FLIGHT);
     
-    // Initialize centralized function loader first
-    functionLoader = std::make_unique<VulkanFunctionLoader>();
-    if (!functionLoader->initialize(window)) {
-        std::cerr << "Failed to initialize Vulkan function loader" << std::endl;
-        return false;
-    }
-    
     context = std::make_unique<VulkanContext>();
-    if (!context->initialize(window, functionLoader.get())) {
+    if (!context->initialize(window)) {
         std::cerr << "Failed to initialize Vulkan context" << std::endl;
         return false;
     }
     
     swapchain = std::make_unique<VulkanSwapchain>();
-    if (!swapchain->initialize(context.get(), window, functionLoader.get())) {
+    if (!swapchain->initialize(*context, window)) {
         std::cerr << "Failed to initialize Vulkan swapchain" << std::endl;
         return false;
     }
     
     pipeline = std::make_unique<VulkanPipeline>();
-    if (!pipeline->initialize(context.get(), swapchain->getImageFormat(), functionLoader.get())) {
+    if (!pipeline->initialize(*context, swapchain->getImageFormat())) {
         std::cerr << "Failed to initialize Vulkan pipeline" << std::endl;
         return false;
     }
@@ -63,13 +56,13 @@ bool VulkanRenderer::initialize(SDL_Window* window) {
     }
     
     sync = std::make_unique<VulkanSync>();
-    if (!sync->initialize(context.get(), functionLoader.get())) {
+    if (!sync->initialize(*context)) {
         std::cerr << "Failed to initialize Vulkan sync" << std::endl;
         return false;
     }
     
     resources = std::make_unique<VulkanResources>();
-    if (!resources->initialize(context.get(), sync.get(), functionLoader.get())) {
+    if (!resources->initialize(*context, sync.get())) {
         std::cerr << "Failed to initialize Vulkan resources" << std::endl;
         return false;
     }
@@ -103,7 +96,7 @@ bool VulkanRenderer::initialize(SDL_Window* window) {
     
     // Initialize GPU entity manager after sync is created
     gpuEntityManager = std::make_unique<GPUEntityManager>();
-    if (!gpuEntityManager->initialize(context.get(), sync.get(), functionLoader.get())) {
+    if (!gpuEntityManager->initialize(*context, sync.get())) {
         std::cerr << "Failed to initialize GPU entity manager" << std::endl;
         return false;
     }
@@ -127,18 +120,18 @@ bool VulkanRenderer::initialize(SDL_Window* window) {
 }
 
 void VulkanRenderer::cleanup() {
-    if (functionLoader && context && context->getDevice() != VK_NULL_HANDLE) {
-        functionLoader->vkDeviceWaitIdle(context->getDevice());
+    if (context && context->getDevice() != VK_NULL_HANDLE) {
+        context->getLoader().vkDeviceWaitIdle(context->getDevice());
         
         // Clean up per-frame fences with proper state validation
         for (auto& frame : frameData) {
             if (frame.fencesInitialized) {
                 if (frame.computeDone != VK_NULL_HANDLE) {
-                    functionLoader->vkDestroyFence(context->getDevice(), frame.computeDone, nullptr);
+                    context->getLoader().vkDestroyFence(context->getDevice(), frame.computeDone, nullptr);
                     frame.computeDone = VK_NULL_HANDLE;
                 }
                 if (frame.graphicsDone != VK_NULL_HANDLE) {
-                    functionLoader->vkDestroyFence(context->getDevice(), frame.graphicsDone, nullptr);
+                    context->getLoader().vkDestroyFence(context->getDevice(), frame.graphicsDone, nullptr);
                     frame.graphicsDone = VK_NULL_HANDLE;
                 }
                 frame.fencesInitialized = false;
@@ -153,7 +146,6 @@ void VulkanRenderer::cleanup() {
     pipeline.reset();
     swapchain.reset();
     context.reset();
-    functionLoader.reset();
     
     initialized = false;
 }
@@ -200,7 +192,7 @@ void VulkanRenderer::drawFrame() {
 
     // 3. Acquire swapchain image
     uint32_t imageIndex;
-    VkResult result = functionLoader->vkAcquireNextImageKHR(context->getDevice(), swapchain->getSwapchain(), UINT64_MAX, imageAvailableSemaphores[currentFrame], VK_NULL_HANDLE, &imageIndex);
+    VkResult result = context->getLoader().vkAcquireNextImageKHR(context->getDevice(), swapchain->getSwapchain(), UINT64_MAX, imageAvailableSemaphores[currentFrame], VK_NULL_HANDLE, &imageIndex);
 
     if (result == VK_ERROR_OUT_OF_DATE_KHR) {
         recreateSwapChain();
@@ -215,12 +207,12 @@ void VulkanRenderer::drawFrame() {
     updateUniformBuffer(currentFrame);
 
     // 5. Record compute command buffer
-    functionLoader->vkResetCommandBuffer(computeCommandBuffers[currentFrame], 0);
+    context->getLoader().vkResetCommandBuffer(computeCommandBuffers[currentFrame], 0);
     
     VkCommandBufferBeginInfo computeBeginInfo{};
     computeBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     
-    VkResult beginResult = functionLoader->vkBeginCommandBuffer(computeCommandBuffers[currentFrame], &computeBeginInfo);
+    VkResult beginResult = context->getLoader().vkBeginCommandBuffer(computeCommandBuffers[currentFrame], &computeBeginInfo);
 #ifdef _DEBUG
     assert(beginResult == VK_SUCCESS);
 #else
@@ -239,7 +231,7 @@ void VulkanRenderer::drawFrame() {
     // Update frame counter
     frameCounter++;
     
-    VkResult endResult = functionLoader->vkEndCommandBuffer(computeCommandBuffers[currentFrame]);
+    VkResult endResult = context->getLoader().vkEndCommandBuffer(computeCommandBuffers[currentFrame]);
 #ifdef _DEBUG
     assert(endResult == VK_SUCCESS);
 #else
@@ -247,18 +239,18 @@ void VulkanRenderer::drawFrame() {
 #endif
 
     // 6. Record graphics command buffer
-    functionLoader->vkResetCommandBuffer(commandBuffers[currentFrame], 0);
+    context->getLoader().vkResetCommandBuffer(commandBuffers[currentFrame], 0);
     recordCommandBuffer(commandBuffers[currentFrame], imageIndex);
 
     // 7. Submit compute work with its own fence - NO BLOCKING
-    functionLoader->vkResetFences(context->getDevice(), 1, &frame.computeDone);
+    context->getLoader().vkResetFences(context->getDevice(), 1, &frame.computeDone);
     
     VkSubmitInfo computeSubmitInfo{};
     computeSubmitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
     computeSubmitInfo.commandBufferCount = 1;
     computeSubmitInfo.pCommandBuffers = &computeCommandBuffers[currentFrame];
     
-    VkResult computeSubmitResult = functionLoader->vkQueueSubmit(context->getGraphicsQueue(), 1, &computeSubmitInfo, frame.computeDone);
+    VkResult computeSubmitResult = context->getLoader().vkQueueSubmit(context->getGraphicsQueue(), 1, &computeSubmitInfo, frame.computeDone);
 #ifdef _DEBUG
     assert(computeSubmitResult == VK_SUCCESS);
 #else
@@ -267,7 +259,7 @@ void VulkanRenderer::drawFrame() {
     frame.computeInUse = true;
 
     // 8. Submit graphics work with its own fence - NO BLOCKING
-    functionLoader->vkResetFences(context->getDevice(), 1, &frame.graphicsDone);
+    context->getLoader().vkResetFences(context->getDevice(), 1, &frame.graphicsDone);
     
     VkSubmitInfo graphicsSubmitInfo{};
     graphicsSubmitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
@@ -284,7 +276,7 @@ void VulkanRenderer::drawFrame() {
     graphicsSubmitInfo.signalSemaphoreCount = 1;
     graphicsSubmitInfo.pSignalSemaphores = signalSemaphores;
 
-    VkResult graphicsSubmitResult = functionLoader->vkQueueSubmit(context->getGraphicsQueue(), 1, &graphicsSubmitInfo, frame.graphicsDone);
+    VkResult graphicsSubmitResult = context->getLoader().vkQueueSubmit(context->getGraphicsQueue(), 1, &graphicsSubmitInfo, frame.graphicsDone);
 #ifdef _DEBUG
     assert(graphicsSubmitResult == VK_SUCCESS);
 #else
@@ -303,7 +295,7 @@ void VulkanRenderer::drawFrame() {
     presentInfo.pSwapchains = swapChains;
     presentInfo.pImageIndices = &imageIndex;
 
-    result = functionLoader->vkQueuePresentKHR(context->getPresentQueue(), &presentInfo);
+    result = context->getLoader().vkQueuePresentKHR(context->getPresentQueue(), &presentInfo);
     
 
     if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || framebufferResized) {
@@ -337,7 +329,7 @@ void VulkanRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t
     VkCommandBufferBeginInfo beginInfo{};
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     
-    VkResult graphicsBeginResult = functionLoader->vkBeginCommandBuffer(commandBuffer, &beginInfo);
+    VkResult graphicsBeginResult = context->getLoader().vkBeginCommandBuffer(commandBuffer, &beginInfo);
 #ifdef _DEBUG
     assert(graphicsBeginResult == VK_SUCCESS);
 #else
@@ -358,12 +350,12 @@ void VulkanRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t
     renderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
     renderPassInfo.pClearValues = clearValues.data();
 
-    functionLoader->vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
+    context->getLoader().vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
 
-    functionLoader->vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->getGraphicsPipeline());
+    context->getLoader().vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->getGraphicsPipeline());
     
     const auto& descriptorSets = resources->getDescriptorSets();
-    functionLoader->vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->getPipelineLayout(), 0, 1, &descriptorSets[currentFrame], 0, nullptr);
+    context->getLoader().vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->getPipelineLayout(), 0, 1, &descriptorSets[currentFrame], 0, nullptr);
 
     // Push constants for vertex shader
     struct VertexPushConstants {
@@ -376,7 +368,7 @@ void VulkanRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t
         gpuEntityManager ? gpuEntityManager->getEntityCount() : 0
     };
     
-    functionLoader->vkCmdPushConstants(commandBuffer, pipeline->getPipelineLayout(),
+    context->getLoader().vkCmdPushConstants(commandBuffer, pipeline->getPipelineLayout(),
                       VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(VertexPushConstants), &vertexPushConstants);
 
     VkViewport viewport{};
@@ -386,12 +378,12 @@ void VulkanRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t
     viewport.height = (float) swapchain->getExtent().height;
     viewport.minDepth = 0.0f;
     viewport.maxDepth = 1.0f;
-    functionLoader->vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
+    context->getLoader().vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
 
     VkRect2D scissor{};
     scissor.offset = {0, 0};
     scissor.extent = swapchain->getExtent();
-    functionLoader->vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
+    context->getLoader().vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
 
     // GPU-only rendering - all entities are triangles
@@ -399,14 +391,14 @@ void VulkanRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t
     if (gpuEntityCount > 0) {
         VkBuffer vertexBuffers[] = {resources->getVertexBuffer(), gpuEntityManager->getCurrentEntityBuffer()};
         VkDeviceSize offsets[] = {0, 0};
-        functionLoader->vkCmdBindVertexBuffers(commandBuffer, 0, 2, vertexBuffers, offsets);
-        functionLoader->vkCmdBindIndexBuffer(commandBuffer, resources->getIndexBuffer(), 0, VK_INDEX_TYPE_UINT16);
-        functionLoader->vkCmdDrawIndexed(commandBuffer, resources->getIndexCount(), gpuEntityCount, 0, 0, 0);
+        context->getLoader().vkCmdBindVertexBuffers(commandBuffer, 0, 2, vertexBuffers, offsets);
+        context->getLoader().vkCmdBindIndexBuffer(commandBuffer, resources->getIndexBuffer(), 0, VK_INDEX_TYPE_UINT16);
+        context->getLoader().vkCmdDrawIndexed(commandBuffer, resources->getIndexCount(), gpuEntityCount, 0, 0, 0);
     }
 
-    functionLoader->vkCmdEndRenderPass(commandBuffer);
+    context->getLoader().vkCmdEndRenderPass(commandBuffer);
 
-    VkResult graphicsEndResult = functionLoader->vkEndCommandBuffer(commandBuffer);
+    VkResult graphicsEndResult = context->getLoader().vkEndCommandBuffer(commandBuffer);
 #ifdef _DEBUG
     assert(graphicsEndResult == VK_SUCCESS);
 #else
@@ -434,7 +426,7 @@ void VulkanRenderer::transitionBufferLayout(VkCommandBuffer commandBuffer) {
     barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
     barrier.dstAccessMask = VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT;
     
-    functionLoader->vkCmdPipelineBarrier(commandBuffer,
+    context->getLoader().vkCmdPipelineBarrier(commandBuffer,
                         VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                         VK_PIPELINE_STAGE_VERTEX_INPUT_BIT,
                         0, 1, &barrier, 0, nullptr, 0, nullptr);
@@ -510,17 +502,17 @@ bool VulkanRenderer::initializeFrameFences() {
     fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT; // Start signaled
     
     for (auto& frame : frameData) {
-        if (functionLoader->vkCreateFence(context->getDevice(), &fenceInfo, nullptr, &frame.computeDone) != VK_SUCCESS) {
+        if (context->getLoader().vkCreateFence(context->getDevice(), &fenceInfo, nullptr, &frame.computeDone) != VK_SUCCESS) {
             std::cerr << "Failed to create compute fence" << std::endl;
             // Clean up any previously created fences before returning
             cleanupPartialFrameFences();
             return false;
         }
         
-        if (functionLoader->vkCreateFence(context->getDevice(), &fenceInfo, nullptr, &frame.graphicsDone) != VK_SUCCESS) {
+        if (context->getLoader().vkCreateFence(context->getDevice(), &fenceInfo, nullptr, &frame.graphicsDone) != VK_SUCCESS) {
             std::cerr << "Failed to create graphics fence" << std::endl;
             // Clean up compute fence just created and any previously created fences
-            functionLoader->vkDestroyFence(context->getDevice(), frame.computeDone, nullptr);
+            context->getLoader().vkDestroyFence(context->getDevice(), frame.computeDone, nullptr);
             frame.computeDone = VK_NULL_HANDLE;
             cleanupPartialFrameFences();
             return false;
@@ -537,11 +529,11 @@ void VulkanRenderer::cleanupPartialFrameFences() {
     for (auto& frame : frameData) {
         if (frame.fencesInitialized) {
             if (frame.computeDone != VK_NULL_HANDLE) {
-                functionLoader->vkDestroyFence(context->getDevice(), frame.computeDone, nullptr);
+                context->getLoader().vkDestroyFence(context->getDevice(), frame.computeDone, nullptr);
                 frame.computeDone = VK_NULL_HANDLE;
             }
             if (frame.graphicsDone != VK_NULL_HANDLE) {
-                functionLoader->vkDestroyFence(context->getDevice(), frame.graphicsDone, nullptr);
+                context->getLoader().vkDestroyFence(context->getDevice(), frame.graphicsDone, nullptr);
                 frame.graphicsDone = VK_NULL_HANDLE;
             }
             frame.fencesInitialized = false;
@@ -551,20 +543,20 @@ void VulkanRenderer::cleanupPartialFrameFences() {
 
 VkResult VulkanRenderer::waitForFenceRobust(VkFence fence, const char* fenceName) {
     // First try immediate check
-    VkResult result = functionLoader->vkWaitForFences(context->getDevice(), 1, &fence, VK_TRUE, FENCE_TIMEOUT_IMMEDIATE);
+    VkResult result = context->getLoader().vkWaitForFences(context->getDevice(), 1, &fence, VK_TRUE, FENCE_TIMEOUT_IMMEDIATE);
     if (result == VK_TIMEOUT) {
         // If not ready immediately, wait up to one frame time
-        result = functionLoader->vkWaitForFences(context->getDevice(), 1, &fence, VK_TRUE, FENCE_TIMEOUT_FRAME);
+        result = context->getLoader().vkWaitForFences(context->getDevice(), 1, &fence, VK_TRUE, FENCE_TIMEOUT_FRAME);
         if (result == VK_TIMEOUT) {
             // Proper timeout handling: reset fence and maintain synchronization
             std::cerr << "Warning: " << fenceName << " fence timeout, forcing synchronization" << std::endl;
             
             // Force wait with longer timeout to prevent desync
-            result = functionLoader->vkWaitForFences(context->getDevice(), 1, &fence, VK_TRUE, UINT64_MAX);
+            result = context->getLoader().vkWaitForFences(context->getDevice(), 1, &fence, VK_TRUE, UINT64_MAX);
             if (result != VK_SUCCESS) {
                 std::cerr << "Critical: Failed to synchronize " << fenceName << " pipeline: " << result << std::endl;
                 // Reset state to prevent further issues
-                functionLoader->vkResetFences(context->getDevice(), 1, &fence);
+                context->getLoader().vkResetFences(context->getDevice(), 1, &fence);
                 return VK_ERROR_DEVICE_LOST; // Signal critical error
             }
         }

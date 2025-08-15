@@ -12,15 +12,9 @@ VulkanSwapchain::~VulkanSwapchain() {
     cleanup();
 }
 
-bool VulkanSwapchain::initialize(VulkanContext* context, SDL_Window* window, VulkanFunctionLoader* loader) {
-    this->context = context;
+bool VulkanSwapchain::initialize(const VulkanContext& context, SDL_Window* window) {
+    this->context = &context;
     this->window = window;
-    this->loader = loader;
-    
-    if (!loader) {
-        std::cerr << "VulkanSwapchain requires VulkanFunctionLoader" << std::endl;
-        return false;
-    }
     
     if (!createSwapChain()) {
         std::cerr << "Failed to create swap chain" << std::endl;
@@ -46,8 +40,8 @@ bool VulkanSwapchain::initialize(VulkanContext* context, SDL_Window* window, Vul
 }
 
 void VulkanSwapchain::cleanup() {
-    if (loader && context) {
-        loader->vkDeviceWaitIdle(context->getDevice());
+    if (context) {
+        context->getLoader().vkDeviceWaitIdle(context->getDevice());
     }
     cleanupSwapChain();
 }
@@ -61,7 +55,7 @@ bool VulkanSwapchain::recreate(VkRenderPass renderPass) {
         SDL_WaitEvent(nullptr);
     }
 
-    loader->vkDeviceWaitIdle(context->getDevice());
+    context->getLoader().vkDeviceWaitIdle(context->getDevice());
 
     cleanupSwapChain();
 
@@ -146,14 +140,14 @@ bool VulkanSwapchain::createSwapChain() {
     createInfo.clipped = VK_TRUE;
     createInfo.oldSwapchain = VK_NULL_HANDLE;
 
-    if (loader->vkCreateSwapchainKHR(context->getDevice(), &createInfo, nullptr, &swapChain) != VK_SUCCESS) {
+    if (context->getLoader().vkCreateSwapchainKHR(context->getDevice(), &createInfo, nullptr, &swapChain) != VK_SUCCESS) {
         std::cerr << "Failed to create swap chain" << std::endl;
         return false;
     }
 
-    loader->vkGetSwapchainImagesKHR(context->getDevice(), swapChain, &imageCount, nullptr);
+    context->getLoader().vkGetSwapchainImagesKHR(context->getDevice(), swapChain, &imageCount, nullptr);
     swapChainImages.resize(imageCount);
-    loader->vkGetSwapchainImagesKHR(context->getDevice(), swapChain, &imageCount, swapChainImages.data());
+    context->getLoader().vkGetSwapchainImagesKHR(context->getDevice(), swapChain, &imageCount, swapChainImages.data());
 
     swapChainImageFormat = surfaceFormat.format;
     swapChainExtent = extent;
@@ -180,7 +174,7 @@ bool VulkanSwapchain::createImageViews() {
         createInfo.subresourceRange.baseArrayLayer = 0;
         createInfo.subresourceRange.layerCount = 1;
 
-        if (loader->vkCreateImageView(context->getDevice(), &createInfo, nullptr, &swapChainImageViews[i]) != VK_SUCCESS) {
+        if (context->getLoader().vkCreateImageView(context->getDevice(), &createInfo, nullptr, &swapChainImageViews[i]) != VK_SUCCESS) {
             std::cerr << "Failed to create image views" << std::endl;
             return false;
         }
@@ -192,12 +186,12 @@ bool VulkanSwapchain::createImageViews() {
 bool VulkanSwapchain::createDepthResources() {
     VkFormat depthFormat = VK_FORMAT_D32_SFLOAT;
     
-    VulkanUtils::createImage(context->getDevice(), context->getPhysicalDevice(), *loader,
+    VulkanUtils::createImage(context->getDevice(), context->getPhysicalDevice(), context->getLoader(),
                             swapChainExtent.width, swapChainExtent.height, depthFormat, VK_IMAGE_TILING_OPTIMAL,
                             VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
                             depthImage, depthImageMemory, VK_SAMPLE_COUNT_2_BIT);
     
-    depthImageView = VulkanUtils::createImageView(context->getDevice(), *loader, depthImage, depthFormat, VK_IMAGE_ASPECT_DEPTH_BIT);
+    depthImageView = VulkanUtils::createImageView(context->getDevice(), context->getLoader(), depthImage, depthFormat, VK_IMAGE_ASPECT_DEPTH_BIT);
     
     return true;
 }
@@ -205,55 +199,55 @@ bool VulkanSwapchain::createDepthResources() {
 bool VulkanSwapchain::createMSAAColorResources() {
     VkFormat colorFormat = swapChainImageFormat;
     
-    VulkanUtils::createImage(context->getDevice(), context->getPhysicalDevice(), *loader,
+    VulkanUtils::createImage(context->getDevice(), context->getPhysicalDevice(), context->getLoader(),
                             swapChainExtent.width, swapChainExtent.height, colorFormat, VK_IMAGE_TILING_OPTIMAL,
                             VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
                             VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, msaaColorImage, msaaColorImageMemory, VK_SAMPLE_COUNT_2_BIT);
     
-    msaaColorImageView = VulkanUtils::createImageView(context->getDevice(), *loader, msaaColorImage, colorFormat, VK_IMAGE_ASPECT_COLOR_BIT);
+    msaaColorImageView = VulkanUtils::createImageView(context->getDevice(), context->getLoader(), msaaColorImage, colorFormat, VK_IMAGE_ASPECT_COLOR_BIT);
     
     return true;
 }
 
 void VulkanSwapchain::cleanupSwapChain() {
     for (auto framebuffer : swapChainFramebuffers) {
-        loader->vkDestroyFramebuffer(context->getDevice(), framebuffer, nullptr);
+        context->getLoader().vkDestroyFramebuffer(context->getDevice(), framebuffer, nullptr);
     }
     swapChainFramebuffers.clear();
     
     if (msaaColorImageView != VK_NULL_HANDLE) {
-        loader->vkDestroyImageView(context->getDevice(), msaaColorImageView, nullptr);
+        context->getLoader().vkDestroyImageView(context->getDevice(), msaaColorImageView, nullptr);
         msaaColorImageView = VK_NULL_HANDLE;
     }
     if (msaaColorImage != VK_NULL_HANDLE) {
-        loader->vkDestroyImage(context->getDevice(), msaaColorImage, nullptr);
+        context->getLoader().vkDestroyImage(context->getDevice(), msaaColorImage, nullptr);
         msaaColorImage = VK_NULL_HANDLE;
     }
     if (msaaColorImageMemory != VK_NULL_HANDLE) {
-        loader->vkFreeMemory(context->getDevice(), msaaColorImageMemory, nullptr);
+        context->getLoader().vkFreeMemory(context->getDevice(), msaaColorImageMemory, nullptr);
         msaaColorImageMemory = VK_NULL_HANDLE;
     }
     
     if (depthImageView != VK_NULL_HANDLE) {
-        loader->vkDestroyImageView(context->getDevice(), depthImageView, nullptr);
+        context->getLoader().vkDestroyImageView(context->getDevice(), depthImageView, nullptr);
         depthImageView = VK_NULL_HANDLE;
     }
     if (depthImage != VK_NULL_HANDLE) {
-        loader->vkDestroyImage(context->getDevice(), depthImage, nullptr);
+        context->getLoader().vkDestroyImage(context->getDevice(), depthImage, nullptr);
         depthImage = VK_NULL_HANDLE;
     }
     if (depthImageMemory != VK_NULL_HANDLE) {
-        loader->vkFreeMemory(context->getDevice(), depthImageMemory, nullptr);
+        context->getLoader().vkFreeMemory(context->getDevice(), depthImageMemory, nullptr);
         depthImageMemory = VK_NULL_HANDLE;
     }
     
     for (auto imageView : swapChainImageViews) {
-        loader->vkDestroyImageView(context->getDevice(), imageView, nullptr);
+        context->getLoader().vkDestroyImageView(context->getDevice(), imageView, nullptr);
     }
     swapChainImageViews.clear();
     
     if (swapChain != VK_NULL_HANDLE) {
-        loader->vkDestroySwapchainKHR(context->getDevice(), swapChain, nullptr);
+        context->getLoader().vkDestroySwapchainKHR(context->getDevice(), swapChain, nullptr);
         swapChain = VK_NULL_HANDLE;
     }
 }
@@ -261,22 +255,22 @@ void VulkanSwapchain::cleanupSwapChain() {
 SwapChainSupportDetails VulkanSwapchain::querySwapChainSupport(VkPhysicalDevice device) {
     SwapChainSupportDetails details;
 
-    loader->vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device, context->getSurface(), &details.capabilities);
+    context->getLoader().vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device, context->getSurface(), &details.capabilities);
 
     uint32_t formatCount;
-    loader->vkGetPhysicalDeviceSurfaceFormatsKHR(device, context->getSurface(), &formatCount, nullptr);
+    context->getLoader().vkGetPhysicalDeviceSurfaceFormatsKHR(device, context->getSurface(), &formatCount, nullptr);
 
     if (formatCount != 0) {
         details.formats.resize(formatCount);
-        loader->vkGetPhysicalDeviceSurfaceFormatsKHR(device, context->getSurface(), &formatCount, details.formats.data());
+        context->getLoader().vkGetPhysicalDeviceSurfaceFormatsKHR(device, context->getSurface(), &formatCount, details.formats.data());
     }
 
     uint32_t presentModeCount;
-    loader->vkGetPhysicalDeviceSurfacePresentModesKHR(device, context->getSurface(), &presentModeCount, nullptr);
+    context->getLoader().vkGetPhysicalDeviceSurfacePresentModesKHR(device, context->getSurface(), &presentModeCount, nullptr);
 
     if (presentModeCount != 0) {
         details.presentModes.resize(presentModeCount);
-        loader->vkGetPhysicalDeviceSurfacePresentModesKHR(device, context->getSurface(), &presentModeCount, details.presentModes.data());
+        context->getLoader().vkGetPhysicalDeviceSurfacePresentModesKHR(device, context->getSurface(), &presentModeCount, details.presentModes.data());
     }
 
     return details;
@@ -358,7 +352,7 @@ bool VulkanSwapchain::createFramebuffers(VkRenderPass renderPass) {
         framebufferInfo.height = swapChainExtent.height;
         framebufferInfo.layers = 1;
 
-        if (loader->vkCreateFramebuffer(context->getDevice(), &framebufferInfo, nullptr, &swapChainFramebuffers[i]) != VK_SUCCESS) {
+        if (context->getLoader().vkCreateFramebuffer(context->getDevice(), &framebufferInfo, nullptr, &swapChainFramebuffers[i]) != VK_SUCCESS) {
             std::cerr << "Failed to create framebuffer" << std::endl;
             return false;
         }

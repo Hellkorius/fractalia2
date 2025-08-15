@@ -65,7 +65,7 @@ public:
     GPUEntityManager();
     ~GPUEntityManager();
     
-    bool initialize(VulkanContext* context, VulkanSync* sync, VulkanFunctionLoader* loader);
+    bool initialize(const VulkanContext& context, VulkanSync* sync);
     void cleanup();
     
     // Entity management
@@ -96,9 +96,8 @@ private:
     static constexpr uint32_t MAX_ENTITIES = 131072; // 128k entities max (16MB / 128 bytes)
     static constexpr size_t ENTITY_BUFFER_SIZE = MAX_ENTITIES * sizeof(GPUEntity);
     
-    VulkanContext* context = nullptr;
+    const VulkanContext* context = nullptr;
     VulkanSync* sync = nullptr;
-    VulkanFunctionLoader* loader = nullptr;
     
     // Single buffer storage for compute pipeline
     VkBuffer entityStorage = VK_NULL_HANDLE;

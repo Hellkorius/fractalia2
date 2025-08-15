@@ -38,7 +38,7 @@ public:
     VulkanPipeline();
     ~VulkanPipeline();
 
-    bool initialize(VulkanContext* context, VkFormat swapChainImageFormat, VulkanFunctionLoader* loader = nullptr);
+    bool initialize(const VulkanContext& context, VkFormat swapChainImageFormat);
     void cleanup();
     bool recreate(VkFormat swapChainImageFormat);
 
@@ -48,8 +48,7 @@ public:
     VkDescriptorSetLayout getDescriptorSetLayout() const { return descriptorSetLayout; }
 
 private:
-    VulkanContext* context = nullptr;
-    VulkanFunctionLoader* loader = nullptr;
+    const VulkanContext* context = nullptr;
     
     VkRenderPass renderPass = VK_NULL_HANDLE;
     VkPipelineLayout pipelineLayout = VK_NULL_HANDLE;

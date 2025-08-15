@@ -20,7 +20,7 @@ public:
     VulkanSwapchain();
     ~VulkanSwapchain();
 
-    bool initialize(VulkanContext* context, SDL_Window* window, VulkanFunctionLoader* loader = nullptr);
+    bool initialize(const VulkanContext& context, SDL_Window* window);
     void cleanup();
     bool recreate(VkRenderPass renderPass);
 
@@ -39,9 +39,8 @@ public:
     bool createFramebuffers(VkRenderPass renderPass);
 
 private:
-    VulkanContext* context = nullptr;
+    const VulkanContext* context = nullptr;
     SDL_Window* window = nullptr;
-    VulkanFunctionLoader* loader = nullptr;
     
     VkSwapchainKHR swapChain = VK_NULL_HANDLE;
     std::vector<VkImage> swapChainImages;
