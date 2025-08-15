@@ -40,16 +40,9 @@ public:
     
 
     static uint32_t findMemoryType(VulkanContext* context, uint32_t typeFilter, VkMemoryPropertyFlags properties);
-    static void createImage(VulkanContext* context, uint32_t width, uint32_t height, VkFormat format, VkImageTiling tiling,
-                           VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkSampleCountFlagBits numSamples,
-                           VkImage& image, VkDeviceMemory& imageMemory);
-    static VkImageView createImageView(VulkanContext* context, VkImage image, VkFormat format, VkImageAspectFlags aspectFlags);
-    static void createBuffer(VulkanContext* context, VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties,
-                            VkBuffer& buffer, VkDeviceMemory& bufferMemory);
     
     // Get maximum instances that can fit in buffer
     uint32_t getMaxInstances() const { return MAX_INSTANCES; }
-    static void copyBuffer(VulkanContext* context, VkCommandPool commandPool, VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size);
 
 
 private:

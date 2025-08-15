@@ -237,22 +237,4 @@ uint32_t VulkanResources::findMemoryType(VulkanContext* context, uint32_t typeFi
     throw std::runtime_error("Failed to find suitable memory type!");
 }
 
-void VulkanResources::createImage(VulkanContext* context, uint32_t width, uint32_t height, VkFormat format, VkImageTiling tiling,
-                                 VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkSampleCountFlagBits numSamples,
-                                 VkImage& image, VkDeviceMemory& imageMemory) {
-    throw std::runtime_error("VulkanResources::createImage is deprecated. Use VulkanUtils::createImage instead.");
-}
-
-VkImageView VulkanResources::createImageView(VulkanContext* context, VkImage image, VkFormat format, VkImageAspectFlags aspectFlags) {
-    throw std::runtime_error("VulkanResources::createImageView is deprecated. Use VulkanUtils::createImageView instead.");
-}
-
-void VulkanResources::createBuffer(VulkanContext* context, VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties,
-                                  VkBuffer& buffer, VkDeviceMemory& bufferMemory) {
-    throw std::runtime_error("VulkanResources::createBuffer is deprecated. Use VulkanUtils::createBuffer instead.");
-}
-
-void VulkanResources::copyBuffer(VulkanContext* context, VkCommandPool commandPool, VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size) {
-    throw std::runtime_error("VulkanResources::copyBuffer is deprecated. Use VulkanUtils::copyBuffer instead.");
-}
 
