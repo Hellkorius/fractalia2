@@ -187,7 +187,8 @@ Simple interpolated color pass-through for GPU-generated colors.
 
 ### Buffer Strategy
 - **Shared Vertex Buffer**: Single triangle geometry for all entities
-- **Instance Buffer**: Per-entity movement parameters and state
+- **GPUEntity Instance Buffer**: Per-entity movement parameters and state (128 bytes each)
+- **Position Buffer**: Pre-computed positions from compute shaders (16 bytes each)
 - **Uniform Buffers**: Camera matrices (per frame in flight)
 - **Staging System**: Efficient CPU→GPU transfers
 
@@ -205,21 +206,26 @@ struct GPUEntity {           // 128 bytes total
 ### Synchronization
 - **Double Buffering**: 2 frames in flight for smooth rendering
 - **Fence Synchronization**: CPU waits for GPU completion
-- **Semaphore Chains**: Image acquire → render → present
-- **Memory Barriers**: Proper GPU→GPU synchronization
+- **Compute→Graphics Barrier**: Memory barrier ensures compute writes complete before graphics reads
+- **Semaphore Chains**: Image acquire → compute → render → present
+- **Pipeline Dependencies**: Proper GPU→GPU synchronization between compute and graphics stages
 
 ## Performance Characteristics
 
 ### Rendering Efficiency
+- **Single Compute Dispatch**: Modular compute shader selection based on movement type
 - **Single Draw Call**: All entities rendered in one instanced draw
-- **GPU Transform Calculation**: No CPU→GPU matrix uploads per frame
+- **GPU Position Calculation**: No CPU→GPU position uploads per frame
+- **Pre-computed Positions**: Vertex shader reads from position buffer instead of calculating
 - **Minimal State Changes**: Shared pipeline, descriptors, geometry
 - **MSAA**: 4× anti-aliasing with resolve to swapchain
 
 ### Scalability
 - **Instance Limit**: 131,072 entities (128k max) in single draw call
 - **Current Capacity**: ~90k entities rendering smoothly
-- **Memory Efficient**: 128 bytes per entity (16 MB for 128k entities)
+- **Memory Efficient**: 144 bytes per entity total (128 bytes entity data + 16 bytes position)
+- **Total Memory**: ~18.5 MB for 128k entities (entity buffer + position buffer)
+- **Compute Efficiency**: 64 threads per workgroup, optimal GPU utilization
 - **GPU Bottleneck**: Fragment fill rate becomes limiting factor
 - **CPU Overhead**: Minimal per-frame CPU work after setup
 
