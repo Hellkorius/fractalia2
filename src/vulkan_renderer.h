@@ -5,7 +5,6 @@
 #include <SDL3/SDL.h>
 #include <memory>
 #include <vector>
-#include <tuple>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <flecs.h>
@@ -30,12 +29,8 @@ public:
     bool initialize(SDL_Window* window);
     void cleanup();
     void drawFrame();
-    void setEntityPosition(float x, float y, float z);
     
     
-    void updateEntities(const std::vector<std::tuple<glm::vec3, glm::vec4>>& entities);
-    
-    // Legacy method - CPU rendering disabled
     bool validateEntityCapacity(uint32_t entityCount, const char* source = "unknown") const;
     
     // GPU entity buffer testing
@@ -79,15 +74,12 @@ private:
     // Helper functions
     bool recreateSwapChain();
     void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex);
-    void loadDrawingFunctions();
     void updateUniformBuffer(uint32_t currentImage);
     void transitionBufferLayout(VkCommandBuffer commandBuffer);
     bool initializeFrameFences();
     void cleanupPartialFrameFences();
     VkResult waitForFenceRobust(VkFence fence, const char* fenceName);
     
-    // Entity position for rendering (backward compatibility)
-    glm::vec3 entityPosition = glm::vec3(0.0f, 0.0f, 0.0f);
     
     
     // GPU compute state

@@ -37,15 +37,6 @@ void VulkanResources::cleanup() {
         }
     }
     
-    // Clean up instance buffer
-    if (instanceBuffer != VK_NULL_HANDLE) {
-        loader->vkDestroyBuffer(context->getDevice(), instanceBuffer, nullptr);
-        instanceBuffer = VK_NULL_HANDLE;
-    }
-    if (instanceBufferMemory != VK_NULL_HANDLE) {
-        loader->vkFreeMemory(context->getDevice(), instanceBufferMemory, nullptr);
-        instanceBufferMemory = VK_NULL_HANDLE;
-    }
     
     if (vertexBuffer != VK_NULL_HANDLE) {
         loader->vkDestroyBuffer(context->getDevice(), vertexBuffer, nullptr);
@@ -99,16 +90,6 @@ bool VulkanResources::createIndexBuffer() {
     return true;
 }
 
-bool VulkanResources::createInstanceBuffer() {
-    VulkanUtils::createBuffer(context->getDevice(), *loader, INSTANCE_BUFFER_SIZE, 
-                 VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-                 VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                 instanceBuffer, instanceBufferMemory);
-    
-    loader->vkMapMemory(context->getDevice(), instanceBufferMemory, 0, INSTANCE_BUFFER_SIZE, 0, &instanceBufferMapped);
-    
-    return true;
-}
 
 
 bool VulkanResources::createTriangleBuffers() {

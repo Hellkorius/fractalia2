@@ -21,7 +21,6 @@ public:
     bool createUniformBuffers();
     bool createVertexBuffer();
     bool createIndexBuffer();
-    bool createInstanceBuffer();
     bool createTriangleBuffers();
     bool createDescriptorPool(VkDescriptorSetLayout descriptorSetLayout);
     bool createDescriptorSets(VkDescriptorSetLayout descriptorSetLayout);
@@ -32,16 +31,11 @@ public:
     VkBuffer getVertexBuffer() const { return vertexBuffer; }
     VkBuffer getIndexBuffer() const { return indexBuffer; }
     uint32_t getIndexCount() const { return indexCount; }
-    VkBuffer getInstanceBuffer() const { return instanceBuffer; }
-    void* getInstanceBufferMapped() const { return instanceBufferMapped; }
     
     VkDescriptorPool getDescriptorPool() const { return descriptorPool; }
     const std::vector<VkDescriptorSet>& getDescriptorSets() const { return descriptorSets; }
     
 
-    
-    // Get maximum instances that can fit in buffer
-    uint32_t getMaxInstances() const { return MAX_INSTANCES; }
 
 
 private:
@@ -57,11 +51,6 @@ private:
     VkBuffer indexBuffer = VK_NULL_HANDLE;
     VkDeviceMemory indexBufferMemory = VK_NULL_HANDLE;
     uint32_t indexCount = 0;
-    
-    // Single instance buffer for simplified management
-    VkBuffer instanceBuffer = VK_NULL_HANDLE;
-    VkDeviceMemory instanceBufferMemory = VK_NULL_HANDLE;
-    void* instanceBufferMapped = nullptr;
     
     
     VkDescriptorPool descriptorPool = VK_NULL_HANDLE;

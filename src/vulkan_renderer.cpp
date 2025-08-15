@@ -89,10 +89,6 @@ bool VulkanRenderer::initialize(SDL_Window* window) {
         return false;
     }
     
-    if (!resources->createInstanceBuffer()) {
-        std::cerr << "Failed to create instance buffers" << std::endl;
-        return false;
-    }
     
     
     if (!resources->createDescriptorPool(pipeline->getDescriptorSetLayout())) {
@@ -118,7 +114,6 @@ bool VulkanRenderer::initialize(SDL_Window* window) {
     std::cout << "Movement command processor initialized" << std::endl;
     
     
-    loadDrawingFunctions();
     
     // Initialize per-frame fences
     if (!initializeFrameFences()) {
@@ -126,7 +121,6 @@ bool VulkanRenderer::initialize(SDL_Window* window) {
         return false;
     }
     
-    // Note: CPU instance buffers no longer used - using GPU entity manager only
     
     initialized = true;
     return true;
@@ -311,17 +305,6 @@ void VulkanRenderer::drawFrame() {
 
     result = functionLoader->vkQueuePresentKHR(context->getPresentQueue(), &presentInfo);
     
-    // Low-latency optimization: release swapchain images immediately after present
-    // TEMPORARILY DISABLED - may be causing synchronization issues
-    // if (functionLoader->vkReleaseSwapchainImagesEXT && result == VK_SUCCESS) {
-    //     VkReleaseSwapchainImagesInfoEXT releaseInfo{};
-    //     releaseInfo.sType = VK_STRUCTURE_TYPE_RELEASE_SWAPCHAIN_IMAGES_INFO_EXT;
-    //     releaseInfo.swapchain = swapchain->getSwapchain();
-    //     releaseInfo.imageIndexCount = 1;
-    //     releaseInfo.pImageIndices = &imageIndex;
-    //     
-    //     functionLoader->vkReleaseSwapchainImagesEXT(context->getDevice(), &releaseInfo);
-    // }
 
     if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || framebufferResized) {
         framebufferResized = false;
@@ -431,10 +414,6 @@ void VulkanRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t
 #endif
 }
 
-void VulkanRenderer::loadDrawingFunctions() {
-    // Note: Function loading now handled by centralized VulkanFunctionLoader
-    // All Vulkan calls in this class now use functionLoader->functionName()
-}
 
 void VulkanRenderer::uploadPendingGPUEntities() {
     if (gpuEntityManager) {
@@ -492,16 +471,7 @@ void VulkanRenderer::updateUniformBuffer(uint32_t currentImage) {
 }
 
 
-void VulkanRenderer::setEntityPosition(float x, float y, float z) {
-    entityPosition = glm::vec3(x, y, z);
-}
 
-void VulkanRenderer::updateEntities(const std::vector<std::tuple<glm::vec3, glm::vec4>>& entities) {
-    // This method is deprecated - entities should be added directly to GPU entity manager
-    if (!entities.empty()) {
-        std::cerr << "Warning: updateEntities() called but CPU rendering is disabled. Use GPU entity manager instead." << std::endl;
-    }
-}
 
 bool VulkanRenderer::validateEntityCapacity(uint32_t entityCount, const char* source) const {
 #ifdef _DEBUG

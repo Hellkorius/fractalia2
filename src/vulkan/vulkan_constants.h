@@ -9,7 +9,5 @@ constexpr uint32_t MAX_FRAMES_IN_FLIGHT = 2;
 constexpr uint64_t FENCE_TIMEOUT_IMMEDIATE = 0;           // Immediate check
 constexpr uint64_t FENCE_TIMEOUT_FRAME = 16000000;       // 16ms (one frame at 60fps)
 
-// GPU entity buffer constants
-constexpr VkDeviceSize INSTANCE_BUFFER_SIZE = 32 * 1024 * 1024; // 32MB for GPU entities
+// GPU entity constants
 constexpr uint32_t GPU_ENTITY_SIZE = 128; // 128 bytes per GPUEntity
-constexpr uint32_t MAX_INSTANCES = INSTANCE_BUFFER_SIZE / GPU_ENTITY_SIZE;
