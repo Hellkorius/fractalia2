@@ -56,6 +56,8 @@ fractalia2/
 			├─ vulkan_pipeline.*     // graphics shaders, renderpass, layout
 			├─ vulkan_resources.*    // uniform buffers, descriptor sets
 			├─ vulkan_sync.*         // fences/semaphores, cmd pools
+			├─ resource_context.*    // centralized resource management (buffers, images, staging)
+			├─ command_executor.*    // lightweight command buffer executor for staging copies
 			├─ vulkan_constants.h    
 			└─ compute_pipeline.*    // compute shader pipeline management
 	ecs/

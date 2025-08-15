@@ -61,7 +61,7 @@ bool VulkanRenderer::initialize(SDL_Window* window) {
     }
     
     resourceContext = std::make_unique<ResourceContext>();
-    if (!resourceContext->initialize(*context)) {
+    if (!resourceContext->initialize(*context, sync->getCommandPool())) {
         std::cerr << "Failed to initialize Resource context" << std::endl;
         return false;
     }

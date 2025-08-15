@@ -158,7 +158,7 @@ ResourceContext::~ResourceContext() {
     cleanup();
 }
 
-bool ResourceContext::initialize(const VulkanContext& context) {
+bool ResourceContext::initialize(const VulkanContext& context, VkCommandPool commandPool) {
     this->context = &context;
     
     if (!initializeVMA()) {
@@ -171,6 +171,14 @@ bool ResourceContext::initialize(const VulkanContext& context) {
         return false;
     }
     
+    // Initialize command executor if command pool is provided
+    if (commandPool != VK_NULL_HANDLE) {
+        if (!executor.initialize(context, commandPool)) {
+            std::cerr << "Failed to initialize command executor!" << std::endl;
+            return false;
+        }
+    }
+    
     return true;
 }
 
@@ -181,6 +189,7 @@ void ResourceContext::cleanup() {
     }
     cleanupCallbacks.clear();
     
+    executor.cleanup();
     stagingBuffer.cleanup();
     cleanupVMA();
     context = nullptr;
@@ -389,9 +398,17 @@ void ResourceContext::copyToBuffer(const ResourceHandle& dst, const void* data, 
 }
 
 void ResourceContext::copyBufferToBuffer(const ResourceHandle& src, const ResourceHandle& dst, VkDeviceSize size, VkDeviceSize srcOffset, VkDeviceSize dstOffset) {
-    // This would typically use command buffers - simplified for now
-    // In a full implementation, this would queue a copy operation
-    std::cerr << "copyBufferToBuffer not fully implemented - requires command buffer management" << std::endl;
+    if (!src.isValid() || !dst.isValid()) {
+        std::cerr << "ResourceContext::copyBufferToBuffer: Invalid resource handles!" << std::endl;
+        return;
+    }
+    
+    if (src.buffer == VK_NULL_HANDLE || dst.buffer == VK_NULL_HANDLE) {
+        std::cerr << "ResourceContext::copyBufferToBuffer: Invalid buffer handles!" << std::endl;
+        return;
+    }
+    
+    executor.copyBufferToBuffer(src.buffer, dst.buffer, size, srcOffset, dstOffset);
 }
 
 VkDescriptorPool ResourceContext::createDescriptorPool() {

@@ -10,6 +10,8 @@
 class VulkanContext;
 class VulkanFunctionLoader;
 
+#include "command_executor.h"
+
 // VMA allocator wrapper - simplified interface without external dependency
 class VmaAllocator_Impl;
 using VmaAllocator = VmaAllocator_Impl*;
@@ -56,7 +58,7 @@ public:
     ResourceContext();
     ~ResourceContext();
     
-    bool initialize(const VulkanContext& context);
+    bool initialize(const VulkanContext& context, VkCommandPool commandPool = VK_NULL_HANDLE);
     void cleanup();
     
     // Buffer creation helpers
@@ -117,6 +119,7 @@ private:
     VmaAllocator allocator = nullptr;
     StagingRingBuffer stagingBuffer;
     MemoryStats memoryStats;
+    CommandExecutor executor;
     
     // Internal VMA wrapper functions
     bool initializeVMA();
