@@ -6,6 +6,7 @@
 #include <glm/glm.hpp>
 #include <vector>
 #include <queue>
+#include <memory>
 
 // GPU entity structure matching compute shader layout
 struct GPUEntity {
@@ -102,7 +103,7 @@ private:
     ResourceContext* resourceContext = nullptr;
     
     // Single buffer storage for compute pipeline using ResourceContext
-    ResourceHandle* entityStorageHandle = nullptr;
+    std::unique_ptr<ResourceHandle> entityStorageHandle;
     VkBuffer entityStorage = VK_NULL_HANDLE;  // For compatibility
     void* entityBufferMapped = nullptr;
     

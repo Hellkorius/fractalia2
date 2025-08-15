@@ -51,8 +51,7 @@ void GPUEntityManager::cleanup() {
     // Clean up entity buffer using ResourceContext
     if (entityStorageHandle && resourceContext) {
         resourceContext->destroyResource(*entityStorageHandle);
-        delete entityStorageHandle;
-        entityStorageHandle = nullptr;
+        entityStorageHandle.reset();
     }
     
     entityStorage = VK_NULL_HANDLE;
@@ -187,17 +186,17 @@ void GPUEntityManager::updateAllMovementTypes(int newMovementType, bool angelMod
 
 bool GPUEntityManager::createEntityBuffers() {
     // Create entity buffer using ResourceContext
-    entityStorageHandle = new ResourceHandle();
-    *entityStorageHandle = resourceContext->createMappedBuffer(
-        ENTITY_BUFFER_SIZE,
-        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
+    entityStorageHandle = std::make_unique<ResourceHandle>(
+        resourceContext->createMappedBuffer(
+            ENTITY_BUFFER_SIZE,
+            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
+        )
     );
     
     if (!entityStorageHandle->isValid()) {
         std::cerr << "Failed to create entity buffer!" << std::endl;
-        delete entityStorageHandle;
-        entityStorageHandle = nullptr;
+        entityStorageHandle.reset();
         return false;
     }
     
