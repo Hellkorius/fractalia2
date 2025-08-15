@@ -73,8 +73,6 @@ private:
     void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex);
     void updateUniformBuffer(uint32_t currentImage);
     void transitionBufferLayout(VkCommandBuffer commandBuffer);
-    bool initializeFrameFences();
-    void cleanupPartialFrameFences();
     VkResult waitForFenceRobust(VkFence fence, const char* fenceName);
     
     
@@ -86,13 +84,37 @@ private:
     // Key-frame look-ahead system
     uint32_t frameCounter = 0;
     
-    // Per-frame fence management for independent compute/graphics timelines
-    struct FrameData {
-        VkFence computeDone = VK_NULL_HANDLE;
-        VkFence graphicsDone = VK_NULL_HANDLE;
-        bool computeInUse = false;
-        bool graphicsInUse = false;
-        bool fencesInitialized = false;
+    // RAII fence management for frame synchronization
+    class FrameFences {
+    public:
+        FrameFences() = default;
+        ~FrameFences() { cleanup(); }
+        
+        // Non-copyable, movable
+        FrameFences(const FrameFences&) = delete;
+        FrameFences& operator=(const FrameFences&) = delete;
+        FrameFences(FrameFences&&) = default;
+        FrameFences& operator=(FrameFences&&) = default;
+        
+        bool initialize(const class VulkanContext& context);
+        void cleanup();
+        
+        VkFence getComputeFence(uint32_t frameIndex) const { return computeFences[frameIndex]; }
+        VkFence getGraphicsFence(uint32_t frameIndex) const { return graphicsFences[frameIndex]; }
+        
+        bool isComputeInUse(uint32_t frameIndex) const { return computeInUse[frameIndex]; }
+        bool isGraphicsInUse(uint32_t frameIndex) const { return graphicsInUse[frameIndex]; }
+        void setComputeInUse(uint32_t frameIndex, bool inUse) { computeInUse[frameIndex] = inUse; }
+        void setGraphicsInUse(uint32_t frameIndex, bool inUse) { graphicsInUse[frameIndex] = inUse; }
+        
+    private:
+        std::array<VkFence, MAX_FRAMES_IN_FLIGHT> computeFences{};
+        std::array<VkFence, MAX_FRAMES_IN_FLIGHT> graphicsFences{};
+        std::array<bool, MAX_FRAMES_IN_FLIGHT> computeInUse{};
+        std::array<bool, MAX_FRAMES_IN_FLIGHT> graphicsInUse{};
+        const class VulkanContext* context = nullptr;
+        bool initialized = false;
     };
-    std::vector<FrameData> frameData;
+    
+    FrameFences frameFences;
 };

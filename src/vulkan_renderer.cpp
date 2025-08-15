@@ -29,8 +29,6 @@ VulkanRenderer::~VulkanRenderer() {
 bool VulkanRenderer::initialize(SDL_Window* window) {
     this->window = window;
     
-    // Initialize per-frame data
-    frameData.resize(MAX_FRAMES_IN_FLIGHT);
     
     context = std::make_unique<VulkanContext>();
     if (!context->initialize(window)) {
@@ -104,7 +102,7 @@ bool VulkanRenderer::initialize(SDL_Window* window) {
     
     
     // Initialize per-frame fences
-    if (!initializeFrameFences()) {
+    if (!frameFences.initialize(*context)) {
         std::cerr << "Failed to initialize frame fences" << std::endl;
         return false;
     }
@@ -118,20 +116,8 @@ void VulkanRenderer::cleanup() {
     if (context && context->getDevice() != VK_NULL_HANDLE) {
         context->getLoader().vkDeviceWaitIdle(context->getDevice());
         
-        // Clean up per-frame fences with proper state validation
-        for (auto& frame : frameData) {
-            if (frame.fencesInitialized) {
-                if (frame.computeDone != VK_NULL_HANDLE) {
-                    context->getLoader().vkDestroyFence(context->getDevice(), frame.computeDone, nullptr);
-                    frame.computeDone = VK_NULL_HANDLE;
-                }
-                if (frame.graphicsDone != VK_NULL_HANDLE) {
-                    context->getLoader().vkDestroyFence(context->getDevice(), frame.graphicsDone, nullptr);
-                    frame.graphicsDone = VK_NULL_HANDLE;
-                }
-                frame.fencesInitialized = false;
-            }
-        }
+        // Clean up per-frame fences
+        frameFences.cleanup();
     }
     
     movementCommandProcessor.reset();
@@ -146,8 +132,7 @@ void VulkanRenderer::cleanup() {
 }
 
 void VulkanRenderer::drawFrame() {
-    // Get current frame data and sync objects
-    FrameData& frame = frameData[currentFrame];
+    // Get sync objects
     const auto& imageAvailableSemaphores = sync->getImageAvailableSemaphores();
     const auto& renderFinishedSemaphores = sync->getRenderFinishedSemaphores();
     const auto& commandBuffers = sync->getCommandBuffers();
@@ -156,28 +141,28 @@ void VulkanRenderer::drawFrame() {
     // 1. Ensure GPU is done with THIS frame's resources
     // Use immediate check first, then longer timeout if needed for smooth 60fps
     
-    if (frame.computeInUse) {
-        VkResult computeResult = waitForFenceRobust(frame.computeDone, "compute");
+    if (frameFences.isComputeInUse(currentFrame)) {
+        VkResult computeResult = waitForFenceRobust(frameFences.getComputeFence(currentFrame), "compute");
 #ifdef _DEBUG
         assert(computeResult == VK_SUCCESS || computeResult == VK_ERROR_DEVICE_LOST);
 #endif
         if (computeResult == VK_ERROR_DEVICE_LOST) {
-            frame.computeInUse = false;
+            frameFences.setComputeInUse(currentFrame, false);
             return;
         }
-        frame.computeInUse = false;
+        frameFences.setComputeInUse(currentFrame, false);
     }
     
-    if (frame.graphicsInUse) {
-        VkResult graphicsResult = waitForFenceRobust(frame.graphicsDone, "graphics");
+    if (frameFences.isGraphicsInUse(currentFrame)) {
+        VkResult graphicsResult = waitForFenceRobust(frameFences.getGraphicsFence(currentFrame), "graphics");
 #ifdef _DEBUG
         assert(graphicsResult == VK_SUCCESS || graphicsResult == VK_ERROR_DEVICE_LOST);
 #endif
         if (graphicsResult == VK_ERROR_DEVICE_LOST) {
-            frame.graphicsInUse = false;
+            frameFences.setGraphicsInUse(currentFrame, false);
             return;
         }
-        frame.graphicsInUse = false;
+        frameFences.setGraphicsInUse(currentFrame, false);
     }
 
     // 2. Process movement commands at very beginning of frame for complete buffer coverage
@@ -238,23 +223,25 @@ void VulkanRenderer::drawFrame() {
     recordCommandBuffer(commandBuffers[currentFrame], imageIndex);
 
     // 7. Submit compute work with its own fence - NO BLOCKING
-    context->getLoader().vkResetFences(context->getDevice(), 1, &frame.computeDone);
+    VkFence computeFence = frameFences.getComputeFence(currentFrame);
+    context->getLoader().vkResetFences(context->getDevice(), 1, &computeFence);
     
     VkSubmitInfo computeSubmitInfo{};
     computeSubmitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
     computeSubmitInfo.commandBufferCount = 1;
     computeSubmitInfo.pCommandBuffers = &computeCommandBuffers[currentFrame];
     
-    VkResult computeSubmitResult = context->getLoader().vkQueueSubmit(context->getGraphicsQueue(), 1, &computeSubmitInfo, frame.computeDone);
+    VkResult computeSubmitResult = context->getLoader().vkQueueSubmit(context->getGraphicsQueue(), 1, &computeSubmitInfo, computeFence);
 #ifdef _DEBUG
     assert(computeSubmitResult == VK_SUCCESS);
 #else
     (void)computeSubmitResult;
 #endif
-    frame.computeInUse = true;
+    frameFences.setComputeInUse(currentFrame, true);
 
     // 8. Submit graphics work with its own fence - NO BLOCKING
-    context->getLoader().vkResetFences(context->getDevice(), 1, &frame.graphicsDone);
+    VkFence graphicsFence = frameFences.getGraphicsFence(currentFrame);
+    context->getLoader().vkResetFences(context->getDevice(), 1, &graphicsFence);
     
     VkSubmitInfo graphicsSubmitInfo{};
     graphicsSubmitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
@@ -271,13 +258,13 @@ void VulkanRenderer::drawFrame() {
     graphicsSubmitInfo.signalSemaphoreCount = 1;
     graphicsSubmitInfo.pSignalSemaphores = signalSemaphores;
 
-    VkResult graphicsSubmitResult = context->getLoader().vkQueueSubmit(context->getGraphicsQueue(), 1, &graphicsSubmitInfo, frame.graphicsDone);
+    VkResult graphicsSubmitResult = context->getLoader().vkQueueSubmit(context->getGraphicsQueue(), 1, &graphicsSubmitInfo, graphicsFence);
 #ifdef _DEBUG
     assert(graphicsSubmitResult == VK_SUCCESS);
 #else
     (void)graphicsSubmitResult;
 #endif
-    frame.graphicsInUse = true;
+    frameFences.setGraphicsInUse(currentFrame, true);
 
     // 9. Present immediately - no fence waiting
     VkPresentInfoKHR presentInfo{};
@@ -491,49 +478,55 @@ void VulkanRenderer::updateAspectRatio(int windowWidth, int windowHeight) {
     }
 }
 
-bool VulkanRenderer::initializeFrameFences() {
+// FrameFences implementation
+bool VulkanRenderer::FrameFences::initialize(const VulkanContext& context) {
+    this->context = &context;
+    
     VkFenceCreateInfo fenceInfo{};
     fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
     fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT; // Start signaled
     
-    for (auto& frame : frameData) {
-        if (context->getLoader().vkCreateFence(context->getDevice(), &fenceInfo, nullptr, &frame.computeDone) != VK_SUCCESS) {
-            std::cerr << "Failed to create compute fence" << std::endl;
-            // Clean up any previously created fences before returning
-            cleanupPartialFrameFences();
+    for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
+        if (context.getLoader().vkCreateFence(context.getDevice(), &fenceInfo, nullptr, &computeFences[i]) != VK_SUCCESS) {
+            std::cerr << "Failed to create compute fence for frame " << i << std::endl;
+            cleanup();
             return false;
         }
         
-        if (context->getLoader().vkCreateFence(context->getDevice(), &fenceInfo, nullptr, &frame.graphicsDone) != VK_SUCCESS) {
-            std::cerr << "Failed to create graphics fence" << std::endl;
-            // Clean up compute fence just created and any previously created fences
-            context->getLoader().vkDestroyFence(context->getDevice(), frame.computeDone, nullptr);
-            frame.computeDone = VK_NULL_HANDLE;
-            cleanupPartialFrameFences();
+        if (context.getLoader().vkCreateFence(context.getDevice(), &fenceInfo, nullptr, &graphicsFences[i]) != VK_SUCCESS) {
+            std::cerr << "Failed to create graphics fence for frame " << i << std::endl;
+            // Clean up compute fence just created
+            context.getLoader().vkDestroyFence(context.getDevice(), computeFences[i], nullptr);
+            computeFences[i] = VK_NULL_HANDLE;
+            cleanup();
             return false;
         }
         
-        // Mark fences as successfully initialized for this frame
-        frame.fencesInitialized = true;
+        computeInUse[i] = false;
+        graphicsInUse[i] = false;
     }
     
+    initialized = true;
     return true;
 }
 
-void VulkanRenderer::cleanupPartialFrameFences() {
-    for (auto& frame : frameData) {
-        if (frame.fencesInitialized) {
-            if (frame.computeDone != VK_NULL_HANDLE) {
-                context->getLoader().vkDestroyFence(context->getDevice(), frame.computeDone, nullptr);
-                frame.computeDone = VK_NULL_HANDLE;
+void VulkanRenderer::FrameFences::cleanup() {
+    if (context && context->getDevice() != VK_NULL_HANDLE) {
+        for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
+            if (computeFences[i] != VK_NULL_HANDLE) {
+                context->getLoader().vkDestroyFence(context->getDevice(), computeFences[i], nullptr);
+                computeFences[i] = VK_NULL_HANDLE;
             }
-            if (frame.graphicsDone != VK_NULL_HANDLE) {
-                context->getLoader().vkDestroyFence(context->getDevice(), frame.graphicsDone, nullptr);
-                frame.graphicsDone = VK_NULL_HANDLE;
+            if (graphicsFences[i] != VK_NULL_HANDLE) {
+                context->getLoader().vkDestroyFence(context->getDevice(), graphicsFences[i], nullptr);
+                graphicsFences[i] = VK_NULL_HANDLE;
             }
-            frame.fencesInitialized = false;
+            computeInUse[i] = false;
+            graphicsInUse[i] = false;
         }
     }
+    initialized = false;
+    context = nullptr;
 }
 
 VkResult VulkanRenderer::waitForFenceRobust(VkFence fence, const char* fenceName) {
