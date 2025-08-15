@@ -513,9 +513,7 @@ void VulkanRenderer::loadDrawingFunctions() {
 
 void VulkanRenderer::uploadPendingGPUEntities() {
     if (gpuEntityManager) {
-        bool hadEntities = gpuEntityManager->getEntityCount() > 0;
         gpuEntityManager->uploadPendingEntities();
-        
     }
 }
 
