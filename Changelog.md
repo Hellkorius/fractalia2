@@ -593,3 +593,38 @@ This overhaul eliminates all identified architectural flaws while maintaining id
 
 # Changelog 0.2.9:
 
+"Streamline"
+
+1. Commit to GPU-Only Rendering
+Removed the CPU rendering fallback
+
+2. Streamline Buffer Management
+- Unify vertex/index buffers since GPU entities use triangles only
+- Remove the separate triangle/square buffer distinction
+- Simplify instance buffer management to a single rotating buffer
+
+3. Remove Redundant Function Pointers
+Deleted the duplicate function pointers in VulkanResources and use the centralized loader throughout.
+
+4. Reduce Defensive Programming
+Replaced the extensive bounds checking with simple assertions in debug builds.
+
+5. Simplify Entity Types
+Since GPU compute treats everything as triangles anyway, removed the ShapeType enum and CPU-side shape distinction.
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+# Changelog 0.3.0
+
+Vulkan_constants added.
+
+Moved MAX_FRAMES_IN_FLIGHT = 2 from vulkan_renderer.h, vulkan_resources.h, vulkan_sync.h, etc. to it.
+
+FENCE_TIMEOUT_IMMEDIATE
+FENCE_TIMEOUT_FRAME
+INSTANCE_BUFFER_SIZE
+GPU_ENTITY_SIZE
+MAX_INSTANCES
+
+added as constants

@@ -4,6 +4,7 @@
 #include <vulkan/vulkan.h>
 #include <vector>
 #include "vulkan_context.h"
+#include "vulkan_constants.h"
 #include "../PolygonFactory.h"
 
 class VulkanSync;
@@ -50,7 +51,6 @@ public:
     uint32_t getMaxInstances() const { return MAX_INSTANCES; }
     static void copyBuffer(VulkanContext* context, VkCommandPool commandPool, VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size);
 
-    static const int MAX_FRAMES_IN_FLIGHT = 2;
 
 private:
     VulkanContext* context = nullptr;
@@ -67,8 +67,6 @@ private:
     uint32_t indexCount = 0;
     
     // Single instance buffer for simplified management
-    static const VkDeviceSize INSTANCE_BUFFER_SIZE = 32 * 1024 * 1024; // 32MB for GPU entities
-    static const uint32_t MAX_INSTANCES = INSTANCE_BUFFER_SIZE / 128; // 128 bytes per GPUEntity
     VkBuffer instanceBuffer = VK_NULL_HANDLE;
     VkDeviceMemory instanceBufferMemory = VK_NULL_HANDLE;
     void* instanceBufferMapped = nullptr;

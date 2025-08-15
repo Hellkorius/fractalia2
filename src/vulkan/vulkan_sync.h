@@ -4,6 +4,7 @@
 #include <vulkan/vulkan.h>
 #include <vector>
 #include "vulkan_context.h"
+#include "vulkan_constants.h"
 
 class VulkanSync {
 public:
@@ -23,8 +24,6 @@ public:
 
 private:
     VulkanContext* context = nullptr;
-    
-    static const int MAX_FRAMES_IN_FLIGHT = 2;
     
     VkCommandPool commandPool = VK_NULL_HANDLE;
     std::vector<VkCommandBuffer> commandBuffers;        // Graphics command buffers

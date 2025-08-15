@@ -9,6 +9,7 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <flecs.h>
+#include "vulkan/vulkan_constants.h"
 
 // Forward declarations for modules
 class VulkanContext;
@@ -22,10 +23,6 @@ class VulkanFunctionLoader;
 
 class VulkanRenderer {
 public:
-    // Frame synchronization constants for smooth 60fps
-    static constexpr uint32_t MAX_FRAMES_IN_FLIGHT = 2;
-    static constexpr uint64_t FENCE_TIMEOUT_IMMEDIATE = 0;           // Immediate check
-    static constexpr uint64_t FENCE_TIMEOUT_FRAME = 16000000;       // 16ms (one frame at 60fps)
     
     VulkanRenderer();
     ~VulkanRenderer();
