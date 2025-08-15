@@ -15,14 +15,13 @@ Cross-compiled (Linux→Windows) toy engine built to stress-test **hundreds-of-t
 ### Hybrid CPU/GPU Architecture
 The project uses a hybrid approach:
 - **CPU (Flecs ECS)**: Entity creation, input handling, camera controls, system scheduling
-- **GPU (Compute)**: All movement calculations, dynamic color generation, transform updates
-- **GPU (Graphics)**: Direct rendering from compute-updated entity buffers
+- **GPU (Graphics)**: Direct rendering, All movement calculations, dynamic color generation, transform updates
 
 ### System Architecture
 - **Direct Flecs Systems**: Native `world.system<>().each()` pattern, no wrappers
 - **SimpleControlSystem**: Singleton state pattern for control flags
 - **GPU Operations**: Direct calls in main loop after Flecs execution
-- **Minimal ECS**: Pure Flecs idioms, ~200 lines total ECS infrastructure
+- **ECS**: Pure Flecs idioms
 
 #### Control Flow
 - **Flecs Systems**: Direct `.each()` execution via `world.progress(deltaTime)`
@@ -33,7 +32,6 @@ The project uses a hybrid approach:
 - `Transform`: Entity transform matrix and position
 - `Renderable`: Shape type, color, layer, visibility
 - `MovementPattern`: Movement parameters (amplitude, frequency, phase, etc.)
-- `Velocity`: Linear/angular velocity (legacy CPU movement)
 
 #### GPU Entity Structure:
 - `GPUEntity`: 128-byte structure containing transform matrix, color, movement parameters, and runtime state
