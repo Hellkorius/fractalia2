@@ -40,21 +40,8 @@ public:
                           VkImageUsageFlags usage,
                           VkMemoryPropertyFlags properties,
                           VkImage& image,
-                          VkDeviceMemory& imageMemory);
-                          
-    // MSAA-capable image creation
-    static bool createImage(VkDevice device,
-                          VkPhysicalDevice physicalDevice,
-                          const VulkanFunctionLoader& loader,
-                          uint32_t width,
-                          uint32_t height,
-                          VkFormat format,
-                          VkImageTiling tiling,
-                          VkImageUsageFlags usage,
-                          VkMemoryPropertyFlags properties,
-                          VkSampleCountFlagBits numSamples,
-                          VkImage& image,
-                          VkDeviceMemory& imageMemory);
+                          VkDeviceMemory& imageMemory,
+                          VkSampleCountFlagBits numSamples = VK_SAMPLE_COUNT_1_BIT);
     
     static VkImageView createImageView(VkDevice device,
                                      const VulkanFunctionLoader& loader,

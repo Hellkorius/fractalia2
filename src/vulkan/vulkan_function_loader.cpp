@@ -200,6 +200,10 @@ void VulkanFunctionLoader::loadPipelineFunctions() {
         vkGetDeviceProcAddr(device, "vkCreatePipelineLayout"));
     vkDestroyPipelineLayout = reinterpret_cast<PFN_vkDestroyPipelineLayout>(
         vkGetDeviceProcAddr(device, "vkDestroyPipelineLayout"));
+    vkCreatePipelineCache = reinterpret_cast<PFN_vkCreatePipelineCache>(
+        vkGetDeviceProcAddr(device, "vkCreatePipelineCache"));
+    vkDestroyPipelineCache = reinterpret_cast<PFN_vkDestroyPipelineCache>(
+        vkGetDeviceProcAddr(device, "vkDestroyPipelineCache"));
     vkCreateGraphicsPipelines = reinterpret_cast<PFN_vkCreateGraphicsPipelines>(
         vkGetDeviceProcAddr(device, "vkCreateGraphicsPipelines"));
     vkCreateComputePipelines = reinterpret_cast<PFN_vkCreateComputePipelines>(

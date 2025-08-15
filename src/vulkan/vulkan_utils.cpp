@@ -70,60 +70,8 @@ bool VulkanUtils::createImage(VkDevice device,
                             VkImageUsageFlags usage,
                             VkMemoryPropertyFlags properties,
                             VkImage& image,
-                            VkDeviceMemory& imageMemory) {
-    // Create image
-    VkImageCreateInfo imageInfo{};
-    imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-    imageInfo.imageType = VK_IMAGE_TYPE_2D;
-    imageInfo.extent.width = width;
-    imageInfo.extent.height = height;
-    imageInfo.extent.depth = 1;
-    imageInfo.mipLevels = 1;
-    imageInfo.arrayLayers = 1;
-    imageInfo.format = format;
-    imageInfo.tiling = tiling;
-    imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    imageInfo.usage = usage;
-    imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
-    imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    
-    if (loader.vkCreateImage(device, &imageInfo, nullptr, &image) != VK_SUCCESS) {
-        std::cerr << "Failed to create image!" << std::endl;
-        return false;
-    }
-    
-    // Allocate memory
-    VkMemoryRequirements memRequirements;
-    loader.vkGetImageMemoryRequirements(device, image, &memRequirements);
-    
-    VkMemoryAllocateInfo allocInfo{};
-    allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    allocInfo.allocationSize = memRequirements.size;
-    allocInfo.memoryTypeIndex = findMemoryType(physicalDevice, loader,
-                                             memRequirements.memoryTypeBits, properties);
-    
-    if (loader.vkAllocateMemory(device, &allocInfo, nullptr, &imageMemory) != VK_SUCCESS) {
-        std::cerr << "Failed to allocate image memory!" << std::endl;
-        loader.vkDestroyImage(device, image, nullptr);
-        return false;
-    }
-    
-    loader.vkBindImageMemory(device, image, imageMemory, 0);
-    return true;
-}
-
-bool VulkanUtils::createImage(VkDevice device,
-                            VkPhysicalDevice physicalDevice,
-                            const VulkanFunctionLoader& loader,
-                            uint32_t width,
-                            uint32_t height,
-                            VkFormat format,
-                            VkImageTiling tiling,
-                            VkImageUsageFlags usage,
-                            VkMemoryPropertyFlags properties,
-                            VkSampleCountFlagBits numSamples,
-                            VkImage& image,
-                            VkDeviceMemory& imageMemory) {
+                            VkDeviceMemory& imageMemory,
+                            VkSampleCountFlagBits numSamples) {
     VkImageCreateInfo imageInfo{};
     imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
     imageInfo.imageType = VK_IMAGE_TYPE_2D;

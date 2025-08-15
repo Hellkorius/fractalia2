@@ -8,6 +8,9 @@
 #include <cstddef>
 #include <glm/glm.hpp>
 
+// Static member definition
+std::unordered_map<PipelineLayoutKey, VkPipelineLayout, PipelineLayoutKeyHash> VulkanPipeline::pipelineLayoutCache;
+
 VulkanPipeline::VulkanPipeline() {
 }
 
@@ -23,6 +26,15 @@ bool VulkanPipeline::initialize(VulkanContext* context, VkFormat swapChainImageF
         std::cerr << "VulkanPipeline requires VulkanFunctionLoader" << std::endl;
         return false;
     }
+    
+    std::cout << "Creating pipeline cache..." << std::endl;
+    VkPipelineCacheCreateInfo pipelineCacheInfo{};
+    pipelineCacheInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
+    if (loader->vkCreatePipelineCache(context->getDevice(), &pipelineCacheInfo, nullptr, &pipelineCache) != VK_SUCCESS) {
+        std::cerr << "Failed to create pipeline cache" << std::endl;
+        return false;
+    }
+    std::cout << "Pipeline cache created successfully" << std::endl;
     
     std::cout << "Creating descriptor set layout..." << std::endl;
     if (!createDescriptorSetLayout()) {
@@ -66,6 +78,10 @@ void VulkanPipeline::cleanup() {
     if (descriptorSetLayout != VK_NULL_HANDLE) {
         loader->vkDestroyDescriptorSetLayout(context->getDevice(), descriptorSetLayout, nullptr);
         descriptorSetLayout = VK_NULL_HANDLE;
+    }
+    if (pipelineCache != VK_NULL_HANDLE) {
+        loader->vkDestroyPipelineCache(context->getDevice(), pipelineCache, nullptr);
+        pipelineCache = VK_NULL_HANDLE;
     }
 }
 
@@ -367,17 +383,7 @@ bool VulkanPipeline::createGraphicsPipeline() {
     dynamicState.dynamicStateCount = static_cast<uint32_t>(dynamicStates.size());
     dynamicState.pDynamicStates = dynamicStates.data();
 
-    VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
-    pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-    pipelineLayoutInfo.setLayoutCount = 1;
-    pipelineLayoutInfo.pSetLayouts = &descriptorSetLayout;
-    pipelineLayoutInfo.pushConstantRangeCount = 0;
-    pipelineLayoutInfo.pPushConstantRanges = nullptr;
-
-    if (loader->vkCreatePipelineLayout(context->getDevice(), &pipelineLayoutInfo, nullptr, &pipelineLayout) != VK_SUCCESS) {
-        std::cerr << "Failed to create pipeline layout" << std::endl;
-        return false;
-    }
+    pipelineLayout = getOrCreatePipelineLayout(descriptorSetLayout);
 
     VkGraphicsPipelineCreateInfo pipelineInfo{};
     pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
@@ -396,7 +402,7 @@ bool VulkanPipeline::createGraphicsPipeline() {
     pipelineInfo.subpass = 0;
     pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
 
-    if (loader->vkCreateGraphicsPipelines(context->getDevice(), VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &graphicsPipeline) != VK_SUCCESS) {
+    if (loader->vkCreateGraphicsPipelines(context->getDevice(), pipelineCache, 1, &pipelineInfo, nullptr, &graphicsPipeline) != VK_SUCCESS) {
         std::cerr << "Failed to create graphics pipeline" << std::endl;
         return false;
     }
@@ -405,6 +411,44 @@ bool VulkanPipeline::createGraphicsPipeline() {
     loader->vkDestroyShaderModule(context->getDevice(), vertShaderModule, nullptr);
 
     return true;
+}
+
+VkPipelineLayout VulkanPipeline::getOrCreatePipelineLayout(VkDescriptorSetLayout setLayout, 
+                                                        const VkPushConstantRange* pushConstantRange) {
+    PipelineLayoutKey key{};
+    key.descriptorSetLayout = setLayout;
+    
+    if (pushConstantRange) {
+        key.pushConstantRange = *pushConstantRange;
+    } else {
+        key.pushConstantRange = {0, 0, 0};
+    }
+    
+    auto it = pipelineLayoutCache.find(key);
+    if (it != pipelineLayoutCache.end()) {
+        return it->second;
+    }
+    
+    VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
+    pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    pipelineLayoutInfo.setLayoutCount = 1;
+    pipelineLayoutInfo.pSetLayouts = &setLayout;
+    
+    if (pushConstantRange && pushConstantRange->size > 0) {
+        pipelineLayoutInfo.pushConstantRangeCount = 1;
+        pipelineLayoutInfo.pPushConstantRanges = pushConstantRange;
+    } else {
+        pipelineLayoutInfo.pushConstantRangeCount = 0;
+        pipelineLayoutInfo.pPushConstantRanges = nullptr;
+    }
+    
+    VkPipelineLayout newLayout;
+    if (loader->vkCreatePipelineLayout(context->getDevice(), &pipelineLayoutInfo, nullptr, &newLayout) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to create pipeline layout");
+    }
+    
+    pipelineLayoutCache[key] = newLayout;
+    return newLayout;
 }
 
 // Note: loadFunctions removed - now using centralized VulkanFunctionLoader

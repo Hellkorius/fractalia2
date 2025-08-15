@@ -195,7 +195,7 @@ bool VulkanSwapchain::createDepthResources() {
     VulkanUtils::createImage(context->getDevice(), context->getPhysicalDevice(), *loader,
                             swapChainExtent.width, swapChainExtent.height, depthFormat, VK_IMAGE_TILING_OPTIMAL,
                             VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-                            VK_SAMPLE_COUNT_2_BIT, depthImage, depthImageMemory);
+                            depthImage, depthImageMemory, VK_SAMPLE_COUNT_2_BIT);
     
     depthImageView = VulkanUtils::createImageView(context->getDevice(), *loader, depthImage, depthFormat, VK_IMAGE_ASPECT_DEPTH_BIT);
     
@@ -208,7 +208,7 @@ bool VulkanSwapchain::createMSAAColorResources() {
     VulkanUtils::createImage(context->getDevice(), context->getPhysicalDevice(), *loader,
                             swapChainExtent.width, swapChainExtent.height, colorFormat, VK_IMAGE_TILING_OPTIMAL,
                             VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
-                            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, VK_SAMPLE_COUNT_2_BIT, msaaColorImage, msaaColorImageMemory);
+                            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, msaaColorImage, msaaColorImageMemory, VK_SAMPLE_COUNT_2_BIT);
     
     msaaColorImageView = VulkanUtils::createImageView(context->getDevice(), *loader, msaaColorImage, colorFormat, VK_IMAGE_ASPECT_COLOR_BIT);
     

@@ -99,6 +99,8 @@ public:
     PFN_vkDestroyShaderModule vkDestroyShaderModule = nullptr;
     PFN_vkCreatePipelineLayout vkCreatePipelineLayout = nullptr;
     PFN_vkDestroyPipelineLayout vkDestroyPipelineLayout = nullptr;
+    PFN_vkCreatePipelineCache vkCreatePipelineCache = nullptr;
+    PFN_vkDestroyPipelineCache vkDestroyPipelineCache = nullptr;
     PFN_vkCreateGraphicsPipelines vkCreateGraphicsPipelines = nullptr;
     PFN_vkCreateComputePipelines vkCreateComputePipelines = nullptr;
     PFN_vkDestroyPipeline vkDestroyPipeline = nullptr;
