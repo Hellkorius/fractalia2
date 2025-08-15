@@ -14,8 +14,9 @@ Cross-compiled (Linux→Windows) toy engine built to stress-test **hundreds-of-t
 
 ### Hybrid CPU/GPU Design
 - **CPU (Flecs ECS)**: Entity lifecycle, input handling, camera controls
-- **GPU**: Instanced rendering with dynamic transforms, unified buffer management
-- **Bridge**: GPUEntityManager handles CPU→GPU data transfer
+- **GPU Compute**: Movement calculation for all entity types using compute shaders
+- **GPU Graphics**: Instanced rendering with pre-computed positions, unified buffer management
+- **Bridge**: GPUEntityManager handles CPU→GPU data transfer and compute→graphics synchronization
 
 ### Core Systems
 - **Direct Flecs**: Native `world.system<>().each()` patterns, no abstractions
@@ -27,8 +28,10 @@ Cross-compiled (Linux→Windows) toy engine built to stress-test **hundreds-of-t
 ### Entity Data Flow
 1. **CPU Entities**: Flecs components (Transform, Renderable, MovementPattern)
 2. **GPU Upload**: GPUEntityManager converts ECS → GPUEntity structs  
-3. **GPU Storage**: Instance buffer with 128-byte GPUEntity layout
-4. **Rendering**: Single draw call with instanced vertex data
+3. **Compute Pass**: Movement compute shader calculates positions for all entities
+4. **GPU Storage**: Entity buffer (128-byte GPUEntity layout) + Position buffer (16-byte vec4 per entity)
+5. **Graphics Pass**: Vertex shader reads pre-computed positions
+6. **Rendering**: Single draw call with instanced vertex data
 
 ## File Structure
 
@@ -73,8 +76,9 @@ fractalia2/
 │   │       ├── simple_control_system.* # Runtime controls
 │   │       └── systems_common.h # Shared system headers
 │   └── shaders/
-│       ├── vertex.vert         # Instanced vertex processing
+│       ├── vertex.vert         # Vertex shader (reads pre-computed positions)
 │       ├── fragment.frag       # Fragment shading
+│       ├── movement.comp       # Compute shader for all movement types
 │       └── compiled/           # SPIR-V bytecode
 ```
 
@@ -94,14 +98,17 @@ struct GPUEntity {
 
 ### Development Workflow
 1. **Entity Creation**: `EntityFactory::createSwarm()` → Flecs components
-2. **GPU Upload**: `GPUEntityManager::addEntitiesFromECS()` → GPU buffer
+2. **GPU Upload**: `GPUEntityManager::addEntitiesFromECS()` → GPU entity buffer
 3. **Runtime Commands**: Thread-safe `MovementCommandProcessor` for GPU operations
-4. **Rendering**: Single instanced draw call processes all entities
-5. **Debug**: `-` key shows CPU vs GPU entity counts
+4. **Compute Dispatch**: Movement compute shader calculates all entity positions
+5. **Graphics Pipeline**: Vertex shader reads pre-computed positions for rendering
+6. **Rendering**: Single instanced draw call processes all entities
+7. **Debug**: `-` key shows CPU vs GPU entity counts
 
 ### Key Systems
 - **Input**: SDL events → world coordinates, camera controls
 - **Camera**: View/projection matrices, zoom, pan
-- **Control**: Runtime entity creation/deletion via key bindings  
+- **Control**: Runtime entity creation/deletion via key bindings (Keys 0-3, 5 for movement types)
 - **GPU Bridge**: Efficient CPU→GPU data transfer with validation
 - **Movement**: Thread-safe command queue for dynamic entity operations
+- **Compute Pipeline**: GPU-driven movement calculation for all entity types including random walk

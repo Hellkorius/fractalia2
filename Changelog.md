@@ -686,4 +686,91 @@ Fencing:
 - Updated initialization to receive command pool from VulkanSync
 - Fixed compilation via direct header includes for a clean build
 
-ResourceContext can now perform staging buffer copies using VulkanSync’s command pool.
+ResourceContext can now perform staging buffer copies using VulkanSync's command pool.
+
+# Changelog 0.4.0 - Compute-Driven Movement System
+
+**Major Architecture Change**: Migrated all movement computation from vertex shaders to compute shaders for enhanced flexibility and GPU-driven algorithms.
+
+## Compute Shader Integration
+
+**Movement Compute Pipeline** (`movement.comp`):
+- Unified compute shader handles all movement types: Petal, Orbit, Wave, Triangle, RandomStep
+- 64 threads per workgroup for optimal GPU utilization
+- Input: GPUEntity buffer (128 bytes/entity) with movement parameters
+- Output: Position buffer (16 bytes/entity) with computed world positions
+- Push constants: time, deltaTime, entityCount, frame for temporal calculations
+
+**Graphics Pipeline Simplification** (`vertex.vert`):
+- Vertex shader now reads pre-computed positions from compute shader output
+- Eliminated all movement computation from vertex stage
+- Reduced vertex shader complexity to position lookup + color/rotation calculation
+- Maintained single instanced draw call architecture
+
+## GPU-Driven Random Walk Movement
+
+**RandomStep Movement Type** (Key 5):
+- Wang hash algorithm for high-quality pseudorandom generation per entity
+- Deterministic random walks: same entity ID + time = reproducible pattern
+- 8-step accumulation with decay for smooth, organic movement patterns
+- Soft boundary constraints prevent entities from wandering beyond limits
+- Center drift mechanism provides natural return-to-origin behavior
+
+**Movement Command System Integration**:
+- Added MovementCommand::Type::RandomStep (value 4) to command enumeration
+- Extended simple_control_system.cpp with Key 5 binding for RandomStep activation
+- Updated MOVEMENT_NAMES array with "RANDOM STEP" for logging consistency
+- Thread-safe movement type transitions via MovementCommandProcessor
+
+## Buffer Management Updates
+
+**GPUEntityManager Enhancements**:
+- Added position buffer creation (POSITION_BUFFER_SIZE = MAX_ENTITIES × 16 bytes)
+- Dual buffer architecture: entity buffer (input) + position buffer (output)
+- Updated compute descriptor sets for proper input/output buffer bindings
+- Device-local position buffer with VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT
+
+**VulkanPipeline Compute Support**:
+- Implemented createComputePipeline() and createComputeDescriptorSetLayout()
+- Compute pipeline layout with push constants for temporal parameters
+- Graphics descriptor set layout extended with position buffer binding (binding 2)
+- Proper resource cleanup for compute pipeline objects
+
+## Render Loop Integration
+
+**Compute Dispatch** (`VulkanRenderer::drawFrame()`):
+- Compute shader dispatch before graphics rendering
+- Dynamic workgroup calculation: (entityCount + 63) / 64 workgroups
+- Push constants update with frame timing and entity count
+- Memory barrier ensures compute writes complete before graphics reads
+
+**Shader Compilation**:
+- Updated compile-shaders.sh to include movement.comp compilation
+- Removed legacy shader variants and cleanup temporary files
+- Maintained build system compatibility with existing pipeline
+
+## Performance Characteristics
+
+**Trade-offs**:
+- Added 4MB/frame memory bandwidth (2MB write + 2MB read for position buffer)
+- Compute dispatch overhead (~1-2µs) vs direct vertex computation
+- Pipeline dependency: compute must complete before graphics
+- Enhanced algorithmic capability for complex movement patterns
+
+**Benefits**:
+- GPU-driven random algorithms impossible in vertex shaders
+- Unified movement computation architecture
+- Foundation for advanced artificial life behaviors
+- Maintained 60 FPS target for hundreds of thousands of entities
+
+## Constants and Type System
+
+**Movement Type Constants** (`constants.h`):
+- Added MOVEMENT_TYPE_RANDOM_STEP = 4 to SystemConstants namespace
+- Extended MovementType enum in component.h with RandomStep = 4
+- Maintained backward compatibility with existing movement types 0-3
+
+**Descriptor Set Layout Updates**:
+- Graphics: UBO (binding 0) + Position buffer (binding 2)
+- Compute: Entity buffer (binding 0) + Position buffer (binding 1)
+- Proper stage flags for compute vs vertex shader access patterns
