@@ -39,7 +39,6 @@ public:
     const std::vector<VkDescriptorSet>& getDescriptorSets() const { return descriptorSets; }
     
 
-    static uint32_t findMemoryType(VulkanContext* context, uint32_t typeFilter, VkMemoryPropertyFlags properties);
     
     // Get maximum instances that can fit in buffer
     uint32_t getMaxInstances() const { return MAX_INSTANCES; }

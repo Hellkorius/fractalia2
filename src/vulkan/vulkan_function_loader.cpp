@@ -106,6 +106,9 @@ void VulkanFunctionLoader::loadPhysicalDeviceFunctions() {
         vkGetInstanceProcAddr(instance, "vkGetPhysicalDeviceSurfacePresentModesKHR"));
     vkEnumerateDeviceExtensionProperties = reinterpret_cast<PFN_vkEnumerateDeviceExtensionProperties>(
         vkGetInstanceProcAddr(instance, "vkEnumerateDeviceExtensionProperties"));
+    // Load vkCreateDevice here since it's needed before device creation
+    vkCreateDevice = reinterpret_cast<PFN_vkCreateDevice>(
+        vkGetInstanceProcAddr(instance, "vkCreateDevice"));
 }
 
 void VulkanFunctionLoader::loadSurfaceFunctions() {
@@ -116,8 +119,7 @@ void VulkanFunctionLoader::loadSurfaceFunctions() {
 }
 
 void VulkanFunctionLoader::loadDeviceManagementFunctions() {
-    vkCreateDevice = reinterpret_cast<PFN_vkCreateDevice>(
-        vkGetInstanceProcAddr(instance, "vkCreateDevice"));
+    // vkCreateDevice is now loaded in loadPhysicalDeviceFunctions() since it's needed before device creation
     vkDestroyDevice = reinterpret_cast<PFN_vkDestroyDevice>(
         vkGetDeviceProcAddr(device, "vkDestroyDevice"));
     vkGetDeviceQueue = reinterpret_cast<PFN_vkGetDeviceQueue>(
@@ -179,9 +181,6 @@ void VulkanFunctionLoader::loadSwapchainFunctions() {
     vkReleaseSwapchainImagesEXT = reinterpret_cast<PFN_vkReleaseSwapchainImagesEXT>(
         vkGetDeviceProcAddr(device, "vkReleaseSwapchainImagesEXT"));
     
-    if (vkReleaseSwapchainImagesEXT) {
-        std::cout << "VK_EXT_swapchain_maintenance1 functions loaded successfully" << std::endl;
-    }
 }
 
 void VulkanFunctionLoader::loadPipelineFunctions() {

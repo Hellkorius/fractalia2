@@ -32,23 +32,8 @@ public:
     VkQueue getPresentQueue() const { return presentQueue; }
     
     QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device);
+    void getDeviceQueues(); // Call this after device functions are loaded
 
-    // Vulkan function pointers - shared with all modules
-    PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr = nullptr;
-    PFN_vkGetDeviceProcAddr vkGetDeviceProcAddr = nullptr;
-    PFN_vkCreateInstance vkCreateInstance = nullptr;
-    PFN_vkDestroyInstance vkDestroyInstance = nullptr;
-    PFN_vkEnumeratePhysicalDevices vkEnumeratePhysicalDevices = nullptr;
-    PFN_vkGetPhysicalDeviceProperties vkGetPhysicalDeviceProperties = nullptr;
-    PFN_vkGetPhysicalDeviceQueueFamilyProperties vkGetPhysicalDeviceQueueFamilyProperties = nullptr;
-    PFN_vkCreateDevice vkCreateDevice = nullptr;
-    PFN_vkDestroyDevice vkDestroyDevice = nullptr;
-    PFN_vkGetDeviceQueue vkGetDeviceQueue = nullptr;
-    PFN_vkDestroySurfaceKHR vkDestroySurfaceKHR = nullptr;
-    PFN_vkGetPhysicalDeviceSurfaceSupportKHR vkGetPhysicalDeviceSurfaceSupportKHR = nullptr;
-    PFN_vkEnumerateDeviceExtensionProperties vkEnumerateDeviceExtensionProperties = nullptr;
-    PFN_vkGetPhysicalDeviceMemoryProperties vkGetPhysicalDeviceMemoryProperties = nullptr;
-    PFN_vkDeviceWaitIdle vkDeviceWaitIdle = nullptr;
 
 private:
     SDL_Window* window = nullptr;
@@ -58,6 +43,7 @@ private:
     VkDevice device = VK_NULL_HANDLE;
     VkQueue graphicsQueue = VK_NULL_HANDLE;
     VkQueue presentQueue = VK_NULL_HANDLE;
+    QueueFamilyIndices queueFamilyIndices; // Store indices for queue retrieval after device creation
 
     bool createInstance();
     bool createSurface();
@@ -66,7 +52,6 @@ private:
     bool isDeviceSuitable(VkPhysicalDevice device);
     
     std::vector<const char*> getRequiredExtensions();
-    bool loadVulkanFunctions();
-    void loadInstanceFunctions();
-    void loadDeviceFunctions();
+    
+    class VulkanFunctionLoader* functionLoader = nullptr;
 };

@@ -628,3 +628,5 @@ GPU_ENTITY_SIZE
 MAX_INSTANCES
 
 added as constants
+
+Removed redundant function pointers from VulkanContext, VulkanFunctionLoader is the sole source of truth.

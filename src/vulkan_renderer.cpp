@@ -63,7 +63,7 @@ bool VulkanRenderer::initialize(SDL_Window* window) {
     }
     
     sync = std::make_unique<VulkanSync>();
-    if (!sync->initialize(context.get())) {
+    if (!sync->initialize(context.get(), functionLoader.get())) {
         std::cerr << "Failed to initialize Vulkan sync" << std::endl;
         return false;
     }

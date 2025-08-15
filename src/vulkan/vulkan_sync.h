@@ -4,6 +4,7 @@
 #include <vulkan/vulkan.h>
 #include <vector>
 #include "vulkan_context.h"
+#include "vulkan_function_loader.h"
 #include "vulkan_constants.h"
 
 class VulkanSync {
@@ -11,7 +12,7 @@ public:
     VulkanSync();
     ~VulkanSync();
 
-    bool initialize(VulkanContext* context);
+    bool initialize(VulkanContext* context, VulkanFunctionLoader* loader);
     void cleanup();
 
     VkCommandPool getCommandPool() const { return commandPool; }
@@ -24,6 +25,7 @@ public:
 
 private:
     VulkanContext* context = nullptr;
+    VulkanFunctionLoader* loader = nullptr;
     
     VkCommandPool commandPool = VK_NULL_HANDLE;
     std::vector<VkCommandBuffer> commandBuffers;        // Graphics command buffers
@@ -33,18 +35,7 @@ private:
     std::vector<VkFence> inFlightFences;                // Graphics fences
     std::vector<VkFence> computeFences;                 // Compute fences
 
-    // Function pointers for sync operations
-    PFN_vkCreateCommandPool vkCreateCommandPool = nullptr;
-    PFN_vkDestroyCommandPool vkDestroyCommandPool = nullptr;
-    PFN_vkAllocateCommandBuffers vkAllocateCommandBuffers = nullptr;
-    PFN_vkCreateSemaphore vkCreateSemaphore = nullptr;
-    PFN_vkDestroySemaphore vkDestroySemaphore = nullptr;
-    PFN_vkCreateFence vkCreateFence = nullptr;
-    PFN_vkDestroyFence vkDestroyFence = nullptr;
-
     bool createCommandPool();
     bool createCommandBuffers(); 
     bool createSyncObjects();
-    
-    void loadFunctions();
 };

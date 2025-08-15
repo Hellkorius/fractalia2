@@ -8,10 +8,9 @@ VulkanSync::~VulkanSync() {
     cleanup();
 }
 
-bool VulkanSync::initialize(VulkanContext* context) {
+bool VulkanSync::initialize(VulkanContext* context, VulkanFunctionLoader* loader) {
     this->context = context;
-    
-    loadFunctions();
+    this->loader = loader;
     
     if (!createCommandPool()) {
         std::cerr << "Failed to create command pool" << std::endl;
@@ -33,35 +32,37 @@ bool VulkanSync::initialize(VulkanContext* context) {
 
 void VulkanSync::cleanup() {
     for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-        if (i < inFlightFences.size() && inFlightFences[i] != VK_NULL_HANDLE) {
-            vkDestroyFence(context->getDevice(), inFlightFences[i], nullptr);
+        if (i < inFlightFences.size() && inFlightFences[i] != VK_NULL_HANDLE && loader) {
+            loader->vkDestroyFence(context->getDevice(), inFlightFences[i], nullptr);
         }
-        if (i < computeFences.size() && computeFences[i] != VK_NULL_HANDLE) {
-            vkDestroyFence(context->getDevice(), computeFences[i], nullptr);
+        if (i < computeFences.size() && computeFences[i] != VK_NULL_HANDLE && loader) {
+            loader->vkDestroyFence(context->getDevice(), computeFences[i], nullptr);
         }
-        if (i < renderFinishedSemaphores.size() && renderFinishedSemaphores[i] != VK_NULL_HANDLE) {
-            vkDestroySemaphore(context->getDevice(), renderFinishedSemaphores[i], nullptr);
+        if (i < renderFinishedSemaphores.size() && renderFinishedSemaphores[i] != VK_NULL_HANDLE && loader) {
+            loader->vkDestroySemaphore(context->getDevice(), renderFinishedSemaphores[i], nullptr);
         }
-        if (i < imageAvailableSemaphores.size() && imageAvailableSemaphores[i] != VK_NULL_HANDLE) {
-            vkDestroySemaphore(context->getDevice(), imageAvailableSemaphores[i], nullptr);
+        if (i < imageAvailableSemaphores.size() && imageAvailableSemaphores[i] != VK_NULL_HANDLE && loader) {
+            loader->vkDestroySemaphore(context->getDevice(), imageAvailableSemaphores[i], nullptr);
         }
     }
     
-    if (commandPool != VK_NULL_HANDLE) {
-        vkDestroyCommandPool(context->getDevice(), commandPool, nullptr);
+    if (commandPool != VK_NULL_HANDLE && loader) {
+        loader->vkDestroyCommandPool(context->getDevice(), commandPool, nullptr);
         commandPool = VK_NULL_HANDLE;
     }
 }
 
 bool VulkanSync::createCommandPool() {
+    std::cout << "VulkanSync: About to call findQueueFamilies..." << std::endl;
     QueueFamilyIndices queueFamilyIndices = context->findQueueFamilies(context->getPhysicalDevice());
+    std::cout << "VulkanSync: findQueueFamilies returned" << std::endl;
 
     VkCommandPoolCreateInfo poolInfo{};
     poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
     poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
     poolInfo.queueFamilyIndex = queueFamilyIndices.graphicsFamily.value();
 
-    if (vkCreateCommandPool(context->getDevice(), &poolInfo, nullptr, &commandPool) != VK_SUCCESS) {
+    if (loader->vkCreateCommandPool(context->getDevice(), &poolInfo, nullptr, &commandPool) != VK_SUCCESS) {
         std::cerr << "Failed to create command pool" << std::endl;
         return false;
     }
@@ -80,14 +81,14 @@ bool VulkanSync::createCommandBuffers() {
     allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
     allocInfo.commandBufferCount = static_cast<uint32_t>(commandBuffers.size());
 
-    if (vkAllocateCommandBuffers(context->getDevice(), &allocInfo, commandBuffers.data()) != VK_SUCCESS) {
+    if (loader->vkAllocateCommandBuffers(context->getDevice(), &allocInfo, commandBuffers.data()) != VK_SUCCESS) {
         std::cerr << "Failed to allocate graphics command buffers" << std::endl;
         return false;
     }
     
     // Allocate compute command buffers
     allocInfo.commandBufferCount = static_cast<uint32_t>(computeCommandBuffers.size());
-    if (vkAllocateCommandBuffers(context->getDevice(), &allocInfo, computeCommandBuffers.data()) != VK_SUCCESS) {
+    if (loader->vkAllocateCommandBuffers(context->getDevice(), &allocInfo, computeCommandBuffers.data()) != VK_SUCCESS) {
         std::cerr << "Failed to allocate compute command buffers" << std::endl;
         return false;
     }
@@ -109,10 +110,10 @@ bool VulkanSync::createSyncObjects() {
     fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
 
     for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-        if (vkCreateSemaphore(context->getDevice(), &semaphoreInfo, nullptr, &imageAvailableSemaphores[i]) != VK_SUCCESS ||
-            vkCreateSemaphore(context->getDevice(), &semaphoreInfo, nullptr, &renderFinishedSemaphores[i]) != VK_SUCCESS ||
-            vkCreateFence(context->getDevice(), &fenceInfo, nullptr, &inFlightFences[i]) != VK_SUCCESS ||
-            vkCreateFence(context->getDevice(), &fenceInfo, nullptr, &computeFences[i]) != VK_SUCCESS) {
+        if (loader->vkCreateSemaphore(context->getDevice(), &semaphoreInfo, nullptr, &imageAvailableSemaphores[i]) != VK_SUCCESS ||
+            loader->vkCreateSemaphore(context->getDevice(), &semaphoreInfo, nullptr, &renderFinishedSemaphores[i]) != VK_SUCCESS ||
+            loader->vkCreateFence(context->getDevice(), &fenceInfo, nullptr, &inFlightFences[i]) != VK_SUCCESS ||
+            loader->vkCreateFence(context->getDevice(), &fenceInfo, nullptr, &computeFences[i]) != VK_SUCCESS) {
             std::cerr << "Failed to create synchronization objects" << std::endl;
             return false;
         }
@@ -121,12 +122,3 @@ bool VulkanSync::createSyncObjects() {
     return true;
 }
 
-void VulkanSync::loadFunctions() {
-    vkCreateCommandPool = (PFN_vkCreateCommandPool)context->vkGetDeviceProcAddr(context->getDevice(), "vkCreateCommandPool");
-    vkDestroyCommandPool = (PFN_vkDestroyCommandPool)context->vkGetDeviceProcAddr(context->getDevice(), "vkDestroyCommandPool");
-    vkAllocateCommandBuffers = (PFN_vkAllocateCommandBuffers)context->vkGetDeviceProcAddr(context->getDevice(), "vkAllocateCommandBuffers");
-    vkCreateSemaphore = (PFN_vkCreateSemaphore)context->vkGetDeviceProcAddr(context->getDevice(), "vkCreateSemaphore");
-    vkDestroySemaphore = (PFN_vkDestroySemaphore)context->vkGetDeviceProcAddr(context->getDevice(), "vkDestroySemaphore");
-    vkCreateFence = (PFN_vkCreateFence)context->vkGetDeviceProcAddr(context->getDevice(), "vkCreateFence");
-    vkDestroyFence = (PFN_vkDestroyFence)context->vkGetDeviceProcAddr(context->getDevice(), "vkDestroyFence");
-}

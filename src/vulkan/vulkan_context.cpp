@@ -29,9 +29,10 @@ VulkanContext::~VulkanContext() {
 
 bool VulkanContext::initialize(SDL_Window* window, VulkanFunctionLoader* loader) {
     this->window = window;
+    this->functionLoader = loader;
     
-    if (!loadVulkanFunctions()) {
-        std::cerr << "Failed to load Vulkan functions" << std::endl;
+    if (!functionLoader) {
+        std::cerr << "VulkanFunctionLoader is required" << std::endl;
         return false;
     }
     
@@ -70,23 +71,26 @@ bool VulkanContext::initialize(SDL_Window* window, VulkanFunctionLoader* loader)
         }
     }
     
+    // Now that device functions are loaded, we can get the queues
+    getDeviceQueues();
+    
     return true;
 }
 
 void VulkanContext::cleanup() {
-    if (device != VK_NULL_HANDLE) {
-        vkDeviceWaitIdle(device);
-        vkDestroyDevice(device, nullptr);
+    if (device != VK_NULL_HANDLE && functionLoader) {
+        functionLoader->vkDeviceWaitIdle(device);
+        functionLoader->vkDestroyDevice(device, nullptr);
         device = VK_NULL_HANDLE;
     }
     
-    if (surface != VK_NULL_HANDLE && instance != VK_NULL_HANDLE) {
-        vkDestroySurfaceKHR(instance, surface, nullptr);
+    if (surface != VK_NULL_HANDLE && instance != VK_NULL_HANDLE && functionLoader) {
+        functionLoader->vkDestroySurfaceKHR(instance, surface, nullptr);
         surface = VK_NULL_HANDLE;
     }
     
-    if (instance != VK_NULL_HANDLE) {
-        vkDestroyInstance(instance, nullptr);
+    if (instance != VK_NULL_HANDLE && functionLoader) {
+        functionLoader->vkDestroyInstance(instance, nullptr);
         instance = VK_NULL_HANDLE;
     }
 }
@@ -119,12 +123,15 @@ bool VulkanContext::createInstance() {
         createInfo.enabledLayerCount = 0;
     }
 
-    if (vkCreateInstance(&createInfo, nullptr, &instance) != VK_SUCCESS) {
+    if (!functionLoader->vkCreateInstance) {
+        std::cerr << "vkCreateInstance is null!" << std::endl;
+        return false;
+    }
+    if (functionLoader->vkCreateInstance(&createInfo, nullptr, &instance) != VK_SUCCESS) {
         std::cerr << "Failed to create Vulkan instance" << std::endl;
         return false;
     }
 
-    loadInstanceFunctions();
     return true;
 }
 
@@ -138,7 +145,7 @@ bool VulkanContext::createSurface() {
 
 bool VulkanContext::pickPhysicalDevice() {
     uint32_t deviceCount = 0;
-    vkEnumeratePhysicalDevices(instance, &deviceCount, nullptr);
+    functionLoader->vkEnumeratePhysicalDevices(instance, &deviceCount, nullptr);
 
     if (deviceCount == 0) {
         std::cerr << "Failed to find GPUs with Vulkan support" << std::endl;
@@ -146,7 +153,7 @@ bool VulkanContext::pickPhysicalDevice() {
     }
 
     std::vector<VkPhysicalDevice> devices(deviceCount);
-    vkEnumeratePhysicalDevices(instance, &deviceCount, devices.data());
+    functionLoader->vkEnumeratePhysicalDevices(instance, &deviceCount, devices.data());
 
     for (const auto& device : devices) {
         if (isDeviceSuitable(device)) {
@@ -184,9 +191,9 @@ bool VulkanContext::createLogicalDevice() {
 
     // Build list of actually supported extensions
     uint32_t extensionCount;
-    vkEnumerateDeviceExtensionProperties(physicalDevice, nullptr, &extensionCount, nullptr);
+    functionLoader->vkEnumerateDeviceExtensionProperties(physicalDevice, nullptr, &extensionCount, nullptr);
     std::vector<VkExtensionProperties> availableExtensions(extensionCount);
-    vkEnumerateDeviceExtensionProperties(physicalDevice, nullptr, &extensionCount, availableExtensions.data());
+    functionLoader->vkEnumerateDeviceExtensionProperties(physicalDevice, nullptr, &extensionCount, availableExtensions.data());
     
     std::vector<const char*> enabledExtensions;
     enabledExtensions.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME); // Always required
@@ -209,31 +216,51 @@ bool VulkanContext::createLogicalDevice() {
     createInfo.enabledLayerCount = 0;
     createInfo.ppEnabledLayerNames = nullptr;
 
-
-    VkResult result = vkCreateDevice(physicalDevice, &createInfo, nullptr, &device);
+    VkResult result = functionLoader->vkCreateDevice(physicalDevice, &createInfo, nullptr, &device);
     if (result != VK_SUCCESS) {
         std::cerr << "Failed to create logical device (VkResult: " << result << ")" << std::endl;
         return false;
     }
+    
 
-
-    vkGetDeviceQueue(device, indices.graphicsFamily.value(), 0, &graphicsQueue);
-
-    vkGetDeviceQueue(device, indices.presentFamily.value(), 0, &presentQueue);
-
-    loadDeviceFunctions();
+    // Store queue family indices for later use after device functions are loaded
+    queueFamilyIndices = indices;
 
     return true;
+}
+
+void VulkanContext::getDeviceQueues() {
+    if (device == VK_NULL_HANDLE) {
+        std::cerr << "Cannot get device queues: device not created" << std::endl;
+        return;
+    }
+    
+    if (!queueFamilyIndices.isComplete()) {
+        std::cerr << "Cannot get device queues: queue family indices not set" << std::endl;
+        return;
+    }
+    
+    functionLoader->vkGetDeviceQueue(device, queueFamilyIndices.graphicsFamily.value(), 0, &graphicsQueue);
+    functionLoader->vkGetDeviceQueue(device, queueFamilyIndices.presentFamily.value(), 0, &presentQueue);
 }
 
 QueueFamilyIndices VulkanContext::findQueueFamilies(VkPhysicalDevice device) {
     QueueFamilyIndices indices;
 
+    if (!functionLoader) {
+        std::cerr << "functionLoader is null!" << std::endl;
+        return indices;
+    }
+    if (!functionLoader->vkGetPhysicalDeviceQueueFamilyProperties) {
+        std::cerr << "vkGetPhysicalDeviceQueueFamilyProperties is null!" << std::endl;
+        return indices;
+    }
+
     uint32_t queueFamilyCount = 0;
-    vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, nullptr);
+    functionLoader->vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, nullptr);
 
     std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
-    vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, queueFamilies.data());
+    functionLoader->vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, queueFamilies.data());
 
     int i = 0;
     for (const auto& queueFamily : queueFamilies) {
@@ -242,7 +269,15 @@ QueueFamilyIndices VulkanContext::findQueueFamilies(VkPhysicalDevice device) {
         }
 
         VkBool32 presentSupport = false;
-        vkGetPhysicalDeviceSurfaceSupportKHR(device, i, surface, &presentSupport);
+        if (!functionLoader->vkGetPhysicalDeviceSurfaceSupportKHR) {
+            std::cerr << "vkGetPhysicalDeviceSurfaceSupportKHR is null!" << std::endl;
+            return indices;
+        }
+        if (surface == VK_NULL_HANDLE) {
+            std::cerr << "surface is VK_NULL_HANDLE!" << std::endl;
+            return indices;
+        }
+        functionLoader->vkGetPhysicalDeviceSurfaceSupportKHR(device, i, surface, &presentSupport);
 
         if (presentSupport) {
             indices.presentFamily = i;
@@ -254,19 +289,18 @@ QueueFamilyIndices VulkanContext::findQueueFamilies(VkPhysicalDevice device) {
 
         i++;
     }
-
     return indices;
 }
 
 bool VulkanContext::isDeviceSuitable(VkPhysicalDevice device) {
     VkPhysicalDeviceProperties deviceProperties;
-    vkGetPhysicalDeviceProperties(device, &deviceProperties);
+    functionLoader->vkGetPhysicalDeviceProperties(device, &deviceProperties);
     
     // Check extension support
     uint32_t extensionCount;
-    vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount, nullptr);
+    functionLoader->vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount, nullptr);
     std::vector<VkExtensionProperties> availableExtensions(extensionCount);
-    vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount, availableExtensions.data());
+    functionLoader->vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount, availableExtensions.data());
     
     // Required extensions
     std::set<std::string> requiredExtensions = { VK_KHR_SWAPCHAIN_EXTENSION_NAME };
@@ -308,45 +342,3 @@ std::vector<const char*> VulkanContext::getRequiredExtensions() {
     return requiredExtensions;
 }
 
-bool VulkanContext::loadVulkanFunctions() {
-    vkGetInstanceProcAddr = (PFN_vkGetInstanceProcAddr)SDL_Vulkan_GetVkGetInstanceProcAddr();
-    if (!vkGetInstanceProcAddr) {
-        std::cerr << "Failed to load vkGetInstanceProcAddr from SDL3" << std::endl;
-        std::cerr << "Make sure Vulkan is installed and SDL3 has Vulkan support" << std::endl;
-        return false;
-    }
-
-
-    vkCreateInstance = (PFN_vkCreateInstance)vkGetInstanceProcAddr(VK_NULL_HANDLE, "vkCreateInstance");
-    if (!vkCreateInstance) {
-        std::cerr << "Failed to load vkCreateInstance" << std::endl;
-        return false;
-    }
-
-    return true;
-}
-
-void VulkanContext::loadInstanceFunctions() {
-    vkDestroyInstance = (PFN_vkDestroyInstance)vkGetInstanceProcAddr(instance, "vkDestroyInstance");
-    vkEnumeratePhysicalDevices = (PFN_vkEnumeratePhysicalDevices)vkGetInstanceProcAddr(instance, "vkEnumeratePhysicalDevices");
-    vkGetPhysicalDeviceProperties = (PFN_vkGetPhysicalDeviceProperties)vkGetInstanceProcAddr(instance, "vkGetPhysicalDeviceProperties");
-    vkGetPhysicalDeviceQueueFamilyProperties = (PFN_vkGetPhysicalDeviceQueueFamilyProperties)vkGetInstanceProcAddr(instance, "vkGetPhysicalDeviceQueueFamilyProperties");
-    vkCreateDevice = (PFN_vkCreateDevice)vkGetInstanceProcAddr(instance, "vkCreateDevice");
-    vkDestroySurfaceKHR = (PFN_vkDestroySurfaceKHR)vkGetInstanceProcAddr(instance, "vkDestroySurfaceKHR");
-    vkGetPhysicalDeviceSurfaceSupportKHR = (PFN_vkGetPhysicalDeviceSurfaceSupportKHR)vkGetInstanceProcAddr(instance, "vkGetPhysicalDeviceSurfaceSupportKHR");
-    vkEnumerateDeviceExtensionProperties = (PFN_vkEnumerateDeviceExtensionProperties)vkGetInstanceProcAddr(instance, "vkEnumerateDeviceExtensionProperties");
-    vkGetPhysicalDeviceMemoryProperties = (PFN_vkGetPhysicalDeviceMemoryProperties)vkGetInstanceProcAddr(instance, "vkGetPhysicalDeviceMemoryProperties");
-    
-    vkGetDeviceProcAddr = (PFN_vkGetDeviceProcAddr)vkGetInstanceProcAddr(instance, "vkGetDeviceProcAddr");
-    vkGetDeviceQueue = (PFN_vkGetDeviceQueue)vkGetInstanceProcAddr(instance, "vkGetDeviceQueue");
-}
-
-void VulkanContext::loadDeviceFunctions() {
-    if (!vkGetDeviceProcAddr) {
-        std::cerr << "vkGetDeviceProcAddr is null!" << std::endl;
-        return;
-    }
-    
-    vkDestroyDevice = (PFN_vkDestroyDevice)vkGetDeviceProcAddr(device, "vkDestroyDevice");
-    vkDeviceWaitIdle = (PFN_vkDeviceWaitIdle)vkGetDeviceProcAddr(device, "vkDeviceWaitIdle");
-}
