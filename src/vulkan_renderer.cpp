@@ -5,6 +5,7 @@
 #include "vulkan/vulkan_pipeline.h"
 #include "vulkan/vulkan_resources.h"
 #include "vulkan/vulkan_sync.h"
+#include "vulkan/resource_context.h"
 #include "ecs/gpu_entity_manager.h"
 #include "ecs/systems/camera_system.hpp"
 #include "ecs/camera_component.hpp"
@@ -59,8 +60,14 @@ bool VulkanRenderer::initialize(SDL_Window* window) {
         return false;
     }
     
+    resourceContext = std::make_unique<ResourceContext>();
+    if (!resourceContext->initialize(*context)) {
+        std::cerr << "Failed to initialize Resource context" << std::endl;
+        return false;
+    }
+    
     resources = std::make_unique<VulkanResources>();
-    if (!resources->initialize(*context, sync.get())) {
+    if (!resources->initialize(*context, sync.get(), resourceContext.get())) {
         std::cerr << "Failed to initialize Vulkan resources" << std::endl;
         return false;
     }
@@ -87,9 +94,9 @@ bool VulkanRenderer::initialize(SDL_Window* window) {
         return false;
     }
     
-    // Initialize GPU entity manager after sync is created
+    // Initialize GPU entity manager after sync and resource context are created
     gpuEntityManager = std::make_unique<GPUEntityManager>();
-    if (!gpuEntityManager->initialize(*context, sync.get())) {
+    if (!gpuEntityManager->initialize(*context, sync.get(), resourceContext.get())) {
         std::cerr << "Failed to initialize GPU entity manager" << std::endl;
         return false;
     }

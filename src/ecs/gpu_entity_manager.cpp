@@ -3,6 +3,7 @@
 #include "../vulkan/vulkan_sync.h"
 #include "../vulkan/vulkan_function_loader.h"
 #include "../vulkan/vulkan_utils.h"
+#include "../vulkan/resource_context.h"
 #include <iostream>
 #include <cstring>
 #include <algorithm>
@@ -16,9 +17,10 @@ GPUEntityManager::~GPUEntityManager() {
     cleanup();
 }
 
-bool GPUEntityManager::initialize(const VulkanContext& context, VulkanSync* sync) {
+bool GPUEntityManager::initialize(const VulkanContext& context, VulkanSync* sync, ResourceContext* resourceContext) {
     this->context = &context;
     this->sync = sync;
+    this->resourceContext = resourceContext;
     
     if (!createEntityBuffers()) {
         std::cerr << "Failed to create entity buffers!" << std::endl;
@@ -46,25 +48,21 @@ bool GPUEntityManager::initialize(const VulkanContext& context, VulkanSync* sync
 void GPUEntityManager::cleanup() {
     if (!context) return;
     
-    // Clean up entity buffer
-    if (entityBufferMapped != nullptr) {
-        context->getLoader().vkUnmapMemory(context->getDevice(), entityMemory);
-        entityBufferMapped = nullptr;
+    // Clean up entity buffer using ResourceContext
+    if (entityStorageHandle && resourceContext) {
+        resourceContext->destroyResource(*entityStorageHandle);
+        delete entityStorageHandle;
+        entityStorageHandle = nullptr;
     }
     
-    if (entityStorage != VK_NULL_HANDLE) {
-        context->getLoader().vkDestroyBuffer(context->getDevice(), entityStorage, nullptr);
-        entityStorage = VK_NULL_HANDLE;
-    }
-    
-    if (entityMemory != VK_NULL_HANDLE) {
-        context->getLoader().vkFreeMemory(context->getDevice(), entityMemory, nullptr);
-        entityMemory = VK_NULL_HANDLE;
-    }
+    entityStorage = VK_NULL_HANDLE;
+    entityBufferMapped = nullptr;
     
     // Clean up descriptor resources
     if (computeDescriptorPool != VK_NULL_HANDLE) {
-        context->getLoader().vkDestroyDescriptorPool(context->getDevice(), computeDescriptorPool, nullptr);
+        if (resourceContext) {
+            resourceContext->destroyDescriptorPool(computeDescriptorPool);
+        }
         computeDescriptorPool = VK_NULL_HANDLE;
     }
     
@@ -188,40 +186,40 @@ void GPUEntityManager::updateAllMovementTypes(int newMovementType, bool angelMod
 
 
 bool GPUEntityManager::createEntityBuffers() {
-    if (!VulkanUtils::createBuffer(
-        context->getDevice(),
-        context->getLoader(),
+    // Create entity buffer using ResourceContext
+    entityStorageHandle = new ResourceHandle();
+    *entityStorageHandle = resourceContext->createMappedBuffer(
         ENTITY_BUFFER_SIZE,
         VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-        entityStorage,
-        entityMemory)) {
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
+    );
+    
+    if (!entityStorageHandle->isValid()) {
         std::cerr << "Failed to create entity buffer!" << std::endl;
+        delete entityStorageHandle;
+        entityStorageHandle = nullptr;
         return false;
     }
     
-    // Map memory for CPU access
-    if (context->getLoader().vkMapMemory(context->getDevice(), entityMemory, 0, ENTITY_BUFFER_SIZE, 0, &entityBufferMapped) != VK_SUCCESS) {
-        std::cerr << "Failed to map entity buffer memory!" << std::endl;
-        return false;
-    }
+    // Maintain compatibility with existing API
+    entityStorage = entityStorageHandle->buffer;
+    entityBufferMapped = entityStorageHandle->mappedData;
     
     return true;
 }
 
 bool GPUEntityManager::createComputeDescriptorPool() {
-    VkDescriptorPoolSize poolSize{};
-    poolSize.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    poolSize.descriptorCount = 2; // 1 set * 2 buffers (input/output)
+    // Use ResourceContext for descriptor pool creation
+    ResourceContext::DescriptorPoolConfig config;
+    config.maxSets = 1;
+    config.uniformBuffers = 0;
+    config.storageBuffers = 2; // 1 set * 2 buffers (input/output)
+    config.sampledImages = 0;
+    config.allowFreeDescriptorSets = true;
     
-    VkDescriptorPoolCreateInfo poolInfo{};
-    poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-    poolInfo.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
-    poolInfo.poolSizeCount = 1;
-    poolInfo.pPoolSizes = &poolSize;
-    poolInfo.maxSets = 1; // Single descriptor set
+    computeDescriptorPool = resourceContext->createDescriptorPool(config);
     
-    return context->getLoader().vkCreateDescriptorPool(context->getDevice(), &poolInfo, nullptr, &computeDescriptorPool) == VK_SUCCESS;
+    return computeDescriptorPool != VK_NULL_HANDLE;
 }
 
 bool GPUEntityManager::createComputeDescriptorSetLayout() {

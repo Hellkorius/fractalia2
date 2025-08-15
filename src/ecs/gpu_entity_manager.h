@@ -54,9 +54,11 @@ struct GPUEntity {
     }
 };
 
-// Forward declaration
+// Forward declarations
 class VulkanContext;
 class VulkanSync;
+class ResourceContext;
+struct ResourceHandle;
 
 // Manages GPU entity storage and CPU->GPU handover
 class GPUEntityManager {
@@ -64,7 +66,7 @@ public:
     GPUEntityManager();
     ~GPUEntityManager();
     
-    bool initialize(const VulkanContext& context, VulkanSync* sync);
+    bool initialize(const VulkanContext& context, VulkanSync* sync, ResourceContext* resourceContext);
     void cleanup();
     
     // Entity management
@@ -97,10 +99,11 @@ private:
     
     const VulkanContext* context = nullptr;
     VulkanSync* sync = nullptr;
+    ResourceContext* resourceContext = nullptr;
     
-    // Single buffer storage for compute pipeline
-    VkBuffer entityStorage = VK_NULL_HANDLE;
-    VkDeviceMemory entityMemory = VK_NULL_HANDLE; 
+    // Single buffer storage for compute pipeline using ResourceContext
+    ResourceHandle* entityStorageHandle = nullptr;
+    VkBuffer entityStorage = VK_NULL_HANDLE;  // For compatibility
     void* entityBufferMapped = nullptr;
     
     // Entity state

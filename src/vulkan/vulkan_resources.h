@@ -5,6 +5,7 @@
 #include <vector>
 #include "vulkan_context.h"
 #include "vulkan_constants.h"
+#include "resource_context.h"
 #include "../PolygonFactory.h"
 
 class VulkanSync;
@@ -14,7 +15,7 @@ public:
     VulkanResources();
     ~VulkanResources();
 
-    bool initialize(const VulkanContext& context, VulkanSync* sync);
+    bool initialize(const VulkanContext& context, VulkanSync* sync, ResourceContext* resourceContext);
     void cleanup();
     
     bool createUniformBuffers();
@@ -25,8 +26,8 @@ public:
     const std::vector<VkBuffer>& getUniformBuffers() const { return uniformBuffers; }
     const std::vector<void*>& getUniformBuffersMapped() const { return uniformBuffersMapped; }
     
-    VkBuffer getVertexBuffer() const { return vertexBuffer; }
-    VkBuffer getIndexBuffer() const { return indexBuffer; }
+    VkBuffer getVertexBuffer() const { return vertexBufferHandle.buffer; }
+    VkBuffer getIndexBuffer() const { return indexBufferHandle.buffer; }
     uint32_t getIndexCount() const { return indexCount; }
     
     VkDescriptorPool getDescriptorPool() const { return descriptorPool; }
@@ -38,17 +39,15 @@ public:
 private:
     const VulkanContext* context = nullptr;
     VulkanSync* sync = nullptr;
+    ResourceContext* resourceContext = nullptr;
     
-    std::vector<VkBuffer> uniformBuffers;
-    std::vector<VkDeviceMemory> uniformBuffersMemory;
+    std::vector<ResourceHandle> uniformBufferHandles;
+    std::vector<VkBuffer> uniformBuffers;  // For compatibility
     std::vector<void*> uniformBuffersMapped;
     
-    VkBuffer vertexBuffer = VK_NULL_HANDLE;
-    VkDeviceMemory vertexBufferMemory = VK_NULL_HANDLE;
-    VkBuffer indexBuffer = VK_NULL_HANDLE;
-    VkDeviceMemory indexBufferMemory = VK_NULL_HANDLE;
+    ResourceHandle vertexBufferHandle;
+    ResourceHandle indexBufferHandle;
     uint32_t indexCount = 0;
-    
     
     VkDescriptorPool descriptorPool = VK_NULL_HANDLE;
     std::vector<VkDescriptorSet> descriptorSets;

@@ -14,45 +14,40 @@ VulkanResources::~VulkanResources() {
     cleanup();
 }
 
-bool VulkanResources::initialize(const VulkanContext& context, VulkanSync* sync) {
+bool VulkanResources::initialize(const VulkanContext& context, VulkanSync* sync, ResourceContext* resourceContext) {
     this->context = &context;
     this->sync = sync;
+    this->resourceContext = resourceContext;
     
     return true;
 }
 
 void VulkanResources::cleanup() {
-    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-        if (i < uniformBuffers.size() && uniformBuffers[i] != VK_NULL_HANDLE) {
-            context->getLoader().vkDestroyBuffer(context->getDevice(), uniformBuffers[i], nullptr);
-        }
-        if (i < uniformBuffersMemory.size() && uniformBuffersMemory[i] != VK_NULL_HANDLE) {
-            context->getLoader().vkFreeMemory(context->getDevice(), uniformBuffersMemory[i], nullptr);
+    // Clean up uniform buffers using ResourceContext
+    for (auto& handle : uniformBufferHandles) {
+        if (resourceContext) {
+            resourceContext->destroyResource(handle);
         }
     }
+    uniformBufferHandles.clear();
+    uniformBuffers.clear();
+    uniformBuffersMapped.clear();
     
-    
-    if (vertexBuffer != VK_NULL_HANDLE) {
-        context->getLoader().vkDestroyBuffer(context->getDevice(), vertexBuffer, nullptr);
-        vertexBuffer = VK_NULL_HANDLE;
-    }
-    if (vertexBufferMemory != VK_NULL_HANDLE) {
-        context->getLoader().vkFreeMemory(context->getDevice(), vertexBufferMemory, nullptr);
-        vertexBufferMemory = VK_NULL_HANDLE;
-    }
-    
-    if (indexBuffer != VK_NULL_HANDLE) {
-        context->getLoader().vkDestroyBuffer(context->getDevice(), indexBuffer, nullptr);
-        indexBuffer = VK_NULL_HANDLE;
-    }
-    if (indexBufferMemory != VK_NULL_HANDLE) {
-        context->getLoader().vkFreeMemory(context->getDevice(), indexBufferMemory, nullptr);
-        indexBufferMemory = VK_NULL_HANDLE;
+    // Clean up vertex and index buffers
+    if (resourceContext) {
+        if (vertexBufferHandle.isValid()) {
+            resourceContext->destroyResource(vertexBufferHandle);
+        }
+        if (indexBufferHandle.isValid()) {
+            resourceContext->destroyResource(indexBufferHandle);
+        }
     }
     
-    
+    // Clean up descriptor pool
     if (descriptorPool != VK_NULL_HANDLE) {
-        context->getLoader().vkDestroyDescriptorPool(context->getDevice(), descriptorPool, nullptr);
+        if (resourceContext) {
+            resourceContext->destroyDescriptorPool(descriptorPool);
+        }
         descriptorPool = VK_NULL_HANDLE;
     }
 }
@@ -60,16 +55,25 @@ void VulkanResources::cleanup() {
 bool VulkanResources::createUniformBuffers() {
     VkDeviceSize bufferSize = sizeof(glm::mat4) * 2;
     
+    uniformBufferHandles.resize(MAX_FRAMES_IN_FLIGHT);
     uniformBuffers.resize(MAX_FRAMES_IN_FLIGHT);
-    uniformBuffersMemory.resize(MAX_FRAMES_IN_FLIGHT);
     uniformBuffersMapped.resize(MAX_FRAMES_IN_FLIGHT);
     
     for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-        VulkanUtils::createBuffer(context->getDevice(), context->getLoader(), bufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-                     VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                     uniformBuffers[i], uniformBuffersMemory[i]);
+        uniformBufferHandles[i] = resourceContext->createMappedBuffer(
+            bufferSize, 
+            VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
+        );
         
-        context->getLoader().vkMapMemory(context->getDevice(), uniformBuffersMemory[i], 0, bufferSize, 0, &uniformBuffersMapped[i]);
+        if (!uniformBufferHandles[i].isValid()) {
+            std::cerr << "Failed to create uniform buffer " << i << std::endl;
+            return false;
+        }
+        
+        // Maintain compatibility with existing API
+        uniformBuffers[i] = uniformBufferHandles[i].buffer;
+        uniformBuffersMapped[i] = uniformBufferHandles[i].mappedData;
     }
     
     return true;
@@ -78,72 +82,99 @@ bool VulkanResources::createUniformBuffers() {
 bool VulkanResources::createTriangleBuffers() {
     PolygonMesh triangle = PolygonFactory::createTriangle();
     
-    // Create vertex buffer
+    // Create vertex buffer using ResourceContext
     VkDeviceSize vertexBufferSize = sizeof(Vertex) * triangle.vertices.size();
     
-    VkBuffer stagingBuffer;
-    VkDeviceMemory stagingBufferMemory;
-    VulkanUtils::createBuffer(context->getDevice(), context->getLoader(), vertexBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-                 VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                 stagingBuffer, stagingBufferMemory);
+    // Create staging buffer using ResourceContext
+    ResourceHandle stagingHandle = resourceContext->createMappedBuffer(
+        vertexBufferSize,
+        VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
+    );
     
-    void* data;
-    context->getLoader().vkMapMemory(context->getDevice(), stagingBufferMemory, 0, vertexBufferSize, 0, &data);
-    memcpy(data, triangle.vertices.data(), (size_t)vertexBufferSize);
-    context->getLoader().vkUnmapMemory(context->getDevice(), stagingBufferMemory);
+    if (!stagingHandle.isValid()) {
+        std::cerr << "Failed to create vertex staging buffer!" << std::endl;
+        return false;
+    }
     
-    VulkanUtils::createBuffer(context->getDevice(), context->getLoader(), vertexBufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-                 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, vertexBuffer, vertexBufferMemory);
+    // Copy vertex data to staging buffer
+    memcpy(stagingHandle.mappedData, triangle.vertices.data(), (size_t)vertexBufferSize);
     
-    VulkanUtils::copyBuffer(context->getDevice(), context->getLoader(), context->getGraphicsQueue(), sync->getCommandPool(), stagingBuffer, vertexBuffer, vertexBufferSize);
+    // Create device-local vertex buffer
+    vertexBufferHandle = resourceContext->createBuffer(
+        vertexBufferSize,
+        VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
+    );
     
-    context->getLoader().vkDestroyBuffer(context->getDevice(), stagingBuffer, nullptr);
-    context->getLoader().vkFreeMemory(context->getDevice(), stagingBufferMemory, nullptr);
+    if (!vertexBufferHandle.isValid()) {
+        std::cerr << "Failed to create vertex buffer!" << std::endl;
+        resourceContext->destroyResource(stagingHandle);
+        return false;
+    }
     
-    // Create index buffer
+    // Copy from staging to device buffer (simplified - would use command buffers)
+    VulkanUtils::copyBuffer(context->getDevice(), context->getLoader(), context->getGraphicsQueue(), 
+                          sync->getCommandPool(), stagingHandle.buffer, vertexBufferHandle.buffer, vertexBufferSize);
+    
+    // Clean up staging buffer
+    resourceContext->destroyResource(stagingHandle);
+    
+    // Create index buffer using ResourceContext
     indexCount = static_cast<uint32_t>(triangle.indices.size());
     VkDeviceSize indexBufferSize = sizeof(uint16_t) * triangle.indices.size();
     
-    VkBuffer indexStagingBuffer;
-    VkDeviceMemory indexStagingBufferMemory;
-    VulkanUtils::createBuffer(context->getDevice(), context->getLoader(), indexBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-                 VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-                 indexStagingBuffer, indexStagingBufferMemory);
+    // Create index staging buffer
+    ResourceHandle indexStagingHandle = resourceContext->createMappedBuffer(
+        indexBufferSize,
+        VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
+    );
     
-    context->getLoader().vkMapMemory(context->getDevice(), indexStagingBufferMemory, 0, indexBufferSize, 0, &data);
-    memcpy(data, triangle.indices.data(), (size_t)indexBufferSize);
-    context->getLoader().vkUnmapMemory(context->getDevice(), indexStagingBufferMemory);
+    if (!indexStagingHandle.isValid()) {
+        std::cerr << "Failed to create index staging buffer!" << std::endl;
+        return false;
+    }
     
-    VulkanUtils::createBuffer(context->getDevice(), context->getLoader(), indexBufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
-                 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, indexBuffer, indexBufferMemory);
+    // Copy index data to staging buffer
+    memcpy(indexStagingHandle.mappedData, triangle.indices.data(), (size_t)indexBufferSize);
     
-    VulkanUtils::copyBuffer(context->getDevice(), context->getLoader(), context->getGraphicsQueue(), sync->getCommandPool(), indexStagingBuffer, indexBuffer, indexBufferSize);
+    // Create device-local index buffer
+    indexBufferHandle = resourceContext->createBuffer(
+        indexBufferSize,
+        VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
+    );
     
-    context->getLoader().vkDestroyBuffer(context->getDevice(), indexStagingBuffer, nullptr);
-    context->getLoader().vkFreeMemory(context->getDevice(), indexStagingBufferMemory, nullptr);
+    if (!indexBufferHandle.isValid()) {
+        std::cerr << "Failed to create index buffer!" << std::endl;
+        resourceContext->destroyResource(indexStagingHandle);
+        return false;
+    }
+    
+    // Copy from staging to device buffer
+    VulkanUtils::copyBuffer(context->getDevice(), context->getLoader(), context->getGraphicsQueue(), 
+                          sync->getCommandPool(), indexStagingHandle.buffer, indexBufferHandle.buffer, indexBufferSize);
+    
+    // Clean up staging buffer
+    resourceContext->destroyResource(indexStagingHandle);
     
     return true;
 }
 
 
 bool VulkanResources::createDescriptorPool(VkDescriptorSetLayout descriptorSetLayout) {
-    const uint32_t maxSets = 1024;
+    // Use ResourceContext for descriptor pool creation
+    ResourceContext::DescriptorPoolConfig config;
+    config.maxSets = 1024;
+    config.uniformBuffers = 1024;
+    config.storageBuffers = 0;
+    config.sampledImages = 0;
+    config.allowFreeDescriptorSets = true;
     
-    std::array<VkDescriptorPoolSize, 1> poolSizes{};
+    descriptorPool = resourceContext->createDescriptorPool(config);
     
-    // Uniform buffers
-    poolSizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    poolSizes[0].descriptorCount = maxSets;
-    
-    
-    VkDescriptorPoolCreateInfo poolInfo{};
-    poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-    poolInfo.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
-    poolInfo.poolSizeCount = poolSizes.size();
-    poolInfo.pPoolSizes = poolSizes.data();
-    poolInfo.maxSets = maxSets;
-    
-    if (context->getLoader().vkCreateDescriptorPool(context->getDevice(), &poolInfo, nullptr, &descriptorPool) != VK_SUCCESS) {
+    if (descriptorPool == VK_NULL_HANDLE) {
         std::cerr << "Failed to create descriptor pool!" << std::endl;
         return false;
     }
