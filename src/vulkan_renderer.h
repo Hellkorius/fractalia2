@@ -35,18 +35,13 @@ public:
     void drawFrame();
     void setEntityPosition(float x, float y, float z);
     
-    enum class ShapeType {
-        Triangle,
-        Square
-    };
     
-    void updateEntities(const std::vector<std::tuple<glm::vec3, ShapeType, glm::vec4>>& entities);
+    void updateEntities(const std::vector<std::tuple<glm::vec3, glm::vec4>>& entities);
     
-    // Buffer capacity management
+    // Legacy method - CPU rendering disabled
     bool validateEntityCapacity(uint32_t entityCount, const char* source = "unknown") const;
-    uint32_t getMaxCpuInstances() const { return maxCpuInstances; }
     
-    // Memory safety validation for testing
+    // GPU entity buffer testing
     bool testBufferOverflowProtection() const;
     
     // GPU entity management
@@ -89,7 +84,6 @@ private:
     void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex);
     void loadDrawingFunctions();
     void updateUniformBuffer(uint32_t currentImage);
-    void updateInstanceBuffer(uint32_t currentFrame);
     void transitionBufferLayout(VkCommandBuffer commandBuffer);
     bool initializeFrameFences();
     void cleanupPartialFrameFences();
@@ -98,12 +92,6 @@ private:
     // Entity position for rendering (backward compatibility)
     glm::vec3 entityPosition = glm::vec3(0.0f, 0.0f, 0.0f);
     
-    // Multiple entities for rendering
-    std::vector<std::tuple<glm::vec3, ShapeType, glm::vec4>> renderEntities;
-    
-    // Buffer capacity management
-    uint32_t maxCpuInstances = 0;
-    bool hasBufferCapacityWarningShown = false;
     
     // GPU compute state
     float deltaTime = 0.0f;

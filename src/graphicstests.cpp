@@ -34,11 +34,7 @@ void runPerformanceTests(VulkanRenderer* renderer) {
         return;
     }
     
-    std::cout << "\n📊 GRAPHICS PERFORMANCE TESTS" << std::endl;
-    
-    // Test CPU instance buffer capacity
-    uint32_t maxCpuInstances = renderer->getMaxCpuInstances();
-    std::cout << "CPU Instance Buffer Capacity: " << maxCpuInstances << " entities" << std::endl;
+    std::cout << "\n📊 GPU PERFORMANCE TESTS" << std::endl;
     
     // Test GPU entity buffer capacity
     auto* gpuManager = renderer->getGPUEntityManager();
@@ -58,7 +54,7 @@ void runPerformanceTests(VulkanRenderer* renderer) {
             std::cout << "✅ GPU buffer utilization is healthy" << std::endl;
         }
     } else {
-        std::cout << "GPU Entity Manager: Not available (using CPU rendering)" << std::endl;
+        std::cout << "❌ GPU Entity Manager: Not available!" << std::endl;
     }
     
     std::cout << "Performance test complete." << std::endl;
