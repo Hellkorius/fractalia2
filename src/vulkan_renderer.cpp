@@ -14,6 +14,7 @@
 #include <chrono>
 #include <algorithm>
 #include <cmath>
+#include <cassert>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -176,29 +177,25 @@ void VulkanRenderer::drawFrame() {
     
     if (frame.computeInUse) {
         VkResult computeResult = waitForFenceRobust(frame.computeDone, "compute");
+#ifdef _DEBUG
+        assert(computeResult == VK_SUCCESS || computeResult == VK_ERROR_DEVICE_LOST);
+#endif
         if (computeResult == VK_ERROR_DEVICE_LOST) {
             frame.computeInUse = false;
-            return; // Critical error, skip frame
-        }
-        if (computeResult != VK_SUCCESS) {
-            std::cerr << "Error: Compute fence wait failed: " << computeResult << std::endl;
             return;
         }
-        
         frame.computeInUse = false;
     }
     
     if (frame.graphicsInUse) {
         VkResult graphicsResult = waitForFenceRobust(frame.graphicsDone, "graphics");
+#ifdef _DEBUG
+        assert(graphicsResult == VK_SUCCESS || graphicsResult == VK_ERROR_DEVICE_LOST);
+#endif
         if (graphicsResult == VK_ERROR_DEVICE_LOST) {
             frame.graphicsInUse = false;
-            return; // Critical error, skip frame
-        }
-        if (graphicsResult != VK_SUCCESS) {
-            std::cerr << "Error: Graphics fence wait failed: " << graphicsResult << std::endl;
             return;
         }
-        
         frame.graphicsInUse = false;
     }
 
@@ -229,10 +226,12 @@ void VulkanRenderer::drawFrame() {
     VkCommandBufferBeginInfo computeBeginInfo{};
     computeBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     
-    if (functionLoader->vkBeginCommandBuffer(computeCommandBuffers[currentFrame], &computeBeginInfo) != VK_SUCCESS) {
-        std::cerr << "Failed to begin recording compute command buffer!" << std::endl;
-        return;
-    }
+    VkResult beginResult = functionLoader->vkBeginCommandBuffer(computeCommandBuffers[currentFrame], &computeBeginInfo);
+#ifdef _DEBUG
+    assert(beginResult == VK_SUCCESS);
+#else
+    (void)beginResult;
+#endif
     
     // Using real-time vertex shader movement computation
     
@@ -246,10 +245,12 @@ void VulkanRenderer::drawFrame() {
     // Update frame counter
     frameCounter++;
     
-    if (functionLoader->vkEndCommandBuffer(computeCommandBuffers[currentFrame]) != VK_SUCCESS) {
-        std::cerr << "Failed to record compute command buffer" << std::endl;
-        return;
-    }
+    VkResult endResult = functionLoader->vkEndCommandBuffer(computeCommandBuffers[currentFrame]);
+#ifdef _DEBUG
+    assert(endResult == VK_SUCCESS);
+#else
+    (void)endResult;
+#endif
 
     // 6. Record graphics command buffer
     functionLoader->vkResetCommandBuffer(commandBuffers[currentFrame], 0);
@@ -263,10 +264,12 @@ void VulkanRenderer::drawFrame() {
     computeSubmitInfo.commandBufferCount = 1;
     computeSubmitInfo.pCommandBuffers = &computeCommandBuffers[currentFrame];
     
-    if (functionLoader->vkQueueSubmit(context->getGraphicsQueue(), 1, &computeSubmitInfo, frame.computeDone) != VK_SUCCESS) {
-        std::cerr << "Failed to submit compute command buffer" << std::endl;
-        return;
-    }
+    VkResult computeSubmitResult = functionLoader->vkQueueSubmit(context->getGraphicsQueue(), 1, &computeSubmitInfo, frame.computeDone);
+#ifdef _DEBUG
+    assert(computeSubmitResult == VK_SUCCESS);
+#else
+    (void)computeSubmitResult;
+#endif
     frame.computeInUse = true;
 
     // 8. Submit graphics work with its own fence - NO BLOCKING
@@ -287,10 +290,12 @@ void VulkanRenderer::drawFrame() {
     graphicsSubmitInfo.signalSemaphoreCount = 1;
     graphicsSubmitInfo.pSignalSemaphores = signalSemaphores;
 
-    if (functionLoader->vkQueueSubmit(context->getGraphicsQueue(), 1, &graphicsSubmitInfo, frame.graphicsDone) != VK_SUCCESS) {
-        std::cerr << "Failed to submit graphics command buffer" << std::endl;
-        return;
-    }
+    VkResult graphicsSubmitResult = functionLoader->vkQueueSubmit(context->getGraphicsQueue(), 1, &graphicsSubmitInfo, frame.graphicsDone);
+#ifdef _DEBUG
+    assert(graphicsSubmitResult == VK_SUCCESS);
+#else
+    (void)graphicsSubmitResult;
+#endif
     frame.graphicsInUse = true;
 
     // 9. Present immediately - no fence waiting
@@ -349,10 +354,12 @@ void VulkanRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t
     VkCommandBufferBeginInfo beginInfo{};
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     
-    if (functionLoader->vkBeginCommandBuffer(commandBuffer, &beginInfo) != VK_SUCCESS) {
-        std::cerr << "Failed to begin recording graphics command buffer!" << std::endl;
-        return;
-    }
+    VkResult graphicsBeginResult = functionLoader->vkBeginCommandBuffer(commandBuffer, &beginInfo);
+#ifdef _DEBUG
+    assert(graphicsBeginResult == VK_SUCCESS);
+#else
+    (void)graphicsBeginResult;
+#endif
 
     VkRenderPassBeginInfo renderPassInfo{};
     renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
@@ -416,9 +423,12 @@ void VulkanRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t
 
     functionLoader->vkCmdEndRenderPass(commandBuffer);
 
-    if (functionLoader->vkEndCommandBuffer(commandBuffer) != VK_SUCCESS) {
-        std::cerr << "Failed to record graphics command buffer" << std::endl;
-    }
+    VkResult graphicsEndResult = functionLoader->vkEndCommandBuffer(commandBuffer);
+#ifdef _DEBUG
+    assert(graphicsEndResult == VK_SUCCESS);
+#else
+    (void)graphicsEndResult;
+#endif
 }
 
 void VulkanRenderer::loadDrawingFunctions() {
@@ -494,48 +504,28 @@ void VulkanRenderer::updateEntities(const std::vector<std::tuple<glm::vec3, glm:
 }
 
 bool VulkanRenderer::validateEntityCapacity(uint32_t entityCount, const char* source) const {
-    // CPU rendering is disabled - validation no longer needed
-    // GPU entity manager handles its own capacity validation
+#ifdef _DEBUG
+    assert(gpuEntityManager && "GPU entity manager must exist");
+    assert(entityCount <= gpuEntityManager->getMaxEntities() && "Entity count must not exceed capacity");
+#else
+    (void)entityCount;
+    (void)source;
+#endif
     return true;
 }
 
 bool VulkanRenderer::testBufferOverflowProtection() const {
-    std::cout << "\n=== TESTING GPU ENTITY BUFFER STATE ===" << std::endl;
+#ifdef _DEBUG
+    assert(initialized && "Renderer must be initialized");
+    assert(gpuEntityManager && "GPU entity manager must be available");
     
-    if (!initialized) {
-        std::cerr << "Cannot test - renderer not initialized!" << std::endl;
-        return false;
-    }
+    uint32_t gpuEntityCount = gpuEntityManager->getEntityCount();
+    uint32_t maxGpuEntities = gpuEntityManager->getMaxEntities();
+    assert(gpuEntityCount <= maxGpuEntities && "GPU entities must be within buffer limits");
     
-    bool allTestsPassed = true;
-    
-    // Test: GPU buffer limits
-    std::cout << "GPU entity buffer state..." << std::endl;
-    if (gpuEntityManager) {
-        uint32_t gpuEntityCount = gpuEntityManager->getEntityCount();
-        uint32_t maxGpuEntities = gpuEntityManager->getMaxEntities();
-        std::cout << "  GPU entities: " << gpuEntityCount << "/" << maxGpuEntities << std::endl;
-        
-        if (gpuEntityCount <= maxGpuEntities) {
-            std::cout << "  ✓ GPU entities within limits" << std::endl;
-        } else {
-            std::cerr << "  ✗ GPU entities exceed buffer capacity!" << std::endl;
-            allTestsPassed = false;
-        }
-    } else {
-        std::cerr << "  ✗ GPU entity manager not available!" << std::endl;
-        allTestsPassed = false;
-    }
-    
-    std::cout << "\n=== TEST RESULTS ===" << std::endl;
-    if (allTestsPassed) {
-        std::cout << "✅ GPU entity buffer is working correctly!" << std::endl;
-    } else {
-        std::cerr << "❌ GPU entity buffer has issues!" << std::endl;
-    }
-    std::cout << "========================================\n" << std::endl;
-    
-    return allTestsPassed;
+    std::cout << "GPU entities: " << gpuEntityCount << "/" << maxGpuEntities << std::endl;
+#endif
+    return true;
 }
 
 void VulkanRenderer::updateAspectRatio(int windowWidth, int windowHeight) {

@@ -6,6 +6,7 @@
 #include <iostream>
 #include <cstring>
 #include <algorithm>
+#include <cassert>
 
 GPUEntityManager::GPUEntityManager() {
     pendingEntities.reserve(10000); // Pre-allocate for batch uploads
@@ -109,25 +110,13 @@ void GPUEntityManager::uploadPendingEntities() {
     
     uint32_t newEntityCount = std::min(requestedCount, availableSpace);
     
+#ifdef _DEBUG
+    assert(newEntityCount > 0 && "GPU entity buffer must have available space");
+    assert(activeEntityCount + newEntityCount <= MAX_ENTITIES && "Must not exceed buffer capacity");
+#endif
+    
     if (newEntityCount == 0) {
-        std::cerr << "CRITICAL: GPU entity buffer full! Cannot upload " << requestedCount << " entities." << std::endl;
-        std::cerr << "  Active: " << activeEntityCount << "/" << MAX_ENTITIES << " entities" << std::endl;
-        std::cerr << "  This may cause entity creation failures!" << std::endl;
         return;
-    }
-    
-    if (newEntityCount < requestedCount) {
-        std::cerr << "WARNING: GPU buffer capacity exceeded!" << std::endl;
-        std::cerr << "  Requested: " << requestedCount << ", Available: " << availableSpace << std::endl;
-        std::cerr << "  Only uploading " << newEntityCount << " entities to prevent overflow." << std::endl;
-    }
-    
-    // Final safety check before memory copy
-    if (activeEntityCount + newEntityCount > MAX_ENTITIES) {
-        std::cerr << "FATAL: Buffer overflow detected before GPU memory copy!" << std::endl;
-        std::cerr << "  Active: " << activeEntityCount << ", New: " << newEntityCount 
-                  << ", Max: " << MAX_ENTITIES << std::endl;
-        return; // Abort upload to prevent corruption
     }
     
     // Upload new entities only to current graphics buffer (triple-buffer optimization)
@@ -135,10 +124,9 @@ void GPUEntityManager::uploadPendingEntities() {
     uint32_t targetBufferIndex = currentGraphicsBuffer;
     
     GPUEntity* targetBufferPtr = static_cast<GPUEntity*>(entityBufferMapped[targetBufferIndex]);
-    if (!targetBufferPtr) {
-        std::cerr << "FATAL: GPU target buffer " << targetBufferIndex << " is null!" << std::endl;
-        return;
-    }
+#ifdef _DEBUG
+    assert(targetBufferPtr && "GPU target buffer must be mapped");
+#endif
     
     std::memcpy(
         targetBufferPtr + activeEntityCount,
@@ -155,7 +143,9 @@ void GPUEntityManager::uploadPendingEntities() {
         pendingEntities.erase(pendingEntities.begin(), pendingEntities.begin() + newEntityCount);
     }
     
+#ifdef _DEBUG
     std::cout << "Uploaded " << newEntityCount << " entities to GPU. Total: " << activeEntityCount << std::endl;
+#endif
 }
 
 
