@@ -18,7 +18,6 @@ class VulkanResources;
 class VulkanSync;
 class GPUEntityManager;
 class MovementCommandProcessor;
-class VulkanFunctionLoader;
 
 class VulkanRenderer {
 public:
@@ -68,7 +67,6 @@ private:
     std::unique_ptr<GPUEntityManager> gpuEntityManager;
     std::unique_ptr<MovementCommandProcessor> movementCommandProcessor;
 
-    // Note: Function pointers removed - now using centralized VulkanFunctionLoader
 
     // Helper functions
     bool recreateSwapChain();

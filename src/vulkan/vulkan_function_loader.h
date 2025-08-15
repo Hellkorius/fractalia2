@@ -146,7 +146,6 @@ public:
     PFN_vkCmdPushConstants vkCmdPushConstants = nullptr;
     PFN_vkCmdCopyBuffer vkCmdCopyBuffer = nullptr;
     PFN_vkCmdCopyBufferToImage vkCmdCopyBufferToImage = nullptr;
-    // Note: vkCmdTransitionImageLayout is not a real Vulkan function - removed
     
     // Queue functions
     PFN_vkQueueSubmit vkQueueSubmit = nullptr;

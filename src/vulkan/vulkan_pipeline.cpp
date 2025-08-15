@@ -445,6 +445,4 @@ VkPipelineLayout VulkanPipeline::getOrCreatePipelineLayout(VkDescriptorSetLayout
     return newLayout;
 }
 
-// Note: loadFunctions removed - now using centralized VulkanFunctionLoader
 
-// Note: createShaderModule and readFile removed - now using VulkanUtils

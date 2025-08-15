@@ -57,7 +57,6 @@ struct GPUEntity {
 // Forward declaration
 class VulkanContext;
 class VulkanSync;
-class VulkanFunctionLoader;
 
 // Manages GPU entity storage and CPU->GPU handover
 class GPUEntityManager {
@@ -114,7 +113,6 @@ private:
     VkDescriptorSetLayout computeDescriptorSetLayout = VK_NULL_HANDLE;
     VkDescriptorSet computeDescriptorSet = VK_NULL_HANDLE;
     
-    // Note: Function pointers removed - now using centralized VulkanFunctionLoader
     
     bool createEntityBuffers();
     bool createComputeDescriptorPool();

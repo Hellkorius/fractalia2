@@ -8,8 +8,6 @@
 #include <unordered_map>
 #include "vulkan_context.h"
 
-// Forward declaration
-class VulkanFunctionLoader;
 
 struct PipelineLayoutKey {
     VkDescriptorSetLayout descriptorSetLayout;
@@ -59,7 +57,6 @@ private:
     // Pipeline layout cache
     static std::unordered_map<PipelineLayoutKey, VkPipelineLayout, PipelineLayoutKeyHash> pipelineLayoutCache;
 
-    // Note: Function pointers removed - now using centralized VulkanFunctionLoader
 
     bool createRenderPass(VkFormat swapChainImageFormat);
     bool createDescriptorSetLayout();
@@ -67,7 +64,6 @@ private:
     VkPipelineLayout getOrCreatePipelineLayout(VkDescriptorSetLayout setLayout, 
                                               const VkPushConstantRange* pushConstantRange = nullptr);
     
-    // Note: createShaderModule and readFile removed - now using VulkanUtils
     
     std::array<VkVertexInputBindingDescription, 2> getVertexBindingDescriptions();
     std::array<VkVertexInputAttributeDescription, 10> getVertexAttributeDescriptions();

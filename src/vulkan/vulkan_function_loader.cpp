@@ -290,7 +290,6 @@ void VulkanFunctionLoader::loadRenderingFunctions() {
         vkGetDeviceProcAddr(device, "vkCmdCopyBuffer"));
     vkCmdCopyBufferToImage = reinterpret_cast<PFN_vkCmdCopyBufferToImage>(
         vkGetDeviceProcAddr(device, "vkCmdCopyBufferToImage"));
-    // Note: vkCmdTransitionImageLayout is not a real Vulkan function - removed
 }
 
 void VulkanFunctionLoader::loadQueueFunctions() {

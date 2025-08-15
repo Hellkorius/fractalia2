@@ -331,7 +331,6 @@ VkExtent2D VulkanSwapchain::chooseSwapExtent(const VkSurfaceCapabilitiesKHR& cap
     }
 }
 
-// Note: duplicate resource creation functions removed - now using VulkanUtils
 
 bool VulkanSwapchain::createFramebuffers(VkRenderPass renderPass) {
     swapChainFramebuffers.resize(swapChainImageViews.size());

@@ -273,4 +273,3 @@ bool GPUEntityManager::createComputeDescriptorSets() {
     return true;
 }
 
-// Note: findMemoryType and loadFunctions removed - now using VulkanUtils and VulkanFunctionLoader

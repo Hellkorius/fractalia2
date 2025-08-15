@@ -8,7 +8,6 @@
 #include "../PolygonFactory.h"
 
 class VulkanSync;
-class VulkanFunctionLoader;
 
 class VulkanResources {
 public:

@@ -6,8 +6,6 @@
 #include <vector>
 #include "vulkan_context.h"
 
-// Forward declaration
-class VulkanFunctionLoader;
 
 struct SwapChainSupportDetails {
     VkSurfaceCapabilitiesKHR capabilities;
@@ -58,7 +56,6 @@ private:
     
     std::vector<VkFramebuffer> swapChainFramebuffers;
 
-    // Note: Function pointers removed - now using centralized VulkanFunctionLoader
 
     bool createSwapChain();
     bool createImageViews();
