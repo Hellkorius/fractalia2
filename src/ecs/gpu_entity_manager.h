@@ -13,7 +13,7 @@ struct GPUEntity {
     glm::vec4 color;              // 16 bytes - RGBA color  
     glm::vec4 movementParams0;    // 16 bytes - amplitude, frequency, phase, timeOffset
     glm::vec4 movementParams1;    // 16 bytes - center.xyz, movementType
-    glm::vec4 runtimeState;       // 16 bytes - totalTime, initialized, reserved, reserved
+    glm::vec4 runtimeState;       // 16 bytes - totalTime, initialized, stateTimer, entityState
     
     GPUEntity() = default;
     
@@ -46,8 +46,8 @@ struct GPUEntity {
         entity.runtimeState = glm::vec4(
             pattern.totalTime,
             pattern.initialized ? 1.0f : 0.0f,
-            -1.0f, // transitionTime: -1 means no transition
-            0.0f   // transitionPhase
+            0.0f, // stateTimer: timer for current state
+            pattern.initialized ? 1.0f : 0.0f  // entityState: STATE_NORMAL or STATE_SPAWN_LERP
         );
         
         return entity;

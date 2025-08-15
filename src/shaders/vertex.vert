@@ -16,7 +16,7 @@ layout(push_constant) uniform PushConstants {
 layout(location = 0) in vec3 inPosition;
 layout(location = 1) in vec3 inColor;
 
-// GPU Entity instance data (updated by compute shader each frame)
+// GPU Entity instance data
 layout(location = 2) in vec4 instanceMatrix0;    // modelMatrix row 0 (unused)
 layout(location = 3) in vec4 instanceMatrix1;    // modelMatrix row 1 (unused) 
 layout(location = 4) in vec4 instanceMatrix2;    // modelMatrix row 2 (unused)
@@ -24,15 +24,26 @@ layout(location = 5) in vec4 instanceMatrix3;    // modelMatrix row 3 (unused)
 layout(location = 6) in vec4 instanceColor;      // color (unused)
 layout(location = 7) in vec4 movementParams0;    // amplitude, frequency, phase, timeOffset
 layout(location = 8) in vec4 movementParams1;    // center.xyz, movementType
-layout(location = 9) in vec4 runtimeState;       // totalTime, initialized, reserved, reserved
+layout(location = 9) in vec4 runtimeState;       // totalTime, initialized, stateTimer, entityState
 
 layout(location = 0) out vec3 fragColor;
 
-// Movement pattern implementations (same as compute shader)
+// Movement pattern implementations
 #define MOVEMENT_PETAL 0
 #define MOVEMENT_ORBIT 1
 #define MOVEMENT_WAVE 2
 #define MOVEMENT_TRIANGLE_FORMATION 3
+
+// Entity states
+#define STATE_SPAWN_LERP 0.0
+#define STATE_NORMAL 1.0
+#define STATE_ANGEL_TRANSITION 2.0
+#define STATE_ORGANIC_TRANSITION 3.0
+
+// Transition system constants
+#define TRANSITION_DURATION 2.0
+#define ORGANIC_TRANSITION_DURATION 1.0
+#define SPAWN_LERP_DURATION 0.5
 
 vec3 computePetalMovement(vec3 center, float amplitude, float frequency, float phase, float totalTime) {
     float radialOscillation = 0.5 + 0.5 * sin(totalTime * frequency * 0.3);
@@ -99,8 +110,35 @@ vec3 computeTriangleFormation(vec3 center, float amplitude, float frequency, flo
     return center + finalPosition;
 }
 
+// Smooth transition system - entities move to origin, then to new center (Angel Mode)
+vec3 computeTransitionMovement(vec3 currentPos, vec3 targetCenter, float transitionTime, float transitionPhase) {
+    float halfDuration = TRANSITION_DURATION * 0.5;
+    
+    if (transitionPhase < 0.5) {
+        // Phase 0: Move from current position to origin (0,0)
+        float t = clamp(transitionTime / halfDuration, 0.0, 1.0);
+        // Smooth easing function (ease-in-out)
+        t = t * t * (3.0 - 2.0 * t);
+        return mix(currentPos, vec3(0.0, 0.0, 0.0), t);
+    } else {
+        // Phase 1: Move from origin to target center
+        float t = clamp((transitionTime - halfDuration) / halfDuration, 0.0, 1.0);
+        // Smooth easing function (ease-in-out)
+        t = t * t * (3.0 - 2.0 * t);
+        return mix(vec3(0.0, 0.0, 0.0), targetCenter, t);
+    }
+}
+
+// Organic transition system - entities move directly to their target position in the new pattern
+vec3 computeOrganicTransition(vec3 currentPos, vec3 targetPos, float transitionTime) {
+    float t = clamp(transitionTime / ORGANIC_TRANSITION_DURATION, 0.0, 1.0);
+    // Smooth easing function (ease-in-out)
+    t = t * t * (3.0 - 2.0 * t);
+    return mix(currentPos, targetPos, t);
+}
+
 void main() {
-    // Read movement parameters (updated by compute shader)
+    // Read movement parameters
     float amplitude = movementParams0.x;
     float frequency = movementParams0.y;
     float phase = movementParams0.z;
@@ -108,25 +146,38 @@ void main() {
     vec3 center = movementParams1.xyz;
     uint movementType = uint(movementParams1.w);
     
-    // Calculate current position using updated parameters
+    // Extract runtime state
+    float totalTime = runtimeState.x;
+    bool initialized = runtimeState.y > 0.5;
+    float stateTimer = runtimeState.z;
+    float entityState = runtimeState.w;
+    
+    // Calculate current time - use pc.totalTime instead of relying on runtimeState.totalTime
     float currentTime = pc.totalTime + timeOffset;
-    vec3 currentPos;
-    switch (movementType) {
-        case MOVEMENT_PETAL:
-            currentPos = computePetalMovement(center, amplitude, frequency, phase, currentTime);
-            break;
-        case MOVEMENT_ORBIT:
-            currentPos = computeOrbitMovement(center, amplitude, frequency, phase, currentTime);
-            break;
-        case MOVEMENT_WAVE:
-            currentPos = computeWaveMovement(center, amplitude, frequency, phase, currentTime);
-            break;
-        case MOVEMENT_TRIANGLE_FORMATION:
-            currentPos = computeTriangleFormation(center, amplitude, frequency, phase, currentTime);
-            break;
-        default:
-            currentPos = computePetalMovement(center, amplitude, frequency, phase, currentTime);
-            break;
+    
+    vec3 finalPos;
+    
+    // For now, simplify to just normal movement to get basic functionality working
+    // TODO: Re-enable state management once basic movement is working
+    if (true) { // Always use normal movement for now
+        // Normal movement pattern computation
+        switch (movementType) {
+            case MOVEMENT_PETAL:
+                finalPos = computePetalMovement(center, amplitude, frequency, phase, currentTime);
+                break;
+            case MOVEMENT_ORBIT:
+                finalPos = computeOrbitMovement(center, amplitude, frequency, phase, currentTime);
+                break;
+            case MOVEMENT_WAVE:
+                finalPos = computeWaveMovement(center, amplitude, frequency, phase, currentTime);
+                break;
+            case MOVEMENT_TRIANGLE_FORMATION:
+                finalPos = computeTriangleFormation(center, amplitude, frequency, phase, currentTime);
+                break;
+            default:
+                finalPos = computePetalMovement(center, amplitude, frequency, phase, currentTime);
+                break;
+        }
     }
     
     // Calculate rotation and color
@@ -158,7 +209,7 @@ void main() {
         cosR, sinR, 0.0, 0.0,
         -sinR, cosR, 0.0, 0.0,
         0.0, 0.0, 1.0, 0.0,
-        currentPos.x, currentPos.y, currentPos.z, 1.0
+        finalPos.x, finalPos.y, finalPos.z, 1.0
     );
     
     gl_Position = ubo.proj * ubo.view * transformMatrix * vec4(inPosition, 1.0);

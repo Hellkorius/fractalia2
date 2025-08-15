@@ -16,7 +16,6 @@ class VulkanSwapchain;
 class VulkanPipeline;
 class VulkanResources;
 class VulkanSync;
-class ComputePipeline;
 class GPUEntityManager;
 class MovementCommandProcessor;
 class VulkanFunctionLoader;
@@ -80,7 +79,6 @@ private:
     std::unique_ptr<VulkanPipeline> pipeline;
     std::unique_ptr<VulkanResources> resources;
     std::unique_ptr<VulkanSync> sync;
-    std::unique_ptr<ComputePipeline> computePipeline;
     std::unique_ptr<GPUEntityManager> gpuEntityManager;
     std::unique_ptr<MovementCommandProcessor> movementCommandProcessor;
 
@@ -92,8 +90,6 @@ private:
     void loadDrawingFunctions();
     void updateUniformBuffer(uint32_t currentImage);
     void updateInstanceBuffer(uint32_t currentFrame);
-    void dispatchKeyframeCompute(VkCommandBuffer commandBuffer, float futureTime, float deltaTime, uint32_t entityBatch);
-    void initializeAllKeyframes();
     void transitionBufferLayout(VkCommandBuffer commandBuffer);
     bool initializeFrameFences();
     void cleanupPartialFrameFences();
@@ -114,7 +110,6 @@ private:
     float totalTime = 0.0f; // Accumulated simulation time
     
     // Key-frame look-ahead system
-    static constexpr uint32_t KEYFRAME_LOOKAHEAD_FRAMES = 20;
     uint32_t frameCounter = 0;
     
     // Per-frame fence management for independent compute/graphics timelines
