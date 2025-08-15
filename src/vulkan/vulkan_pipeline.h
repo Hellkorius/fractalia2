@@ -66,8 +66,8 @@ private:
     VkPipeline randomComputePipeline = VK_NULL_HANDLE;
     VkPipeline patternComputePipeline = VK_NULL_HANDLE;
     
-    // Pipeline layout cache
-    static std::unordered_map<PipelineLayoutKey, VkPipelineLayout, PipelineLayoutKeyHash> pipelineLayoutCache;
+    // Pipeline layout cache (instance-owned for proper cleanup)
+    std::unordered_map<PipelineLayoutKey, VkPipelineLayout, PipelineLayoutKeyHash> pipelineLayoutCache;
 
 
     bool createRenderPass(VkFormat swapChainImageFormat);

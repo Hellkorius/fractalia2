@@ -302,28 +302,17 @@ bool GPUEntityManager::createComputeDescriptorSets() {
 }
 
 bool GPUEntityManager::recreateComputeDescriptorResources() {
-    std::cout << "GPUEntityManager: Recreating compute descriptor resources..." << std::endl;
-    
     // Reset the descriptor pool to free all allocated descriptor sets
     if (computeDescriptorPool != VK_NULL_HANDLE) {
-        std::cout << "GPUEntityManager: Resetting descriptor pool..." << std::endl;
         VkResult result = context->getLoader().vkResetDescriptorPool(context->getDevice(), computeDescriptorPool, 0);
         if (result != VK_SUCCESS) {
             std::cerr << "Failed to reset compute descriptor pool: " << result << std::endl;
             return false;
         }
-        std::cout << "GPUEntityManager: Descriptor pool reset successful" << std::endl;
         computeDescriptorSet = VK_NULL_HANDLE; // Pool reset invalidates descriptor sets
     }
     
     // Recreate descriptor sets with the new layout
-    std::cout << "GPUEntityManager: Creating new descriptor sets..." << std::endl;
-    bool success = createComputeDescriptorSets();
-    if (success) {
-        std::cout << "GPUEntityManager: Descriptor sets created successfully" << std::endl;
-    } else {
-        std::cerr << "GPUEntityManager: Failed to create descriptor sets" << std::endl;
-    }
-    return success;
+    return createComputeDescriptorSets();
 }
 

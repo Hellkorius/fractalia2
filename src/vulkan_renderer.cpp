@@ -367,9 +367,7 @@ bool VulkanRenderer::recreateSwapChain() {
     recreationInProgress = true;
     
     // Wait for device to be idle before recreating resources
-    std::cout << "VulkanRenderer: Waiting for device idle..." << std::endl;
     context->getLoader().vkDeviceWaitIdle(context->getDevice());
-    std::cout << "VulkanRenderer: Device is idle" << std::endl;
     
     // Additional safety: wait for all frame fences to be signaled
     for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
@@ -384,7 +382,6 @@ bool VulkanRenderer::recreateSwapChain() {
             frameFences.setGraphicsInUse(i, false);
         }
     }
-    std::cout << "VulkanRenderer: All fences are ready" << std::endl;
     
     if (!swapchain->recreate(pipeline->getRenderPass())) {
         recreationInProgress = false;

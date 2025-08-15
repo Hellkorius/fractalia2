@@ -832,3 +832,81 @@ Implemented modular compute shader system to separate movement algorithms and en
 - Zero overhead when not using specific movement types
 - Specialized shader optimization for each algorithm category
 - Dynamic switching without pipeline recreation costs
+
+---
+
+# Changelog 0.4.2 - Window Resize Crash Fix
+
+## Overview
+Fixed critical crashes during window resize operations by addressing pipeline layout cache management and implementing proper resource recreation synchronization.
+
+## Root Cause
+Static pipeline layout cache was causing double-destruction issues during pipeline recreation, leading to crashes when attempting to destroy Vulkan pipeline layouts that were still referenced in the cache.
+
+## Solution Implemented
+
+**Pipeline Layout Cache RAII**:
+- Converted static `pipelineLayoutCache` to instance-owned member
+- Automatic cleanup via destructor ensures proper resource management
+- Eliminated manual cache tracking and complex cleanup logic
+
+**Enhanced Synchronization**:
+- Added comprehensive device idle waiting before recreation
+- Implemented frame fence synchronization to ensure GPU work completion
+- Added debouncing mechanism to prevent concurrent recreation attempts
+
+**Resource Recreation Order**:
+- GPU entity manager descriptor sets properly updated with new pipeline layouts
+- Descriptor pool reset ensures clean allocation state
+- Added `vkResetDescriptorPool` function to VulkanFunctionLoader
+
+## Technical Changes
+
+**VulkanPipeline Module**:
+- Made `pipelineLayoutCache` instance-owned instead of static
+- Added proper cache cleanup in destructor
+- Streamlined resource recreation process
+
+**VulkanRenderer Module**:
+- Added `recreationInProgress` flag for debouncing
+- Enhanced `recreateSwapChain()` with comprehensive synchronization
+- Proper cleanup on all failure paths
+
+**GPUEntityManager Module**:
+- Added `recreateComputeDescriptorResources()` method
+- Implemented descriptor pool reset functionality
+- Proper layout tracking with ownership management
+
+**VulkanFunctionLoader Extensions**:
+- Added `vkResetDescriptorPool` function loading
+- Complete function pointer management for descriptor operations
+
+## Performance Impact
+- Window resize operations are now stable and predictable
+- No performance overhead during normal operation
+- Minimal latency added during resize for proper synchronization
+
+## Files Modified
+```
+src/vulkan/vulkan_pipeline.h           - Instance-owned cache
+src/vulkan/vulkan_pipeline.cpp         - RAII cleanup implementation
+src/vulkan_renderer.h                  - Debouncing flag
+src/vulkan_renderer.cpp                - Enhanced synchronization
+src/ecs/gpu_entity_manager.h           - Descriptor resource management
+src/ecs/gpu_entity_manager.cpp         - Pool reset implementation
+src/vulkan/vulkan_function_loader.h    - vkResetDescriptorPool function
+src/vulkan/vulkan_function_loader.cpp  - Function loading
+```
+
+## Testing Results
+- ✅ Window resize operations stable across multiple attempts
+- ✅ No crashes during rapid resize events
+- ✅ Proper resource cleanup and recreation
+- ✅ Maintained 60 FPS performance after resize
+- ✅ GPU compute pipelines remain functional after resize
+
+## Architecture Benefits
+- **RAII Compliance**: Automatic resource management prevents leaks
+- **Thread Safety**: Proper synchronization eliminates race conditions  
+- **Maintainability**: Clean separation of concerns and simplified logic
+- **Robustness**: Graceful handling of rapid resize events
