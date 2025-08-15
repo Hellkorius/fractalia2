@@ -2,12 +2,8 @@
 #include "camera_system.h"
 #include <iostream>
 
-// Global state for mouse delta tracking (since this needs to persist across frames)
-static glm::vec2 g_previousMousePos{0.0f, 0.0f};
-static bool g_mouseInitialized = false;
-
-// Global window reference for accurate screen size calculations
-static SDL_Window* g_window = nullptr;
+// Static InputContext instance owned by InputManager
+static InputContext g_inputContext;
 
 // Input processing system function - runs on entities with all input components
 void input_processing_system(flecs::entity e, InputState& state, KeyboardInput& keyboard, 
@@ -27,6 +23,10 @@ void input_processing_system(flecs::entity e, InputState& state, KeyboardInput& 
 // Input manager functions
 namespace InputManager {
     
+    InputContext& getContext() {
+        return g_inputContext;
+    }
+    
     flecs::entity createInputEntity(flecs::world& world) {
         auto entity = world.entity("InputManager")
             .set<InputState>({})
@@ -39,7 +39,7 @@ namespace InputManager {
     }
     
     void setWindow(SDL_Window* window) {
-        g_window = window;
+        g_inputContext.window = window;
     }
     
     static void handleKeyboardEvent(const SDL_Event& event, KeyboardInput& keyboard) {
@@ -89,22 +89,22 @@ namespace InputManager {
                 // Update position and previous position to stay consistent with motion events
                 glm::vec2 buttonPos(event.button.x, event.button.y);
                 mouse.position = buttonPos;
-                g_previousMousePos = buttonPos;
+                g_inputContext.previousMousePos = buttonPos;
                 break;
             }
             
             case SDL_EVENT_MOUSE_MOTION: {
                 glm::vec2 newPos(event.motion.x, event.motion.y);
                 
-                if (g_mouseInitialized) {
-                    mouse.deltaPosition = newPos - g_previousMousePos;
+                if (g_inputContext.mouseInitialized) {
+                    mouse.deltaPosition = newPos - g_inputContext.previousMousePos;
                 } else {
                     mouse.deltaPosition = glm::vec2(0.0f, 0.0f);
-                    g_mouseInitialized = true;
+                    g_inputContext.mouseInitialized = true;
                 }
                 
                 mouse.position = newPos;
-                g_previousMousePos = newPos;
+                g_inputContext.previousMousePos = newPos;
                 break;
             }
             
@@ -203,10 +203,10 @@ namespace InputManager {
     glm::vec2 screenToWorld(const glm::vec2& screenPos, flecs::world& world) {
         // Get actual window size
         glm::vec2 screenSize(800.0f, 600.0f); // Default fallback
-        if (g_window) {
+        if (g_inputContext.window) {
             int width, height;
             // Mouse coords are in logical window space, so use logical size
-            SDL_GetWindowSize(g_window, &width, &height);
+            SDL_GetWindowSize(g_inputContext.window, &width, &height);
             screenSize = glm::vec2(static_cast<float>(width), static_cast<float>(height));
         }
         

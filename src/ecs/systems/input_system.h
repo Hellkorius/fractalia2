@@ -3,6 +3,14 @@
 #include "../component.h"
 #include <SDL3/SDL.h>
 #include <flecs.h>
+#include <glm/glm.hpp>
+
+// Input context to hold persistent state (replaces global variables)
+struct InputContext {
+    glm::vec2 previousMousePos{0.0f, 0.0f};
+    bool mouseInitialized = false;
+    SDL_Window* window = nullptr;
+};
 
 // Input processing system - handles SDL events and updates input components
 void input_processing_system(flecs::entity e, InputState& state, KeyboardInput& keyboard, 
@@ -10,8 +18,11 @@ void input_processing_system(flecs::entity e, InputState& state, KeyboardInput& 
 
 // Input manager functions for manual control
 namespace InputManager {
-    // Initialize input singleton entity
+    // Initialize input singleton entity and context
     flecs::entity createInputEntity(flecs::world& world);
+    
+    // Get the input context instance
+    InputContext& getContext();
     
     // Set the window reference for accurate screen size calculations
     void setWindow(SDL_Window* window);
