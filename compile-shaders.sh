@@ -12,6 +12,9 @@ cp src/shaders/compiled/vertex.spv build/shaders/compiled/
 glslangValidator -V src/shaders/fragment.frag -o src/shaders/compiled/fragment.spv
 cp src/shaders/compiled/fragment.spv build/shaders/compiled/
 
+# Compile compute shader
+glslangValidator -V src/shaders/movement.comp -o src/shaders/compiled/movement.comp.spv
+cp src/shaders/compiled/movement.comp.spv build/shaders/compiled/
 
 
 echo "Shaders compiled successfully!"

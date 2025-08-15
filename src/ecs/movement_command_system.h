@@ -14,6 +14,7 @@ struct MovementCommand {
         Orbit = 1, 
         Wave = 2,
         TriangleFormation = 3,
+        RandomStep = 4,
         COUNT // For validation
     };
     
@@ -100,8 +101,8 @@ private:
     GPUEntityManager* gpuEntityManager;
     
     // Performance optimizations
-    static constexpr std::array<std::string_view, 4> MOVEMENT_NAMES = {
-        "PETAL", "ORBIT", "WAVE", "TRIANGLE FORMATION"
+    static constexpr std::array<std::string_view, 5> MOVEMENT_NAMES = {
+        "PETAL", "ORBIT", "WAVE", "TRIANGLE FORMATION", "RANDOM STEP"
     };
     
     // Error handling

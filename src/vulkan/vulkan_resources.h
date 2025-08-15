@@ -22,6 +22,9 @@ public:
     bool createTriangleBuffers();
     bool createDescriptorPool(VkDescriptorSetLayout descriptorSetLayout);
     bool createDescriptorSets(VkDescriptorSetLayout descriptorSetLayout);
+    
+    // Update descriptor sets with position buffer for compute-based rendering
+    bool updateDescriptorSetsWithPositionBuffer(VkBuffer positionBuffer);
 
     const std::vector<VkBuffer>& getUniformBuffers() const { return uniformBuffers; }
     const std::vector<void*>& getUniformBuffersMapped() const { return uniformBuffersMapped; }

@@ -44,6 +44,11 @@ public:
     VkPipelineLayout getPipelineLayout() const { return pipelineLayout; }
     VkPipeline getGraphicsPipeline() const { return graphicsPipeline; }
     VkDescriptorSetLayout getDescriptorSetLayout() const { return descriptorSetLayout; }
+    
+    // Compute pipeline support
+    VkPipeline getComputePipeline() const { return computePipeline; }
+    VkPipelineLayout getComputePipelineLayout() const { return computePipelineLayout; }
+    VkDescriptorSetLayout getComputeDescriptorSetLayout() const { return computeDescriptorSetLayout; }
 
 private:
     const VulkanContext* context = nullptr;
@@ -54,6 +59,11 @@ private:
     VkDescriptorSetLayout descriptorSetLayout = VK_NULL_HANDLE;
     VkPipelineCache pipelineCache = VK_NULL_HANDLE;
     
+    // Compute pipeline resources
+    VkPipeline computePipeline = VK_NULL_HANDLE;
+    VkPipelineLayout computePipelineLayout = VK_NULL_HANDLE;
+    VkDescriptorSetLayout computeDescriptorSetLayout = VK_NULL_HANDLE;
+    
     // Pipeline layout cache
     static std::unordered_map<PipelineLayoutKey, VkPipelineLayout, PipelineLayoutKeyHash> pipelineLayoutCache;
 
@@ -63,6 +73,10 @@ private:
     bool createGraphicsPipeline();
     VkPipelineLayout getOrCreatePipelineLayout(VkDescriptorSetLayout setLayout, 
                                               const VkPushConstantRange* pushConstantRange = nullptr);
+    
+    // Compute pipeline methods
+    bool createComputeDescriptorSetLayout();
+    bool createComputePipeline();
     
     
     std::array<VkVertexInputBindingDescription, 2> getVertexBindingDescriptions();

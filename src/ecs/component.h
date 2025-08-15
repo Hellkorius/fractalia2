@@ -68,7 +68,8 @@ enum class MovementType {
     Petal = 0,  // Smooth radial oscillation from center
     Orbit = 1,  // Circular orbit around center point
     Wave = 2,   // Sinusoidal wave motion
-    TriangleFormation = 3  // Non-Euclidean triangular orbit
+    TriangleFormation = 3,  // Non-Euclidean triangular orbit
+    RandomStep = 4  // GPU-driven random walk from center point
 };
 
 struct MovementPattern {

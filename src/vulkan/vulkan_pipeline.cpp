@@ -51,6 +51,20 @@ bool VulkanPipeline::initialize(const VulkanContext& context, VkFormat swapChain
     }
     std::cout << "Graphics pipeline created successfully" << std::endl;
     
+    std::cout << "Creating compute descriptor set layout..." << std::endl;
+    if (!createComputeDescriptorSetLayout()) {
+        std::cerr << "Failed to create compute descriptor set layout" << std::endl;
+        return false;
+    }
+    std::cout << "Compute descriptor set layout created successfully" << std::endl;
+    
+    std::cout << "Creating compute pipeline..." << std::endl;
+    if (!createComputePipeline()) {
+        std::cerr << "Failed to create compute pipeline" << std::endl;
+        return false;
+    }
+    std::cout << "Compute pipeline created successfully" << std::endl;
+    
     return true;
 }
 
@@ -72,6 +86,20 @@ void VulkanPipeline::cleanup() {
     if (descriptorSetLayout != VK_NULL_HANDLE) {
         context->getLoader().vkDestroyDescriptorSetLayout(context->getDevice(), descriptorSetLayout, nullptr);
         descriptorSetLayout = VK_NULL_HANDLE;
+    }
+    
+    // Cleanup compute pipeline resources
+    if (computePipeline != VK_NULL_HANDLE) {
+        context->getLoader().vkDestroyPipeline(context->getDevice(), computePipeline, nullptr);
+        computePipeline = VK_NULL_HANDLE;
+    }
+    if (computePipelineLayout != VK_NULL_HANDLE) {
+        context->getLoader().vkDestroyPipelineLayout(context->getDevice(), computePipelineLayout, nullptr);
+        computePipelineLayout = VK_NULL_HANDLE;
+    }
+    if (computeDescriptorSetLayout != VK_NULL_HANDLE) {
+        context->getLoader().vkDestroyDescriptorSetLayout(context->getDevice(), computeDescriptorSetLayout, nullptr);
+        computeDescriptorSetLayout = VK_NULL_HANDLE;
     }
     if (pipelineCache != VK_NULL_HANDLE) {
         context->getLoader().vkDestroyPipelineCache(context->getDevice(), pipelineCache, nullptr);
@@ -183,7 +211,7 @@ bool VulkanPipeline::createRenderPass(VkFormat swapChainImageFormat) {
 }
 
 bool VulkanPipeline::createDescriptorSetLayout() {
-    std::array<VkDescriptorSetLayoutBinding, 1> bindings{};
+    std::array<VkDescriptorSetLayoutBinding, 2> bindings{};
     
     // UBO binding (binding = 0)
     bindings[0].binding = 0;
@@ -191,6 +219,13 @@ bool VulkanPipeline::createDescriptorSetLayout() {
     bindings[0].descriptorCount = 1;
     bindings[0].stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
     bindings[0].pImmutableSamplers = nullptr;
+    
+    // Position buffer binding (binding = 2) for compute-based vertex shader
+    bindings[1].binding = 2;
+    bindings[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    bindings[1].descriptorCount = 1;
+    bindings[1].stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+    bindings[1].pImmutableSamplers = nullptr;
     
     VkDescriptorSetLayoutCreateInfo layoutInfo{};
     layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
@@ -443,6 +478,85 @@ VkPipelineLayout VulkanPipeline::getOrCreatePipelineLayout(VkDescriptorSetLayout
     
     pipelineLayoutCache[key] = newLayout;
     return newLayout;
+}
+
+bool VulkanPipeline::createComputeDescriptorSetLayout() {
+    // Create descriptor set layout for compute shader
+    VkDescriptorSetLayoutBinding bindings[2] = {};
+    
+    // Input buffer binding (entities)
+    bindings[0].binding = 0;
+    bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    bindings[0].descriptorCount = 1;
+    bindings[0].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+    
+    // Output buffer binding (positions)
+    bindings[1].binding = 1;
+    bindings[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    bindings[1].descriptorCount = 1;
+    bindings[1].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+    
+    VkDescriptorSetLayoutCreateInfo layoutInfo{};
+    layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    layoutInfo.bindingCount = 2;
+    layoutInfo.pBindings = bindings;
+    
+    return context->getLoader().vkCreateDescriptorSetLayout(context->getDevice(), &layoutInfo, nullptr, &computeDescriptorSetLayout) == VK_SUCCESS;
+}
+
+bool VulkanPipeline::createComputePipeline() {
+    // Load compute shader
+    auto computeShaderCode = VulkanUtils::readFile("shaders/compiled/movement.comp.spv");
+    VkShaderModule computeShaderModule = VulkanUtils::createShaderModule(context->getDevice(), context->getLoader(), computeShaderCode);
+    
+    if (computeShaderModule == VK_NULL_HANDLE) {
+        std::cerr << "Failed to create compute shader module" << std::endl;
+        return false;
+    }
+    
+    // Compute pipeline stage
+    VkPipelineShaderStageCreateInfo computeShaderStageInfo{};
+    computeShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    computeShaderStageInfo.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+    computeShaderStageInfo.module = computeShaderModule;
+    computeShaderStageInfo.pName = "main";
+    
+    // Push constant range for compute shader
+    VkPushConstantRange pushConstantRange{};
+    pushConstantRange.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+    pushConstantRange.offset = 0;
+    pushConstantRange.size = sizeof(float) * 4; // time, deltaTime, entityCount, frame
+    
+    // Create compute pipeline layout
+    VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
+    pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    pipelineLayoutInfo.setLayoutCount = 1;
+    pipelineLayoutInfo.pSetLayouts = &computeDescriptorSetLayout;
+    pipelineLayoutInfo.pushConstantRangeCount = 1;
+    pipelineLayoutInfo.pPushConstantRanges = &pushConstantRange;
+    
+    if (context->getLoader().vkCreatePipelineLayout(context->getDevice(), &pipelineLayoutInfo, nullptr, &computePipelineLayout) != VK_SUCCESS) {
+        std::cerr << "Failed to create compute pipeline layout" << std::endl;
+        context->getLoader().vkDestroyShaderModule(context->getDevice(), computeShaderModule, nullptr);
+        return false;
+    }
+    
+    // Create compute pipeline
+    VkComputePipelineCreateInfo pipelineInfo{};
+    pipelineInfo.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+    pipelineInfo.stage = computeShaderStageInfo;
+    pipelineInfo.layout = computePipelineLayout;
+    
+    if (context->getLoader().vkCreateComputePipelines(context->getDevice(), pipelineCache, 1, &pipelineInfo, nullptr, &computePipeline) != VK_SUCCESS) {
+        std::cerr << "Failed to create compute pipeline" << std::endl;
+        context->getLoader().vkDestroyPipelineLayout(context->getDevice(), computePipelineLayout, nullptr);
+        context->getLoader().vkDestroyShaderModule(context->getDevice(), computeShaderModule, nullptr);
+        return false;
+    }
+    
+    // Clean up shader module
+    context->getLoader().vkDestroyShaderModule(context->getDevice(), computeShaderModule, nullptr);
+    return true;
 }
 
 

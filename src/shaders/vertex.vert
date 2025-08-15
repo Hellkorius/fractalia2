@@ -11,32 +11,19 @@ layout(push_constant) uniform PC {
     uint  count;
 } pc;
 
-layout(location = 0) in  vec3 inPos;
-layout(location = 7) in  vec4 ampFreqPhaseOff;
-layout(location = 8) in  vec4 centerType;
+// Input vertex geometry
+layout(location = 0) in vec3 inPos;
+
+// Instance data from GPUEntity buffer
+layout(location = 7) in vec4 ampFreqPhaseOff;  // amplitude, frequency, phase, timeOffset
+layout(location = 8) in vec4 centerType;       // center.xyz, movementType
+
+// Pre-computed positions from compute shader
+layout(std430, binding = 2) readonly buffer ComputedPositions {
+    vec4 computedPos[];
+};
 
 layout(location = 0) out vec3 color;
-
-/* ---------- movement helpers ---------- */
-vec3 petal(vec3 c, float a, float f, float p, float t) {
-    float r = a * (0.5 + 0.5 * sin(t * f * 0.3));
-    return c + vec3(r * cos(t * f + p), r * sin(t * f + p), 0);
-}
-
-vec3 orbit(vec3 c, float a, float f, float p, float t) {
-    float ang = t * f + p;
-    return c + vec3(a * cos(ang), a * sin(ang), 0);
-}
-
-vec3 wave(vec3 c, float a, float f, float p, float t) {
-    return c + vec3(a * sin(t * f + p), a * cos(t * f * 0.5 + p), 0);
-}
-
-vec3 triangle(vec3 c, float a, float f, float p, float t) {
-    float ang = t * f + p;
-    float w   = a * 2.0 * (1.0 + 0.3 * sin(ang * 1.5));
-    return c + vec3(w * cos(ang), w * sin(ang), 0);
-}
 
 /* ---------- HSV → RGB ---------- */
 vec3 hsv2rgb(float h, float s, float v) {
@@ -56,30 +43,27 @@ vec3 hsv2rgb(float h, float s, float v) {
 }
 
 void main() {
-    float t  = pc.time + ampFreqPhaseOff.w;
-    vec3  c  = centerType.xyz;
-    float a  = ampFreqPhaseOff.x;
-    float f  = ampFreqPhaseOff.y;
-    float p  = ampFreqPhaseOff.z;
-    uint  type = uint(centerType.w);
-
-    /* pick movement pattern */
-    vec3 pos = (type == 0) ? petal(c,a,f,p,t) :
-               (type == 1) ? orbit(c,a,f,p,t) :
-               (type == 2) ? wave(c,a,f,p,t)  :
-                             triangle(c,a,f,p,t);
-
-    /* colour */
-    float hue = mod(p + t * 0.5, 6.28318) / 6.28318;
+    // Get pre-computed position from compute shader
+    vec3 worldPos = computedPos[gl_InstanceIndex].xyz;
+    
+    // Extract movement parameters for color calculation
+    float phase = ampFreqPhaseOff.z;
+    float timeOffset = ampFreqPhaseOff.w;
+    float entityTime = pc.time + timeOffset;
+    
+    /* Calculate color based on movement parameters */
+    float hue = mod(phase + entityTime * 0.5, 6.28318) / 6.28318;
     color = hsv2rgb(hue, 0.8, 0.9);
-
-    /* transform */
-    float rot = t * 0.1;
-    mat4 m = mat4(
+    
+    /* Apply rotation based on time */
+    float rot = entityTime * 0.1;
+    mat4 rotationMatrix = mat4(
         cos(rot),  sin(rot), 0, 0,
        -sin(rot),  cos(rot), 0, 0,
         0,         0,        1, 0,
-        pos,                   1);
-
-    gl_Position = ubo.proj * ubo.view * m * vec4(inPos, 1.0);
+        worldPos,             1
+    );
+    
+    /* Final transformation */
+    gl_Position = ubo.proj * ubo.view * rotationMatrix * vec4(inPos, 1.0);
 }

@@ -13,4 +13,5 @@ namespace SystemConstants {
     constexpr int MOVEMENT_TYPE_ORBIT = 1; 
     constexpr int MOVEMENT_TYPE_WAVE = 2;
     constexpr int MOVEMENT_TYPE_TRIANGLE = 3;
+    constexpr int MOVEMENT_TYPE_RANDOM_STEP = 4;
 }

@@ -79,6 +79,7 @@ public:
     
     // GPU buffer management  
     VkBuffer getCurrentEntityBuffer() const { return entityStorage; }
+    VkBuffer getCurrentPositionBuffer() const { return positionStorage; }
     uint32_t getComputeInputIndex() const { return 0; }
     uint32_t getComputeOutputIndex() const { return 0; }
     void advanceFrame() { /* No-op for single buffer */ }
@@ -100,6 +101,7 @@ public:
 private:
     static constexpr uint32_t MAX_ENTITIES = 131072; // 128k entities max (16MB / 128 bytes)
     static constexpr size_t ENTITY_BUFFER_SIZE = MAX_ENTITIES * sizeof(GPUEntity);
+    static constexpr size_t POSITION_BUFFER_SIZE = MAX_ENTITIES * sizeof(glm::vec4); // 16 bytes per position
     
     const VulkanContext* context = nullptr;
     VulkanSync* sync = nullptr;
@@ -108,6 +110,10 @@ private:
     // Single buffer storage for compute pipeline using ResourceContext
     std::unique_ptr<ResourceHandle> entityStorageHandle;
     VkBuffer entityStorage = VK_NULL_HANDLE;  // For compatibility
+    
+    // Position buffer for compute shader output
+    std::unique_ptr<ResourceHandle> positionStorageHandle;
+    VkBuffer positionStorage = VK_NULL_HANDLE;
     
     // Entity state
     uint32_t activeEntityCount = 0;

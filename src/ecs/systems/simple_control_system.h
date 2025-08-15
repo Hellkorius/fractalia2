@@ -12,7 +12,7 @@ namespace SimpleControlSystem {
     
     // Simple state singleton with GPU operation capabilities
     struct ControlState {
-        int currentMovementType = 0;  // 0=Petal, 1=Orbit, 2=Wave, 3=Triangle
+        int currentMovementType = 0;  // 0=Petal, 1=Orbit, 2=Wave, 3=Triangle, 4=RandomStep
         bool angelModeEnabled = false;
         bool requestEntityCreation = false;
         bool requestSwarmCreation = false;

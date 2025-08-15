@@ -211,6 +211,43 @@ bool VulkanResources::createDescriptorSets(VkDescriptorSetLayout descriptorSetLa
     return true;
 }
 
-
-
-
+bool VulkanResources::updateDescriptorSetsWithPositionBuffer(VkBuffer positionBuffer) {
+    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+        // UBO binding (binding 0)
+        VkDescriptorBufferInfo uboBufferInfo{};
+        uboBufferInfo.buffer = uniformBuffers[i];
+        uboBufferInfo.offset = 0;
+        uboBufferInfo.range = sizeof(glm::mat4) * 2;
+        
+        // Position buffer binding (binding 2)
+        VkDescriptorBufferInfo positionBufferInfo{};
+        positionBufferInfo.buffer = positionBuffer;
+        positionBufferInfo.offset = 0;
+        positionBufferInfo.range = VK_WHOLE_SIZE;
+        
+        // Write both descriptors
+        VkWriteDescriptorSet descriptorWrites[2] = {};
+        
+        // UBO write
+        descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        descriptorWrites[0].dstSet = descriptorSets[i];
+        descriptorWrites[0].dstBinding = 0;
+        descriptorWrites[0].dstArrayElement = 0;
+        descriptorWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        descriptorWrites[0].descriptorCount = 1;
+        descriptorWrites[0].pBufferInfo = &uboBufferInfo;
+        
+        // Position buffer write
+        descriptorWrites[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        descriptorWrites[1].dstSet = descriptorSets[i];
+        descriptorWrites[1].dstBinding = 2;
+        descriptorWrites[1].dstArrayElement = 0;
+        descriptorWrites[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        descriptorWrites[1].descriptorCount = 1;
+        descriptorWrites[1].pBufferInfo = &positionBufferInfo;
+        
+        context->getLoader().vkUpdateDescriptorSets(context->getDevice(), 2, descriptorWrites, 0, nullptr);
+    }
+    
+    return true;
+}

@@ -101,6 +101,12 @@ bool VulkanRenderer::initialize(SDL_Window* window) {
         return false;
     }
     
+    // Update graphics descriptor sets with position buffer for compute-based rendering
+    if (!resources->updateDescriptorSetsWithPositionBuffer(gpuEntityManager->getCurrentPositionBuffer())) {
+        std::cerr << "Failed to update descriptor sets with position buffer" << std::endl;
+        return false;
+    }
+    std::cout << "Graphics descriptor sets updated with position buffer" << std::endl;
     
     // Initialize movement command processor
     movementCommandProcessor = std::make_unique<MovementCommandProcessor>(gpuEntityManager.get());
@@ -206,13 +212,50 @@ void VulkanRenderer::drawFrame() {
     (void)beginResult;
 #endif
     
-    // Using real-time vertex shader movement computation
+    // Dispatch compute shader for movement calculation
+    if (gpuEntityManager && gpuEntityManager->getEntityCount() > 0) {
+        // Bind compute pipeline
+        context->getLoader().vkCmdBindPipeline(computeCommandBuffers[currentFrame], VK_PIPELINE_BIND_POINT_COMPUTE, pipeline->getComputePipeline());
+        
+        // Bind compute descriptor set
+        VkDescriptorSet computeDescriptorSet = gpuEntityManager->getCurrentComputeDescriptorSet();
+        context->getLoader().vkCmdBindDescriptorSets(
+            computeCommandBuffers[currentFrame], 
+            VK_PIPELINE_BIND_POINT_COMPUTE, 
+            pipeline->getComputePipelineLayout(), 
+            0, 1, &computeDescriptorSet, 0, nullptr
+        );
+        
+        // Update push constants for compute shader
+        struct ComputePushConstants {
+            float time;
+            float deltaTime;
+            uint32_t entityCount;
+            uint32_t frame;
+        } computePushConstants;
+        
+        computePushConstants.time = totalTime;
+        computePushConstants.deltaTime = deltaTime;
+        computePushConstants.entityCount = gpuEntityManager->getEntityCount();
+        computePushConstants.frame = frameCounter;
+        
+        context->getLoader().vkCmdPushConstants(
+            computeCommandBuffers[currentFrame],
+            pipeline->getComputePipelineLayout(),
+            VK_SHADER_STAGE_COMPUTE_BIT,
+            0, sizeof(ComputePushConstants),
+            &computePushConstants
+        );
+        
+        // Dispatch compute shader (64 threads per workgroup)
+        uint32_t numWorkgroups = (gpuEntityManager->getEntityCount() + 63) / 64;
+        context->getLoader().vkCmdDispatch(computeCommandBuffers[currentFrame], numWorkgroups, 1, 1);
+    }
     
     // Update total simulation time
     totalTime += deltaTime;
     
-    
-    
+    // Memory barrier to ensure compute write completes before graphics read
     transitionBufferLayout(computeCommandBuffers[currentFrame]);
     
     // Update frame counter

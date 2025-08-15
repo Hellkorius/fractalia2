@@ -79,6 +79,9 @@ namespace SimpleControlSystem {
                 else if (keyboard->isKeyPressed(SDL_SCANCODE_3)) {
                     controlState->currentMovementType = 3;
                 }
+                else if (keyboard->isKeyPressed(SDL_SCANCODE_5)) {
+                    controlState->currentMovementType = 4;
+                }
                 
                 // Angel mode toggle - frame-based
                 if (keyboard->isKeyPressed(SDL_SCANCODE_CAPSLOCK)) {
@@ -185,6 +188,7 @@ namespace SimpleControlSystem {
                     case SystemConstants::MOVEMENT_TYPE_ORBIT: cmd.targetType = MovementCommand::Type::Orbit; break;
                     case SystemConstants::MOVEMENT_TYPE_WAVE: cmd.targetType = MovementCommand::Type::Wave; break;
                     case SystemConstants::MOVEMENT_TYPE_TRIANGLE: cmd.targetType = MovementCommand::Type::TriangleFormation; break;
+                    case SystemConstants::MOVEMENT_TYPE_RANDOM_STEP: cmd.targetType = MovementCommand::Type::RandomStep; break;
                 }
                 cmd.angelMode = controlState->angelModeEnabled;
                 cmd.timestamp = std::chrono::duration<double>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();

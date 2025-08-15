@@ -188,7 +188,7 @@ void GPUEntityManager::updateAllMovementTypes(int newMovementType, bool angelMod
 
 
 bool GPUEntityManager::createEntityBuffers() {
-    // Create entity buffer using ResourceContext
+    // Create entity buffer using ResourceContext (input for compute shader)
     entityStorageHandle = std::make_unique<ResourceHandle>(
         resourceContext->createMappedBuffer(
             ENTITY_BUFFER_SIZE,
@@ -203,8 +203,25 @@ bool GPUEntityManager::createEntityBuffers() {
         return false;
     }
     
+    // Create position buffer using ResourceContext (output from compute shader)
+    positionStorageHandle = std::make_unique<ResourceHandle>(
+        resourceContext->createMappedBuffer(
+            POSITION_BUFFER_SIZE,
+            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
+        )
+    );
+    
+    if (!positionStorageHandle->isValid()) {
+        std::cerr << "Failed to create position buffer!" << std::endl;
+        positionStorageHandle.reset();
+        entityStorageHandle.reset();
+        return false;
+    }
+    
     // Maintain compatibility with existing API
     entityStorage = entityStorageHandle->buffer;
+    positionStorage = positionStorageHandle->buffer;
     
     return true;
 }
@@ -227,13 +244,13 @@ bool GPUEntityManager::createComputeDescriptorSetLayout() {
     // Two storage buffers: input and output
     VkDescriptorSetLayoutBinding bindings[2] = {};
     
-    // Input buffer binding
+    // Input buffer binding (entities)
     bindings[0].binding = 0;
     bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
     bindings[0].descriptorCount = 1;
     bindings[0].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
     
-    // Output buffer binding  
+    // Output buffer binding (positions)
     bindings[1].binding = 1;
     bindings[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
     bindings[1].descriptorCount = 1;
@@ -259,14 +276,19 @@ bool GPUEntityManager::createComputeDescriptorSets() {
         return false;
     }
     
-    // Update descriptor set - both input and output point to same buffer
-    VkDescriptorBufferInfo bufferInfo{};
-    bufferInfo.buffer = entityStorage;
-    bufferInfo.offset = 0;
-    bufferInfo.range = ENTITY_BUFFER_SIZE;
+    // Update descriptor set with proper input and output buffers
+    VkDescriptorBufferInfo entityBufferInfo{};
+    entityBufferInfo.buffer = entityStorage;
+    entityBufferInfo.offset = 0;
+    entityBufferInfo.range = ENTITY_BUFFER_SIZE;
     
-    // Use helper for both input (binding 0) and output (binding 1) buffers
-    std::vector<VkDescriptorBufferInfo> bufferInfos = {bufferInfo, bufferInfo};
+    VkDescriptorBufferInfo positionBufferInfo{};
+    positionBufferInfo.buffer = positionStorage;
+    positionBufferInfo.offset = 0;
+    positionBufferInfo.range = POSITION_BUFFER_SIZE;
+    
+    // Input buffer (binding 0) and output buffer (binding 1)
+    std::vector<VkDescriptorBufferInfo> bufferInfos = {entityBufferInfo, positionBufferInfo};
     VulkanUtils::writeDescriptorSets(context->getDevice(), context->getLoader(), computeDescriptorSet, bufferInfos);
     
     return true;
