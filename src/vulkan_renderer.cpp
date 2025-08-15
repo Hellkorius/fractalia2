@@ -72,13 +72,8 @@ bool VulkanRenderer::initialize(SDL_Window* window) {
         return false;
     }
     
-    if (!resources->createVertexBuffer()) {
-        std::cerr << "Failed to create vertex buffer" << std::endl;
-        return false;
-    }
-    
-    if (!resources->createIndexBuffer()) {
-        std::cerr << "Failed to create index buffer" << std::endl;
+    if (!resources->createTriangleBuffers()) {
+        std::cerr << "Failed to create triangle buffers" << std::endl;
         return false;
     }
     

@@ -75,17 +75,6 @@ bool VulkanResources::createUniformBuffers() {
     return true;
 }
 
-bool VulkanResources::createVertexBuffer() {
-    return createTriangleBuffers();
-}
-
-bool VulkanResources::createIndexBuffer() {
-    // Index buffer is now created as part of createTriangleBuffers()
-    return true;
-}
-
-
-
 bool VulkanResources::createTriangleBuffers() {
     PolygonMesh triangle = PolygonFactory::createTriangle();
     

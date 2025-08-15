@@ -19,8 +19,6 @@ public:
     void cleanup();
     
     bool createUniformBuffers();
-    bool createVertexBuffer();
-    bool createIndexBuffer();
     bool createTriangleBuffers();
     bool createDescriptorPool(VkDescriptorSetLayout descriptorSetLayout);
     bool createDescriptorSets(VkDescriptorSetLayout descriptorSetLayout);
