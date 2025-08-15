@@ -108,4 +108,11 @@ public:
                                 VkImage image,
                                 uint32_t width,
                                 uint32_t height);
+                                
+    // Descriptor set utilities
+    static void writeDescriptorSets(VkDevice device,
+                                  const VulkanFunctionLoader& loader,
+                                  VkDescriptorSet descriptorSet,
+                                  const std::vector<VkDescriptorBufferInfo>& bufferInfos,
+                                  VkDescriptorType descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
 };

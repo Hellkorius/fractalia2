@@ -348,3 +348,24 @@ void VulkanUtils::copyBufferToImage(VkDevice device,
     
     endSingleTimeCommands(device, loader, queue, commandPool, commandBuffer);
 }
+
+void VulkanUtils::writeDescriptorSets(VkDevice device,
+                                     const VulkanFunctionLoader& loader,
+                                     VkDescriptorSet descriptorSet,
+                                     const std::vector<VkDescriptorBufferInfo>& bufferInfos,
+                                     VkDescriptorType descriptorType) {
+    std::vector<VkWriteDescriptorSet> descriptorWrites(bufferInfos.size());
+    
+    for (size_t i = 0; i < bufferInfos.size(); i++) {
+        descriptorWrites[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        descriptorWrites[i].dstSet = descriptorSet;
+        descriptorWrites[i].dstBinding = static_cast<uint32_t>(i);
+        descriptorWrites[i].dstArrayElement = 0;
+        descriptorWrites[i].descriptorType = descriptorType;
+        descriptorWrites[i].descriptorCount = 1;
+        descriptorWrites[i].pBufferInfo = &bufferInfos[i];
+    }
+    
+    loader.vkUpdateDescriptorSets(device, static_cast<uint32_t>(descriptorWrites.size()), 
+                                descriptorWrites.data(), 0, nullptr);
+}

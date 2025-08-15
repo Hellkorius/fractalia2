@@ -272,27 +272,9 @@ bool GPUEntityManager::createComputeDescriptorSets() {
     bufferInfo.offset = 0;
     bufferInfo.range = ENTITY_BUFFER_SIZE;
     
-    VkWriteDescriptorSet descriptorWrites[2] = {};
-    
-    // Input buffer (binding 0)
-    descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    descriptorWrites[0].dstSet = computeDescriptorSet;
-    descriptorWrites[0].dstBinding = 0;
-    descriptorWrites[0].dstArrayElement = 0;
-    descriptorWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    descriptorWrites[0].descriptorCount = 1;
-    descriptorWrites[0].pBufferInfo = &bufferInfo;
-    
-    // Output buffer (binding 1) - same buffer for in-place operations
-    descriptorWrites[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    descriptorWrites[1].dstSet = computeDescriptorSet;
-    descriptorWrites[1].dstBinding = 1;
-    descriptorWrites[1].dstArrayElement = 0;
-    descriptorWrites[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    descriptorWrites[1].descriptorCount = 1;
-    descriptorWrites[1].pBufferInfo = &bufferInfo;
-    
-    loader->vkUpdateDescriptorSets(context->getDevice(), 2, descriptorWrites, 0, nullptr);
+    // Use helper for both input (binding 0) and output (binding 1) buffers
+    std::vector<VkDescriptorBufferInfo> bufferInfos = {bufferInfo, bufferInfo};
+    VulkanUtils::writeDescriptorSets(context->getDevice(), *loader, computeDescriptorSet, bufferInfos);
     
     return true;
 }
