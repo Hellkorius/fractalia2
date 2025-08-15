@@ -1,7 +1,7 @@
 #pragma once
 
-#include "entity.hpp"
-#include "component.hpp"
+#include "entity.h"
+#include "component.h"
 #include <flecs.h>
 
 // Minimal memory statistics helper for ECS

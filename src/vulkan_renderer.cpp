@@ -7,9 +7,9 @@
 #include "vulkan/vulkan_sync.h"
 #include "vulkan/resource_context.h"
 #include "ecs/gpu_entity_manager.h"
-#include "ecs/systems/camera_system.hpp"
-#include "ecs/camera_component.hpp"
-#include "ecs/movement_command_system.hpp"
+#include "ecs/systems/camera_system.h"
+#include "ecs/camera_component.h"
+#include "ecs/movement_command_system.h"
 #include <iostream>
 #include <array>
 #include <chrono>

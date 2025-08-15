@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../component.hpp"
+#include "../component.h"
 #include <flecs.h>
 
 // Forward declarations

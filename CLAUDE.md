@@ -61,23 +61,23 @@ fractalia2/
 			├─ vulkan_constants.h    
 			└─ compute_pipeline.*    // compute shader pipeline management
 	ecs/
-	├── component.hpp           // All component definitions
-	├── entity.hpp              // Entity & EntityHandle aliases
-	├──	entity_factory.hpp		// Factory for creating and managing entities
+	├── component.h           // All component definitions
+	├── entity.h              // Entity & EntityHandle aliases
+	├──	entity_factory.h		// Factory for creating and managing entities
 	├── gpu_entity_manager.*    // GPU entity storage and CPU->GPU handover
 	├── movement_command_system.* // Thread-safe movement command queue and processor
-	├── memory_manager.hpp		// minimal statistics helper (69 lines)
-	├── profiler.hpp			// performance data collection
-	├── system_scheduler.hpp    // phase manager for direct system registration (110 lines)
-	├──	camera_component.hpp
-	├── debug.hpp				// unified DEBUG_LOG macro for project
-	├── constants.hpp			// system-wide constants (batch sizes, movement types)
+	├── memory_manager.h		// minimal statistics helper (69 lines)
+	├── profiler.h			// performance data collection
+	├── system_scheduler.h    // phase manager for direct system registration (110 lines)
+	├──	camera_component.h
+	├── debug.h				// unified DEBUG_LOG macro for project
+	├── constants.h			// system-wide constants (batch sizes, movement types)
 	└── systems/
 		├── lifetime_system.*  	// Entity lifetime management
 		├── input_system.*		// input handling + screen-to-world conversion
 		├── camera_system.*		// camera controls
 		├── simple_control_system.* // input handling + GPU entity operations
-		└── systems_common.hpp	// shared headers for system files
+		└── systems_common.h	// shared headers for system files
 │   └── shaders/                # GLSL shader source files
 │       ├── vertex.vert         # Vertex shader (processes movement)
 │       └── fragment.frag       # Fragment shader

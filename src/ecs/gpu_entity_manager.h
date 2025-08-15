@@ -1,7 +1,7 @@
 #pragma once
 
-#include "component.hpp"
-#include "entity.hpp"
+#include "component.h"
+#include "entity.h"
 #include <vulkan/vulkan.h>
 #include <glm/glm.hpp>
 #include <vector>

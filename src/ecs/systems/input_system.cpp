@@ -1,5 +1,5 @@
-#include "input_system.hpp"
-#include "camera_system.hpp"
+#include "input_system.h"
+#include "camera_system.h"
 #include <iostream>
 
 // Global state for mouse delta tracking (since this needs to persist across frames)

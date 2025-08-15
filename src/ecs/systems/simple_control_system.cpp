@@ -1,6 +1,6 @@
-#include "simple_control_system.hpp"
-#include "input_system.hpp"
-#include "systems_common.hpp"
+#include "simple_control_system.h"
+#include "input_system.h"
+#include "systems_common.h"
 #include "../../graphicstests.h"
 #include <SDL3/SDL.h>
 

@@ -5,19 +5,19 @@
 #include <thread>
 
 #include "vulkan_renderer.h"
-#include "ecs/debug.hpp"
+#include "ecs/debug.h"
 #include "PolygonFactory.h"
 #include <flecs.h>
-#include "ecs/entity_factory.hpp"
-#include "ecs/system_scheduler.hpp"
-#include "ecs/systems/lifetime_system.hpp"
-#include "ecs/systems/input_system.hpp"
-#include "ecs/systems/camera_system.hpp"
-#include "ecs/systems/simple_control_system.hpp"
-#include "ecs/movement_command_system.hpp"
-#include "ecs/camera_component.hpp"
-#include "ecs/component.hpp"
-#include "ecs/profiler.hpp"
+#include "ecs/entity_factory.h"
+#include "ecs/system_scheduler.h"
+#include "ecs/systems/lifetime_system.h"
+#include "ecs/systems/input_system.h"
+#include "ecs/systems/camera_system.h"
+#include "ecs/systems/simple_control_system.h"
+#include "ecs/movement_command_system.h"
+#include "ecs/camera_component.h"
+#include "ecs/component.h"
+#include "ecs/profiler.h"
 #include "ecs/gpu_entity_manager.h"
 
 int main(int argc, char* argv[]) {

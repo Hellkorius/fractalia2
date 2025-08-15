@@ -1,7 +1,7 @@
 #pragma once
 
 #include <flecs.h>
-#include "component.hpp"
+#include "component.h"
 
 using Entity = flecs::entity;
 using EntityHandle = flecs::entity;
