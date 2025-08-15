@@ -661,3 +661,11 @@ Header (gpu_entity_manager.h):
 - **Pipeline-layout caching** — prevents redundant VkPipelineLayout objects.
 - **Uniform buffer optimization** — host-coherent persistent mapping cuts driver overhead and saves 2–3 µs/frame.
 - **Descriptor pool consolidation** — graphics + compute sets now allocated from a single resizable pool.
+
+
+FunctionLoader/VulkanContext
+- Refactored all Vulkan modules to centralize VulkanFunctionLoader access via VulkanContext.
+- Removed VulkanFunctionLoader* parameters and members from VulkanPipeline, VulkanSwapchain, VulkanResources, VulkanSync, GPUEntityManager, and other modules.
+- Added loader management to VulkanContext with getLoader() accessor.
+- Eliminated redundant null checks and direct loader storage in modules.
+- Updated all initialization and Vulkan API calls to use ctx.getLoader().
