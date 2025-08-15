@@ -88,7 +88,7 @@ bool VulkanRenderer::initialize(SDL_Window* window) {
         return false;
     }
     
-    if (!resources->createInstanceBuffers()) {
+    if (!resources->createInstanceBuffer()) {
         std::cerr << "Failed to create instance buffers" << std::endl;
         return false;
     }
@@ -407,11 +407,11 @@ void VulkanRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t
     // GPU-only rendering - all entities are triangles
     uint32_t gpuEntityCount = gpuEntityManager ? gpuEntityManager->getEntityCount() : 0;
     if (gpuEntityCount > 0) {
-        VkBuffer triangleVertexBuffers[] = {resources->getTriangleVertexBuffer(), gpuEntityManager->getCurrentEntityBuffer()};
+        VkBuffer vertexBuffers[] = {resources->getVertexBuffer(), gpuEntityManager->getCurrentEntityBuffer()};
         VkDeviceSize offsets[] = {0, 0};
-        functionLoader->vkCmdBindVertexBuffers(commandBuffer, 0, 2, triangleVertexBuffers, offsets);
-        functionLoader->vkCmdBindIndexBuffer(commandBuffer, resources->getTriangleIndexBuffer(), 0, VK_INDEX_TYPE_UINT16);
-        functionLoader->vkCmdDrawIndexed(commandBuffer, resources->getTriangleIndexCount(), gpuEntityCount, 0, 0, 0);
+        functionLoader->vkCmdBindVertexBuffers(commandBuffer, 0, 2, vertexBuffers, offsets);
+        functionLoader->vkCmdBindIndexBuffer(commandBuffer, resources->getIndexBuffer(), 0, VK_INDEX_TYPE_UINT16);
+        functionLoader->vkCmdDrawIndexed(commandBuffer, resources->getIndexCount(), gpuEntityCount, 0, 0, 0);
     }
 
     functionLoader->vkCmdEndRenderPass(commandBuffer);

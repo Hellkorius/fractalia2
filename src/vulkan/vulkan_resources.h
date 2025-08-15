@@ -20,9 +20,8 @@ public:
     bool createUniformBuffers();
     bool createVertexBuffer();
     bool createIndexBuffer();
-    bool createInstanceBuffers();
-    bool createMultiShapeBuffers();
-    bool createPolygonBuffers(const PolygonMesh& polygon);
+    bool createInstanceBuffer();
+    bool createTriangleBuffers();
     bool createDescriptorPool(VkDescriptorSetLayout descriptorSetLayout);
     bool createDescriptorSets(VkDescriptorSetLayout descriptorSetLayout);
 
@@ -31,15 +30,9 @@ public:
     
     VkBuffer getVertexBuffer() const { return vertexBuffer; }
     VkBuffer getIndexBuffer() const { return indexBuffer; }
-    VkBuffer getTriangleVertexBuffer() const { return triangleVertexBuffer; }
-    VkBuffer getTriangleIndexBuffer() const { return triangleIndexBuffer; }
-    VkBuffer getSquareVertexBuffer() const { return squareVertexBuffer; }
-    VkBuffer getSquareIndexBuffer() const { return squareIndexBuffer; }
-    uint32_t getTriangleIndexCount() const { return triangleIndexCount; }
-    uint32_t getSquareIndexCount() const { return squareIndexCount; }
-    const std::vector<VkBuffer>& getInstanceBuffers() const { return instanceBuffers; }
-    const std::vector<void*>& getInstanceBuffersMapped() const { return instanceBuffersMapped; }
     uint32_t getIndexCount() const { return indexCount; }
+    VkBuffer getInstanceBuffer() const { return instanceBuffer; }
+    void* getInstanceBufferMapped() const { return instanceBufferMapped; }
     
     VkDescriptorPool getDescriptorPool() const { return descriptorPool; }
     const std::vector<VkDescriptorSet>& getDescriptorSets() const { return descriptorSets; }
@@ -54,7 +47,7 @@ public:
                             VkBuffer& buffer, VkDeviceMemory& bufferMemory);
     
     // Get maximum instances that can fit in buffer
-    uint32_t getMaxInstancesPerBuffer() const { return MAX_INSTANCES_PER_BUFFER; }
+    uint32_t getMaxInstances() const { return MAX_INSTANCES; }
     static void copyBuffer(VulkanContext* context, VkCommandPool commandPool, VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size);
 
     static const int MAX_FRAMES_IN_FLIGHT = 2;
@@ -73,26 +66,12 @@ private:
     VkDeviceMemory indexBufferMemory = VK_NULL_HANDLE;
     uint32_t indexCount = 0;
     
-    // Separate buffers for different shapes
-    VkBuffer triangleVertexBuffer = VK_NULL_HANDLE;
-    VkDeviceMemory triangleVertexBufferMemory = VK_NULL_HANDLE;
-    VkBuffer triangleIndexBuffer = VK_NULL_HANDLE;
-    VkDeviceMemory triangleIndexBufferMemory = VK_NULL_HANDLE;
-    uint32_t triangleIndexCount = 0;
-    
-    VkBuffer squareVertexBuffer = VK_NULL_HANDLE;
-    VkDeviceMemory squareVertexBufferMemory = VK_NULL_HANDLE;
-    VkBuffer squareIndexBuffer = VK_NULL_HANDLE;
-    VkDeviceMemory squareIndexBufferMemory = VK_NULL_HANDLE;
-    uint32_t squareIndexCount = 0;
-    
-    static const int STAGING_BUFFER_COUNT = 4;
-    static const VkDeviceSize STAGING_BUFFER_SIZE = 16 * 1024 * 1024; // Increased to 16MB for up to 200k instances
-    static const uint32_t MAX_INSTANCES_PER_BUFFER = STAGING_BUFFER_SIZE / (sizeof(glm::mat4) + sizeof(glm::vec4));
-    std::vector<VkBuffer> instanceBuffers;
-    std::vector<VkDeviceMemory> instanceBuffersMemory;
-    std::vector<void*> instanceBuffersMapped;
-    int currentStagingBuffer = 0;
+    // Single instance buffer for simplified management
+    static const VkDeviceSize INSTANCE_BUFFER_SIZE = 32 * 1024 * 1024; // 32MB for GPU entities
+    static const uint32_t MAX_INSTANCES = INSTANCE_BUFFER_SIZE / 128; // 128 bytes per GPUEntity
+    VkBuffer instanceBuffer = VK_NULL_HANDLE;
+    VkDeviceMemory instanceBufferMemory = VK_NULL_HANDLE;
+    void* instanceBufferMapped = nullptr;
     
     
     VkDescriptorPool descriptorPool = VK_NULL_HANDLE;
