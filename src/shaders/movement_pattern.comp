@@ -1,0 +1,102 @@
+#version 450
+
+// Local workgroup size - optimize for GPU architecture
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+// Push constants for timing and control
+layout(push_constant) uniform ComputePushConstants {
+    float time;
+    float deltaTime;
+    uint entityCount;
+    uint frame;
+} pc;
+
+// Input: GPUEntity buffer (read-only)
+layout(std430, binding = 0) readonly buffer GPUEntityBuffer {
+    // GPUEntity structure (128 bytes each)
+    // mat4 modelMatrix (64 bytes) - positions 0-3
+    // vec4 color (16 bytes) - position 4  
+    // vec4 movementParams0 (16 bytes) - position 5: amplitude, frequency, phase, timeOffset
+    // vec4 movementParams1 (16 bytes) - position 6: center.xyz, movementType
+    // vec4 runtimeState (16 bytes) - position 7: totalTime, initialized, stateTimer, entityState
+    vec4 entityData[];
+} entities;
+
+// Output: Computed positions (write-only)
+layout(std430, binding = 1) writeonly buffer PositionBuffer {
+    vec4 positions[]; // xyz position + w unused
+} outPositions;
+
+/* ---------- Traditional Movement Functions ---------- */
+
+vec3 petal(vec3 center, float amplitude, float frequency, float phase, float time) {
+    float r = amplitude * (0.5 + 0.5 * sin(time * frequency * 0.3));
+    return center + vec3(r * cos(time * frequency + phase), r * sin(time * frequency + phase), 0);
+}
+
+vec3 orbit(vec3 center, float amplitude, float frequency, float phase, float time) {
+    float ang = time * frequency + phase;
+    return center + vec3(amplitude * cos(ang), amplitude * sin(ang), 0);
+}
+
+vec3 wave(vec3 center, float amplitude, float frequency, float phase, float time) {
+    return center + vec3(amplitude * sin(time * frequency + phase), amplitude * cos(time * frequency * 0.5 + phase), 0);
+}
+
+vec3 triangle(vec3 center, float amplitude, float frequency, float phase, float time) {
+    float ang = time * frequency + phase;
+    float w = amplitude * 2.0 * (1.0 + 0.3 * sin(ang * 1.5));
+    return center + vec3(w * cos(ang), w * sin(ang), 0);
+}
+
+void main() {
+    // Get current entity index
+    uint entityIndex = gl_GlobalInvocationID.x;
+    
+    // Bounds check
+    if (entityIndex >= pc.entityCount) {
+        return;
+    }
+    
+    // Calculate base offset for this entity (8 vec4s per entity = 128 bytes)
+    uint baseOffset = entityIndex * 8;
+    
+    // Extract movement parameters from GPUEntity structure
+    // movementParams0: amplitude, frequency, phase, timeOffset
+    vec4 movementParams0 = entities.entityData[baseOffset + 5];
+    float amplitude = movementParams0.x;
+    float frequency = movementParams0.y;
+    float phase = movementParams0.z;
+    float timeOffset = movementParams0.w;
+    
+    // movementParams1: center.xyz, movementType
+    vec4 movementParams1 = entities.entityData[baseOffset + 6];
+    vec3 center = movementParams1.xyz;
+    uint movementType = uint(movementParams1.w);
+    
+    // Calculate entity time
+    float entityTime = pc.time + timeOffset;
+    
+    // Compute position based on movement type
+    vec3 newPosition;
+    switch (movementType) {
+        case 0:
+            newPosition = petal(center, amplitude, frequency, phase, entityTime);
+            break;
+        case 1:
+            newPosition = orbit(center, amplitude, frequency, phase, entityTime);
+            break;
+        case 2:
+            newPosition = wave(center, amplitude, frequency, phase, entityTime);
+            break;
+        case 3:
+            newPosition = triangle(center, amplitude, frequency, phase, entityTime);
+            break;
+        default:
+            newPosition = center; // Fallback to center position
+            break;
+    }
+    
+    // Write computed position to output buffer
+    outPositions.positions[entityIndex] = vec4(newPosition, 1.0);
+}

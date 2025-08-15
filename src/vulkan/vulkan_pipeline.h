@@ -45,8 +45,9 @@ public:
     VkPipeline getGraphicsPipeline() const { return graphicsPipeline; }
     VkDescriptorSetLayout getDescriptorSetLayout() const { return descriptorSetLayout; }
     
-    // Compute pipeline support
-    VkPipeline getComputePipeline() const { return computePipeline; }
+    // Modular compute pipeline support
+    VkPipeline getRandomComputePipeline() const { return randomComputePipeline; }
+    VkPipeline getPatternComputePipeline() const { return patternComputePipeline; }
     VkPipelineLayout getComputePipelineLayout() const { return computePipelineLayout; }
     VkDescriptorSetLayout getComputeDescriptorSetLayout() const { return computeDescriptorSetLayout; }
 
@@ -59,10 +60,11 @@ private:
     VkDescriptorSetLayout descriptorSetLayout = VK_NULL_HANDLE;
     VkPipelineCache pipelineCache = VK_NULL_HANDLE;
     
-    // Compute pipeline resources
-    VkPipeline computePipeline = VK_NULL_HANDLE;
+    // Modular compute pipeline resources
     VkPipelineLayout computePipelineLayout = VK_NULL_HANDLE;
     VkDescriptorSetLayout computeDescriptorSetLayout = VK_NULL_HANDLE;
+    VkPipeline randomComputePipeline = VK_NULL_HANDLE;
+    VkPipeline patternComputePipeline = VK_NULL_HANDLE;
     
     // Pipeline layout cache
     static std::unordered_map<PipelineLayoutKey, VkPipelineLayout, PipelineLayoutKeyHash> pipelineLayoutCache;
@@ -74,9 +76,9 @@ private:
     VkPipelineLayout getOrCreatePipelineLayout(VkDescriptorSetLayout setLayout, 
                                               const VkPushConstantRange* pushConstantRange = nullptr);
     
-    // Compute pipeline methods
+    // Modular compute pipeline methods
     bool createComputeDescriptorSetLayout();
-    bool createComputePipeline();
+    bool createModularComputePipelines();
     
     
     std::array<VkVertexInputBindingDescription, 2> getVertexBindingDescriptions();

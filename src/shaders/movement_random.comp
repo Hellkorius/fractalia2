@@ -1,0 +1,132 @@
+#version 450
+
+// Local workgroup size - optimize for GPU architecture
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+// Push constants for timing and control
+layout(push_constant) uniform ComputePushConstants {
+    float time;
+    float deltaTime;
+    uint entityCount;
+    uint frame;
+} pc;
+
+// Input: GPUEntity buffer (read-only)
+layout(std430, binding = 0) readonly buffer GPUEntityBuffer {
+    // GPUEntity structure (128 bytes each)
+    // mat4 modelMatrix (64 bytes) - positions 0-3
+    // vec4 color (16 bytes) - position 4  
+    // vec4 movementParams0 (16 bytes) - position 5: amplitude, frequency, phase, timeOffset
+    // vec4 movementParams1 (16 bytes) - position 6: center.xyz, movementType
+    // vec4 runtimeState (16 bytes) - position 7: totalTime, initialized, stateTimer, entityState
+    vec4 entityData[];
+} entities;
+
+// Output: Computed positions (write-only)
+layout(std430, binding = 1) writeonly buffer PositionBuffer {
+    vec4 positions[]; // xyz position + w unused
+} outPositions;
+
+/* ---------- Random Movement Functions ---------- */
+
+// Wang hash function for high-quality GPU pseudorandom generation
+uint wangHash(uint seed) {
+    seed = (seed ^ 61u) ^ (seed >> 16u);
+    seed *= 9u;
+    seed = seed ^ (seed >> 4u);
+    seed *= 0x27d4eb2du;
+    seed = seed ^ (seed >> 15u);
+    return seed;
+}
+
+// Convert hash to normalized float [0.0, 1.0]
+float hashToFloat(uint hash) {
+    return float(hash) / 4294967295.0;
+}
+
+// Generate pseudorandom float in range [0.0, 1.0] from seed
+float pseudoRandom(uint seed) {
+    return hashToFloat(wangHash(seed));
+}
+
+// Random step movement pattern
+vec3 randomStep(vec3 center, float amplitude, float frequency, float phase, float time, uint entityId) {
+    // Step frequency determines how often entities change direction
+    float stepInterval = 1.0 / max(frequency, 0.1);
+    float stepTime = floor(time / stepInterval);
+    
+    // Create unique seed for this entity at this step time
+    uint baseSeed = entityId ^ uint(stepTime * 1000.0) ^ uint(phase * 10000.0);
+    
+    // Generate multiple accumulated steps for smooth random walk
+    vec3 totalOffset = vec3(0.0);
+    
+    // Accumulate several steps to create interesting patterns
+    const int numSteps = 8;
+    for (int i = 0; i < numSteps; i++) {
+        uint stepSeed = baseSeed + uint(i * 7919); // Prime for good distribution
+        
+        // Generate random direction (angle)
+        float randAngle = pseudoRandom(stepSeed) * 6.28318530718; // 2π
+        
+        // Generate random step magnitude with decay for older steps
+        float stepDecay = 1.0 - (float(i) / float(numSteps)) * 0.3;
+        float stepMagnitude = pseudoRandom(stepSeed + 31u) * amplitude * stepDecay;
+        
+        // Calculate step vector
+        vec3 stepVector = vec3(
+            stepMagnitude * cos(randAngle),
+            stepMagnitude * sin(randAngle),
+            0.0
+        );
+        
+        totalOffset += stepVector;
+    }
+    
+    // Apply soft boundary constraints
+    float maxDistance = amplitude * 3.0;
+    float currentDistance = length(totalOffset);
+    if (currentDistance > maxDistance) {
+        totalOffset = normalize(totalOffset) * maxDistance;
+    }
+    
+    // Add subtle drift back toward center
+    vec3 centerPull = -totalOffset * 0.01;
+    totalOffset += centerPull;
+    
+    return center + totalOffset;
+}
+
+void main() {
+    // Get current entity index
+    uint entityIndex = gl_GlobalInvocationID.x;
+    
+    // Bounds check
+    if (entityIndex >= pc.entityCount) {
+        return;
+    }
+    
+    // Calculate base offset for this entity (8 vec4s per entity = 128 bytes)
+    uint baseOffset = entityIndex * 8;
+    
+    // Extract movement parameters from GPUEntity structure
+    // movementParams0: amplitude, frequency, phase, timeOffset
+    vec4 movementParams0 = entities.entityData[baseOffset + 5];
+    float amplitude = movementParams0.x;
+    float frequency = movementParams0.y;
+    float phase = movementParams0.z;
+    float timeOffset = movementParams0.w;
+    
+    // movementParams1: center.xyz, movementType
+    vec4 movementParams1 = entities.entityData[baseOffset + 6];
+    vec3 center = movementParams1.xyz;
+    
+    // Calculate entity time
+    float entityTime = pc.time + timeOffset;
+    
+    // Compute random walk position
+    vec3 newPosition = randomStep(center, amplitude, frequency, phase, entityTime, entityIndex);
+    
+    // Write computed position to output buffer
+    outPositions.positions[entityIndex] = vec4(newPosition, 1.0);
+}

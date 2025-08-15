@@ -774,3 +774,61 @@ ResourceContext can now perform staging buffer copies using VulkanSync's command
 - Graphics: UBO (binding 0) + Position buffer (binding 2)
 - Compute: Entity buffer (binding 0) + Position buffer (binding 1)
 - Proper stage flags for compute vs vertex shader access patterns
+
+---
+
+# Changelog 0.4.1
+
+# Modular Compute Shader Architecture
+
+## Overview
+Implemented modular compute shader system to separate movement algorithms and enable dynamic pipeline selection based on movement type, eliminating GPU overhead from unified shader approach.
+
+## Shader Modularization
+
+**Created Specialized Shaders**:
+- `movement_pattern.comp` - Handles pattern-based movements (types 0-3: petal, orbit, wave, triangle)
+- `movement_random.comp` - Dedicated random walk implementation (type 4)
+- Removed legacy `movement.comp` with unified switch statement approach
+
+**VulkanPipeline Extensions**:
+- Added `randomComputePipeline` and `patternComputePipeline` members
+- Implemented `createModularComputePipelines()` for dual pipeline creation
+- Removed legacy `createComputePipeline()` function
+- Maintained single compute pipeline layout and descriptor set for efficiency
+
+## Runtime Pipeline Selection
+
+**Dynamic Dispatch Logic** (`VulkanRenderer::drawFrame()`):
+- Access to `SimpleControlSystem::ControlState` via ECS world reference
+- Pipeline selection based on `currentMovementType` field
+- Single compute dispatch per frame (no dual execution overhead)
+- Automatic shader switching when movement type changes
+
+**Input System Integration**:
+- Remapped key 4 (was key 5) to trigger random walk movement type
+- Direct connection between user input and compute pipeline selection
+- Immediate visual feedback when switching movement algorithms
+
+## Performance Optimizations
+
+- Single pipeline execution per frame
+- No unnecessary compute barriers or redundant buffer operations
+- Optimal resource utilization for movement type in use
+
+**Compilation Pipeline**:
+- Updated `compile-shaders.sh` to build both modular shaders
+- Removed legacy shader compilation steps
+- Maintained build system compatibility
+
+## Architecture Benefits
+
+**Code Organization**:
+- Clear separation of movement algorithms at shader level
+- Easier debugging and profiling of individual movement types
+- Foundation for adding new movement algorithms without modifying existing shaders
+
+**Runtime Efficiency**:
+- Zero overhead when not using specific movement types
+- Specialized shader optimization for each algorithm category
+- Dynamic switching without pipeline recreation costs

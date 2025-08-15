@@ -1,7 +1,7 @@
 # Fractalia2 Render Pipeline
 
 ## Overview
-Fractalia2 uses a **modular Vulkan instanced rendering pipeline** designed for high-performance rendering of hundreds of thousands of discrete 2D entities. The pipeline uses GPU-driven transform calculations and dynamic color generation to achieve 60 FPS with massive entity counts.
+Fractalia2 uses a **hybrid compute-graphics Vulkan pipeline** designed for high-performance rendering of hundreds of thousands of discrete 2D entities. The system employs modular compute shaders for movement calculation and instanced graphics rendering to achieve 60 FPS with massive entity counts.
 
 ## Pipeline Architecture
 
@@ -30,27 +30,50 @@ VulkanRenderer (Master Controller)
 ### Frame Loop (`VulkanRenderer::drawFrame()`)
 1. **Fence Wait**: Synchronize with previous frame completion
 2. **Swapchain Acquire**: Get next framebuffer image
-3. **Command Recording**: Record rendering commands
-4. **Uniform Updates**: Camera matrices, time, entity count
-5. **Entity Processing**: GPU entity buffer updates
-6. **Draw Submission**: Submit command buffer with semaphore sync
-7. **Present**: Display frame with proper synchronization
+3. **Uniform Updates**: Camera matrices, time, entity count
+4. **Compute Dispatch**: Execute modular movement calculation shaders
+5. **Memory Barrier**: Ensure compute writes complete before graphics read
+6. **Graphics Recording**: Record rendering commands with pre-computed positions
+7. **Draw Submission**: Submit command buffer with semaphore sync
+8. **Present**: Display frame with proper synchronization
 
-### Command Buffer Recording
+### Compute Pass Recording
+```cpp
+// Select appropriate compute pipeline based on movement type
+VkPipeline selectedPipeline = (movementType == 4) ? 
+    randomComputePipeline : patternComputePipeline;
+
+// Bind compute pipeline  
+vkCmdBindPipeline(computeCommandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, selectedPipeline);
+
+// Bind compute descriptor sets (entity buffer + position buffer)
+vkCmdBindDescriptorSets(computeCommandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE,
+                       computePipelineLayout, 0, 1, &computeDescriptorSet, 0, nullptr);
+
+// Push constants (time, delta time, entity count, frame)
+vkCmdPushConstants(computeCommandBuffer, computePipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT,
+                  0, sizeof(ComputePushConstants), &computePushConstants);
+
+// Dispatch compute shader (64 threads per workgroup)
+uint32_t numWorkgroups = (entityCount + 63) / 64;
+vkCmdDispatch(computeCommandBuffer, numWorkgroups, 1, 1);
+
+// Memory barrier: compute writes → graphics reads
+vkCmdPipelineBarrier(computeCommandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                    VK_PIPELINE_STAGE_VERTEX_INPUT_BIT, 0, 1, &memoryBarrier, 0, nullptr, 0, nullptr);
+```
+
+### Graphics Pass Recording
 ```cpp
 // Begin render pass with MSAA
 vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
 
 // Bind graphics pipeline
-vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
 
-// Bind uniform descriptors (camera matrices)
+// Bind graphics descriptors (UBO + position buffer)
 vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, 
                        pipelineLayout, 0, 1, &descriptorSet, 0, nullptr);
-
-// Push constants (time, delta time, entity count)
-vkCmdPushConstants(commandBuffer, pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 
-                  0, sizeof(PushConstants), &pushConstants);
 
 // Bind vertex and instance buffers 
 VkBuffer vertexBuffers[] = {vertexBuffer, instanceBuffer};
@@ -70,26 +93,67 @@ vkCmdEndRenderPass(commandBuffer);
 
 ### Vertex Input Layout
 - **Binding 0** (Vertex Rate): `vec3 inPos` - Triangle geometry (location 0)
-- **Binding 1** (Instance Rate): `vec4 ampFreqPhaseOff` - Movement parameters (location 7)
-- **Binding 1** (Instance Rate): `vec4 centerType` - Center position + movement type (location 8)
+- **Binding 1** (Instance Rate): GPUEntity instance data (locations 2-9)
+- **Position Buffer**: Pre-computed positions from compute shaders (binding 2)
 
-### GPU Entity Data Flow
+### Hybrid CPU/GPU Data Flow
 1. **CPU Creation**: Flecs ECS components → `EntityFactory`
 2. **CPU→GPU Upload**: `GPUEntityManager::addEntitiesFromECS()`
-3. **GPU Storage**: Instance buffer with 128-byte `GPUEntity` structs
-4. **Vertex Processing**: Shader calculates transforms from movement parameters
-5. **Fragment Processing**: Dynamic color generation via HSV→RGB
+3. **GPU Entity Storage**: Instance buffer with 128-byte `GPUEntity` structs
+4. **Compute Processing**: Modular compute shaders calculate movement positions
+5. **GPU Position Storage**: Position buffer with pre-computed vec4 positions
+6. **Graphics Processing**: Vertex shader reads pre-computed positions for rendering
+7. **Fragment Processing**: Dynamic color generation via HSV→RGB
 
-### Movement Patterns (GPU Calculated)
-The vertex shader implements four movement patterns:
-- **Petal (0)**: Breathing radius with circular motion
-- **Orbit (1)**: Fixed-radius circular orbit  
-- **Wave (2)**: Sinusoidal X/Y wave patterns
-- **Triangle (3)**: Dynamic radius triangular orbit
+### Modular Movement Computation
+The system uses specialized compute shaders for movement calculation:
+- **Pattern Shader** (`movement_pattern.comp`): Handles types 0-3
+  - **Petal (0)**: Breathing radius with circular motion
+  - **Orbit (1)**: Fixed-radius circular orbit  
+  - **Wave (2)**: Sinusoidal X/Y wave patterns
+  - **Triangle (3)**: Dynamic radius triangular orbit
+- **Random Shader** (`movement_random.comp`): Handles type 4
+  - **Random Walk (4)**: Wang hash-based pseudorandom step movement with drift correction
 
 ## Shader Pipeline
 
-### Vertex Shader (`vertex.vert`)
+### Compute Shaders
+#### Movement Pattern Compute (`movement_pattern.comp`)
+```glsl
+// Push constants: Temporal data
+layout(push_constant) uniform ComputePushConstants {
+    float time;
+    float deltaTime;
+    uint entityCount;
+    uint frame;
+} pc;
+
+// Input: GPUEntity buffer (binding 0)
+layout(std430, binding = 0) readonly buffer GPUEntityBuffer {
+    vec4 entityData[];  // 128-byte GPUEntity structs
+} entities;
+
+// Output: Position buffer (binding 1)
+layout(std430, binding = 1) writeonly buffer PositionBuffer {
+    vec4 positions[];   // xyz position + w unused
+} outPositions;
+
+// Compute processing:
+// 1. Extract movement parameters from entity data
+// 2. Calculate pattern-based movement (types 0-3)
+// 3. Write computed position to position buffer
+```
+
+#### Random Walk Compute (`movement_random.comp`)
+```glsl
+// Same interface as pattern shader, but implements:
+// 1. Wang hash pseudorandom number generation
+// 2. Accumulated random step movement
+// 3. Boundary constraints and center drift correction
+```
+
+### Graphics Shaders
+#### Vertex Shader (`vertex.vert`)
 ```glsl
 // Uniforms: Camera matrices
 layout(binding = 0) uniform UBO {
@@ -97,25 +161,26 @@ layout(binding = 0) uniform UBO {
     mat4 proj;
 } ubo;
 
-// Push constants: Frame data
-layout(push_constant) uniform PC {
-    float time;
-    float dt;
-    uint  count;
-} pc;
+// Position buffer: Pre-computed positions from compute shaders
+layout(std430, binding = 2) readonly buffer PositionBuffer {
+    vec4 positions[];
+} positionBuffer;
 
-// Instance inputs: Movement parameters
-layout(location = 7) in vec4 ampFreqPhaseOff;  // amplitude, frequency, phase, timeOffset
-layout(location = 8) in vec4 centerType;       // center.xyz, movementType
+// Instance inputs: GPUEntity data for color/transform
+layout(location = 2) in mat4 modelMatrix;      // locations 2-5
+layout(location = 6) in vec4 color;            // location 6
+layout(location = 7) in vec4 movementParams0;  // location 7
+layout(location = 8) in vec4 movementParams1;  // location 8
+layout(location = 9) in vec4 runtimeState;     // location 9
 
 // Per-vertex processing:
-// 1. Calculate world position from movement pattern
+// 1. Read pre-computed world position from position buffer
 // 2. Generate dynamic color via HSV
 // 3. Apply rotation transform
 // 4. Project to screen space
 ```
 
-### Fragment Shader (`fragment.frag`)
+#### Fragment Shader (`fragment.frag`)
 Simple interpolated color pass-through for GPU-generated colors.
 
 ## Resource Management

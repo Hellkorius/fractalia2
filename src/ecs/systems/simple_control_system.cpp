@@ -79,7 +79,7 @@ namespace SimpleControlSystem {
                 else if (keyboard->isKeyPressed(SDL_SCANCODE_3)) {
                     controlState->currentMovementType = 3;
                 }
-                else if (keyboard->isKeyPressed(SDL_SCANCODE_5)) {
+                else if (keyboard->isKeyPressed(SDL_SCANCODE_4)) {
                     controlState->currentMovementType = 4;
                 }
                 

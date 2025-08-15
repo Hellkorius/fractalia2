@@ -28,7 +28,7 @@ Cross-compiled (Linux→Windows) toy engine built to stress-test **hundreds-of-t
 ### Entity Data Flow
 1. **CPU Entities**: Flecs components (Transform, Renderable, MovementPattern)
 2. **GPU Upload**: GPUEntityManager converts ECS → GPUEntity structs  
-3. **Compute Pass**: Movement compute shader calculates positions for all entities
+3. **Compute Pass**: Modular movement compute shaders calculate positions based on movement type
 4. **GPU Storage**: Entity buffer (128-byte GPUEntity layout) + Position buffer (16-byte vec4 per entity)
 5. **Graphics Pass**: Vertex shader reads pre-computed positions
 6. **Rendering**: Single draw call with instanced vertex data
@@ -78,7 +78,8 @@ fractalia2/
 │   └── shaders/
 │       ├── vertex.vert         # Vertex shader (reads pre-computed positions)
 │       ├── fragment.frag       # Fragment shading
-│       ├── movement.comp       # Compute shader for all movement types
+│       ├── movement_pattern.comp # Compute shader for pattern movements (types 0-3)
+│       ├── movement_random.comp  # Compute shader for random walk (type 4)
 │       └── compiled/           # SPIR-V bytecode
 ```
 
@@ -100,7 +101,7 @@ struct GPUEntity {
 1. **Entity Creation**: `EntityFactory::createSwarm()` → Flecs components
 2. **GPU Upload**: `GPUEntityManager::addEntitiesFromECS()` → GPU entity buffer
 3. **Runtime Commands**: Thread-safe `MovementCommandProcessor` for GPU operations
-4. **Compute Dispatch**: Movement compute shader calculates all entity positions
+4. **Compute Dispatch**: Modular compute shader selection based on movement type, single pipeline dispatch
 5. **Graphics Pipeline**: Vertex shader reads pre-computed positions for rendering
 6. **Rendering**: Single instanced draw call processes all entities
 7. **Debug**: `-` key shows CPU vs GPU entity counts
@@ -108,7 +109,7 @@ struct GPUEntity {
 ### Key Systems
 - **Input**: SDL events → world coordinates, camera controls
 - **Camera**: View/projection matrices, zoom, pan
-- **Control**: Runtime entity creation/deletion via key bindings (Keys 0-3, 5 for movement types)
+- **Control**: Runtime entity creation/deletion via key bindings (Keys 0-4 for movement types)
 - **GPU Bridge**: Efficient CPU→GPU data transfer with validation
 - **Movement**: Thread-safe command queue for dynamic entity operations
-- **Compute Pipeline**: GPU-driven movement calculation for all entity types including random walk
+- **Modular Compute Pipeline**: Dynamic shader selection with pattern movement (types 0-3) and random walk (type 4) pipelines
