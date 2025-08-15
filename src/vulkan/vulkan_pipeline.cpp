@@ -283,8 +283,8 @@ bool VulkanPipeline::createGraphicsPipeline() {
         return false;
     }
 
-    VkShaderModule vertShaderModule = createShaderModule(vertShaderCode);
-    VkShaderModule fragShaderModule = createShaderModule(fragShaderCode);
+    VkShaderModule vertShaderModule = VulkanUtils::createShaderModule(context->getDevice(), *loader, vertShaderCode);
+    VkShaderModule fragShaderModule = VulkanUtils::createShaderModule(context->getDevice(), *loader, fragShaderCode);
 
     VkPipelineShaderStageCreateInfo vertShaderStageInfo{};
     vertShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
@@ -409,8 +409,4 @@ bool VulkanPipeline::createGraphicsPipeline() {
 
 // Note: loadFunctions removed - now using centralized VulkanFunctionLoader
 
-VkShaderModule VulkanPipeline::createShaderModule(const std::vector<char>& code) {
-    return VulkanUtils::createShaderModule(context->getDevice(), *loader, code);
-}
-
-// Note: readFile removed - now using VulkanUtils::readFile
+// Note: createShaderModule and readFile removed - now using VulkanUtils

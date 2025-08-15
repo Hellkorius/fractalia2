@@ -39,8 +39,7 @@ private:
     bool createDescriptorSetLayout();
     bool createGraphicsPipeline();
     
-    VkShaderModule createShaderModule(const std::vector<char>& code);
-    // Note: readFile removed - now using VulkanUtils::readFile
+    // Note: createShaderModule and readFile removed - now using VulkanUtils
     
     std::array<VkVertexInputBindingDescription, 2> getVertexBindingDescriptions();
     std::array<VkVertexInputAttributeDescription, 10> getVertexAttributeDescriptions();

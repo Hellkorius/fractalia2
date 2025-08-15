@@ -630,3 +630,9 @@ MAX_INSTANCES
 added as constants
 
 Removed redundant function pointers from VulkanContext, VulkanFunctionLoader is the sole source of truth.
+
+VulkanSwapchain, VulkanResources, GPUEntityManager, and VulkanPipeline: 
+moved createImage, createBuffer, createImageView, findMemoryType, etc into static helpers in VulkanUtils and deleted the rest.
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------------------------------------------------------------
