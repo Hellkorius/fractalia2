@@ -1,153 +1,165 @@
-# Vulkan Render Pipeline Technical Reference
+# Fractalia2 Render Pipeline
 
-## Architecture Overview
+## Overview
+Fractalia2 uses a **modular Vulkan instanced rendering pipeline** designed for high-performance rendering of hundreds of thousands of discrete 2D entities. The pipeline uses GPU-driven transform calculations and dynamic color generation to achieve 60 FPS with massive entity counts.
 
-The rendering system uses **instanced drawing** to render thousands of entities efficiently. Each shape type (triangle, square) has separate vertex/index buffers but shares a common instance buffer containing transformation matrices.
+## Pipeline Architecture
 
-## Core Components
-
-### Entity Processing Flow
+### Core Components
 ```
-ECS Entities → VulkanRenderer::updateEntities() → Instance Buffer → GPU
+VulkanRenderer (Master Controller)
+├── VulkanContext       // Instance, device, queues
+├── VulkanSwapchain     // Swapchain, framebuffers, MSAA
+├── VulkanPipeline      // Shaders, render pass, pipeline
+├── VulkanResources     // Buffers, descriptors, uniforms  
+├── VulkanSync          // Fences, semaphores, command pools
+├── ResourceContext     // Buffer/memory management
+└── GPUEntityManager    // Entity storage, CPU→GPU bridge
 ```
 
-**Files**: `main.cpp:167-188`, `vulkan_renderer.cpp:380-382`
+### Initialization Flow
+1. **Context Setup**: Instance, device, queues, debug layers
+2. **Swapchain Creation**: Surface, format selection, 4× MSAA setup
+3. **Pipeline Creation**: Shader loading, render pass, pipeline state
+4. **Framebuffer Creation**: MSAA color/depth attachments
+5. **Resource Allocation**: Uniform buffers, vertex buffers, descriptor sets
+6. **GPU Entity System**: Instance buffer setup, staging system
 
-### Buffer Architecture
-- **Vertex Buffers**: Per-shape geometry (`triangleVertexBuffer`, `squareVertexBuffer`)
-- **Index Buffers**: Per-shape indices (`triangleIndexBuffer`, `squareIndexBuffer`) 
-- **Instance Buffer**: Shared `glm::mat4` transformation matrices
-- **Uniform Buffer**: View/projection matrices (128 bytes)
+## Rendering Pipeline
 
-**Files**: `vulkan_resources.h:71-82`, `vulkan_resources.cpp:147-243`
+### Frame Loop (`VulkanRenderer::drawFrame()`)
+1. **Fence Wait**: Synchronize with previous frame completion
+2. **Swapchain Acquire**: Get next framebuffer image
+3. **Command Recording**: Record rendering commands
+4. **Uniform Updates**: Camera matrices, time, entity count
+5. **Entity Processing**: GPU entity buffer updates
+6. **Draw Submission**: Submit command buffer with semaphore sync
+7. **Present**: Display frame with proper synchronization
+
+### Command Buffer Recording
+```cpp
+// Begin render pass with MSAA
+vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
+
+// Bind graphics pipeline
+vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+
+// Bind uniform descriptors (camera matrices)
+vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, 
+                       pipelineLayout, 0, 1, &descriptorSet, 0, nullptr);
+
+// Push constants (time, delta time, entity count)
+vkCmdPushConstants(commandBuffer, pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 
+                  0, sizeof(PushConstants), &pushConstants);
+
+// Bind vertex and instance buffers 
+VkBuffer vertexBuffers[] = {vertexBuffer, instanceBuffer};
+VkDeviceSize offsets[] = {0, 0};
+vkCmdBindVertexBuffers(commandBuffer, 0, 2, vertexBuffers, offsets);
+
+// Bind index buffer
+vkCmdBindIndexBuffer(commandBuffer, indexBuffer, 0, VK_INDEX_TYPE_UINT16);
+
+// Single indexed instanced draw call
+vkCmdDrawIndexed(commandBuffer, indexCount, instanceCount, 0, 0, 0);
+
+vkCmdEndRenderPass(commandBuffer);
+```
+
+## Instanced Rendering System
 
 ### Vertex Input Layout
+- **Binding 0** (Vertex Rate): `vec3 inPos` - Triangle geometry (location 0)
+- **Binding 1** (Instance Rate): `vec4 ampFreqPhaseOff` - Movement parameters (location 7)
+- **Binding 1** (Instance Rate): `vec4 centerType` - Center position + movement type (location 8)
+
+### GPU Entity Data Flow
+1. **CPU Creation**: Flecs ECS components → `EntityFactory`
+2. **CPU→GPU Upload**: `GPUEntityManager::addEntitiesFromECS()`
+3. **GPU Storage**: Instance buffer with 128-byte `GPUEntity` structs
+4. **Vertex Processing**: Shader calculates transforms from movement parameters
+5. **Fragment Processing**: Dynamic color generation via HSV→RGB
+
+### Movement Patterns (GPU Calculated)
+The vertex shader implements four movement patterns:
+- **Petal (0)**: Breathing radius with circular motion
+- **Orbit (1)**: Fixed-radius circular orbit  
+- **Wave (2)**: Sinusoidal X/Y wave patterns
+- **Triangle (3)**: Dynamic radius triangular orbit
+
+## Shader Pipeline
+
+### Vertex Shader (`vertex.vert`)
 ```glsl
-// Binding 0: Per-vertex data (stride: 24 bytes)
-layout(location = 0) in vec3 inPosition;    // offset: 0
-layout(location = 1) in vec3 inColor;       // offset: 12
+// Uniforms: Camera matrices
+layout(binding = 0) uniform UBO {
+    mat4 view;
+    mat4 proj;
+} ubo;
 
-// Binding 1: Per-instance data (stride: 64 bytes) 
-layout(location = 2) in vec4 instanceMatrix0; // offset: 0
-layout(location = 3) in vec4 instanceMatrix1; // offset: 16
-layout(location = 4) in vec4 instanceMatrix2; // offset: 32
-layout(location = 5) in vec4 instanceMatrix3; // offset: 48
+// Push constants: Frame data
+layout(push_constant) uniform PC {
+    float time;
+    float dt;
+    uint  count;
+} pc;
+
+// Instance inputs: Movement parameters
+layout(location = 7) in vec4 ampFreqPhaseOff;  // amplitude, frequency, phase, timeOffset
+layout(location = 8) in vec4 centerType;       // center.xyz, movementType
+
+// Per-vertex processing:
+// 1. Calculate world position from movement pattern
+// 2. Generate dynamic color via HSV
+// 3. Apply rotation transform
+// 4. Project to screen space
 ```
 
-**Files**: `vulkan_pipeline.cpp:186-234`, `shaders/vertex.vert:8-13`
+### Fragment Shader (`fragment.frag`)
+Simple interpolated color pass-through for GPU-generated colors.
 
-## Rendering Process
+## Resource Management
 
-### 1. Entity Collection (`main.cpp:167-182`)
+### Buffer Strategy
+- **Shared Vertex Buffer**: Single triangle geometry for all entities
+- **Instance Buffer**: Per-entity movement parameters and state
+- **Uniform Buffers**: Camera matrices (per frame in flight)
+- **Staging System**: Efficient CPU→GPU transfers
+
+### Memory Layout
 ```cpp
-world.query<Position, Shape, Color>().each([&](/* ... */) {
-    renderEntities.emplace_back(pos, shapeType, color);
-});
-```
-
-### 2. Instance Buffer Update (`vulkan_renderer.cpp:347-384`)
-```cpp
-// Process triangles first (instanceIndex 0, 1, 2...)
-for (entity : renderEntities) {
-    if (triangle) matrices[instanceIndex++] = transform;
-}
-// Process squares next (continuing instanceIndex...)
-for (entity : renderEntities) {
-    if (square) matrices[instanceIndex++] = transform;
-}
-```
-
-### 3. Draw Call Execution (`vulkan_renderer.cpp:275-320`)
-```cpp
-// Triangles
-VkBuffer triangleBuffers[] = {triangleVertexBuffer, instanceBuffer};
-VkDeviceSize offsets[] = {0, 0}; // Triangle instances start at offset 0
-vkCmdBindVertexBuffers(commandBuffer, 0, 2, triangleBuffers, offsets);
-vkCmdDrawIndexed(commandBuffer, 3, triangleCount, 0, 0, 0);
-
-// Squares  
-VkBuffer squareBuffers[] = {squareVertexBuffer, instanceBuffer};
-VkDeviceSize offsets[] = {0, triangleCount * sizeof(glm::mat4)}; // Offset past triangles
-vkCmdBindVertexBuffers(commandBuffer, 0, 2, squareBuffers, offsets);
-vkCmdDrawIndexed(commandBuffer, 6, squareCount, 0, 0, 0);
-```
-
-## Critical Implementation Details
-
-### Instance Offset Handling
-**INCORRECT** (causes double-offset bug):
-```cpp
-VkDeviceSize offsets[] = {0, instanceOffset * sizeof(glm::mat4)};
-vkCmdDrawIndexed(/* ... */, instanceOffset); // Wrong: offset applied twice
-```
-
-**CORRECT**:
-```cpp
-VkDeviceSize offsets[] = {0, instanceOffset * sizeof(glm::mat4)};
-vkCmdDrawIndexed(/* ... */, 0); // firstInstance = 0, offset handled by buffer binding
-```
-
-### Uniform Buffer Sizing
-The UBO contains two `mat4` matrices:
-```cpp
-struct UniformBufferObject {
-    glm::mat4 view;  // 64 bytes
-    glm::mat4 proj;  // 64 bytes
-};
-// Total: 128 bytes, NOT 64!
-```
-
-**File**: `vulkan_resources.cpp:104`, `vulkan_renderer.cpp:332-335`
-
-### Vertex Data Structure
-```cpp
-struct Vertex {
-    glm::vec3 pos;    // 12 bytes
-    glm::vec3 color;  // 12 bytes
-    // Total: 24 bytes stride
+struct GPUEntity {           // 128 bytes total
+    glm::mat4 modelMatrix;   // 64 bytes - reserved for future use
+    glm::vec4 color;         // 16 bytes - reserved for future use  
+    glm::vec4 movementParams0; // 16 bytes - amplitude, frequency, phase, timeOffset
+    glm::vec4 movementParams1; // 16 bytes - center.xyz, movementType
+    glm::vec4 runtimeState;    // 16 bytes - totalTime, initialized, stateTimer, entityState
 };
 ```
 
-**File**: `PolygonFactory.h:6-9`
+### Synchronization
+- **Double Buffering**: 2 frames in flight for smooth rendering
+- **Fence Synchronization**: CPU waits for GPU completion
+- **Semaphore Chains**: Image acquire → render → present
+- **Memory Barriers**: Proper GPU→GPU synchronization
 
-## Pipeline State
+## Performance Characteristics
 
-### Rasterization
-- **Cull Mode**: `VK_CULL_MODE_NONE` (disabled for development)
-- **Front Face**: `VK_FRONT_FACE_CLOCKWISE`
-- **Polygon Mode**: `VK_POLYGON_MODE_FILL`
+### Rendering Efficiency
+- **Single Draw Call**: All entities rendered in one instanced draw
+- **GPU Transform Calculation**: No CPU→GPU matrix uploads per frame
+- **Minimal State Changes**: Shared pipeline, descriptors, geometry
+- **MSAA**: 4× anti-aliasing with resolve to swapchain
 
-**File**: `vulkan_pipeline.cpp:284-292`
+### Scalability
+- **Instance Limit**: 131,072 entities (128k max) in single draw call
+- **Current Capacity**: ~90k entities rendering smoothly
+- **Memory Efficient**: 128 bytes per entity (16 MB for 128k entities)
+- **GPU Bottleneck**: Fragment fill rate becomes limiting factor
+- **CPU Overhead**: Minimal per-frame CPU work after setup
 
-### Multisampling
-- **MSAA**: 4x (`VK_SAMPLE_COUNT_4_BIT`)
-- **Sample Shading**: Disabled
-
-**File**: `vulkan_pipeline.cpp:294-297`
-
-## Debugging Tips
-
-### Common Issues
-1. **Nothing renders**: Check uniform buffer size (128 vs 64 bytes)
-2. **Only one shape type renders**: Check instance offset calculation
-3. **Shapes in wrong positions**: Verify entity→matrix ordering matches draw call ordering
-4. **Faces missing**: Disable face culling during development
-
-### Debug Output Locations
-- Entity collection: `main.cpp:174-176`
-- Instance matrices: `vulkan_renderer.cpp:385-390` 
-- Draw calls: `vulkan_renderer.cpp:277-281`, `290-316`
-- Buffer creation: `vulkan_resources.cpp:239-253`
-
-## Performance Considerations
-
-### Current Bottlenecks
-1. **CPU-side entity processing**: O(n) loops in `updateInstanceBuffer()`
-2. **Multiple draw calls**: One per shape type
-3. **Uniform buffer updates**: Per-frame matrix uploads
-
-### Scaling Strategies
-1. **Compute shaders**: Move matrix calculations to GPU
-2. **Indirect drawing**: Single draw call for all shapes
-3. **GPU-driven rendering**: Eliminate CPU→GPU synchronization
-4. **Instanced vertex pulling**: Remove vertex buffers, use SSBO indexing
+### Debug Features
+- Entity count validation and overflow protection
+- GPU/CPU entity count comparison
+- Memory usage tracking via `MemoryManager`
+- Performance profiling via `Profiler`
