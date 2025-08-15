@@ -242,7 +242,7 @@ void VulkanRenderer::drawFrame() {
         return;
     }
     
-    // Using keyframe-based rendering
+    // Using real-time vertex shader movement computation
     
     // Update total simulation time
     totalTime += deltaTime;
@@ -383,18 +383,14 @@ void VulkanRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t
     const auto& descriptorSets = resources->getDescriptorSets();
     functionLoader->vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->getPipelineLayout(), 0, 1, &descriptorSets[currentFrame], 0, nullptr);
 
-    // Push constants for vertex shader keyframe interpolation
-    static float lastPredictionTime = totalTime;
-    
+    // Push constants for vertex shader
     struct VertexPushConstants {
-        float totalTime;            // Current simulation time
-        float deltaTime;            // Time per frame
-        float predictionTime;       // Time the keyframes were predicted for
-        uint32_t entityCount;       // Total number of entities
+        float time;                 // Current simulation time
+        float dt;                   // Time per frame  
+        uint32_t count;             // Total number of entities
     } vertexPushConstants = { 
         totalTime,
         deltaTime,
-        lastPredictionTime,
         gpuEntityManager ? gpuEntityManager->getEntityCount() : 0
     };
     
