@@ -40,9 +40,6 @@ bool VulkanSwapchain::initialize(const VulkanContext& context, SDL_Window* windo
 }
 
 void VulkanSwapchain::cleanup() {
-    if (context) {
-        context->getLoader().vkDeviceWaitIdle(context->getDevice());
-    }
     cleanupSwapChain();
 }
 
@@ -54,8 +51,6 @@ bool VulkanSwapchain::recreate(VkRenderPass renderPass) {
         SDL_GetWindowSizeInPixels(window, &width, &height);  
         SDL_WaitEvent(nullptr);
     }
-
-    context->getLoader().vkDeviceWaitIdle(context->getDevice());
 
     cleanupSwapChain();
 

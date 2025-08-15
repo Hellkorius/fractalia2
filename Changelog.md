@@ -669,3 +669,10 @@ FunctionLoader/VulkanContext
 - Added loader management to VulkanContext with getLoader() accessor.
 - Eliminated redundant null checks and direct loader storage in modules.
 - Updated all initialization and Vulkan API calls to use ctx.getLoader().
+
+Fencing:
+  1. Eliminated duplicate logic: initializeFrameFences() and cleanupPartialFrameFences() consolidated into RAII
+  helper
+  2. Replaced bespoke FrameData struct with std::array<VkFence, MAX_FRAMES_IN_FLIGHT>
+  3. Better resource management: Automatic cleanup via destructor, proper exception safety
+  4. Cleaner interface: Type-safe fence access with clear frame indexing

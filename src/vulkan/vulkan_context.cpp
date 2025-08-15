@@ -76,7 +76,6 @@ bool VulkanContext::initialize(SDL_Window* window) {
 
 void VulkanContext::cleanup() {
     if (device != VK_NULL_HANDLE && loader) {
-        loader->vkDeviceWaitIdle(device);
         loader->vkDestroyDevice(device, nullptr);
         device = VK_NULL_HANDLE;
     }
