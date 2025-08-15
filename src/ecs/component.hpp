@@ -40,13 +40,6 @@ struct Velocity {
 
 // Render component - optimized for batch rendering
 struct Renderable {
-    enum class ShapeType : uint8_t {
-        Triangle = 0,
-        Square = 1,
-        COUNT
-    };
-    
-    ShapeType shape{ShapeType::Triangle};
     glm::vec4 color{1.0f, 1.0f, 1.0f, 1.0f};
     uint32_t layer{0}; // For depth sorting
     bool visible{true};

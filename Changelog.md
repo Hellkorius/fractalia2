@@ -593,23 +593,3 @@ This overhaul eliminates all identified architectural flaws while maintaining id
 
 # Changelog 0.2.9:
 
-  1. Hybrid Keyframe System Implementation:
-    - Replaced full compute pipeline with staggered keyframe updates (90% compute reduction)
-    - Reduced keyframe buffer from 100 to 20 frames (80% memory reduction)
-    - Maintained perfect visual smoothness via real-time vertex shader computation
-
-  2. Staggered Update Architecture:
-    - Each frame updates only 1/20th of entities based on entityID % 20
-    - Massive computational savings while preserving movement quality
-    - Keyframes serve as compute optimization, not rendering dependency
-
-  3. Real-time Vertex Rendering:
-    - Movement calculations moved to vertex shader for smooth interpolation
-    - Eliminated stuttering while maintaining performance gains
-    - Perfect smoothness with 90% less GPU compute workload
-
-  4. Performance Optimization Results:
-    - 90% reduction in GPU compute operations per frame
-    - 80% reduction in keyframe buffer memory usage
-    - Maintained 60 FPS performance with perfect visual quality
-    - Hybrid approach: compute efficiency + rendering smoothness

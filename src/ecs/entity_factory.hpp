@@ -57,16 +57,7 @@ public:
         return *this;
     }
     
-    // Rendering methods
-    EntityBuilder& withShape(Renderable::ShapeType shape) {
-        if (auto* renderable = entity.get_mut<Renderable>()) {
-            renderable->shape = shape;
-            renderable->markDirty();
-        } else {
-            entity.set<Renderable>({.shape = shape});
-        }
-        return *this;
-    }
+    // Rendering methods - shapes are now handled uniformly by GPU
     
     EntityBuilder& withColor(const glm::vec4& color) {
         if (auto* renderable = entity.get_mut<Renderable>()) {
@@ -219,20 +210,9 @@ public:
     }
     
     // Predefined entity types for common use cases
-    Entity createTriangle(const glm::vec3& pos, const glm::vec4& color, uint32_t layer = 0) {
+    Entity createEntity(const glm::vec3& pos, const glm::vec4& color, uint32_t layer = 0) {
         return create()
             .at(pos)
-            .withShape(Renderable::ShapeType::Triangle)
-            .withColor(color)
-            .onLayer(layer)
-            .asDynamic()
-            .build();
-    }
-    
-    Entity createSquare(const glm::vec3& pos, const glm::vec4& color, uint32_t layer = 0) {
-        return create()
-            .at(pos)
-            .withShape(Renderable::ShapeType::Square)
             .withColor(color)
             .onLayer(layer)
             .asDynamic()
@@ -240,18 +220,12 @@ public:
     }
     
     // Create a single entity with movement pattern
-    Entity createMovingEntity(const glm::vec3& pos, Renderable::ShapeType shape = Renderable::ShapeType::Triangle) {
-        return createMovingEntityWithType(pos, MovementType::Petal, shape);
+    Entity createMovingEntity(const glm::vec3& pos) {
+        return createMovingEntityWithType(pos, MovementType::Petal);
     }
     
     // Create a single entity with specified movement type
-    Entity createMovingEntityWithType(const glm::vec3& pos, MovementType movementType, Renderable::ShapeType shape = Renderable::ShapeType::Triangle) {
-        std::uniform_int_distribution<int> shapeDist(0, 1);
-        
-        if (shape == Renderable::ShapeType::Triangle && shapeDist(rng) == 1) {
-            shape = Renderable::ShapeType::Square;
-        }
-        
+    Entity createMovingEntityWithType(const glm::vec3& pos, MovementType movementType) {
         glm::vec4 color = glm::vec4(0.8f, 0.8f, 0.8f, 1.0f); // Neutral start - dynamic colors will be applied
         
         // Entity spawns at mouse click, movement pattern centered at mouse click
@@ -259,7 +233,6 @@ public:
         
         Entity entity = create()
             .at(pos)
-            .withShape(shape)
             .withColor(color)
             .asDynamic()
             .build();
@@ -277,7 +250,6 @@ public:
     std::vector<Entity> createSwarmWithType(size_t count, const glm::vec3& center, float radius, MovementType movementType) {
         std::uniform_real_distribution<float> angleDist(0.0f, 2.0f * M_PI);
         std::uniform_real_distribution<float> radiusDist(0.0f, radius);
-        std::uniform_int_distribution<int> shapeDist(0, 1);
         
         return createBatch(count, [&](EntityBuilder& builder, size_t i) {
             // Spread entities more naturally across the area
@@ -289,9 +261,6 @@ public:
                 0.0f
             );
             
-            Renderable::ShapeType shape = shapeDist(rng) == 0 ? 
-                Renderable::ShapeType::Triangle : Renderable::ShapeType::Square;
-            
             // Use a neutral starting color - dynamic colors will be applied by movement system
             glm::vec4 color = glm::vec4(0.8f, 0.8f, 0.8f, 1.0f); // Neutral gray start
             
@@ -299,7 +268,6 @@ public:
             MovementPattern pattern = createMovementPattern(pos, i, count, movementType);
             
             Entity entity = builder.at(pos)
-                   .withShape(shape)
                    .withColor(color)
                    .asDynamic()
                    .asPooled()

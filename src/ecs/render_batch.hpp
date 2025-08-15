@@ -89,8 +89,8 @@ public:
 // Batch manager for all render types
 class BatchRenderer {
 private:
-    // One batch per shape type for optimal GPU usage
-    std::array<RenderBatch, static_cast<size_t>(Renderable::ShapeType::COUNT)> batches;
+    // Single unified batch - GPU treats everything as triangles
+    RenderBatch batch;
     
     // Change tracking
     uint32_t frameVersion{0};
@@ -111,18 +111,14 @@ private:
 public:
     BatchRenderer() {
         // Pre-allocate for thousands of entities
-        for (auto& batch : batches) {
-            batch.reserve(10000);
-        }
+        batch.reserve(10000);
     }
     
     void beginFrame() {
         ++frameVersion;
         
-        // Clear all batches
-        for (auto& batch : batches) {
-            batch.clear();
-        }
+        // Clear batch
+        batch.clear();
         
         stats.totalEntities = 0;
         stats.visibleEntities = 0;
@@ -138,44 +134,34 @@ public:
         
         ++stats.visibleEntities;
         
-        size_t shapeIndex = static_cast<size_t>(renderable.shape);
-        if (shapeIndex < batches.size()) {
-            batches[shapeIndex].addInstance(
-                transform.getMatrix(),
-                renderable.color,
-                entityId,
-                renderable.layer
-            );
-        }
+        batch.addInstance(
+            transform.getMatrix(),
+            renderable.color,
+            entityId,
+            renderable.layer
+        );
     }
     
     void endFrame() {
-        // Sort all batches by layer
-        stats.batchCount = 0;
-        for (auto& batch : batches) {
-            if (!batch.empty()) {
-                batch.sort();
-                ++stats.batchCount;
-            }
+        // Sort batch by layer
+        if (!batch.empty()) {
+            batch.sort();
+            stats.batchCount = 1;
+        } else {
+            stats.batchCount = 0;
         }
         
         lastProcessedVersion = frameVersion;
     }
     
-    // Get batch for specific shape type
-    const RenderBatch& getBatch(Renderable::ShapeType shape) const {
-        size_t index = static_cast<size_t>(shape);
-        return index < batches.size() ? batches[index] : batches[0];
+    // Get the unified batch
+    const RenderBatch& getBatch() const {
+        return batch;
     }
     
-    // Check if any batches have data
+    // Check if batch has data
     bool hasRenderData() const {
-        for (const auto& batch : batches) {
-            if (!batch.empty()) {
-                return true;
-            }
-        }
-        return false;
+        return !batch.empty();
     }
     
     // Get performance statistics
@@ -183,32 +169,21 @@ public:
         return stats;
     }
     
-    // Iterate over all non-empty batches
+    // Process the unified batch
     template<typename Func>
-    void forEachBatch(Func&& func) const {
-        for (size_t i = 0; i < batches.size(); ++i) {
-            const auto& batch = batches[i];
-            if (!batch.empty()) {
-                func(static_cast<Renderable::ShapeType>(i), batch);
-            }
+    void processBatch(Func&& func) const {
+        if (!batch.empty()) {
+            func(batch);
         }
     }
     
-    // Get total instance count across all batches
+    // Get total instance count
     size_t getTotalInstanceCount() const {
-        size_t total = 0;
-        for (const auto& batch : batches) {
-            total += batch.getInstanceCount();
-        }
-        return total;
+        return batch.getInstanceCount();
     }
     
     // Memory usage estimation
     size_t getMemoryUsage() const {
-        size_t total = 0;
-        for (const auto& batch : batches) {
-            total += batch.getInstanceCount() * sizeof(RenderInstance);
-        }
-        return total;
+        return batch.getInstanceCount() * sizeof(RenderInstance);
     }
 };
