@@ -88,6 +88,9 @@ public:
     uint32_t getMaxEntities() const { return MAX_ENTITIES; }
     bool hasPendingUploads() const { return !pendingEntities.empty(); }
     
+    // Safe access to mapped data through ResourceHandle
+    void* getMappedData() const;
+    
     // Descriptor set management
     VkDescriptorSetLayout getComputeDescriptorSetLayout() const { return computeDescriptorSetLayout; }
     VkDescriptorSet getCurrentComputeDescriptorSet() const { return computeDescriptorSet; }
@@ -105,7 +108,6 @@ private:
     // Single buffer storage for compute pipeline using ResourceContext
     std::unique_ptr<ResourceHandle> entityStorageHandle;
     VkBuffer entityStorage = VK_NULL_HANDLE;  // For compatibility
-    void* entityBufferMapped = nullptr;
     
     // Entity state
     uint32_t activeEntityCount = 0;

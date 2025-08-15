@@ -55,7 +55,6 @@ void GPUEntityManager::cleanup() {
     }
     
     entityStorage = VK_NULL_HANDLE;
-    entityBufferMapped = nullptr;
     
     // Clean up descriptor resources
     if (computeDescriptorPool != VK_NULL_HANDLE) {
@@ -108,7 +107,7 @@ void GPUEntityManager::uploadPendingEntities() {
     }
     
     // Upload new entities to single buffer
-    GPUEntity* targetBufferPtr = static_cast<GPUEntity*>(entityBufferMapped);
+    GPUEntity* targetBufferPtr = static_cast<GPUEntity*>(getMappedData());
 #ifdef _DEBUG
     assert(targetBufferPtr && "GPU target buffer must be mapped");
 #endif
@@ -139,6 +138,10 @@ void GPUEntityManager::clearAllEntities() {
     pendingEntities.clear();
 }
 
+void* GPUEntityManager::getMappedData() const {
+    return entityStorageHandle ? entityStorageHandle->mappedData : nullptr;
+}
+
 void GPUEntityManager::updateAllMovementTypes(int newMovementType, bool angelMode) {
     if (activeEntityCount == 0) {
         return;
@@ -151,7 +154,7 @@ void GPUEntityManager::updateAllMovementTypes(int newMovementType, bool angelMod
     }
     
     // Update single buffer entities
-    GPUEntity* bufferPtr = static_cast<GPUEntity*>(entityBufferMapped);
+    GPUEntity* bufferPtr = static_cast<GPUEntity*>(getMappedData());
     
     if (bufferPtr) {
         for (uint32_t i = 0; i < activeEntityCount; i++) {
@@ -202,7 +205,6 @@ bool GPUEntityManager::createEntityBuffers() {
     
     // Maintain compatibility with existing API
     entityStorage = entityStorageHandle->buffer;
-    entityBufferMapped = entityStorageHandle->mappedData;
     
     return true;
 }
