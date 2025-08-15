@@ -71,63 +71,128 @@ bool VulkanPipeline::initialize(const VulkanContext& context, VkFormat swapChain
 void VulkanPipeline::cleanup() {
     if (!context) return;
     
+    std::cout << "VulkanPipeline: Starting cleanup..." << std::endl;
+    
     if (graphicsPipeline != VK_NULL_HANDLE) {
+        std::cout << "VulkanPipeline: Destroying graphics pipeline..." << std::endl;
         context->getLoader().vkDestroyPipeline(context->getDevice(), graphicsPipeline, nullptr);
         graphicsPipeline = VK_NULL_HANDLE;
     }
     if (pipelineLayout != VK_NULL_HANDLE) {
+        std::cout << "VulkanPipeline: Destroying pipeline layout..." << std::endl;
+        
+        // Check if this layout is in the static cache and remove it
+        for (auto it = pipelineLayoutCache.begin(); it != pipelineLayoutCache.end(); ++it) {
+            if (it->second == pipelineLayout) {
+                std::cout << "VulkanPipeline: Removing layout from cache before destruction" << std::endl;
+                pipelineLayoutCache.erase(it);
+                break;
+            }
+        }
+        
         context->getLoader().vkDestroyPipelineLayout(context->getDevice(), pipelineLayout, nullptr);
         pipelineLayout = VK_NULL_HANDLE;
     }
     if (renderPass != VK_NULL_HANDLE) {
+        std::cout << "VulkanPipeline: Destroying render pass..." << std::endl;
         context->getLoader().vkDestroyRenderPass(context->getDevice(), renderPass, nullptr);
         renderPass = VK_NULL_HANDLE;
     }
     if (descriptorSetLayout != VK_NULL_HANDLE) {
+        std::cout << "VulkanPipeline: Destroying descriptor set layout..." << std::endl;
         context->getLoader().vkDestroyDescriptorSetLayout(context->getDevice(), descriptorSetLayout, nullptr);
         descriptorSetLayout = VK_NULL_HANDLE;
     }
     
     // Cleanup modular compute pipeline resources
     if (randomComputePipeline != VK_NULL_HANDLE) {
+        std::cout << "VulkanPipeline: Destroying random compute pipeline..." << std::endl;
         context->getLoader().vkDestroyPipeline(context->getDevice(), randomComputePipeline, nullptr);
         randomComputePipeline = VK_NULL_HANDLE;
     }
     if (patternComputePipeline != VK_NULL_HANDLE) {
+        std::cout << "VulkanPipeline: Destroying pattern compute pipeline..." << std::endl;
         context->getLoader().vkDestroyPipeline(context->getDevice(), patternComputePipeline, nullptr);
         patternComputePipeline = VK_NULL_HANDLE;
     }
     if (computePipelineLayout != VK_NULL_HANDLE) {
+        std::cout << "VulkanPipeline: Destroying compute pipeline layout..." << std::endl;
+        
+        // Check if this layout is in the static cache and remove it
+        for (auto it = pipelineLayoutCache.begin(); it != pipelineLayoutCache.end(); ++it) {
+            if (it->second == computePipelineLayout) {
+                std::cout << "VulkanPipeline: Removing compute layout from cache before destruction" << std::endl;
+                pipelineLayoutCache.erase(it);
+                break;
+            }
+        }
+        
         context->getLoader().vkDestroyPipelineLayout(context->getDevice(), computePipelineLayout, nullptr);
         computePipelineLayout = VK_NULL_HANDLE;
     }
     if (computeDescriptorSetLayout != VK_NULL_HANDLE) {
+        std::cout << "VulkanPipeline: Destroying compute descriptor set layout..." << std::endl;
         context->getLoader().vkDestroyDescriptorSetLayout(context->getDevice(), computeDescriptorSetLayout, nullptr);
         computeDescriptorSetLayout = VK_NULL_HANDLE;
     }
     if (pipelineCache != VK_NULL_HANDLE) {
+        std::cout << "VulkanPipeline: Destroying pipeline cache..." << std::endl;
         context->getLoader().vkDestroyPipelineCache(context->getDevice(), pipelineCache, nullptr);
         pipelineCache = VK_NULL_HANDLE;
     }
+    
+    std::cout << "VulkanPipeline: Cleanup completed" << std::endl;
 }
 
 bool VulkanPipeline::recreate(VkFormat swapChainImageFormat) {
+    std::cout << "VulkanPipeline: Starting recreation..." << std::endl;
     cleanup();
+    std::cout << "VulkanPipeline: Cleanup completed" << std::endl;
     
+    std::cout << "Creating pipeline cache..." << std::endl;
+    VkPipelineCacheCreateInfo pipelineCacheInfo{};
+    pipelineCacheInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
+    VkResult result = context->getLoader().vkCreatePipelineCache(context->getDevice(), &pipelineCacheInfo, nullptr, &pipelineCache);
+    if (result != VK_SUCCESS) {
+        std::cerr << "Failed to recreate pipeline cache, VkResult: " << result << std::endl;
+        return false;
+    }
+    std::cout << "Pipeline cache created successfully" << std::endl;
+    
+    std::cout << "Creating descriptor set layout..." << std::endl;
     if (!createDescriptorSetLayout()) {
         std::cerr << "Failed to recreate descriptor set layout!" << std::endl;
         return false;
     }
+    std::cout << "Descriptor set layout created successfully" << std::endl;
     
+    std::cout << "Creating render pass..." << std::endl;
     if (!createRenderPass(swapChainImageFormat)) {
         std::cerr << "Failed to recreate render pass!" << std::endl;
         return false;
     }
+    std::cout << "Render pass created successfully" << std::endl;
     
+    std::cout << "Creating graphics pipeline..." << std::endl;
     if (!createGraphicsPipeline()) {
         std::cerr << "Failed to recreate graphics pipeline!" << std::endl;
         return false;
     }
+    std::cout << "Graphics pipeline created successfully" << std::endl;
+    
+    std::cout << "Creating compute descriptor set layout..." << std::endl;
+    if (!createComputeDescriptorSetLayout()) {
+        std::cerr << "Failed to recreate compute descriptor set layout!" << std::endl;
+        return false;
+    }
+    std::cout << "Compute descriptor set layout created successfully" << std::endl;
+    
+    std::cout << "Creating modular compute pipelines..." << std::endl;
+    if (!createModularComputePipelines()) {
+        std::cerr << "Failed to recreate modular compute pipelines!" << std::endl;
+        return false;
+    }
+    std::cout << "Modular compute pipelines created successfully" << std::endl;
 
     return true;
 }
@@ -322,6 +387,7 @@ std::array<VkVertexInputAttributeDescription, 10> VulkanPipeline::getVertexAttri
 }
 
 bool VulkanPipeline::createGraphicsPipeline() {
+    std::cout << "VulkanPipeline: Loading shader files..." << std::endl;
     std::vector<char> vertShaderCode, fragShaderCode;
     
     try {
@@ -331,9 +397,12 @@ bool VulkanPipeline::createGraphicsPipeline() {
         std::cerr << "Failed to load shader files: " << e.what() << std::endl;
         return false;
     }
+    std::cout << "VulkanPipeline: Shader files loaded successfully" << std::endl;
 
+    std::cout << "VulkanPipeline: Creating shader modules..." << std::endl;
     VkShaderModule vertShaderModule = VulkanUtils::createShaderModule(context->getDevice(), context->getLoader(), vertShaderCode);
     VkShaderModule fragShaderModule = VulkanUtils::createShaderModule(context->getDevice(), context->getLoader(), fragShaderCode);
+    std::cout << "VulkanPipeline: Shader modules created successfully" << std::endl;
 
     VkPipelineShaderStageCreateInfo vertShaderStageInfo{};
     vertShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
@@ -416,8 +485,11 @@ bool VulkanPipeline::createGraphicsPipeline() {
     dynamicState.dynamicStateCount = static_cast<uint32_t>(dynamicStates.size());
     dynamicState.pDynamicStates = dynamicStates.data();
 
+    std::cout << "VulkanPipeline: Getting pipeline layout..." << std::endl;
     pipelineLayout = getOrCreatePipelineLayout(descriptorSetLayout);
+    std::cout << "VulkanPipeline: Pipeline layout obtained successfully" << std::endl;
 
+    std::cout << "VulkanPipeline: Creating graphics pipeline..." << std::endl;
     VkGraphicsPipelineCreateInfo pipelineInfo{};
     pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
     pipelineInfo.stageCount = 2;
@@ -435,13 +507,18 @@ bool VulkanPipeline::createGraphicsPipeline() {
     pipelineInfo.subpass = 0;
     pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
 
-    if (context->getLoader().vkCreateGraphicsPipelines(context->getDevice(), pipelineCache, 1, &pipelineInfo, nullptr, &graphicsPipeline) != VK_SUCCESS) {
-        std::cerr << "Failed to create graphics pipeline" << std::endl;
+    std::cout << "VulkanPipeline: Calling vkCreateGraphicsPipelines..." << std::endl;
+    VkResult result = context->getLoader().vkCreateGraphicsPipelines(context->getDevice(), pipelineCache, 1, &pipelineInfo, nullptr, &graphicsPipeline);
+    if (result != VK_SUCCESS) {
+        std::cerr << "Failed to create graphics pipeline, VkResult: " << result << std::endl;
         return false;
     }
+    std::cout << "VulkanPipeline: Graphics pipeline created successfully" << std::endl;
 
+    std::cout << "VulkanPipeline: Destroying shader modules..." << std::endl;
     context->getLoader().vkDestroyShaderModule(context->getDevice(), fragShaderModule, nullptr);
     context->getLoader().vkDestroyShaderModule(context->getDevice(), vertShaderModule, nullptr);
+    std::cout << "VulkanPipeline: Shader modules destroyed" << std::endl;
 
     return true;
 }

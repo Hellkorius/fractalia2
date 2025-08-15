@@ -110,6 +110,7 @@ public:
     PFN_vkDestroyDescriptorSetLayout vkDestroyDescriptorSetLayout = nullptr;
     PFN_vkCreateDescriptorPool vkCreateDescriptorPool = nullptr;
     PFN_vkDestroyDescriptorPool vkDestroyDescriptorPool = nullptr;
+    PFN_vkResetDescriptorPool vkResetDescriptorPool = nullptr;
     PFN_vkAllocateDescriptorSets vkAllocateDescriptorSets = nullptr;
     PFN_vkUpdateDescriptorSets vkUpdateDescriptorSets = nullptr;
     

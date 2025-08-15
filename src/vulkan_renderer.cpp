@@ -97,7 +97,7 @@ bool VulkanRenderer::initialize(SDL_Window* window) {
     
     // Initialize GPU entity manager after sync and resource context are created
     gpuEntityManager = std::make_unique<GPUEntityManager>();
-    if (!gpuEntityManager->initialize(*context, sync.get(), resourceContext.get())) {
+    if (!gpuEntityManager->initialize(*context, sync.get(), resourceContext.get(), pipeline->getComputeDescriptorSetLayout())) {
         std::cerr << "Failed to initialize GPU entity manager" << std::endl;
         return false;
     }
@@ -359,18 +359,66 @@ void VulkanRenderer::drawFrame() {
 }
 
 bool VulkanRenderer::recreateSwapChain() {
+    // Prevent concurrent recreation attempts
+    if (recreationInProgress) {
+        std::cout << "VulkanRenderer: Recreation already in progress, skipping..." << std::endl;
+        return true;
+    }
+    recreationInProgress = true;
+    
+    // Wait for device to be idle before recreating resources
+    std::cout << "VulkanRenderer: Waiting for device idle..." << std::endl;
+    context->getLoader().vkDeviceWaitIdle(context->getDevice());
+    std::cout << "VulkanRenderer: Device is idle" << std::endl;
+    
+    // Additional safety: wait for all frame fences to be signaled
+    for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
+        if (frameFences.isComputeInUse(i)) {
+            VkFence computeFence = frameFences.getComputeFence(i);
+            context->getLoader().vkWaitForFences(context->getDevice(), 1, &computeFence, VK_TRUE, UINT64_MAX);
+            frameFences.setComputeInUse(i, false);
+        }
+        if (frameFences.isGraphicsInUse(i)) {
+            VkFence graphicsFence = frameFences.getGraphicsFence(i);
+            context->getLoader().vkWaitForFences(context->getDevice(), 1, &graphicsFence, VK_TRUE, UINT64_MAX);
+            frameFences.setGraphicsInUse(i, false);
+        }
+    }
+    std::cout << "VulkanRenderer: All fences are ready" << std::endl;
+    
     if (!swapchain->recreate(pipeline->getRenderPass())) {
+        recreationInProgress = false;
         return false;
     }
     
     if (!pipeline->recreate(swapchain->getImageFormat())) {
+        recreationInProgress = false;
         return false;
     }
     
     if (!swapchain->createFramebuffers(pipeline->getRenderPass())) {
+        recreationInProgress = false;
         return false;
     }
+    
+    // Update GPU entity manager with new compute descriptor set layout from recreated pipeline
+    if (gpuEntityManager) {
+        gpuEntityManager->setComputeDescriptorSetLayout(pipeline->getComputeDescriptorSetLayout());
+        if (!gpuEntityManager->recreateComputeDescriptorResources()) {
+            std::cerr << "Failed to recreate GPU entity manager descriptor sets!" << std::endl;
+            recreationInProgress = false;
+            return false;
+        }
+        
+        // Update graphics descriptor sets with position buffer after recreation
+        if (!resources->updateDescriptorSetsWithPositionBuffer(gpuEntityManager->getCurrentPositionBuffer())) {
+            std::cerr << "Failed to update graphics descriptor sets with position buffer!" << std::endl;
+            recreationInProgress = false;
+            return false;
+        }
+    }
 
+    recreationInProgress = false;
     return true;
 }
 

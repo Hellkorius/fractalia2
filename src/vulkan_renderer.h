@@ -58,6 +58,7 @@ private:
     // Removed duplicate MAX_FRAMES_IN_FLIGHT - using public constant
     uint32_t currentFrame = 0;
     bool framebufferResized = false;
+    bool recreationInProgress = false;
 
     // Module instances
     std::unique_ptr<VulkanContext> context;

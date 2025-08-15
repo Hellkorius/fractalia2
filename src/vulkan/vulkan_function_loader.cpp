@@ -221,6 +221,8 @@ void VulkanFunctionLoader::loadDescriptorFunctions() {
         vkGetDeviceProcAddr(device, "vkCreateDescriptorPool"));
     vkDestroyDescriptorPool = reinterpret_cast<PFN_vkDestroyDescriptorPool>(
         vkGetDeviceProcAddr(device, "vkDestroyDescriptorPool"));
+    vkResetDescriptorPool = reinterpret_cast<PFN_vkResetDescriptorPool>(
+        vkGetDeviceProcAddr(device, "vkResetDescriptorPool"));
     vkAllocateDescriptorSets = reinterpret_cast<PFN_vkAllocateDescriptorSets>(
         vkGetDeviceProcAddr(device, "vkAllocateDescriptorSets"));
     vkUpdateDescriptorSets = reinterpret_cast<PFN_vkUpdateDescriptorSets>(

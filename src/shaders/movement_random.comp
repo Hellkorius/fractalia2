@@ -58,20 +58,33 @@ vec3 randomStep(vec3 center, float amplitude, float frequency, float phase, floa
     // Create unique seed for this entity at this step time
     uint baseSeed = entityId ^ uint(stepTime * 1000.0) ^ uint(phase * 10000.0);
     
+    // Generate entity-specific drift characteristics
+    uint entitySeed = entityId ^ 0x12345678u;
+    float driftiness = pseudoRandom(entitySeed); // 0.0 = stays close, 1.0 = drifts far
+    float explorationTendency = pseudoRandom(entitySeed + 1u); // How adventurous this entity is
+    
+    // Calculate dynamic drift parameters based on entity personality
+    float maxDriftMultiplier = 3.0 + driftiness * 12.0; // Range: 3x to 15x amplitude
+    float centerPullStrength = 0.005 + (1.0 - driftiness) * 0.02; // Stronger pull for less drifty entities
+    
     // Generate multiple accumulated steps for smooth random walk
     vec3 totalOffset = vec3(0.0);
     
-    // Accumulate several steps to create interesting patterns
-    const int numSteps = 8;
+    // Vary number of accumulated steps based on exploration tendency
+    int numSteps = int(6.0 + explorationTendency * 10.0); // 6-16 steps
+    
     for (int i = 0; i < numSteps; i++) {
         uint stepSeed = baseSeed + uint(i * 7919); // Prime for good distribution
         
         // Generate random direction (angle)
         float randAngle = pseudoRandom(stepSeed) * 6.28318530718; // 2π
         
-        // Generate random step magnitude with decay for older steps
-        float stepDecay = 1.0 - (float(i) / float(numSteps)) * 0.3;
+        // Generate random step magnitude with varied decay
+        float stepDecay = 1.0 - (float(i) / float(numSteps)) * (0.2 + explorationTendency * 0.3);
         float stepMagnitude = pseudoRandom(stepSeed + 31u) * amplitude * stepDecay;
+        
+        // Add exploration boost for adventurous entities
+        stepMagnitude *= (1.0 + explorationTendency * 0.5);
         
         // Calculate step vector
         vec3 stepVector = vec3(
@@ -83,15 +96,29 @@ vec3 randomStep(vec3 center, float amplitude, float frequency, float phase, floa
         totalOffset += stepVector;
     }
     
-    // Apply soft boundary constraints
-    float maxDistance = amplitude * 3.0;
+    // Apply dynamic boundary constraints based on entity drift characteristics
+    float maxDistance = amplitude * maxDriftMultiplier;
     float currentDistance = length(totalOffset);
-    if (currentDistance > maxDistance) {
-        totalOffset = normalize(totalOffset) * maxDistance;
+    
+    // Soft boundary with some randomness - occasionally allow exceeding bounds
+    float boundaryRandomness = pseudoRandom(baseSeed + 999u);
+    float effectiveMaxDistance = maxDistance * (0.8 + boundaryRandomness * 0.4); // 80%-120% of max
+    
+    if (currentDistance > effectiveMaxDistance) {
+        // Softer constraint - compress rather than hard clamp
+        float compressionFactor = effectiveMaxDistance / currentDistance;
+        compressionFactor = sqrt(compressionFactor); // Gentler compression
+        totalOffset *= compressionFactor;
     }
     
-    // Add subtle drift back toward center
-    vec3 centerPull = -totalOffset * 0.01;
+    // Add dynamic drift back toward center based on entity personality
+    vec3 centerPull = -totalOffset * centerPullStrength;
+    
+    // Occasionally resist center pull for very drifty entities
+    if (driftiness > 0.7 && pseudoRandom(baseSeed + 777u) > 0.6) {
+        centerPull *= 0.3; // Reduce center pull strength
+    }
+    
     totalOffset += centerPull;
     
     return center + totalOffset;

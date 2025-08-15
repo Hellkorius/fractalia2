@@ -67,7 +67,7 @@ public:
     GPUEntityManager();
     ~GPUEntityManager();
     
-    bool initialize(const VulkanContext& context, VulkanSync* sync, ResourceContext* resourceContext);
+    bool initialize(const VulkanContext& context, VulkanSync* sync, ResourceContext* resourceContext, VkDescriptorSetLayout computeDescriptorSetLayout = VK_NULL_HANDLE);
     void cleanup();
     
     // Entity management
@@ -97,6 +97,8 @@ public:
     VkDescriptorSet getCurrentComputeDescriptorSet() const { return computeDescriptorSet; }
     
     bool createComputeDescriptorSets();
+    void setComputeDescriptorSetLayout(VkDescriptorSetLayout layout) { computeDescriptorSetLayout = layout; }
+    bool recreateComputeDescriptorResources();
 
 private:
     static constexpr uint32_t MAX_ENTITIES = 131072; // 128k entities max (16MB / 128 bytes)
@@ -122,8 +124,9 @@ private:
     
     // Compute descriptor sets for storage buffers
     VkDescriptorPool computeDescriptorPool = VK_NULL_HANDLE;
-    VkDescriptorSetLayout computeDescriptorSetLayout = VK_NULL_HANDLE;
+    VkDescriptorSetLayout computeDescriptorSetLayout = VK_NULL_HANDLE; // Reference to pipeline's layout
     VkDescriptorSet computeDescriptorSet = VK_NULL_HANDLE;
+    bool ownsDescriptorSetLayout = false; // Track if we need to destroy the layout
     
     
     bool createEntityBuffers();
