@@ -3,7 +3,7 @@
 #include <vulkan/vulkan.h>
 
 // Frame synchronization constants
-constexpr uint32_t MAX_FRAMES_IN_FLIGHT = 2;
+inline constexpr uint32_t MAX_FRAMES_IN_FLIGHT = 2;
 
 // Fence timeout constants for smooth 60fps
 constexpr uint64_t FENCE_TIMEOUT_IMMEDIATE = 0;           // Immediate check
