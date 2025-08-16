@@ -19,6 +19,8 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
+// Static member definition
+float VulkanRenderer::clampedDeltaTime = 0.0f;
 
 VulkanRenderer::VulkanRenderer() {
 }

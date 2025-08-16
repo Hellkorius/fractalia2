@@ -148,6 +148,9 @@ int main(int argc, char* argv[]) {
         float deltaTime = std::chrono::duration<float>(frameStartTime - lastFrameTime).count();
         lastFrameTime = frameStartTime;
         
+        // Hard-cap deltaTime to prevent frame-rate sensitive collision math explosions
+        deltaTime = std::min(deltaTime, 1.0f / 30.0f);  // never exceed 33 ms
+        
         // Process SDL events through the input system
         InputManager::processSDLEvents(world);
         

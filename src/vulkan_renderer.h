@@ -38,7 +38,10 @@ public:
     // GPU entity management
     GPUEntityManager* getGPUEntityManager() { return gpuEntityManager.get(); }
     void uploadPendingGPUEntities();
-    void setDeltaTime(float deltaTime) { this->deltaTime = deltaTime; }
+    void setDeltaTime(float deltaTime) { 
+        this->deltaTime = deltaTime; 
+        clampedDeltaTime = deltaTime;  // Update static member for global access
+    }
     
     // Camera integration
     void setWorld(flecs::world* world) { this->world = world; }
@@ -46,6 +49,9 @@ public:
     
     // Movement command processing
     class MovementCommandProcessor* getMovementCommandProcessor() { return movementCommandProcessor.get(); }
+    
+    // Static access to clamped deltaTime for global use
+    static float getClampedDelta() { return clampedDeltaTime; }
     
     bool isInitialized() const { return initialized; }
 
@@ -81,6 +87,9 @@ private:
     // GPU compute state
     float deltaTime = 0.0f;
     float totalTime = 0.0f; // Accumulated simulation time
+    
+    // Static member for global access to clamped deltaTime
+    static float clampedDeltaTime;
     
     // Key-frame look-ahead system
     uint32_t frameCounter = 0;
