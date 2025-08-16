@@ -910,3 +910,89 @@ src/vulkan/vulkan_function_loader.cpp  - Function loading
 - **Thread Safety**: Proper synchronization eliminates race conditions  
 - **Maintainability**: Clean separation of concerns and simplified logic
 - **Robustness**: Graceful handling of rapid resize events
+
+---
+
+# Collision System Phase 1: Core Infrastructure Implementation
+
+**Date**: 2025-01-16  
+**Scope**: GPU-driven collision detection foundation with ECS integration  
+**Status**: Infrastructure complete, GPU compute shaders pending Phase 2
+
+## Overview
+Implemented Phase 1 of the collision system architecture, providing the core infrastructure for GPU-driven collision detection at massive scale. This phase establishes the memory layout, data structures, and CPU-GPU bridge required for hundreds of thousands of collision-enabled entities.
+
+## Core Infrastructure Changes
+
+**GPUEntity Structure Optimization**:
+- Replaced unused `modelMatrix[3]` (4th column) with `collisionData` vec4 at position 7
+- Maintains 128-byte alignment and cache optimization
+- Stores collision radius, layer, mask, and reserved space in 16 bytes
+- Updated structure to use `modelMatrix0`, `modelMatrix1`, `modelMatrix2` for 3x4 transform
+- Zero memory overhead for entities without collision (default zero values)
+
+**ECS Component Integration**:
+- Added `Collider` component with radius, layer, mask, and enabled fields
+- Implemented layer/mask collision filtering with `canCollideWith()` helper method
+- Updated `GPUEntity::fromECS()` to populate collision data from optional Collider component
+- Maintains backward compatibility for entities without collision components
+
+**Collision Event Management**:
+- Created `CollisionEventManager` class for GPU→CPU event transfer and processing
+- Defined `CollisionEvent` struct with entity IDs, contact point, normal, penetration depth
+- Implemented Vulkan buffer management for up to 8,192 collisions per frame
+- Added frame-based event processing pipeline with validation and statistics
+- Prepared ECS integration hooks for collision response systems
+
+## Technical Implementation
+
+**Memory Layout Integration**:
+- Collision data stored in GPUEntity position 7: `vec4(radius, layer, mask, reserved)`
+- Hot movement data remains in first cache line (positions 0-3) for optimal compute performance
+- Transform matrix split across positions 4-6, collision data in position 7 (cold cache line)
+- Updated vertex pipeline to handle new attribute layout
+
+**GPU Buffer Architecture**:
+- Device-local collision buffer for GPU compute shader output
+- Host-visible staging buffer for CPU access and validation
+- Event transfer pipeline using VulkanUtils for consistent resource management
+- Statistics tracking for collision counts and overflow detection
+
+**Vulkan Integration**:
+- Updated vertex attribute descriptions for new GPUEntity structure
+- Fixed pipeline setup to use `modelMatrix0-2` and `collisionData` offsets
+- Maintained compatibility with existing vertex shader (movement params at locations 7-8)
+- Used established VulkanUtils patterns for buffer creation and memory management
+
+## Files Modified
+```
+src/ecs/gpu_entity_manager.h           - GPUEntity collision data integration
+src/ecs/gpu_entity_manager.cpp         - (structure changes only)
+src/ecs/component.h                    - Collider component definition  
+src/ecs/collision_event_manager.h      - NEW: Event management interface
+src/ecs/collision_event_manager.cpp    - NEW: GPU→CPU transfer implementation
+src/vulkan/vulkan_pipeline.cpp         - Updated vertex attributes for new layout
+CLAUDE.md                              - Updated documentation and collision section
+```
+
+## Data Flow Architecture
+1. **CPU Entities**: Flecs components include optional Collider data
+2. **GPU Upload**: GPUEntityManager embeds collision data in entity buffer position 7
+3. **GPU Compute**: Future collision detection shader will write events to collision buffer
+4. **Event Transfer**: CollisionEventManager reads events via staging buffer with validation
+5. **ECS Processing**: Events processed by Flecs systems for game logic responses
+
+## Performance Characteristics
+- **Zero Overhead**: Entities without collision use default zero values (no memory penalty)
+- **Cache Friendly**: Collision data in cold cache line, separate from hot movement data
+- **Massive Scale**: Supports 131K entities with collision data, 8K collision events per frame
+- **GPU Optimized**: Parallel collision detection ready for Phase 2 compute shader implementation
+
+## Phase 1 Limitations
+- GPU collision detection compute shader not yet implemented (Phase 2)
+- Event processing placeholder methods require game-specific collision response logic
+- No spatial partitioning or broad-phase optimization (suitable for current entity counts)
+- Statistics and overflow handling implemented but collision generation pending
+
+## Next Phase Preview
+Phase 2 will implement the GPU compute shader for parallel collision detection, utilizing the infrastructure established in this phase for high-performance collision processing at scale.

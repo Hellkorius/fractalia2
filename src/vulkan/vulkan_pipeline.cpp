@@ -261,26 +261,27 @@ std::array<VkVertexInputAttributeDescription, 10> VulkanPipeline::getVertexAttri
     attributeDescriptions[1].offset = sizeof(glm::vec3);
     
     // GPUEntity instance attributes (binding 1) - matches GPUEntity struct layout
-    // modelMatrix - locations 2-5 (64 bytes)
+    // modelMatrix - locations 2-4 (48 bytes - only 3x4 matrix, 4th row replaced with collision data)
     attributeDescriptions[2].binding = 1;
     attributeDescriptions[2].location = 2;
     attributeDescriptions[2].format = VK_FORMAT_R32G32B32A32_SFLOAT;
-    attributeDescriptions[2].offset = offsetof(GPUEntity, modelMatrix) + 0 * sizeof(glm::vec4);
+    attributeDescriptions[2].offset = offsetof(GPUEntity, modelMatrix0);
     
     attributeDescriptions[3].binding = 1;
     attributeDescriptions[3].location = 3;
     attributeDescriptions[3].format = VK_FORMAT_R32G32B32A32_SFLOAT;
-    attributeDescriptions[3].offset = offsetof(GPUEntity, modelMatrix) + 1 * sizeof(glm::vec4);
+    attributeDescriptions[3].offset = offsetof(GPUEntity, modelMatrix1);
     
     attributeDescriptions[4].binding = 1;
     attributeDescriptions[4].location = 4;
     attributeDescriptions[4].format = VK_FORMAT_R32G32B32A32_SFLOAT;
-    attributeDescriptions[4].offset = offsetof(GPUEntity, modelMatrix) + 2 * sizeof(glm::vec4);
+    attributeDescriptions[4].offset = offsetof(GPUEntity, modelMatrix2);
     
+    // collision data - location 5 (16 bytes)
     attributeDescriptions[5].binding = 1;
     attributeDescriptions[5].location = 5;
     attributeDescriptions[5].format = VK_FORMAT_R32G32B32A32_SFLOAT;
-    attributeDescriptions[5].offset = offsetof(GPUEntity, modelMatrix) + 3 * sizeof(glm::vec4);
+    attributeDescriptions[5].offset = offsetof(GPUEntity, collisionData);
     
     // color - location 6 (16 bytes)
     attributeDescriptions[6].binding = 1;

@@ -17,12 +17,15 @@ struct GPUEntity {
     glm::vec4 color;              // 16 bytes - RGBA color (position 3)
     
     // Cache Line 2 (bytes 64-127) - COLD DATA: Rarely accessed
-    glm::mat4 modelMatrix;        // 64 bytes - transform matrix (positions 4-7)
+    glm::vec4 modelMatrix0;       // 16 bytes - transform matrix row 0 (position 4)
+    glm::vec4 modelMatrix1;       // 16 bytes - transform matrix row 1 (position 5)
+    glm::vec4 modelMatrix2;       // 16 bytes - transform matrix row 2 (position 6)
+    glm::vec4 collisionData;      // 16 bytes - radius, layer, mask, reserved (position 7)
     
     GPUEntity() = default;
     
     // Create from ECS components
-    static GPUEntity fromECS(const Transform& transform, const Renderable& renderable, const MovementPattern& pattern) {
+    static GPUEntity fromECS(const Transform& transform, const Renderable& renderable, const MovementPattern& pattern, const Collider* collider = nullptr) {
         GPUEntity entity{};
         
         // Copy movement parameters (now in optimized positions 0-1)
@@ -43,8 +46,23 @@ struct GPUEntity {
         // Copy color (now in position 3)
         entity.color = renderable.color;
         
-        // Copy transform matrix (now in positions 4-7)
-        entity.modelMatrix = transform.getMatrix();
+        // Copy transform matrix (now in positions 4-6)
+        glm::mat4 transformMatrix = transform.getMatrix();
+        entity.modelMatrix0 = transformMatrix[0]; // Column 0
+        entity.modelMatrix1 = transformMatrix[1]; // Column 1
+        entity.modelMatrix2 = transformMatrix[2]; // Column 2
+        
+        // Copy collision data (position 7)
+        if (collider) {
+            entity.collisionData = glm::vec4(
+                collider->radius,
+                static_cast<float>(collider->layer),
+                static_cast<float>(collider->mask),
+                0.0f // reserved
+            );
+        } else {
+            entity.collisionData = glm::vec4(0.0f, 0.0f, 0.0f, 0.0f);
+        }
         
         // Initialize runtime state with random staggering for random walk movement
         // All entities now use random walk, so always apply staggering

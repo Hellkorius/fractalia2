@@ -63,6 +63,20 @@ struct Bounds {
     bool dynamic{true}; // Updates with transform changes
 };
 
+// Collision detection component for GPU-driven collision detection
+struct Collider {
+    float radius{1.0f};          // Collision radius
+    uint32_t layer{1};           // Collision layer (entity belongs to)
+    uint32_t mask{0xFFFFFFFF};   // Collision mask (what layers to collide with)
+    bool enabled{true};          // Whether collision is active
+    
+    // Helper method to check layer/mask compatibility
+    bool canCollideWith(const Collider& other) const {
+        if (!enabled || !other.enabled) return false;
+        return (layer & other.mask) != 0 && (other.layer & mask) != 0;
+    }
+};
+
 // Movement types matching GPU compute shader
 enum class MovementType {
     RandomWalk = 0  // GPU-driven random walk from center point (simplified to single type)
