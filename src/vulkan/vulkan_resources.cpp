@@ -251,3 +251,59 @@ bool VulkanResources::updateDescriptorSetsWithPositionBuffer(VkBuffer positionBu
     
     return true;
 }
+
+bool VulkanResources::updateDescriptorSetsWithPositionBuffers(VkBuffer currentPositionBuffer, VkBuffer targetPositionBuffer) {
+    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+        // UBO binding (binding 0)
+        VkDescriptorBufferInfo uboBufferInfo{};
+        uboBufferInfo.buffer = uniformBuffers[i];
+        uboBufferInfo.offset = 0;
+        uboBufferInfo.range = sizeof(glm::mat4) * 2;
+        
+        // Current position buffer binding (binding 2)
+        VkDescriptorBufferInfo currentPositionBufferInfo{};
+        currentPositionBufferInfo.buffer = currentPositionBuffer;
+        currentPositionBufferInfo.offset = 0;
+        currentPositionBufferInfo.range = VK_WHOLE_SIZE;
+        
+        // Target position buffer binding (binding 3)
+        VkDescriptorBufferInfo targetPositionBufferInfo{};
+        targetPositionBufferInfo.buffer = targetPositionBuffer;
+        targetPositionBufferInfo.offset = 0;
+        targetPositionBufferInfo.range = VK_WHOLE_SIZE;
+        
+        // Write all three descriptors
+        VkWriteDescriptorSet descriptorWrites[3] = {};
+        
+        // UBO write
+        descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        descriptorWrites[0].dstSet = descriptorSets[i];
+        descriptorWrites[0].dstBinding = 0;
+        descriptorWrites[0].dstArrayElement = 0;
+        descriptorWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        descriptorWrites[0].descriptorCount = 1;
+        descriptorWrites[0].pBufferInfo = &uboBufferInfo;
+        
+        // Current position buffer write
+        descriptorWrites[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        descriptorWrites[1].dstSet = descriptorSets[i];
+        descriptorWrites[1].dstBinding = 2;
+        descriptorWrites[1].dstArrayElement = 0;
+        descriptorWrites[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        descriptorWrites[1].descriptorCount = 1;
+        descriptorWrites[1].pBufferInfo = &currentPositionBufferInfo;
+        
+        // Target position buffer write
+        descriptorWrites[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        descriptorWrites[2].dstSet = descriptorSets[i];
+        descriptorWrites[2].dstBinding = 3;
+        descriptorWrites[2].dstArrayElement = 0;
+        descriptorWrites[2].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        descriptorWrites[2].descriptorCount = 1;
+        descriptorWrites[2].pBufferInfo = &targetPositionBufferInfo;
+        
+        context->getLoader().vkUpdateDescriptorSets(context->getDevice(), 3, descriptorWrites, 0, nullptr);
+    }
+    
+    return true;
+}

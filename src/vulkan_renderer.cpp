@@ -215,25 +215,8 @@ void VulkanRenderer::drawFrame() {
     
     // Dispatch compute shader for movement calculation
     if (gpuEntityManager && gpuEntityManager->getEntityCount() > 0) {
-        // Select pipeline based on current movement type from ControlState
-        VkPipeline selectedPipeline;
-        bool useRandomPipeline = false;
-        
-        if (world) {
-            const auto* controlState = world->get<SimpleControlSystem::ControlState>();
-            if (controlState && controlState->currentMovementType == 4) {
-                useRandomPipeline = true;
-            }
-        }
-        
-        if (useRandomPipeline) {
-            selectedPipeline = pipeline->getRandomComputePipeline();
-        } else {
-            selectedPipeline = pipeline->getPatternComputePipeline();
-        }
-        
-        // Bind selected compute pipeline
-        context->getLoader().vkCmdBindPipeline(computeCommandBuffers[currentFrame], VK_PIPELINE_BIND_POINT_COMPUTE, selectedPipeline);
+        // Bind unified compute pipeline
+        context->getLoader().vkCmdBindPipeline(computeCommandBuffers[currentFrame], VK_PIPELINE_BIND_POINT_COMPUTE, pipeline->getComputePipeline());
         
         // Bind compute descriptor set
         VkDescriptorSet computeDescriptorSet = gpuEntityManager->getCurrentComputeDescriptorSet();

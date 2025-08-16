@@ -43,12 +43,28 @@ struct GPUEntity {
             static_cast<float>(pattern.type)
         );
         
-        // Initialize runtime state
+        // Initialize runtime state with random staggering for RandomStep movement
+        float initialTimer = 0.0f;
+        float initialState = 0.0f; // Start in COMPUTING state
+        
+        if (pattern.type == MovementType::RandomStep) {
+            // Stagger entities to avoid all computing at once
+            // Use phase as a seed for random initial timer
+            uint32_t seed = static_cast<uint32_t>(pattern.phase * 10000.0f);
+            seed = (seed ^ 61u) ^ (seed >> 16u);
+            seed *= 9u;
+            float randomFactor = static_cast<float>(seed % 1000) / 1000.0f;
+            
+            // Random initial timer between 0-600 frames
+            initialTimer = randomFactor * 600.0f;
+            initialState = 1.0f; // Start in INTERPOLATING state with random timer
+        }
+        
         entity.runtimeState = glm::vec4(
             pattern.totalTime,
             pattern.initialized ? 1.0f : 0.0f,
-            0.0f, // stateTimer: timer for current state
-            pattern.initialized ? 1.0f : 0.0f  // entityState: STATE_NORMAL or STATE_SPAWN_LERP
+            initialTimer, // stateTimer: interpolation frame counter (0-600)
+            initialState  // entityState: 0=COMPUTING, 1=INTERPOLATING
         );
         
         return entity;
@@ -80,6 +96,8 @@ public:
     // GPU buffer management  
     VkBuffer getCurrentEntityBuffer() const { return entityStorage; }
     VkBuffer getCurrentPositionBuffer() const { return positionStorage; }
+    VkBuffer getCurrentPositionStorageBuffer() const { return currentPositionStorage; }
+    VkBuffer getTargetPositionStorageBuffer() const { return targetPositionStorage; }
     uint32_t getComputeInputIndex() const { return 0; }
     uint32_t getComputeOutputIndex() const { return 0; }
     void advanceFrame() { /* No-op for single buffer */ }
@@ -117,14 +135,21 @@ private:
     std::unique_ptr<ResourceHandle> positionStorageHandle;
     VkBuffer positionStorage = VK_NULL_HANDLE;
     
+    // Buffers for random walk interpolation
+    std::unique_ptr<ResourceHandle> currentPositionStorageHandle;
+    VkBuffer currentPositionStorage = VK_NULL_HANDLE;  // Current position for interpolation
+    
+    std::unique_ptr<ResourceHandle> targetPositionStorageHandle;
+    VkBuffer targetPositionStorage = VK_NULL_HANDLE;   // Target position for interpolation
+    
     // Entity state
     uint32_t activeEntityCount = 0;
     std::vector<GPUEntity> pendingEntities;
     
     
-    // Compute descriptor sets for storage buffers
+    // Single compute descriptor set for unified pipeline
     VkDescriptorPool computeDescriptorPool = VK_NULL_HANDLE;
-    VkDescriptorSetLayout computeDescriptorSetLayout = VK_NULL_HANDLE; // Reference to pipeline's layout
+    VkDescriptorSetLayout computeDescriptorSetLayout = VK_NULL_HANDLE; // Unified layout (4 bindings)
     VkDescriptorSet computeDescriptorSet = VK_NULL_HANDLE;
     bool ownsDescriptorSetLayout = false; // Track if we need to destroy the layout
     

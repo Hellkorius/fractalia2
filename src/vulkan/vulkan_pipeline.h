@@ -45,9 +45,8 @@ public:
     VkPipeline getGraphicsPipeline() const { return graphicsPipeline; }
     VkDescriptorSetLayout getDescriptorSetLayout() const { return descriptorSetLayout; }
     
-    // Modular compute pipeline support
-    VkPipeline getRandomComputePipeline() const { return randomComputePipeline; }
-    VkPipeline getPatternComputePipeline() const { return patternComputePipeline; }
+    // Unified compute pipeline support
+    VkPipeline getComputePipeline() const { return computePipeline; }
     VkPipelineLayout getComputePipelineLayout() const { return computePipelineLayout; }
     VkDescriptorSetLayout getComputeDescriptorSetLayout() const { return computeDescriptorSetLayout; }
 
@@ -60,11 +59,10 @@ private:
     VkDescriptorSetLayout descriptorSetLayout = VK_NULL_HANDLE;
     VkPipelineCache pipelineCache = VK_NULL_HANDLE;
     
-    // Modular compute pipeline resources
-    VkPipelineLayout computePipelineLayout = VK_NULL_HANDLE;
-    VkDescriptorSetLayout computeDescriptorSetLayout = VK_NULL_HANDLE;
-    VkPipeline randomComputePipeline = VK_NULL_HANDLE;
-    VkPipeline patternComputePipeline = VK_NULL_HANDLE;
+    // Unified compute pipeline resources
+    VkPipelineLayout computePipelineLayout = VK_NULL_HANDLE; // Unified pipeline layout
+    VkDescriptorSetLayout computeDescriptorSetLayout = VK_NULL_HANDLE; // Unified layout (3 bindings)
+    VkPipeline computePipeline = VK_NULL_HANDLE;
     
     // Pipeline layout cache (instance-owned for proper cleanup)
     std::unordered_map<PipelineLayoutKey, VkPipelineLayout, PipelineLayoutKeyHash> pipelineLayoutCache;
@@ -76,9 +74,9 @@ private:
     VkPipelineLayout getOrCreatePipelineLayout(VkDescriptorSetLayout setLayout, 
                                               const VkPushConstantRange* pushConstantRange = nullptr);
     
-    // Modular compute pipeline methods
+    // Unified compute pipeline methods
     bool createComputeDescriptorSetLayout();
-    bool createModularComputePipelines();
+    bool createComputePipeline();
     
     
     std::array<VkVertexInputBindingDescription, 2> getVertexBindingDescriptions();

@@ -25,6 +25,7 @@ public:
     
     // Update descriptor sets with position buffer for compute-based rendering
     bool updateDescriptorSetsWithPositionBuffer(VkBuffer positionBuffer);
+    bool updateDescriptorSetsWithPositionBuffers(VkBuffer currentPositionBuffer, VkBuffer targetPositionBuffer);
 
     const std::vector<VkBuffer>& getUniformBuffers() const { return uniformBuffers; }
     const std::vector<void*>& getUniformBuffersMapped() const { return uniformBuffersMapped; }

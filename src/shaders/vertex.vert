@@ -23,6 +23,7 @@ layout(std430, binding = 2) readonly buffer ComputedPositions {
     vec4 computedPos[];
 };
 
+
 layout(location = 0) out vec3 color;
 
 /* ---------- HSV → RGB ---------- */
@@ -43,8 +44,12 @@ vec3 hsv2rgb(float h, float s, float v) {
 }
 
 void main() {
-    // Get pre-computed position from compute shader
-    vec3 worldPos = computedPos[gl_InstanceIndex].xyz;
+    // Extract movement type to determine if this is a random movement entity
+    float movementType = centerType.w;
+    vec3 worldPos;
+    
+    // All movement types now use pre-computed positions from compute shader
+    worldPos = computedPos[gl_InstanceIndex].xyz;
     
     // Extract movement parameters for color calculation
     float phase = ampFreqPhaseOff.z;

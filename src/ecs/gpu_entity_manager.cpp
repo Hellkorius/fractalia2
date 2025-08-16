@@ -61,7 +61,27 @@ void GPUEntityManager::cleanup() {
         entityStorageHandle.reset();
     }
     
+    // Clean up position buffers
+    if (positionStorageHandle && resourceContext) {
+        resourceContext->destroyResource(*positionStorageHandle);
+        positionStorageHandle.reset();
+    }
+    
+    
+    if (currentPositionStorageHandle && resourceContext) {
+        resourceContext->destroyResource(*currentPositionStorageHandle);
+        currentPositionStorageHandle.reset();
+    }
+    
+    if (targetPositionStorageHandle && resourceContext) {
+        resourceContext->destroyResource(*targetPositionStorageHandle);
+        targetPositionStorageHandle.reset();
+    }
+    
     entityStorage = VK_NULL_HANDLE;
+    positionStorage = VK_NULL_HANDLE;
+    currentPositionStorage = VK_NULL_HANDLE;
+    targetPositionStorage = VK_NULL_HANDLE;
     
     // Clean up descriptor resources
     if (computeDescriptorPool != VK_NULL_HANDLE) {
@@ -226,9 +246,47 @@ bool GPUEntityManager::createEntityBuffers() {
         return false;
     }
     
+    
+    // Create current position buffer for interpolation
+    currentPositionStorageHandle = std::make_unique<ResourceHandle>(
+        resourceContext->createMappedBuffer(
+            POSITION_BUFFER_SIZE,
+            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
+        )
+    );
+    
+    if (!currentPositionStorageHandle->isValid()) {
+        std::cerr << "Failed to create current position buffer!" << std::endl;
+        currentPositionStorageHandle.reset();
+        positionStorageHandle.reset();
+        entityStorageHandle.reset();
+        return false;
+    }
+    
+    // Create target position buffer for interpolation
+    targetPositionStorageHandle = std::make_unique<ResourceHandle>(
+        resourceContext->createMappedBuffer(
+            POSITION_BUFFER_SIZE,
+            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
+        )
+    );
+    
+    if (!targetPositionStorageHandle->isValid()) {
+        std::cerr << "Failed to create target position buffer!" << std::endl;
+        targetPositionStorageHandle.reset();
+        currentPositionStorageHandle.reset();
+        positionStorageHandle.reset();
+        entityStorageHandle.reset();
+        return false;
+    }
+    
     // Maintain compatibility with existing API
     entityStorage = entityStorageHandle->buffer;
     positionStorage = positionStorageHandle->buffer;
+    currentPositionStorage = currentPositionStorageHandle->buffer;
+    targetPositionStorage = targetPositionStorageHandle->buffer;
     
     return true;
 }
@@ -236,9 +294,9 @@ bool GPUEntityManager::createEntityBuffers() {
 bool GPUEntityManager::createComputeDescriptorPool() {
     // Use ResourceContext for descriptor pool creation
     ResourceContext::DescriptorPoolConfig config;
-    config.maxSets = 1;
+    config.maxSets = 1; // Single unified descriptor set
     config.uniformBuffers = 0;
-    config.storageBuffers = 2; // 1 set * 2 buffers (input/output)
+    config.storageBuffers = 4; // Single set * 4 buffers
     config.sampledImages = 0;
     config.allowFreeDescriptorSets = true;
     
@@ -248,8 +306,8 @@ bool GPUEntityManager::createComputeDescriptorPool() {
 }
 
 bool GPUEntityManager::createComputeDescriptorSetLayout() {
-    // Two storage buffers: input and output
-    VkDescriptorSetLayoutBinding bindings[2] = {};
+    // Four storage buffers: entities, positions, currentPositions, targetPositions
+    VkDescriptorSetLayoutBinding bindings[4] = {};
     
     // Input buffer binding (entities)
     bindings[0].binding = 0;
@@ -263,9 +321,21 @@ bool GPUEntityManager::createComputeDescriptorSetLayout() {
     bindings[1].descriptorCount = 1;
     bindings[1].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
     
+    // Current positions buffer binding
+    bindings[2].binding = 2;
+    bindings[2].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    bindings[2].descriptorCount = 1;
+    bindings[2].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+    
+    // Target positions buffer binding
+    bindings[3].binding = 3;
+    bindings[3].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    bindings[3].descriptorCount = 1;
+    bindings[3].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+    
     VkDescriptorSetLayoutCreateInfo layoutInfo{};
     layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-    layoutInfo.bindingCount = 2;
+    layoutInfo.bindingCount = 4;
     layoutInfo.pBindings = bindings;
     
     return context->getLoader().vkCreateDescriptorSetLayout(context->getDevice(), &layoutInfo, nullptr, &computeDescriptorSetLayout) == VK_SUCCESS;
@@ -294,8 +364,18 @@ bool GPUEntityManager::createComputeDescriptorSets() {
     positionBufferInfo.offset = 0;
     positionBufferInfo.range = POSITION_BUFFER_SIZE;
     
-    // Input buffer (binding 0) and output buffer (binding 1)
-    std::vector<VkDescriptorBufferInfo> bufferInfos = {entityBufferInfo, positionBufferInfo};
+    VkDescriptorBufferInfo currentPositionBufferInfo{};
+    currentPositionBufferInfo.buffer = currentPositionStorage;
+    currentPositionBufferInfo.offset = 0;
+    currentPositionBufferInfo.range = POSITION_BUFFER_SIZE;
+    
+    VkDescriptorBufferInfo targetPositionBufferInfo{};
+    targetPositionBufferInfo.buffer = targetPositionStorage;
+    targetPositionBufferInfo.offset = 0;
+    targetPositionBufferInfo.range = POSITION_BUFFER_SIZE;
+    
+    // Input buffer (binding 0), output buffer (binding 1), current positions (binding 2), and target positions (binding 3)
+    std::vector<VkDescriptorBufferInfo> bufferInfos = {entityBufferInfo, positionBufferInfo, currentPositionBufferInfo, targetPositionBufferInfo};
     VulkanUtils::writeDescriptorSets(context->getDevice(), context->getLoader(), computeDescriptorSet, bufferInfos);
     
     return true;
