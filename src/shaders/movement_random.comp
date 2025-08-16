@@ -233,7 +233,8 @@ void main() {
         
         // Generate new random step from current position
         uint cycleNumber = uint(pc.frame / 600.0);
-        uint baseSeed = entityIndex ^ (cycleNumber * 7919u) ^ uint(phase * 10000.0);
+        // Ensure unique seed per entity per cycle - multiple prime multipliers prevent collisions
+        uint baseSeed = entityIndex * 2654435761u + cycleNumber * 1597334677u + uint(phase * 982451653.0) + uint(amplitude * 1640531371.0);
         float randAngle = pseudoRandom(baseSeed) * 6.28318530718; // 2π
         float stepMagnitude = pseudoRandom(baseSeed + 1u) * amplitude;
         
