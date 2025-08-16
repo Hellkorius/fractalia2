@@ -112,8 +112,6 @@ int main(int argc, char* argv[]) {
     // Set world reference in renderer for camera integration
     renderer.setWorld(&world);
     
-    // NOTE: Legacy CPU render system removed - entities now render directly via GPU compute
-    
     // Configure profiler for 60 FPS
     Profiler::getInstance().setTargetFrameTime(TARGET_FRAME_TIME);
 
@@ -205,9 +203,6 @@ int main(int argc, char* argv[]) {
                 if (events) events->clear();
             }
         }
-
-        // NOTE: Legacy CPU render system update removed - GPU entities render directly
-        
 
         {
             PROFILE_SCOPE("Vulkan Rendering");

@@ -70,7 +70,6 @@ bool VulkanPipeline::initialize(const VulkanContext& context, VkFormat swapChain
 void VulkanPipeline::cleanup() {
     if (!context) return;
     
-    // Clean up pipelines first
     if (graphicsPipeline != VK_NULL_HANDLE) {
         context->getLoader().vkDestroyPipeline(context->getDevice(), graphicsPipeline, nullptr);
         graphicsPipeline = VK_NULL_HANDLE;
@@ -80,17 +79,14 @@ void VulkanPipeline::cleanup() {
         computePipeline = VK_NULL_HANDLE;
     }
     
-    // Clean up all cached pipeline layouts
     for (auto& pair : pipelineLayoutCache) {
         context->getLoader().vkDestroyPipelineLayout(context->getDevice(), pair.second, nullptr);
     }
     pipelineLayoutCache.clear();
     
-    // Reset layout handles (they're now cleaned up via cache)
     pipelineLayout = VK_NULL_HANDLE;
     computePipelineLayout = VK_NULL_HANDLE;
     
-    // Clean up other resources
     if (renderPass != VK_NULL_HANDLE) {
         context->getLoader().vkDestroyRenderPass(context->getDevice(), renderPass, nullptr);
         renderPass = VK_NULL_HANDLE;
@@ -112,7 +108,6 @@ void VulkanPipeline::cleanup() {
 bool VulkanPipeline::recreate(VkFormat swapChainImageFormat) {
     cleanup();
     
-    // Recreate pipeline cache
     VkPipelineCacheCreateInfo pipelineCacheInfo{};
     pipelineCacheInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
     if (context->getLoader().vkCreatePipelineCache(context->getDevice(), &pipelineCacheInfo, nullptr, &pipelineCache) != VK_SUCCESS) {
@@ -212,14 +207,12 @@ bool VulkanPipeline::createRenderPass(VkFormat swapChainImageFormat) {
 bool VulkanPipeline::createDescriptorSetLayout() {
     std::array<VkDescriptorSetLayoutBinding, 2> bindings{};
     
-    // UBO binding (binding = 0)
     bindings[0].binding = 0;
     bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
     bindings[0].descriptorCount = 1;
     bindings[0].stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
     bindings[0].pImmutableSamplers = nullptr;
     
-    // Position buffer binding (binding = 2) for compute-based vertex shader
     bindings[1].binding = 2;
     bindings[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
     bindings[1].descriptorCount = 1;

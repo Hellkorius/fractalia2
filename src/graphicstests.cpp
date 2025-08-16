@@ -14,7 +14,6 @@ void runBufferOverflowTests(VulkanRenderer* renderer) {
     std::cout << "\n🔧 GRAPHICS BUFFER OVERFLOW TESTS INITIATED 🔧" << std::endl;
     std::cout << "Testing memory safety fixes..." << std::endl;
     
-    // Run the comprehensive buffer overflow protection test
     bool testsPassed = renderer->testBufferOverflowProtection();
     
     if (testsPassed) {
@@ -36,7 +35,6 @@ void runPerformanceTests(VulkanRenderer* renderer) {
     
     std::cout << "\n📊 GPU PERFORMANCE TESTS" << std::endl;
     
-    // Test GPU entity buffer capacity
     auto* gpuManager = renderer->getGPUEntityManager();
     if (gpuManager) {
         uint32_t gpuEntityCount = gpuManager->getEntityCount();

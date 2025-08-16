@@ -8,7 +8,6 @@
 #include <glm/glm.hpp>
 #include "vulkan_constants.h"
 
-// Forward declarations
 class VulkanContext;
 class VulkanFunctionLoader;
 class ResourceContext;

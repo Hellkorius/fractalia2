@@ -1,6 +1,5 @@
 #pragma once
 
-// Forward declaration
 class VulkanRenderer;
 
 namespace GraphicsTests {

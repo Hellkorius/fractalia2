@@ -73,7 +73,6 @@ bool VulkanSync::createCommandBuffers() {
     commandBuffers.resize(MAX_FRAMES_IN_FLIGHT);
     computeCommandBuffers.resize(MAX_FRAMES_IN_FLIGHT);
     
-    // Allocate graphics command buffers
     VkCommandBufferAllocateInfo allocInfo{};
     allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
     allocInfo.commandPool = commandPool;
@@ -85,7 +84,6 @@ bool VulkanSync::createCommandBuffers() {
         return false;
     }
     
-    // Allocate compute command buffers
     allocInfo.commandBufferCount = static_cast<uint32_t>(computeCommandBuffers.size());
     if (context->getLoader().vkAllocateCommandBuffers(context->getDevice(), &allocInfo, computeCommandBuffers.data()) != VK_SUCCESS) {
         std::cerr << "Failed to allocate compute command buffers" << std::endl;

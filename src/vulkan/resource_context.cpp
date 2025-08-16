@@ -43,7 +43,6 @@ bool StagingRingBuffer::initialize(const VulkanContext& context, VkDeviceSize si
         return false;
     }
     
-    // Allocate memory
     VkMemoryRequirements memRequirements;
     context.getLoader().vkGetBufferMemoryRequirements(context.getDevice(), ringBuffer.buffer, &memRequirements);
     
@@ -86,7 +85,6 @@ bool StagingRingBuffer::initialize(const VulkanContext& context, VkDeviceSize si
         return false;
     }
     
-    // Map the buffer persistently
     if (context.getLoader().vkMapMemory(context.getDevice(), memory, 0, size, 0, &ringBuffer.mappedData) != VK_SUCCESS) {
         std::cerr << "Failed to map staging buffer memory!" << std::endl;
         context.getLoader().vkFreeMemory(context.getDevice(), memory, nullptr);
@@ -94,7 +92,6 @@ bool StagingRingBuffer::initialize(const VulkanContext& context, VkDeviceSize si
         return false;
     }
     
-    // Store the memory handle in allocation (simplified)
     ringBuffer.allocation = reinterpret_cast<VmaAllocation>(memory);
     ringBuffer.size = size;
     
@@ -244,7 +241,6 @@ void GPUBufferRing::flushToGPU(VkDeviceSize dstOffset) {
         return;
     }
     
-    // Get staging buffer handle
     auto& stagingBuffer = resourceContext->getStagingBuffer();
     ResourceHandle stagingHandle;
     stagingHandle.buffer = stagingBuffer.getBuffer();

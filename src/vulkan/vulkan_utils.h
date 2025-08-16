@@ -5,7 +5,6 @@
 #include <vector>
 #include <string>
 
-// Forward declaration
 class VulkanFunctionLoader;
 
 // Consolidated utility functions for common Vulkan operations
