@@ -11,6 +11,7 @@
 // Forward declarations
 class VulkanContext;
 class VulkanFunctionLoader;
+class ResourceContext;
 
 #include "command_executor.h"
 
@@ -55,6 +56,44 @@ private:
     ResourceHandle ringBuffer;
     VkDeviceSize currentOffset = 0;
     VkDeviceSize totalSize = 0;
+};
+
+// GPU buffer with integrated staging support for compute operations
+class GPUBufferRing {
+public:
+    GPUBufferRing() = default;
+    ~GPUBufferRing();
+    
+    bool initialize(ResourceContext* resourceContext, VkDeviceSize size,
+                   VkBufferUsageFlags usage, VkMemoryPropertyFlags properties);
+    void cleanup();
+    
+    // Buffer access
+    VkBuffer getBuffer() const { return storageHandle ? storageHandle->buffer : VK_NULL_HANDLE; }
+    void* getMappedData() const { return storageHandle ? storageHandle->mappedData : nullptr; }
+    VkDeviceSize getSize() const { return bufferSize; }
+    bool isValid() const { return storageHandle && storageHandle->isValid(); }
+    
+    // Staging operations for device-local buffers
+    bool addData(const void* data, VkDeviceSize size, VkDeviceSize alignment = alignof(std::max_align_t));
+    void flushToGPU(VkDeviceSize dstOffset = 0); // dstOffset for where to write in destination
+    void resetStaging();
+    bool hasPendingData() const { return needsUpload; }
+    
+    // Direct access to handle for special operations
+    ResourceHandle* getHandle() { return storageHandle.get(); }
+    const ResourceHandle* getHandle() const { return storageHandle.get(); }
+    
+private:
+    std::unique_ptr<ResourceHandle> storageHandle;
+    ResourceContext* resourceContext = nullptr;
+    VkDeviceSize bufferSize = 0;
+    
+    // Staging state for device-local buffers
+    VkDeviceSize stagingBytesWritten = 0;
+    VkDeviceSize stagingStartOffset = 0;
+    bool needsUpload = false;
+    bool isDeviceLocal = false;
 };
 
 // Lightweight centralized resource allocation manager

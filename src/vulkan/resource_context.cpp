@@ -153,6 +153,124 @@ void StagingRingBuffer::reset() {
     currentOffset = 0;
 }
 
+// GPUBufferRing implementation
+GPUBufferRing::~GPUBufferRing() {
+    cleanup();
+}
+
+bool GPUBufferRing::initialize(ResourceContext* resourceContext, VkDeviceSize size,
+                               VkBufferUsageFlags usage, VkMemoryPropertyFlags properties) {
+    this->resourceContext = resourceContext;
+    this->bufferSize = size;
+    this->isDeviceLocal = (properties & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) != 0;
+    
+    // For device-local buffers, add transfer destination flag
+    if (isDeviceLocal) {
+        usage |= VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    }
+    
+    // Create the buffer based on memory properties
+    if (properties & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) {
+        // Host-visible buffer (can be mapped)
+        storageHandle = std::make_unique<ResourceHandle>(
+            resourceContext->createMappedBuffer(size, usage, properties)
+        );
+    } else {
+        // Device-local buffer (cannot be mapped directly)
+        storageHandle = std::make_unique<ResourceHandle>(
+            resourceContext->createBuffer(size, usage, properties)
+        );
+    }
+    
+    if (!storageHandle->isValid()) {
+        storageHandle.reset();
+        return false;
+    }
+    
+    return true;
+}
+
+void GPUBufferRing::cleanup() {
+    if (storageHandle && resourceContext) {
+        resourceContext->destroyResource(*storageHandle);
+        storageHandle.reset();
+    }
+    
+    stagingBytesWritten = 0;
+    stagingStartOffset = 0;
+    needsUpload = false;
+}
+
+bool GPUBufferRing::addData(const void* data, VkDeviceSize size, VkDeviceSize alignment) {
+    if (!storageHandle || !data) return false;
+    
+    // If buffer is host-visible, write directly
+    if (storageHandle->mappedData) {
+        memcpy(static_cast<char*>(storageHandle->mappedData) + stagingBytesWritten, data, size);
+        stagingBytesWritten += size;
+        return true;
+    }
+    
+    // For device-local buffers, use staging buffer
+    if (!isDeviceLocal || !resourceContext) return false;
+    
+    auto& stagingBuffer = resourceContext->getStagingBuffer();
+    auto stagingRegion = stagingBuffer.allocate(size, alignment);
+    
+    if (!stagingRegion.mappedData) {
+        // Reset and try again
+        stagingBuffer.reset();
+        stagingBytesWritten = 0;
+        stagingStartOffset = 0;
+        stagingRegion = stagingBuffer.allocate(size, alignment);
+    }
+    
+    if (stagingRegion.mappedData) {
+        memcpy(stagingRegion.mappedData, data, size);
+        if (stagingBytesWritten == 0) {
+            // Track where our batch starts
+            stagingStartOffset = stagingRegion.offset;
+        }
+        stagingBytesWritten += size;
+        needsUpload = true;
+        return true;
+    }
+    
+    return false;
+}
+
+void GPUBufferRing::flushToGPU(VkDeviceSize dstOffset) {
+    if (!needsUpload || stagingBytesWritten == 0 || !isDeviceLocal) {
+        return;
+    }
+    
+    // Get staging buffer handle
+    auto& stagingBuffer = resourceContext->getStagingBuffer();
+    ResourceHandle stagingHandle;
+    stagingHandle.buffer = stagingBuffer.getBuffer();
+    
+    // Copy from staging buffer to device-local buffer
+    resourceContext->copyBufferToBuffer(
+        stagingHandle,
+        *storageHandle,
+        stagingBytesWritten,
+        stagingStartOffset,
+        dstOffset
+    );
+    
+    // Reset staging state
+    resetStaging();
+}
+
+void GPUBufferRing::resetStaging() {
+    if (resourceContext) {
+        resourceContext->getStagingBuffer().reset();
+    }
+    stagingBytesWritten = 0;
+    stagingStartOffset = 0;
+    needsUpload = false;
+}
+
 // ResourceContext implementation
 ResourceContext::ResourceContext() {
 }

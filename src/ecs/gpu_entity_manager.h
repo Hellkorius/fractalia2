@@ -75,6 +75,7 @@ static_assert(sizeof(GPUEntity) == 128, "GPUEntity must be exactly 128 bytes for
 class VulkanContext;
 class VulkanSync;
 class ResourceContext;
+class GPUBufferRing;
 
 // Include ResourceHandle definition since we access its members inline
 #include "../vulkan/resource_context.h"
@@ -95,17 +96,17 @@ public:
     void clearAllEntities();
     
     // GPU buffer management  
-    VkBuffer getCurrentEntityBuffer() const { return entityStorageHandle->buffer; }
-    VkBuffer getCurrentPositionBuffer() const { return positionStorageHandle->buffer; }
-    VkBuffer getCurrentPositionStorageBuffer() const { return currentPositionStorageHandle->buffer; }
-    VkBuffer getTargetPositionStorageBuffer() const { return targetPositionStorageHandle->buffer; }
+    VkBuffer getCurrentEntityBuffer() const;
+    VkBuffer getCurrentPositionBuffer() const;
+    VkBuffer getCurrentPositionStorageBuffer() const;
+    VkBuffer getTargetPositionStorageBuffer() const;
     uint32_t getComputeInputIndex() const { return 0; }
     uint32_t getComputeOutputIndex() const { return 0; }
     
     // Getters
     uint32_t getEntityCount() const { return activeEntityCount; }
     uint32_t getMaxEntities() const { return MAX_ENTITIES; }
-    bool hasPendingUploads() const { return needsUpload; }
+    bool hasPendingUploads() const;
     
     
     // Descriptor set management
@@ -125,23 +126,15 @@ private:
     VulkanSync* sync = nullptr;
     ResourceContext* resourceContext = nullptr;
     
-    // Single buffer storage for compute pipeline using ResourceContext
-    std::unique_ptr<ResourceHandle> entityStorageHandle;
-    
-    // Position buffer for compute shader output
-    std::unique_ptr<ResourceHandle> positionStorageHandle;
-    
-    // Buffers for random walk interpolation
-    std::unique_ptr<ResourceHandle> currentPositionStorageHandle;
-    std::unique_ptr<ResourceHandle> targetPositionStorageHandle;
+    // GPU buffers using GPUBufferRing for unified management
+    std::unique_ptr<GPUBufferRing> entityBuffer;      // Entity storage buffer
+    std::unique_ptr<GPUBufferRing> positionBuffer;    // Position output buffer
+    std::unique_ptr<GPUBufferRing> currentPositionBuffer; // Current interpolation positions
+    std::unique_ptr<GPUBufferRing> targetPositionBuffer;  // Target interpolation positions
     
     // Entity state
     uint32_t activeEntityCount = 0;
-    
-    // Staging buffer state for direct writes
-    VkDeviceSize stagingBytesWritten = 0;
-    VkDeviceSize stagingStartOffset = 0; // Track where our data starts in staging buffer
-    bool needsUpload = false;
+    uint32_t lastFlushedCount = 0; // Track entities already on GPU
     
     
     // Single compute descriptor set for unified pipeline

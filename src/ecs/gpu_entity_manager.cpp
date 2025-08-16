@@ -10,7 +10,7 @@
 #include <cassert>
 
 GPUEntityManager::GPUEntityManager() {
-    // No longer need to pre-allocate pendingEntities vector
+    // Buffers will be initialized in initialize()
 }
 
 GPUEntityManager::~GPUEntityManager() {
@@ -55,27 +55,25 @@ bool GPUEntityManager::initialize(const VulkanContext& context, VulkanSync* sync
 void GPUEntityManager::cleanup() {
     if (!context) return;
     
-    // Clean up entity buffer using ResourceContext
-    if (entityStorageHandle && resourceContext) {
-        resourceContext->destroyResource(*entityStorageHandle);
-        entityStorageHandle.reset();
+    // Clean up GPU buffers using GPUBufferRing
+    if (entityBuffer) {
+        entityBuffer->cleanup();
+        entityBuffer.reset();
     }
     
-    // Clean up position buffers
-    if (positionStorageHandle && resourceContext) {
-        resourceContext->destroyResource(*positionStorageHandle);
-        positionStorageHandle.reset();
+    if (positionBuffer) {
+        positionBuffer->cleanup();
+        positionBuffer.reset();
     }
     
-    
-    if (currentPositionStorageHandle && resourceContext) {
-        resourceContext->destroyResource(*currentPositionStorageHandle);
-        currentPositionStorageHandle.reset();
+    if (currentPositionBuffer) {
+        currentPositionBuffer->cleanup();
+        currentPositionBuffer.reset();
     }
     
-    if (targetPositionStorageHandle && resourceContext) {
-        resourceContext->destroyResource(*targetPositionStorageHandle);
-        targetPositionStorageHandle.reset();
+    if (targetPositionBuffer) {
+        targetPositionBuffer->cleanup();
+        targetPositionBuffer.reset();
     }
     
     
@@ -99,27 +97,11 @@ void GPUEntityManager::addEntity(const GPUEntity& entity) {
         return;
     }
     
-    // Write directly to staging buffer
-    auto stagingRegion = resourceContext->getStagingBuffer().allocate(sizeof(GPUEntity), alignof(GPUEntity));
-    if (!stagingRegion.mappedData) {
-        // Reset and try again
-        resourceContext->getStagingBuffer().reset();
-        stagingBytesWritten = 0;
-        stagingStartOffset = 0;
-        stagingRegion = resourceContext->getStagingBuffer().allocate(sizeof(GPUEntity), alignof(GPUEntity));
-    }
-    
-    if (stagingRegion.mappedData) {
-        memcpy(stagingRegion.mappedData, &entity, sizeof(GPUEntity));
-        if (stagingBytesWritten == 0) {
-            // Track where our batch starts
-            stagingStartOffset = stagingRegion.offset;
-        }
-        stagingBytesWritten += sizeof(GPUEntity);
+    // Use GPUBufferRing's staging functionality
+    if (entityBuffer && entityBuffer->addData(&entity, sizeof(GPUEntity), alignof(GPUEntity))) {
         activeEntityCount++;
-        needsUpload = true;
     } else {
-        std::cerr << "Failed to allocate staging buffer for entity!" << std::endl;
+        std::cerr << "Failed to add entity to buffer!" << std::endl;
     }
 }
 
@@ -136,52 +118,54 @@ void GPUEntityManager::addEntitiesFromECS(const std::vector<Entity>& entities) {
 }
 
 void GPUEntityManager::flushStagingBuffer() {
-    if (!needsUpload || stagingBytesWritten == 0) {
+    if (!entityBuffer || !entityBuffer->hasPendingData()) {
         return;
     }
     
-    // Calculate how many entities were written to staging buffer
-    uint32_t entityCount = static_cast<uint32_t>(stagingBytesWritten / sizeof(GPUEntity));
-    if (entityCount == 0) {
-        return;
-    }
+    // Calculate where to write new entities in the buffer
+    // New entities go after the ones already flushed to GPU
+    VkDeviceSize dstOffset = lastFlushedCount * sizeof(GPUEntity);
     
-    // Calculate offset in destination buffer
-    VkDeviceSize dstOffset = (activeEntityCount - entityCount) * sizeof(GPUEntity);
+    // Flush entity buffer to GPU at the calculated offset
+    entityBuffer->flushToGPU(dstOffset);
     
-    // Get staging buffer handle
-    auto& stagingBuffer = resourceContext->getStagingBuffer();
-    ResourceHandle stagingHandle;
-    stagingHandle.buffer = stagingBuffer.getBuffer();
-    
-    // Copy from staging buffer to device-local entity buffer
-    // This performs a single vkCmdCopyBuffer command
-    resourceContext->copyBufferToBuffer(
-        stagingHandle,
-        *entityStorageHandle,
-        stagingBytesWritten,
-        stagingStartOffset, // Use the actual offset where our data starts
-        dstOffset
-    );
-    
-    // Reset staging state
-    stagingBuffer.reset();
-    stagingBytesWritten = 0;
-    stagingStartOffset = 0;
-    needsUpload = false;
+    // Update the count of entities flushed to GPU
+    lastFlushedCount = activeEntityCount;
     
 #ifdef _DEBUG
-    std::cout << "Flushed " << entityCount << " entities from staging buffer. Total: " << activeEntityCount << std::endl;
+    uint32_t newEntities = activeEntityCount - (dstOffset / sizeof(GPUEntity));
+    std::cout << "Flushed " << newEntities << " entities to GPU. Total: " << activeEntityCount << std::endl;
 #endif
 }
 
 
 void GPUEntityManager::clearAllEntities() {
     activeEntityCount = 0;
-    resourceContext->getStagingBuffer().reset();
-    stagingBytesWritten = 0;
-    stagingStartOffset = 0;
-    needsUpload = false;
+    lastFlushedCount = 0;
+    if (entityBuffer) {
+        entityBuffer->resetStaging();
+    }
+}
+
+// Buffer getter implementations
+VkBuffer GPUEntityManager::getCurrentEntityBuffer() const {
+    return entityBuffer ? entityBuffer->getBuffer() : VK_NULL_HANDLE;
+}
+
+VkBuffer GPUEntityManager::getCurrentPositionBuffer() const {
+    return positionBuffer ? positionBuffer->getBuffer() : VK_NULL_HANDLE;
+}
+
+VkBuffer GPUEntityManager::getCurrentPositionStorageBuffer() const {
+    return currentPositionBuffer ? currentPositionBuffer->getBuffer() : VK_NULL_HANDLE;
+}
+
+VkBuffer GPUEntityManager::getTargetPositionStorageBuffer() const {
+    return targetPositionBuffer ? targetPositionBuffer->getBuffer() : VK_NULL_HANDLE;
+}
+
+bool GPUEntityManager::hasPendingUploads() const {
+    return entityBuffer && entityBuffer->hasPendingData();
 }
 
 
@@ -189,74 +173,49 @@ void GPUEntityManager::clearAllEntities() {
 
 
 bool GPUEntityManager::createEntityBuffers() {
-    // Create entity buffer using ResourceContext (input for compute shader)
-    // Use DEVICE_LOCAL memory with TRANSFER_DST for optimal performance
-    entityStorageHandle = std::make_unique<ResourceHandle>(
-        resourceContext->createBuffer(
+    // Create entity buffer using GPUBufferRing (input for compute shader)
+    entityBuffer = std::make_unique<GPUBufferRing>();
+    if (!entityBuffer->initialize(
+            resourceContext,
             ENTITY_BUFFER_SIZE,
-            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
-        )
-    );
-    
-    if (!entityStorageHandle->isValid()) {
+            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)) {
         std::cerr << "Failed to create entity buffer!" << std::endl;
-        entityStorageHandle.reset();
         return false;
     }
     
-    // Create position buffer using ResourceContext (output from compute shader)
-    positionStorageHandle = std::make_unique<ResourceHandle>(
-        resourceContext->createMappedBuffer(
+    // Create position buffer using GPUBufferRing (output from compute shader)
+    positionBuffer = std::make_unique<GPUBufferRing>();
+    if (!positionBuffer->initialize(
+            resourceContext,
             POSITION_BUFFER_SIZE,
             VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
-        )
-    );
-    
-    if (!positionStorageHandle->isValid()) {
+            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)) {
         std::cerr << "Failed to create position buffer!" << std::endl;
-        positionStorageHandle.reset();
-        entityStorageHandle.reset();
         return false;
     }
     
-    
     // Create current position buffer for interpolation
-    currentPositionStorageHandle = std::make_unique<ResourceHandle>(
-        resourceContext->createMappedBuffer(
+    currentPositionBuffer = std::make_unique<GPUBufferRing>();
+    if (!currentPositionBuffer->initialize(
+            resourceContext,
             POSITION_BUFFER_SIZE,
             VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
-        )
-    );
-    
-    if (!currentPositionStorageHandle->isValid()) {
+            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)) {
         std::cerr << "Failed to create current position buffer!" << std::endl;
-        currentPositionStorageHandle.reset();
-        positionStorageHandle.reset();
-        entityStorageHandle.reset();
         return false;
     }
     
     // Create target position buffer for interpolation
-    targetPositionStorageHandle = std::make_unique<ResourceHandle>(
-        resourceContext->createMappedBuffer(
+    targetPositionBuffer = std::make_unique<GPUBufferRing>();
+    if (!targetPositionBuffer->initialize(
+            resourceContext,
             POSITION_BUFFER_SIZE,
             VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT
-        )
-    );
-    
-    if (!targetPositionStorageHandle->isValid()) {
+            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)) {
         std::cerr << "Failed to create target position buffer!" << std::endl;
-        targetPositionStorageHandle.reset();
-        currentPositionStorageHandle.reset();
-        positionStorageHandle.reset();
-        entityStorageHandle.reset();
         return false;
     }
-    
     
     return true;
 }
@@ -325,22 +284,22 @@ bool GPUEntityManager::createComputeDescriptorSets() {
     
     // Update descriptor set with proper input and output buffers
     VkDescriptorBufferInfo entityBufferInfo{};
-    entityBufferInfo.buffer = entityStorageHandle->buffer;
+    entityBufferInfo.buffer = entityBuffer->getBuffer();
     entityBufferInfo.offset = 0;
     entityBufferInfo.range = ENTITY_BUFFER_SIZE;
     
     VkDescriptorBufferInfo positionBufferInfo{};
-    positionBufferInfo.buffer = positionStorageHandle->buffer;
+    positionBufferInfo.buffer = positionBuffer->getBuffer();
     positionBufferInfo.offset = 0;
     positionBufferInfo.range = POSITION_BUFFER_SIZE;
     
     VkDescriptorBufferInfo currentPositionBufferInfo{};
-    currentPositionBufferInfo.buffer = currentPositionStorageHandle->buffer;
+    currentPositionBufferInfo.buffer = currentPositionBuffer->getBuffer();
     currentPositionBufferInfo.offset = 0;
     currentPositionBufferInfo.range = POSITION_BUFFER_SIZE;
     
     VkDescriptorBufferInfo targetPositionBufferInfo{};
-    targetPositionBufferInfo.buffer = targetPositionStorageHandle->buffer;
+    targetPositionBufferInfo.buffer = targetPositionBuffer->getBuffer();
     targetPositionBufferInfo.offset = 0;
     targetPositionBufferInfo.range = POSITION_BUFFER_SIZE;
     
