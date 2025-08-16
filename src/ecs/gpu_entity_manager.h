@@ -89,7 +89,7 @@ public:
     // Entity management
     void addEntity(const GPUEntity& entity);
     void addEntitiesFromECS(const std::vector<Entity>& entities);
-    void uploadPendingEntities();
+    void flushStagingBuffer(); // Replaces uploadPendingEntities
     void clearAllEntities();
     
     // GPU buffer management  
@@ -103,7 +103,7 @@ public:
     // Getters
     uint32_t getEntityCount() const { return activeEntityCount; }
     uint32_t getMaxEntities() const { return MAX_ENTITIES; }
-    bool hasPendingUploads() const { return !pendingEntities.empty(); }
+    bool hasPendingUploads() const { return needsUpload; }
     
     
     // Descriptor set management
@@ -140,7 +140,11 @@ private:
     
     // Entity state
     uint32_t activeEntityCount = 0;
-    std::vector<GPUEntity> pendingEntities;
+    
+    // Staging buffer state for direct writes
+    VkDeviceSize stagingBytesWritten = 0;
+    VkDeviceSize stagingStartOffset = 0; // Track where our data starts in staging buffer
+    bool needsUpload = false;
     
     
     // Single compute descriptor set for unified pipeline

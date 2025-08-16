@@ -47,6 +47,9 @@ public:
     StagingRegion allocate(VkDeviceSize size, VkDeviceSize alignment = 1);
     void reset(); // Reset to beginning of ring buffer
     
+    // Getter for buffer handle
+    VkBuffer getBuffer() const { return ringBuffer.buffer; }
+    
 private:
     const VulkanContext* context = nullptr;
     ResourceHandle ringBuffer;

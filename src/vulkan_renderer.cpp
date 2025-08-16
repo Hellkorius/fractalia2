@@ -483,7 +483,7 @@ void VulkanRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t
 
 void VulkanRenderer::uploadPendingGPUEntities() {
     if (gpuEntityManager) {
-        gpuEntityManager->uploadPendingEntities();
+        gpuEntityManager->flushStagingBuffer();
     }
 }
 

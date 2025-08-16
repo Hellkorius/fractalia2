@@ -10,7 +10,7 @@
 #include <cassert>
 
 GPUEntityManager::GPUEntityManager() {
-    pendingEntities.reserve(10000); // Pre-allocate for batch uploads
+    // No longer need to pre-allocate pendingEntities vector
 }
 
 GPUEntityManager::~GPUEntityManager() {
@@ -98,7 +98,33 @@ void GPUEntityManager::cleanup() {
 }
 
 void GPUEntityManager::addEntity(const GPUEntity& entity) {
-    pendingEntities.push_back(entity);
+    if (activeEntityCount >= MAX_ENTITIES) {
+        std::cerr << "GPU entity buffer full, cannot add more entities!" << std::endl;
+        return;
+    }
+    
+    // Write directly to staging buffer
+    auto stagingRegion = resourceContext->getStagingBuffer().allocate(sizeof(GPUEntity), alignof(GPUEntity));
+    if (!stagingRegion.mappedData) {
+        // Reset and try again
+        resourceContext->getStagingBuffer().reset();
+        stagingBytesWritten = 0;
+        stagingStartOffset = 0;
+        stagingRegion = resourceContext->getStagingBuffer().allocate(sizeof(GPUEntity), alignof(GPUEntity));
+    }
+    
+    if (stagingRegion.mappedData) {
+        memcpy(stagingRegion.mappedData, &entity, sizeof(GPUEntity));
+        if (stagingBytesWritten == 0) {
+            // Track where our batch starts
+            stagingStartOffset = stagingRegion.offset;
+        }
+        stagingBytesWritten += sizeof(GPUEntity);
+        activeEntityCount++;
+        needsUpload = true;
+    } else {
+        std::cerr << "Failed to allocate staging buffer for entity!" << std::endl;
+    }
 }
 
 void GPUEntityManager::addEntitiesFromECS(const std::vector<Entity>& entities) {
@@ -114,54 +140,53 @@ void GPUEntityManager::addEntitiesFromECS(const std::vector<Entity>& entities) {
     }
 }
 
-void GPUEntityManager::uploadPendingEntities() {
-    if (pendingEntities.empty()) {
+void GPUEntityManager::flushStagingBuffer() {
+    if (!needsUpload || stagingBytesWritten == 0) {
         return;
     }
     
-    uint32_t requestedCount = static_cast<uint32_t>(pendingEntities.size());
-    uint32_t availableSpace = (activeEntityCount < MAX_ENTITIES) ? (MAX_ENTITIES - activeEntityCount) : 0;
-    
-    uint32_t newEntityCount = std::min(requestedCount, availableSpace);
-    
-#ifdef _DEBUG
-    assert(newEntityCount > 0 && "GPU entity buffer must have available space");
-    assert(activeEntityCount + newEntityCount <= MAX_ENTITIES && "Must not exceed buffer capacity");
-#endif
-    
-    if (newEntityCount == 0) {
+    // Calculate how many entities were written to staging buffer
+    uint32_t entityCount = static_cast<uint32_t>(stagingBytesWritten / sizeof(GPUEntity));
+    if (entityCount == 0) {
         return;
     }
     
-    // Use staging buffer for efficient transfer to device-local memory
-    VkDeviceSize uploadSize = newEntityCount * sizeof(GPUEntity);
-    VkDeviceSize uploadOffset = activeEntityCount * sizeof(GPUEntity);
+    // Calculate offset in destination buffer
+    VkDeviceSize dstOffset = (activeEntityCount - entityCount) * sizeof(GPUEntity);
     
-    resourceContext->copyToBuffer(
+    // Get staging buffer handle
+    auto& stagingBuffer = resourceContext->getStagingBuffer();
+    ResourceHandle stagingHandle;
+    stagingHandle.buffer = stagingBuffer.getBuffer();
+    
+    // Copy from staging buffer to device-local entity buffer
+    // This performs a single vkCmdCopyBuffer command
+    resourceContext->copyBufferToBuffer(
+        stagingHandle,
         *entityStorageHandle,
-        pendingEntities.data(),
-        uploadSize,
-        uploadOffset
+        stagingBytesWritten,
+        stagingStartOffset, // Use the actual offset where our data starts
+        dstOffset
     );
     
-    activeEntityCount += newEntityCount;
-    
-    // Clear uploaded entities
-    if (newEntityCount == pendingEntities.size()) {
-        pendingEntities.clear();
-    } else {
-        pendingEntities.erase(pendingEntities.begin(), pendingEntities.begin() + newEntityCount);
-    }
+    // Reset staging state
+    stagingBuffer.reset();
+    stagingBytesWritten = 0;
+    stagingStartOffset = 0;
+    needsUpload = false;
     
 #ifdef _DEBUG
-    std::cout << "Uploaded " << newEntityCount << " entities to GPU via staging buffer. Total: " << activeEntityCount << std::endl;
+    std::cout << "Flushed " << entityCount << " entities from staging buffer. Total: " << activeEntityCount << std::endl;
 #endif
 }
 
 
 void GPUEntityManager::clearAllEntities() {
     activeEntityCount = 0;
-    pendingEntities.clear();
+    resourceContext->getStagingBuffer().reset();
+    stagingBytesWritten = 0;
+    stagingStartOffset = 0;
+    needsUpload = false;
 }
 
 
