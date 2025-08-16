@@ -50,9 +50,8 @@ fractalia2/
 │   │   ├── vulkan_context.*    # Instance, device, queue setup
 │   │   ├── vulkan_swapchain.*  # Swapchain, MSAA, framebuffers
 │   │   ├── vulkan_pipeline.*   # Graphics pipeline, shaders
-│   │   ├── vulkan_resources.*  # Buffers, descriptors, uniforms
 │   │   ├── vulkan_sync.*       # Fences, semaphores, command pools
-│   │   ├── resource_context.*  # Unified buffer/memory manager
+│   │   ├── resource_context.*  # Unified buffer/memory manager, graphics descriptors
 │   │   ├── command_executor.*  # Staging buffer operations
 │   │   ├── vulkan_function_loader.* # Dynamic Vulkan loading
 │   │   ├── vulkan_utils.*      # File I/O, validation

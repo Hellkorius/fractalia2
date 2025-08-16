@@ -5,6 +5,8 @@
 #include <memory>
 #include <vector>
 #include <functional>
+#include <glm/glm.hpp>
+#include "vulkan_constants.h"
 
 // Forward declarations
 class VulkanContext;
@@ -108,6 +110,23 @@ public:
     VkDescriptorPool createDescriptorPool(); // Overload with default config
     void destroyDescriptorPool(VkDescriptorPool pool);
     
+    // Graphics pipeline resources (moved from VulkanResources)
+    bool createUniformBuffers();
+    bool createTriangleBuffers();
+    bool createGraphicsDescriptorPool(VkDescriptorSetLayout descriptorSetLayout);
+    bool createGraphicsDescriptorSets(VkDescriptorSetLayout descriptorSetLayout);
+    bool updateDescriptorSetsWithPositionBuffer(VkBuffer positionBuffer);
+    bool updateDescriptorSetsWithPositionBuffers(VkBuffer currentPositionBuffer, VkBuffer targetPositionBuffer);
+    
+    // Getters for graphics resources
+    const std::vector<VkBuffer>& getUniformBuffers() const { return uniformBuffers; }
+    const std::vector<void*>& getUniformBuffersMapped() const { return uniformBuffersMapped; }
+    VkBuffer getVertexBuffer() const { return vertexBufferHandle.buffer; }
+    VkBuffer getIndexBuffer() const { return indexBufferHandle.buffer; }
+    uint32_t getIndexCount() const { return indexCount; }
+    VkDescriptorPool getGraphicsDescriptorPool() const { return graphicsDescriptorPool; }
+    const std::vector<VkDescriptorSet>& getGraphicsDescriptorSets() const { return graphicsDescriptorSets; }
+    
     // Statistics and debugging
     struct MemoryStats {
         VkDeviceSize totalAllocated = 0;
@@ -131,4 +150,16 @@ private:
     
     // Resource tracking
     std::vector<std::function<void()>> cleanupCallbacks;
+    
+    // Graphics pipeline resources (moved from VulkanResources)
+    std::vector<ResourceHandle> uniformBufferHandles;
+    std::vector<VkBuffer> uniformBuffers;  // For compatibility
+    std::vector<void*> uniformBuffersMapped;
+    
+    ResourceHandle vertexBufferHandle;
+    ResourceHandle indexBufferHandle;
+    uint32_t indexCount = 0;
+    
+    VkDescriptorPool graphicsDescriptorPool = VK_NULL_HANDLE;
+    std::vector<VkDescriptorSet> graphicsDescriptorSets;
 };

@@ -3,7 +3,6 @@
 #include "vulkan/vulkan_context.h"
 #include "vulkan/vulkan_swapchain.h"
 #include "vulkan/vulkan_pipeline.h"
-#include "vulkan/vulkan_resources.h"
 #include "vulkan/vulkan_sync.h"
 #include "vulkan/resource_context.h"
 #include "ecs/gpu_entity_manager.h"
@@ -67,30 +66,22 @@ bool VulkanRenderer::initialize(SDL_Window* window) {
         return false;
     }
     
-    resources = std::make_unique<VulkanResources>();
-    if (!resources->initialize(*context, sync.get(), resourceContext.get())) {
-        std::cerr << "Failed to initialize Vulkan resources" << std::endl;
-        return false;
-    }
-    
-    if (!resources->createUniformBuffers()) {
+    if (!resourceContext->createUniformBuffers()) {
         std::cerr << "Failed to create uniform buffers" << std::endl;
         return false;
     }
     
-    if (!resources->createTriangleBuffers()) {
+    if (!resourceContext->createTriangleBuffers()) {
         std::cerr << "Failed to create triangle buffers" << std::endl;
         return false;
     }
     
-    
-    
-    if (!resources->createDescriptorPool(pipeline->getDescriptorSetLayout())) {
+    if (!resourceContext->createGraphicsDescriptorPool(pipeline->getDescriptorSetLayout())) {
         std::cerr << "Failed to create descriptor pool" << std::endl;
         return false;
     }
     
-    if (!resources->createDescriptorSets(pipeline->getDescriptorSetLayout())) {
+    if (!resourceContext->createGraphicsDescriptorSets(pipeline->getDescriptorSetLayout())) {
         std::cerr << "Failed to create descriptor sets" << std::endl;
         return false;
     }
@@ -103,7 +94,7 @@ bool VulkanRenderer::initialize(SDL_Window* window) {
     }
     
     // Update graphics descriptor sets with position buffer for compute-based rendering
-    if (!resources->updateDescriptorSetsWithPositionBuffer(gpuEntityManager->getCurrentPositionBuffer())) {
+    if (!resourceContext->updateDescriptorSetsWithPositionBuffer(gpuEntityManager->getCurrentPositionBuffer())) {
         std::cerr << "Failed to update descriptor sets with position buffer" << std::endl;
         return false;
     }
@@ -136,8 +127,8 @@ void VulkanRenderer::cleanup() {
     
     movementCommandProcessor.reset();
     gpuEntityManager.reset();
+    resourceContext.reset();
     sync.reset();
-    resources.reset();
     pipeline.reset();
     swapchain.reset();
     context.reset();
@@ -396,7 +387,7 @@ bool VulkanRenderer::recreateSwapChain() {
         }
         
         // Update graphics descriptor sets with position buffer after recreation
-        if (!resources->updateDescriptorSetsWithPositionBuffer(gpuEntityManager->getCurrentPositionBuffer())) {
+        if (!resourceContext->updateDescriptorSetsWithPositionBuffer(gpuEntityManager->getCurrentPositionBuffer())) {
             std::cerr << "Failed to update graphics descriptor sets with position buffer!" << std::endl;
             recreationInProgress = false;
             return false;
@@ -437,7 +428,7 @@ void VulkanRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t
 
     context->getLoader().vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->getGraphicsPipeline());
     
-    const auto& descriptorSets = resources->getDescriptorSets();
+    const auto& descriptorSets = resourceContext->getGraphicsDescriptorSets();
     context->getLoader().vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->getPipelineLayout(), 0, 1, &descriptorSets[currentFrame], 0, nullptr);
 
     // Push constants for vertex shader
@@ -472,11 +463,11 @@ void VulkanRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t
     // GPU-only rendering - all entities are triangles
     uint32_t gpuEntityCount = gpuEntityManager ? gpuEntityManager->getEntityCount() : 0;
     if (gpuEntityCount > 0) {
-        VkBuffer vertexBuffers[] = {resources->getVertexBuffer(), gpuEntityManager->getCurrentEntityBuffer()};
+        VkBuffer vertexBuffers[] = {resourceContext->getVertexBuffer(), gpuEntityManager->getCurrentEntityBuffer()};
         VkDeviceSize offsets[] = {0, 0};
         context->getLoader().vkCmdBindVertexBuffers(commandBuffer, 0, 2, vertexBuffers, offsets);
-        context->getLoader().vkCmdBindIndexBuffer(commandBuffer, resources->getIndexBuffer(), 0, VK_INDEX_TYPE_UINT16);
-        context->getLoader().vkCmdDrawIndexed(commandBuffer, resources->getIndexCount(), gpuEntityCount, 0, 0, 0);
+        context->getLoader().vkCmdBindIndexBuffer(commandBuffer, resourceContext->getIndexBuffer(), 0, VK_INDEX_TYPE_UINT16);
+        context->getLoader().vkCmdDrawIndexed(commandBuffer, resourceContext->getIndexCount(), gpuEntityCount, 0, 0, 0);
     }
 
     context->getLoader().vkCmdEndRenderPass(commandBuffer);
@@ -581,7 +572,7 @@ void VulkanRenderer::updateUniformBuffer(uint32_t currentImage) {
     }
     
     // Update the uniform buffer for the current frame
-    void* data = resources->getUniformBuffersMapped()[currentImage];
+    void* data = resourceContext->getUniformBuffersMapped()[currentImage];
     memcpy(data, &ubo, sizeof(ubo));
 }
 

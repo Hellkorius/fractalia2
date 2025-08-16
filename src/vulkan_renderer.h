@@ -14,7 +14,6 @@
 class VulkanContext;
 class VulkanSwapchain;
 class VulkanPipeline;
-class VulkanResources;
 class VulkanSync;
 class ResourceContext;
 class GPUEntityManager;
@@ -64,7 +63,6 @@ private:
     std::unique_ptr<VulkanContext> context;
     std::unique_ptr<VulkanSwapchain> swapchain;
     std::unique_ptr<VulkanPipeline> pipeline;
-    std::unique_ptr<VulkanResources> resources;
     std::unique_ptr<VulkanSync> sync;
     std::unique_ptr<ResourceContext> resourceContext;
     std::unique_ptr<GPUEntityManager> gpuEntityManager;
