@@ -134,8 +134,7 @@ void GPUEntityManager::addEntitiesFromECS(const std::vector<Entity>& entities) {
         auto* pattern = entity.get<MovementPattern>();
         
         if (transform && renderable && pattern) {
-            GPUEntity gpuEntity = GPUEntity::fromECS(*transform, *renderable, *pattern);
-            addEntity(gpuEntity);
+            addEntity(GPUEntity::fromECS(*transform, *renderable, *pattern));
         }
     }
 }
