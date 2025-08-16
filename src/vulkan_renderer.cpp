@@ -349,19 +349,24 @@ bool VulkanRenderer::recreateSwapChain() {
     }
     recreationInProgress = true;
     
-    // Wait for device to be idle before recreating resources
-    context->getLoader().vkDeviceWaitIdle(context->getDevice());
-    
-    // Additional safety: wait for all frame fences to be signaled
+    // Wait for all frame fences to be signaled instead of vkDeviceWaitIdle
     for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
         if (frameFences.isComputeInUse(i)) {
             VkFence computeFence = frameFences.getComputeFence(i);
-            context->getLoader().vkWaitForFences(context->getDevice(), 1, &computeFence, VK_TRUE, UINT64_MAX);
+            VkResult result = waitForFenceRobust(computeFence, "compute");
+            if (result == VK_ERROR_DEVICE_LOST) {
+                recreationInProgress = false;
+                return false;
+            }
             frameFences.setComputeInUse(i, false);
         }
         if (frameFences.isGraphicsInUse(i)) {
             VkFence graphicsFence = frameFences.getGraphicsFence(i);
-            context->getLoader().vkWaitForFences(context->getDevice(), 1, &graphicsFence, VK_TRUE, UINT64_MAX);
+            VkResult result = waitForFenceRobust(graphicsFence, "graphics");
+            if (result == VK_ERROR_DEVICE_LOST) {
+                recreationInProgress = false;
+                return false;
+            }
             frameFences.setGraphicsInUse(i, false);
         }
     }
