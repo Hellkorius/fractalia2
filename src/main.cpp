@@ -118,15 +118,15 @@ int main(int argc, char* argv[]) {
     Profiler::getInstance().setTargetFrameTime(TARGET_FRAME_TIME);
 
     // GPU stress test configuration - scale up to 10k for initial test
-    constexpr size_t ENTITY_COUNT = 90000; // GPU can handle much more
+    constexpr size_t ENTITY_COUNT = 80000; // GPU can handle much more
     
     DEBUG_LOG("Creating " << ENTITY_COUNT << " GPU entities for stress testing...");
     
-    // Create a swarm of entities for stress testing - these will be uploaded to GPU
+    // Create a swarm of entities for stress testing - spawn away from center
     auto swarmEntities = entityFactory.createSwarm(
         ENTITY_COUNT,
-        glm::vec3(0.0f, 0.0f, 0.0f), // center
-        2.0f  // larger radius for more spread
+        glm::vec3(10.0f, 10.0f, 0.0f), // spawn far from center
+        8.0f  // much larger radius for wide spread
     );
     
     // Upload all entities to GPU immediately (before Flecs systems are initialized)

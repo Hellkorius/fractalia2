@@ -248,8 +248,8 @@ void VulkanRenderer::drawFrame() {
             &computePushConstants
         );
         
-        // Dispatch compute shader (64 threads per workgroup)
-        uint32_t numWorkgroups = (gpuEntityManager->getEntityCount() + 63) / 64;
+        // Dispatch compute shader (32 threads per workgroup)
+        uint32_t numWorkgroups = (gpuEntityManager->getEntityCount() + 31) / 32;
         context->getLoader().vkCmdDispatch(computeCommandBuffers[currentFrame], numWorkgroups, 1, 1);
     }
     

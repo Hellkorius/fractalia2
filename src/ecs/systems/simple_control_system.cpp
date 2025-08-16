@@ -123,7 +123,7 @@ namespace SimpleControlSystem {
             
             if (currentCount < maxEntities - SystemConstants::MIN_ENTITY_RESERVE_COUNT) {
                 DEBUG_LOG("Adding " << SystemConstants::DEFAULT_ENTITY_BATCH_SIZE << " more GPU entities...");
-                auto newEntities = entityFactory.createSwarm(SystemConstants::DEFAULT_ENTITY_BATCH_SIZE, glm::vec3(0.0f), 2.0f);
+                auto newEntities = entityFactory.createSwarm(SystemConstants::DEFAULT_ENTITY_BATCH_SIZE, glm::vec3(15.0f, 15.0f, 0.0f), 8.0f);
                 gpuManager->addEntitiesFromECS(newEntities);
                 renderer.uploadPendingGPUEntities();
                 DEBUG_LOG("Total GPU entities now: " << gpuManager->getEntityCount());

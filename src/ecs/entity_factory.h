@@ -249,10 +249,10 @@ public:
     // Create swarm of entities with specified movement type
     std::vector<Entity> createSwarmWithType(size_t count, const glm::vec3& center, float radius, MovementType movementType) {
         std::uniform_real_distribution<float> angleDist(0.0f, 2.0f * M_PI);
-        std::uniform_real_distribution<float> radiusDist(0.0f, radius);
+        std::uniform_real_distribution<float> radiusDist(0.7f, 1.0f); // Start at 70% of radius to strongly avoid center
         
         return createBatch(count, [&](EntityBuilder& builder, size_t i) {
-            // Spread entities more naturally across the area
+            // Spread entities in ring formation, avoiding center
             float angle = angleDist(rng);
             float r = std::sqrt(radiusDist(rng)) * radius; // Square root for better distribution
             glm::vec3 pos = center + glm::vec3(

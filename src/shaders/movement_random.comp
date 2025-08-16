@@ -64,7 +64,7 @@ float pseudoRandom(uint seed) {
     return hashToFloat(wangHash(seed));
 }
 
-// Simplified random step movement pattern - single step for better performance
+// Pure random step movement pattern - no center constraints
 vec3 randomStep(vec3 center, float amplitude, float frequency, float phase, float time, uint entityId) {
     // Step frequency determines how often entities change direction
     float stepInterval = 1.0 / max(frequency, 0.1);
@@ -73,40 +73,23 @@ vec3 randomStep(vec3 center, float amplitude, float frequency, float phase, floa
     // Create unique seed for this entity at this step time
     uint baseSeed = entityId ^ uint(stepTime * 1000.0) ^ uint(phase * 10000.0);
     
-    // Generate entity-specific characteristics with fewer calculations
+    // Generate entity-specific characteristics
     uint entitySeed = entityId ^ 0x12345678u;
-    float driftiness = pseudoRandom(entitySeed); // 0.0 = stays close, 1.0 = drifts far
+    float driftiness = pseudoRandom(entitySeed); // Entity exploration factor
     
-    // Simplified drift parameters
-    float maxDriftMultiplier = 3.0 + driftiness * 8.0; // Range: 3x to 11x amplitude
-    float centerPullStrength = 0.01 + (1.0 - driftiness) * 0.015; // Stronger pull for less drifty entities
-    
-    // Single random step instead of accumulated steps
-    float randAngle = pseudoRandom(baseSeed) * 6.28318530718; // 2π
+    // Single random step
+    float randAngle = pseudoRandom(baseSeed) * TWO_PI;
     float stepMagnitude = pseudoRandom(baseSeed + 31u) * amplitude;
     
-    // Add exploration boost for drifty entities
-    stepMagnitude *= (1.0 + driftiness * 0.3);
+    // Moderate exploration boost for natural movement
+    stepMagnitude *= (2.0 + driftiness * 1.0);
     
-    // Calculate step vector
+    // Calculate step vector - pure random movement
     vec3 stepOffset = vec3(
         stepMagnitude * cos(randAngle),
         stepMagnitude * sin(randAngle),
         0.0
     );
-    
-    // Apply boundary constraints
-    float maxDistance = amplitude * maxDriftMultiplier;
-    float currentDistance = length(stepOffset);
-    
-    if (currentDistance > maxDistance) {
-        // Simple clamping for performance
-        stepOffset = normalize(stepOffset) * maxDistance;
-    }
-    
-    // Add center pull
-    vec3 centerPull = -stepOffset * centerPullStrength;
-    stepOffset += centerPull;
     
     return center + stepOffset;
 }
@@ -163,6 +146,11 @@ void main() {
         uint baseSeed = entityIndex * 2654435761u + cycleNumber * 1597334677u + uint(phase * 982451653.0) + uint(amplitude * 1640531371.0);
         float randAngle = pseudoRandom(baseSeed) * TWO_PI;
         float stepMagnitude = pseudoRandom(baseSeed + 1u) * amplitude;
+        
+        // Apply moderate drift for natural movement without center clustering
+        uint entitySeed = entityIndex ^ 0x12345678u;
+        float driftiness = pseudoRandom(entitySeed);
+        stepMagnitude *= (2.0 + driftiness * 1.0);
         
         vec3 randomStep = vec3(
             stepMagnitude * cos(randAngle),
