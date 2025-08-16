@@ -7,25 +7,20 @@
 #include <array>
 #include <string_view>
 
-// Movement command data structure
+// Simplified movement command for random walk only
 struct MovementCommand {
     enum class Type : int {
-        Petal = 0,
-        Orbit = 1, 
-        Wave = 2,
-        TriangleFormation = 3,
-        RandomStep = 4,
-        COUNT // For validation
+        RandomWalk = 0,
+        COUNT // For validation  
     };
     
-    Type targetType{Type::Petal};
+    Type targetType{Type::RandomWalk};
     bool angelMode{false};
     double timestamp{0.0}; // When command was created
     
     // Validation
     bool isValid() const {
-        return static_cast<int>(targetType) >= 0 && 
-               static_cast<int>(targetType) < static_cast<int>(Type::COUNT);
+        return targetType == Type::RandomWalk;
     }
 };
 
@@ -101,8 +96,8 @@ private:
     GPUEntityManager* gpuEntityManager;
     
     // Performance optimizations
-    static constexpr std::array<std::string_view, 5> MOVEMENT_NAMES = {
-        "PETAL", "ORBIT", "WAVE", "TRIANGLE FORMATION", "RANDOM STEP"
+    static constexpr std::array<std::string_view, 1> MOVEMENT_NAMES = {
+        "RANDOM WALK"
     };
     
     // Error handling

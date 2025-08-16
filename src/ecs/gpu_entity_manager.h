@@ -8,13 +8,13 @@
 #include <queue>
 #include <memory>
 
-// GPU entity structure matching compute shader layout
+// GPU entity structure matching optimized compute shader layout
 struct GPUEntity {
-    glm::mat4 modelMatrix;        // 64 bytes - transform matrix
-    glm::vec4 color;              // 16 bytes - RGBA color  
-    glm::vec4 movementParams0;    // 16 bytes - amplitude, frequency, phase, timeOffset
-    glm::vec4 movementParams1;    // 16 bytes - center.xyz, movementType
-    glm::vec4 runtimeState;       // 16 bytes - totalTime, initialized, stateTimer, entityState
+    glm::mat4 modelMatrix;        // 64 bytes - transform matrix (positions 0-3)
+    glm::vec4 movementParams0;    // 16 bytes - amplitude, frequency, phase, timeOffset (position 4)
+    glm::vec4 movementParams1;    // 16 bytes - center.xyz, movementType (position 5)
+    glm::vec4 color;              // 16 bytes - RGBA color (position 6)
+    glm::vec4 runtimeState;       // 16 bytes - totalTime, initialized, stateTimer, entityState (position 7)
     
     GPUEntity() = default;
     
@@ -25,10 +25,7 @@ struct GPUEntity {
         // Copy transform matrix
         entity.modelMatrix = transform.getMatrix();
         
-        // Copy color
-        entity.color = renderable.color;
-        
-        // Copy movement parameters
+        // Copy movement parameters (now in optimized positions 4-5)
         entity.movementParams0 = glm::vec4(
             pattern.amplitude,
             pattern.frequency, 
@@ -43,22 +40,19 @@ struct GPUEntity {
             static_cast<float>(pattern.type)
         );
         
-        // Initialize runtime state with random staggering for RandomStep movement
-        float initialTimer = 0.0f;
-        float initialState = 0.0f; // Start in COMPUTING state
+        // Copy color (now in position 6)
+        entity.color = renderable.color;
         
-        if (pattern.type == MovementType::RandomStep) {
-            // Stagger entities to avoid all computing at once
-            // Use phase as a seed for random initial timer
-            uint32_t seed = static_cast<uint32_t>(pattern.phase * 10000.0f);
-            seed = (seed ^ 61u) ^ (seed >> 16u);
-            seed *= 9u;
-            float randomFactor = static_cast<float>(seed % 1000) / 1000.0f;
-            
-            // Random initial timer between 0-600 frames
-            initialTimer = randomFactor * 600.0f;
-            initialState = 1.0f; // Start in INTERPOLATING state with random timer
-        }
+        // Initialize runtime state with random staggering for random walk movement
+        // All entities now use random walk, so always apply staggering
+        uint32_t seed = static_cast<uint32_t>(pattern.phase * 10000.0f);
+        seed = (seed ^ 61u) ^ (seed >> 16u);
+        seed *= 9u;
+        float randomFactor = static_cast<float>(seed % 1000) / 1000.0f;
+        
+        // Random initial timer between 0-600 frames to stagger computation
+        float initialTimer = randomFactor * 600.0f;
+        float initialState = 1.0f; // Start in INTERPOLATING state with random timer
         
         entity.runtimeState = glm::vec4(
             pattern.totalTime,

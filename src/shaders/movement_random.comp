@@ -1,7 +1,7 @@
 #version 450
 
-// Local workgroup size - optimize for GPU architecture
-layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+// Local workgroup size - optimized for better occupancy on most GPUs
+layout(local_size_x = 32, local_size_y = 1, local_size_z = 1) in;
 
 // Push constants for timing and control
 layout(push_constant) uniform ComputePushConstants {
@@ -13,12 +13,13 @@ layout(push_constant) uniform ComputePushConstants {
 
 // Input: GPUEntity buffer (read/write for state updates)
 layout(std430, binding = 0) buffer GPUEntityBuffer {
-    // GPUEntity structure (128 bytes each)
-    // mat4 modelMatrix (64 bytes) - positions 0-3
-    // vec4 color (16 bytes) - position 4  
-    // vec4 movementParams0 (16 bytes) - position 5: amplitude, frequency, phase, timeOffset
-    // vec4 movementParams1 (16 bytes) - position 6: center.xyz, movementType
-    // vec4 runtimeState (16 bytes) - position 7: totalTime, initialized, stateTimer, entityState
+    // Optimized GPUEntity structure (128 bytes each) - frequently accessed data in first 64 bytes:
+    // First 64 bytes (positions 0-3): mat4 modelMatrix - transform matrix (less frequently accessed)
+    // Next 64 bytes (positions 4-7): Hot data for compute shaders:
+    //   vec4 movementParams0 (16 bytes) - position 4: amplitude, frequency, phase, timeOffset
+    //   vec4 movementParams1 (16 bytes) - position 5: center.xyz, movementType  
+    //   vec4 color (16 bytes) - position 6: RGBA color
+    //   vec4 runtimeState (16 bytes) - position 7: totalTime, initialized, stateTimer, entityState
     vec4 entityData[];
 } entities;
 
@@ -37,29 +38,7 @@ layout(std430, binding = 3) buffer TargetPositionBuffer {
     vec4 targetPositions[]; // xyz target position + w unused
 } targetPos;
 
-/* ---------- Traditional Movement Functions ---------- */
-
-vec3 petal(vec3 center, float amplitude, float frequency, float phase, float time) {
-    float r = amplitude * (0.5 + 0.5 * sin(time * frequency * 0.3));
-    return center + vec3(r * cos(time * frequency + phase), r * sin(time * frequency + phase), 0);
-}
-
-vec3 orbit(vec3 center, float amplitude, float frequency, float phase, float time) {
-    float ang = time * frequency + phase;
-    return center + vec3(amplitude * cos(ang), amplitude * sin(ang), 0);
-}
-
-vec3 wave(vec3 center, float amplitude, float frequency, float phase, float time) {
-    return center + vec3(amplitude * sin(time * frequency + phase), amplitude * cos(time * frequency * 0.5 + phase), 0);
-}
-
-vec3 triangle(vec3 center, float amplitude, float frequency, float phase, float time) {
-    float ang = time * frequency + phase;
-    float w = amplitude * 2.0 * (1.0 + 0.3 * sin(ang * 1.5));
-    return center + vec3(w * cos(ang), w * sin(ang), 0);
-}
-
-/* ---------- Random Movement Functions ---------- */
+/* ---------- Random Walk Movement Functions ---------- */
 
 // Wang hash function for high-quality GPU pseudorandom generation
 uint wangHash(uint seed) {
@@ -81,7 +60,7 @@ float pseudoRandom(uint seed) {
     return hashToFloat(wangHash(seed));
 }
 
-// Random step movement pattern
+// Simplified random step movement pattern - single step for better performance
 vec3 randomStep(vec3 center, float amplitude, float frequency, float phase, float time, uint entityId) {
     // Step frequency determines how often entities change direction
     float stepInterval = 1.0 / max(frequency, 0.1);
@@ -90,70 +69,42 @@ vec3 randomStep(vec3 center, float amplitude, float frequency, float phase, floa
     // Create unique seed for this entity at this step time
     uint baseSeed = entityId ^ uint(stepTime * 1000.0) ^ uint(phase * 10000.0);
     
-    // Generate entity-specific drift characteristics
+    // Generate entity-specific characteristics with fewer calculations
     uint entitySeed = entityId ^ 0x12345678u;
     float driftiness = pseudoRandom(entitySeed); // 0.0 = stays close, 1.0 = drifts far
-    float explorationTendency = pseudoRandom(entitySeed + 1u); // How adventurous this entity is
     
-    // Calculate dynamic drift parameters based on entity personality
-    float maxDriftMultiplier = 3.0 + driftiness * 12.0; // Range: 3x to 15x amplitude
-    float centerPullStrength = 0.005 + (1.0 - driftiness) * 0.02; // Stronger pull for less drifty entities
+    // Simplified drift parameters
+    float maxDriftMultiplier = 3.0 + driftiness * 8.0; // Range: 3x to 11x amplitude
+    float centerPullStrength = 0.01 + (1.0 - driftiness) * 0.015; // Stronger pull for less drifty entities
     
-    // Generate multiple accumulated steps for smooth random walk
-    vec3 totalOffset = vec3(0.0);
+    // Single random step instead of accumulated steps
+    float randAngle = pseudoRandom(baseSeed) * 6.28318530718; // 2π
+    float stepMagnitude = pseudoRandom(baseSeed + 31u) * amplitude;
     
-    // Vary number of accumulated steps based on exploration tendency
-    int numSteps = int(6.0 + explorationTendency * 10.0); // 6-16 steps
+    // Add exploration boost for drifty entities
+    stepMagnitude *= (1.0 + driftiness * 0.3);
     
-    for (int i = 0; i < numSteps; i++) {
-        uint stepSeed = baseSeed + uint(i * 7919); // Prime for good distribution
-        
-        // Generate random direction (angle)
-        float randAngle = pseudoRandom(stepSeed) * 6.28318530718; // 2π
-        
-        // Generate random step magnitude with varied decay
-        float stepDecay = 1.0 - (float(i) / float(numSteps)) * (0.2 + explorationTendency * 0.3);
-        float stepMagnitude = pseudoRandom(stepSeed + 31u) * amplitude * stepDecay;
-        
-        // Add exploration boost for adventurous entities
-        stepMagnitude *= (1.0 + explorationTendency * 0.5);
-        
-        // Calculate step vector
-        vec3 stepVector = vec3(
-            stepMagnitude * cos(randAngle),
-            stepMagnitude * sin(randAngle),
-            0.0
-        );
-        
-        totalOffset += stepVector;
-    }
+    // Calculate step vector
+    vec3 stepOffset = vec3(
+        stepMagnitude * cos(randAngle),
+        stepMagnitude * sin(randAngle),
+        0.0
+    );
     
-    // Apply dynamic boundary constraints based on entity drift characteristics
+    // Apply boundary constraints
     float maxDistance = amplitude * maxDriftMultiplier;
-    float currentDistance = length(totalOffset);
+    float currentDistance = length(stepOffset);
     
-    // Soft boundary with some randomness - occasionally allow exceeding bounds
-    float boundaryRandomness = pseudoRandom(baseSeed + 999u);
-    float effectiveMaxDistance = maxDistance * (0.8 + boundaryRandomness * 0.4); // 80%-120% of max
-    
-    if (currentDistance > effectiveMaxDistance) {
-        // Softer constraint - compress rather than hard clamp
-        float compressionFactor = effectiveMaxDistance / currentDistance;
-        compressionFactor = sqrt(compressionFactor); // Gentler compression
-        totalOffset *= compressionFactor;
+    if (currentDistance > maxDistance) {
+        // Simple clamping for performance
+        stepOffset = normalize(stepOffset) * maxDistance;
     }
     
-    // Add dynamic drift back toward center based on entity personality
-    vec3 centerPull = -totalOffset * centerPullStrength;
+    // Add center pull
+    vec3 centerPull = -stepOffset * centerPullStrength;
+    stepOffset += centerPull;
     
-    // Occasionally resist center pull for very drifty entities
-    if (driftiness > 0.7 && pseudoRandom(baseSeed + 777u) > 0.6) {
-        centerPull *= 0.3; // Reduce center pull strength
-    }
-    
-    totalOffset += centerPull;
-    
-    return center + totalOffset;
+    return center + stepOffset;
 }
 
 void main() {
@@ -168,47 +119,20 @@ void main() {
     // Calculate base offset for this entity (8 vec4s per entity = 128 bytes)
     uint baseOffset = entityIndex * 8;
     
-    // Extract movement parameters from GPUEntity structure
-    // movementParams0: amplitude, frequency, phase, timeOffset
-    vec4 movementParams0 = entities.entityData[baseOffset + 5];
+    // Extract movement parameters from optimized GPUEntity structure
+    // Hot data access - movementParams0: amplitude, frequency, phase, timeOffset
+    vec4 movementParams0 = entities.entityData[baseOffset + 4];
     float amplitude = movementParams0.x;
     float frequency = movementParams0.y;
     float phase = movementParams0.z;
     float timeOffset = movementParams0.w;
     
-    // movementParams1: center.xyz, movementType
-    vec4 movementParams1 = entities.entityData[baseOffset + 6];
+    // Hot data access - movementParams1: center.xyz, movementType
+    vec4 movementParams1 = entities.entityData[baseOffset + 5];
     vec3 center = movementParams1.xyz;
     float movementType = movementParams1.w;
     
-    // Handle different movement types
-    if (movementType != 4.0) {
-        // Traditional movement patterns (0-3) - compute position directly
-        float entityTime = pc.time + timeOffset;
-        vec3 newPosition;
-        
-        uint movementTypeInt = uint(movementType);
-        switch (movementTypeInt) {
-            case 0:
-                newPosition = petal(center, amplitude, frequency, phase, entityTime);
-                break;
-            case 1:
-                newPosition = orbit(center, amplitude, frequency, phase, entityTime);
-                break;
-            case 2:
-                newPosition = wave(center, amplitude, frequency, phase, entityTime);
-                break;
-            case 3:
-                newPosition = triangle(center, amplitude, frequency, phase, entityTime);
-                break;
-            default:
-                newPosition = center; // Fallback
-                break;
-        }
-        
-        outPositions.positions[entityIndex] = vec4(newPosition, 1.0);
-        return;
-    }
+    // All entities now use random walk movement (movementType should always be 0.0)
     
     // Calculate cycle using frame number and entity offset for staggering
     float cycle = mod(pc.frame + entityIndex * 37, 600.0);

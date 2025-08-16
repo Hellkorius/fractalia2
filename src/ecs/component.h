@@ -65,15 +65,11 @@ struct Bounds {
 
 // Movement types matching GPU compute shader
 enum class MovementType {
-    Petal = 0,  // Smooth radial oscillation from center
-    Orbit = 1,  // Circular orbit around center point
-    Wave = 2,   // Sinusoidal wave motion
-    TriangleFormation = 3,  // Non-Euclidean triangular orbit
-    RandomStep = 4  // GPU-driven random walk from center point
+    RandomWalk = 0  // GPU-driven random walk from center point (simplified to single type)
 };
 
 struct MovementPattern {
-    MovementType type{MovementType::Petal};
+    MovementType type{MovementType::RandomWalk};
     
     // Basic movement parameters
     float amplitude{1.0f};      // Size/scale of pattern

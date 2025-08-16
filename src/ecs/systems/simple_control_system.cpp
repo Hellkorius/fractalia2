@@ -26,7 +26,7 @@ namespace SimpleControlSystem {
         std::cout << "+/=: Add 1000 more GPU entities" << std::endl;
         std::cout << "-: Show current GPU performance stats" << std::endl;
         std::cout << "Left Click: Create GPU entity with movement at mouse position" << std::endl;
-        std::cout << "0/1/2/3: Switch movement pattern (0=Petal, 1=Orbit, 2=Wave, 3=Triangle)" << std::endl;
+        std::cout << "All entities use random walk movement pattern" << std::endl;
         std::cout << "CAPS LOCK: Toggle Angel Mode (epic transition effect)" << std::endl;
         std::cout << "T: Run graphics buffer overflow tests" << std::endl;
         std::cout << "===============================================\n" << std::endl;
@@ -66,22 +66,7 @@ namespace SimpleControlSystem {
                     controlState->entityCreationPos = mouse->worldPosition;
                 }
                 
-                // Movement type switching - frame-based to prevent spam
-                if (keyboard->isKeyPressed(SDL_SCANCODE_0)) {
-                    controlState->currentMovementType = 0;
-                }
-                else if (keyboard->isKeyPressed(SDL_SCANCODE_1)) {
-                    controlState->currentMovementType = 1;
-                }
-                else if (keyboard->isKeyPressed(SDL_SCANCODE_2)) {
-                    controlState->currentMovementType = 2;
-                }
-                else if (keyboard->isKeyPressed(SDL_SCANCODE_3)) {
-                    controlState->currentMovementType = 3;
-                }
-                else if (keyboard->isKeyPressed(SDL_SCANCODE_4)) {
-                    controlState->currentMovementType = 4;
-                }
+                // Movement type is fixed to random walk - no switching needed
                 
                 // Angel mode toggle - frame-based
                 if (keyboard->isKeyPressed(SDL_SCANCODE_CAPSLOCK)) {
@@ -145,8 +130,7 @@ namespace SimpleControlSystem {
             
             if (currentCount < maxEntities - SystemConstants::MIN_ENTITY_RESERVE_COUNT) {
                 DEBUG_LOG("Adding " << SystemConstants::DEFAULT_ENTITY_BATCH_SIZE << " more GPU entities...");
-                MovementType currentType = static_cast<MovementType>(controlState->currentMovementType);
-                auto newEntities = entityFactory.createSwarmWithType(SystemConstants::DEFAULT_ENTITY_BATCH_SIZE, glm::vec3(0.0f), 2.0f, currentType);
+                auto newEntities = entityFactory.createSwarm(SystemConstants::DEFAULT_ENTITY_BATCH_SIZE, glm::vec3(0.0f), 2.0f);
                 gpuManager->addEntitiesFromECS(newEntities);
                 renderer.uploadPendingGPUEntities();
                 DEBUG_LOG("Total GPU entities now: " << gpuManager->getEntityCount());
@@ -164,10 +148,8 @@ namespace SimpleControlSystem {
             }
             
             DEBUG_LOG("Mouse click at world: (" << controlState->entityCreationPos.x << ", " << controlState->entityCreationPos.y << ")");
-            MovementType currentType = static_cast<MovementType>(controlState->currentMovementType);
-            auto mouseEntity = entityFactory.createMovingEntityWithType(
-                glm::vec3(controlState->entityCreationPos.x, controlState->entityCreationPos.y, 0.0f),
-                currentType
+            auto mouseEntity = entityFactory.createMovingEntity(
+                glm::vec3(controlState->entityCreationPos.x, controlState->entityCreationPos.y, 0.0f)
             );
             if (mouseEntity.is_valid()) {
                 std::vector<Entity> entityVec = {mouseEntity};
@@ -177,26 +159,7 @@ namespace SimpleControlSystem {
             }
         }
         
-        // Handle movement commands
-        if (controlState->currentMovementType != controlState->lastProcessedMovementType) {
-            DEBUG_LOG("Movement type command: " << controlState->currentMovementType);
-            
-            if (renderer.getMovementCommandProcessor()) {
-                MovementCommand cmd;
-                switch (controlState->currentMovementType) {
-                    case SystemConstants::MOVEMENT_TYPE_PETAL: cmd.targetType = MovementCommand::Type::Petal; break;
-                    case SystemConstants::MOVEMENT_TYPE_ORBIT: cmd.targetType = MovementCommand::Type::Orbit; break;
-                    case SystemConstants::MOVEMENT_TYPE_WAVE: cmd.targetType = MovementCommand::Type::Wave; break;
-                    case SystemConstants::MOVEMENT_TYPE_TRIANGLE: cmd.targetType = MovementCommand::Type::TriangleFormation; break;
-                    case SystemConstants::MOVEMENT_TYPE_RANDOM_STEP: cmd.targetType = MovementCommand::Type::RandomStep; break;
-                }
-                cmd.angelMode = controlState->angelModeEnabled;
-                cmd.timestamp = std::chrono::duration<double>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
-                
-                renderer.getMovementCommandProcessor()->getCommandQueue().enqueue(cmd);
-            }
-            controlState->lastProcessedMovementType = controlState->currentMovementType;
-        }
+        // Movement type is fixed to random walk - no dynamic switching needed
         
         // Handle performance stats request
         if (controlState->requestPerformanceStats) {
