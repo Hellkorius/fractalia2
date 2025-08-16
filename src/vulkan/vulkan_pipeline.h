@@ -49,6 +49,11 @@ public:
     VkPipeline getComputePipeline() const { return computePipeline; }
     VkPipelineLayout getComputePipelineLayout() const { return computePipelineLayout; }
     VkDescriptorSetLayout getComputeDescriptorSetLayout() const { return computeDescriptorSetLayout; }
+    
+    // Collision compute pipeline support
+    VkPipeline getCollisionPipeline() const { return collisionPipeline; }
+    VkPipelineLayout getCollisionPipelineLayout() const { return collisionPipelineLayout; }
+    VkDescriptorSetLayout getCollisionDescriptorSetLayout() const { return collisionDescriptorSetLayout; }
 
 private:
     const VulkanContext* context = nullptr;
@@ -61,8 +66,13 @@ private:
     
     // Unified compute pipeline resources
     VkPipelineLayout computePipelineLayout = VK_NULL_HANDLE; // Unified pipeline layout
-    VkDescriptorSetLayout computeDescriptorSetLayout = VK_NULL_HANDLE; // Unified layout (3 bindings)
+    VkDescriptorSetLayout computeDescriptorSetLayout = VK_NULL_HANDLE; // Unified layout (4 bindings)
     VkPipeline computePipeline = VK_NULL_HANDLE;
+    
+    // Collision compute pipeline resources
+    VkPipelineLayout collisionPipelineLayout = VK_NULL_HANDLE;
+    VkPipeline collisionPipeline = VK_NULL_HANDLE;
+    VkDescriptorSetLayout collisionDescriptorSetLayout = VK_NULL_HANDLE; // 7 bindings
     
     // Pipeline layout cache (instance-owned for proper cleanup)
     std::unordered_map<PipelineLayoutKey, VkPipelineLayout, PipelineLayoutKeyHash> pipelineLayoutCache;
@@ -77,6 +87,10 @@ private:
     // Unified compute pipeline methods
     bool createComputeDescriptorSetLayout();
     bool createComputePipeline();
+    
+    // Collision compute pipeline methods
+    bool createCollisionDescriptorSetLayout();
+    bool createCollisionPipeline();
     
     
     std::array<VkVertexInputBindingDescription, 2> getVertexBindingDescriptions();

@@ -139,6 +139,12 @@ private:
     static constexpr size_t ENTITY_BUFFER_SIZE = MAX_ENTITIES * sizeof(GPUEntity);
     static constexpr size_t POSITION_BUFFER_SIZE = MAX_ENTITIES * sizeof(glm::vec4); // 16 bytes per position
     
+    // Spatial hash grid constants for collision detection
+    static constexpr uint32_t GRID_WIDTH = 512;
+    static constexpr uint32_t GRID_HEIGHT = 512;
+    static constexpr uint32_t GRID_SIZE = GRID_WIDTH * GRID_HEIGHT;
+    static constexpr uint32_t MAX_COLLISION_PAIRS = 65536; // ~2MB buffer
+    
     const VulkanContext* context = nullptr;
     VulkanSync* sync = nullptr;
     ResourceContext* resourceContext = nullptr;
@@ -148,6 +154,11 @@ private:
     std::unique_ptr<GPUBufferRing> positionBuffer;    // Position output buffer
     std::unique_ptr<GPUBufferRing> currentPositionBuffer; // Current interpolation positions
     std::unique_ptr<GPUBufferRing> targetPositionBuffer;  // Target interpolation positions
+    
+    // Collision system GPU buffers
+    std::unique_ptr<GPUBufferRing> spatialHashBuffer;     // Cell offset + count pairs
+    std::unique_ptr<GPUBufferRing> entityIndexBuffer;     // Sorted entity indices
+    std::unique_ptr<GPUBufferRing> collisionPairsBuffer;  // Output collision pairs
     
     // Entity state
     uint32_t activeEntityCount = 0;
@@ -161,5 +172,7 @@ private:
     
     
     bool createEntityBuffers();
+    bool createSpatialHashBuffers();
+    bool createCollisionBuffers();
     bool createComputeDescriptorPool();
 };

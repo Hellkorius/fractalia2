@@ -152,11 +152,25 @@ All entities now use a unified **random walk** movement pattern:
 ## Collision System
 
 ### Architecture Overview
-The collision system uses a **hybrid CPU/GPU approach** designed for massive entity counts:
+The collision system uses a **hybrid CPU/GPU approach** with spatial hashing designed for massive entity counts (100k+ entities):
 - **ECS Integration**: Collider components define collision parameters (radius, layer, mask)
 - **GPU Storage**: Collision data embedded in GPUEntity structure at position 7 for optimal memory layout
-- **GPU Detection**: Future compute shader-based collision detection for parallel processing
+- **Spatial Hashing**: 512×512 uniform grid for O(n) collision detection instead of O(n²)
+- **GPU Detection**: Parallel compute shader-based collision detection with spatial hash optimization
 - **CPU Processing**: CollisionEventManager handles GPU→CPU event transfer and ECS integration
+
+### GPU Memory Architecture
+The collision system uses multiple specialized GPU buffers for optimal performance:
+
+**Core Buffers**:
+- **Spatial Hash Grid**: 2MB buffer (512×512 cells × 8 bytes) storing cell offset + entity count pairs
+- **Entity Index Buffer**: 512KB buffer for sorted entity indices within each grid cell
+- **Collision Pairs Output**: 2MB buffer supporting up to 65,536 collision events per frame
+
+**Buffer Integration**:
+- Managed by `GPUEntityManager` using `GPUBufferRing` for unified memory management
+- Dual descriptor set layouts: 4-binding unified compute pipeline + 7-binding collision pipeline
+- Automatic buffer creation via `createSpatialHashBuffers()` and `createCollisionBuffers()`
 
 ### Collider Component
 ```cpp
@@ -181,15 +195,40 @@ struct CollisionEvent {
 };
 ```
 
+### Spatial Hash Implementation
+**Grid Configuration**:
+- **Grid Size**: 512×512 cells (262,144 total cells)
+- **Cell Size**: Dynamic based on world bounds and entity distribution
+- **Hash Function**: Optimized spatial hash for uniform entity distribution
+- **Memory Efficiency**: Sparse grid representation with offset/count pairs
+
+**Collision Pipeline**:
+1. **Spatial Hash Pass**: Entities sorted into grid cells based on position
+2. **Pair Generation**: Only test entities within same/adjacent cells (9-cell neighborhood)
+3. **Collision Detection**: Parallel sphere-sphere intersection tests
+4. **Event Generation**: Valid collisions written to output buffer with validation
+
 ### Event Processing Pipeline
-1. **GPU Detection**: Compute shader processes all entity pairs and writes collision events to buffer
-2. **Transfer**: CollisionEventManager reads events from GPU buffer via staging buffer
-3. **Validation**: Events validated for consistency (entity IDs, normal vectors, penetration depth)
-4. **ECS Integration**: Events processed by Flecs systems for game logic responses
-5. **Statistics**: Collision counts and overflow detection for performance monitoring
+1. **GPU Detection**: Spatial hash compute shader processes entities in parallel
+2. **Pair Filtering**: Layer/mask compatibility checked during GPU collision detection
+3. **Transfer**: CollisionEventManager reads events from GPU buffer via staging buffer
+4. **Validation**: Events validated for consistency (entity IDs, normal vectors, penetration depth)
+5. **ECS Integration**: Events processed by Flecs systems for game logic responses
+6. **Statistics**: Collision counts and overflow detection for performance monitoring
+
+### Vulkan Pipeline Architecture
+**Descriptor Set Layouts**:
+- **Unified Compute**: 4 bindings (entity buffer, position buffers, movement compute)
+- **Collision Compute**: 7 bindings (entity buffer, positions, spatial hash grid, entity indices, cell counters, collision pairs, statistics)
+
+**Pipeline Separation**:
+- Movement and collision compute pipelines are independent for optimal GPU utilization
+- Separate descriptor sets prevent unnecessary binding overhead
+- Modular design allows independent optimization of each system
 
 ### Memory Layout Integration
 - **Collision data** stored in GPUEntity position 7 (16 bytes): `vec4(radius, layer, mask, reserved)`
-- **Event buffer** supports up to 8,192 collisions per frame
+- **Event buffer** supports up to 65,536 collisions per frame (expandable)
 - **Zero GPU memory overhead** for entities without collision (default values)
 - **Cache-friendly** design with collision data in cold cache line separate from hot movement data
+- **Spatial hash buffers** use unified GPUBufferRing management for consistent memory patterns

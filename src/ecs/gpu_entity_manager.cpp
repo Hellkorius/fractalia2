@@ -27,6 +27,16 @@ bool GPUEntityManager::initialize(const VulkanContext& context, VulkanSync* sync
         return false;
     }
     
+    if (!createSpatialHashBuffers()) {
+        std::cerr << "Failed to create spatial hash buffers!" << std::endl;
+        return false;
+    }
+    
+    if (!createCollisionBuffers()) {
+        std::cerr << "Failed to create collision buffers!" << std::endl;
+        return false;
+    }
+    
     if (!createComputeDescriptorPool()) {
         std::cerr << "Failed to create compute descriptor pool!" << std::endl;
         return false;
@@ -67,6 +77,21 @@ void GPUEntityManager::cleanup() {
         targetPositionBuffer.reset();
     }
     
+    // Clean up collision system buffers
+    if (spatialHashBuffer) {
+        spatialHashBuffer->cleanup();
+        spatialHashBuffer.reset();
+    }
+    
+    if (entityIndexBuffer) {
+        entityIndexBuffer->cleanup();
+        entityIndexBuffer.reset();
+    }
+    
+    if (collisionPairsBuffer) {
+        collisionPairsBuffer->cleanup();
+        collisionPairsBuffer.reset();
+    }
     
     // Clean up descriptor resources
     if (computeDescriptorPool != VK_NULL_HANDLE) {
@@ -280,5 +305,56 @@ bool GPUEntityManager::recreateComputeDescriptorResources(VkDescriptorSetLayout 
     
     // Recreate descriptor sets with the new layout
     return createComputeDescriptorSets();
+}
+
+bool GPUEntityManager::createSpatialHashBuffers() {
+    // Spatial Hash Grid Buffer: GRID_SIZE * 8 bytes ≈ 2MB
+    // Each cell stores: offset (4 bytes) + count (4 bytes)
+    size_t spatialHashSize = GRID_SIZE * 8; // 8 bytes per cell
+    
+    spatialHashBuffer = std::make_unique<GPUBufferRing>();
+    if (!spatialHashBuffer->initialize(
+            resourceContext,
+            spatialHashSize,
+            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)) {
+        std::cerr << "Failed to create spatial hash buffer!" << std::endl;
+        return false;
+    }
+    
+    // Entity Index Buffer: MAX_ENTITIES * 4 bytes ≈ 512KB
+    // Stores sorted entity indices for spatial partitioning
+    size_t entityIndexSize = MAX_ENTITIES * sizeof(uint32_t);
+    
+    entityIndexBuffer = std::make_unique<GPUBufferRing>();
+    if (!entityIndexBuffer->initialize(
+            resourceContext,
+            entityIndexSize,
+            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)) {
+        std::cerr << "Failed to create entity index buffer!" << std::endl;
+        return false;
+    }
+    
+    return true;
+}
+
+bool GPUEntityManager::createCollisionBuffers() {
+    // Collision Pairs Buffer: MAX_COLLISION_PAIRS * 32 bytes ≈ 2MB
+    // Each collision pair stores: entityA (4) + entityB (4) + contactPoint (12) + normal (12) + penetrationDepth (4) + frameNumber (4) = 40 bytes
+    // Rounded down to 32 bytes for alignment
+    size_t collisionPairsSize = MAX_COLLISION_PAIRS * 32;
+    
+    collisionPairsBuffer = std::make_unique<GPUBufferRing>();
+    if (!collisionPairsBuffer->initialize(
+            resourceContext,
+            collisionPairsSize,
+            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)) {
+        std::cerr << "Failed to create collision pairs buffer!" << std::endl;
+        return false;
+    }
+    
+    return true;
 }
 

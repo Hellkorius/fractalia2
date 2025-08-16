@@ -64,6 +64,20 @@ bool VulkanPipeline::initialize(const VulkanContext& context, VkFormat swapChain
     }
     std::cout << "Unified compute pipeline created successfully" << std::endl;
     
+    std::cout << "Creating collision descriptor set layout..." << std::endl;
+    if (!createCollisionDescriptorSetLayout()) {
+        std::cerr << "Failed to create collision descriptor set layout" << std::endl;
+        return false;
+    }
+    std::cout << "Collision descriptor set layout created successfully" << std::endl;
+    
+    std::cout << "Creating collision compute pipeline..." << std::endl;
+    if (!createCollisionPipeline()) {
+        std::cerr << "Failed to create collision compute pipeline" << std::endl;
+        return false;
+    }
+    std::cout << "Collision compute pipeline created successfully" << std::endl;
+    
     return true;
 }
 
@@ -78,6 +92,10 @@ void VulkanPipeline::cleanup() {
         context->getLoader().vkDestroyPipeline(context->getDevice(), computePipeline, nullptr);
         computePipeline = VK_NULL_HANDLE;
     }
+    if (collisionPipeline != VK_NULL_HANDLE) {
+        context->getLoader().vkDestroyPipeline(context->getDevice(), collisionPipeline, nullptr);
+        collisionPipeline = VK_NULL_HANDLE;
+    }
     
     for (auto& pair : pipelineLayoutCache) {
         context->getLoader().vkDestroyPipelineLayout(context->getDevice(), pair.second, nullptr);
@@ -86,6 +104,7 @@ void VulkanPipeline::cleanup() {
     
     pipelineLayout = VK_NULL_HANDLE;
     computePipelineLayout = VK_NULL_HANDLE;
+    collisionPipelineLayout = VK_NULL_HANDLE;
     
     if (renderPass != VK_NULL_HANDLE) {
         context->getLoader().vkDestroyRenderPass(context->getDevice(), renderPass, nullptr);
@@ -98,6 +117,10 @@ void VulkanPipeline::cleanup() {
     if (computeDescriptorSetLayout != VK_NULL_HANDLE) {
         context->getLoader().vkDestroyDescriptorSetLayout(context->getDevice(), computeDescriptorSetLayout, nullptr);
         computeDescriptorSetLayout = VK_NULL_HANDLE;
+    }
+    if (collisionDescriptorSetLayout != VK_NULL_HANDLE) {
+        context->getLoader().vkDestroyDescriptorSetLayout(context->getDevice(), collisionDescriptorSetLayout, nullptr);
+        collisionDescriptorSetLayout = VK_NULL_HANDLE;
     }
     if (pipelineCache != VK_NULL_HANDLE) {
         context->getLoader().vkDestroyPipelineCache(context->getDevice(), pipelineCache, nullptr);
@@ -556,6 +579,90 @@ bool VulkanPipeline::createComputePipeline() {
     }
     
     context->getLoader().vkDestroyShaderModule(context->getDevice(), shaderModule, nullptr);
+    return true;
+}
+
+bool VulkanPipeline::createCollisionDescriptorSetLayout() {
+    // Create collision descriptor set layout (7 bindings)
+    VkDescriptorSetLayoutBinding bindings[7] = {};
+    
+    // Binding 0: GPUEntity buffer (read-only)
+    bindings[0].binding = 0;
+    bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    bindings[0].descriptorCount = 1;
+    bindings[0].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+    
+    // Binding 1: Current positions (read-only)
+    bindings[1].binding = 1;
+    bindings[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    bindings[1].descriptorCount = 1;
+    bindings[1].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+    
+    // Binding 2: Spatial hash grid (read/write)
+    bindings[2].binding = 2;
+    bindings[2].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    bindings[2].descriptorCount = 1;
+    bindings[2].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+    
+    // Binding 3: Entity index buffer (write-only)
+    bindings[3].binding = 3;
+    bindings[3].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    bindings[3].descriptorCount = 1;
+    bindings[3].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+    
+    // Binding 4: Cell counter buffer (read/write)
+    bindings[4].binding = 4;
+    bindings[4].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    bindings[4].descriptorCount = 1;
+    bindings[4].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+    
+    // Binding 5: Collision pairs output (write-only)
+    bindings[5].binding = 5;
+    bindings[5].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    bindings[5].descriptorCount = 1;
+    bindings[5].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+    
+    // Binding 6: Collision statistics (write-only)
+    bindings[6].binding = 6;
+    bindings[6].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    bindings[6].descriptorCount = 1;
+    bindings[6].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+    
+    VkDescriptorSetLayoutCreateInfo layoutInfo{};
+    layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    layoutInfo.bindingCount = 7;
+    layoutInfo.pBindings = bindings;
+    
+    return context->getLoader().vkCreateDescriptorSetLayout(context->getDevice(), &layoutInfo, nullptr, &collisionDescriptorSetLayout) == VK_SUCCESS;
+}
+
+bool VulkanPipeline::createCollisionPipeline() {
+    // Create collision pipeline layout
+    VkPushConstantRange pushConstantRange{};
+    pushConstantRange.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+    pushConstantRange.offset = 0;
+    pushConstantRange.size = sizeof(float) * 4; // gridCellSize, entityCount, frameNumber, reserved
+    
+    VkPipelineLayoutCreateInfo layoutInfo{};
+    layoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    layoutInfo.setLayoutCount = 1;
+    layoutInfo.pSetLayouts = &collisionDescriptorSetLayout;
+    layoutInfo.pushConstantRangeCount = 1;
+    layoutInfo.pPushConstantRanges = &pushConstantRange;
+    
+    if (context->getLoader().vkCreatePipelineLayout(context->getDevice(), &layoutInfo, nullptr, &collisionPipelineLayout) != VK_SUCCESS) {
+        std::cerr << "Failed to create collision pipeline layout" << std::endl;
+        return false;
+    }
+    
+    // Load collision compute shader (placeholder - will be implemented in Phase 3)
+    // For now, create an empty pipeline that can be replaced later
+    std::vector<char> collisionShaderCode = {}; // Placeholder
+    
+    // Note: This pipeline creation will fail without a shader, but the layout and descriptor set are ready
+    // The actual pipeline will be created when the collision compute shader is implemented
+    std::cout << "Collision pipeline layout created successfully (shader implementation pending)" << std::endl;
+    
     return true;
 }
 
