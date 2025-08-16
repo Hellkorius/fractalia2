@@ -75,7 +75,9 @@ static_assert(sizeof(GPUEntity) == 128, "GPUEntity must be exactly 128 bytes for
 class VulkanContext;
 class VulkanSync;
 class ResourceContext;
-struct ResourceHandle;
+
+// Include ResourceHandle definition since we access its members inline
+#include "../vulkan/resource_context.h"
 
 // Manages GPU entity storage and CPU->GPU handover
 class GPUEntityManager {
@@ -93,10 +95,10 @@ public:
     void clearAllEntities();
     
     // GPU buffer management  
-    VkBuffer getCurrentEntityBuffer() const { return entityStorage; }
-    VkBuffer getCurrentPositionBuffer() const { return positionStorage; }
-    VkBuffer getCurrentPositionStorageBuffer() const { return currentPositionStorage; }
-    VkBuffer getTargetPositionStorageBuffer() const { return targetPositionStorage; }
+    VkBuffer getCurrentEntityBuffer() const { return entityStorageHandle->buffer; }
+    VkBuffer getCurrentPositionBuffer() const { return positionStorageHandle->buffer; }
+    VkBuffer getCurrentPositionStorageBuffer() const { return currentPositionStorageHandle->buffer; }
+    VkBuffer getTargetPositionStorageBuffer() const { return targetPositionStorageHandle->buffer; }
     uint32_t getComputeInputIndex() const { return 0; }
     uint32_t getComputeOutputIndex() const { return 0; }
     
@@ -125,18 +127,13 @@ private:
     
     // Single buffer storage for compute pipeline using ResourceContext
     std::unique_ptr<ResourceHandle> entityStorageHandle;
-    VkBuffer entityStorage = VK_NULL_HANDLE;  // For compatibility
     
     // Position buffer for compute shader output
     std::unique_ptr<ResourceHandle> positionStorageHandle;
-    VkBuffer positionStorage = VK_NULL_HANDLE;
     
     // Buffers for random walk interpolation
     std::unique_ptr<ResourceHandle> currentPositionStorageHandle;
-    VkBuffer currentPositionStorage = VK_NULL_HANDLE;  // Current position for interpolation
-    
     std::unique_ptr<ResourceHandle> targetPositionStorageHandle;
-    VkBuffer targetPositionStorage = VK_NULL_HANDLE;   // Target position for interpolation
     
     // Entity state
     uint32_t activeEntityCount = 0;

@@ -78,10 +78,6 @@ void GPUEntityManager::cleanup() {
         targetPositionStorageHandle.reset();
     }
     
-    entityStorage = VK_NULL_HANDLE;
-    positionStorage = VK_NULL_HANDLE;
-    currentPositionStorage = VK_NULL_HANDLE;
-    targetPositionStorage = VK_NULL_HANDLE;
     
     // Clean up descriptor resources
     if (computeDescriptorPool != VK_NULL_HANDLE) {
@@ -261,11 +257,6 @@ bool GPUEntityManager::createEntityBuffers() {
         return false;
     }
     
-    // Maintain compatibility with existing API
-    entityStorage = entityStorageHandle->buffer;
-    positionStorage = positionStorageHandle->buffer;
-    currentPositionStorage = currentPositionStorageHandle->buffer;
-    targetPositionStorage = targetPositionStorageHandle->buffer;
     
     return true;
 }
@@ -334,22 +325,22 @@ bool GPUEntityManager::createComputeDescriptorSets() {
     
     // Update descriptor set with proper input and output buffers
     VkDescriptorBufferInfo entityBufferInfo{};
-    entityBufferInfo.buffer = entityStorage;
+    entityBufferInfo.buffer = entityStorageHandle->buffer;
     entityBufferInfo.offset = 0;
     entityBufferInfo.range = ENTITY_BUFFER_SIZE;
     
     VkDescriptorBufferInfo positionBufferInfo{};
-    positionBufferInfo.buffer = positionStorage;
+    positionBufferInfo.buffer = positionStorageHandle->buffer;
     positionBufferInfo.offset = 0;
     positionBufferInfo.range = POSITION_BUFFER_SIZE;
     
     VkDescriptorBufferInfo currentPositionBufferInfo{};
-    currentPositionBufferInfo.buffer = currentPositionStorage;
+    currentPositionBufferInfo.buffer = currentPositionStorageHandle->buffer;
     currentPositionBufferInfo.offset = 0;
     currentPositionBufferInfo.range = POSITION_BUFFER_SIZE;
     
     VkDescriptorBufferInfo targetPositionBufferInfo{};
-    targetPositionBufferInfo.buffer = targetPositionStorage;
+    targetPositionBufferInfo.buffer = targetPositionStorageHandle->buffer;
     targetPositionBufferInfo.offset = 0;
     targetPositionBufferInfo.range = POSITION_BUFFER_SIZE;
     
