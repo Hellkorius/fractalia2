@@ -498,16 +498,56 @@ void VulkanRenderer::transitionBufferLayout(VkCommandBuffer commandBuffer) {
         return;
     }
     
-    // Memory barrier to ensure compute write is finished before graphics read
-    VkMemoryBarrier barrier{};
-    barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
-    barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-    barrier.dstAccessMask = VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT;
+    // Buffer memory barriers to ensure proper synchronization between compute and graphics stages
+    std::array<VkBufferMemoryBarrier, 4> bufferBarriers{};
+    
+    // GPUEntity buffer barrier (compute read/write -> vertex shader instance data read)
+    bufferBarriers[0].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+    bufferBarriers[0].srcAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+    bufferBarriers[0].dstAccessMask = VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT;
+    bufferBarriers[0].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    bufferBarriers[0].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    bufferBarriers[0].buffer = gpuEntityManager->getCurrentEntityBuffer();
+    bufferBarriers[0].offset = 0;
+    bufferBarriers[0].size = VK_WHOLE_SIZE;
+    
+    // Position buffer barrier (compute write -> vertex shader storage buffer read)
+    bufferBarriers[1].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+    bufferBarriers[1].srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+    bufferBarriers[1].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+    bufferBarriers[1].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    bufferBarriers[1].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    bufferBarriers[1].buffer = gpuEntityManager->getCurrentPositionBuffer();
+    bufferBarriers[1].offset = 0;
+    bufferBarriers[1].size = VK_WHOLE_SIZE;
+    
+    // Current position buffer barrier (compute read/write -> potential next frame access)
+    bufferBarriers[2].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+    bufferBarriers[2].srcAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+    bufferBarriers[2].dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+    bufferBarriers[2].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    bufferBarriers[2].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    bufferBarriers[2].buffer = gpuEntityManager->getCurrentPositionStorageBuffer();
+    bufferBarriers[2].offset = 0;
+    bufferBarriers[2].size = VK_WHOLE_SIZE;
+    
+    // Target position buffer barrier (compute read/write -> potential next frame access)
+    bufferBarriers[3].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+    bufferBarriers[3].srcAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+    bufferBarriers[3].dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+    bufferBarriers[3].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    bufferBarriers[3].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    bufferBarriers[3].buffer = gpuEntityManager->getTargetPositionStorageBuffer();
+    bufferBarriers[3].offset = 0;
+    bufferBarriers[3].size = VK_WHOLE_SIZE;
     
     context->getLoader().vkCmdPipelineBarrier(commandBuffer,
                         VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                        VK_PIPELINE_STAGE_VERTEX_INPUT_BIT,
-                        0, 1, &barrier, 0, nullptr, 0, nullptr);
+                        VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_VERTEX_INPUT_BIT,
+                        0, 
+                        0, nullptr,                    // No general memory barriers
+                        bufferBarriers.size(), bufferBarriers.data(),  // Buffer barriers
+                        0, nullptr);                   // No image barriers
 }
 
 void VulkanRenderer::updateUniformBuffer(uint32_t currentImage) {

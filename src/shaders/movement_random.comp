@@ -122,10 +122,17 @@ void main() {
     // Calculate cycle using frame number and entity offset for staggering
     float cycle = mod(pc.frame + entityIndex * 37u, float(CYCLE_LENGTH));
     
-    // Initialize buffers on very first frame
-    if (pc.frame < 1.0) {
+    // Extract runtime state from GPUEntity
+    vec4 runtimeState = entities.entityData[baseOffset + 7]; // runtimeState at position 7
+    float initialized = runtimeState.y; // initialized flag
+    
+    // Initialize buffers for new entities using the entity's initialized flag
+    if (initialized < 0.5) { // Entity not yet initialized
         currentPos.currentPositions[entityIndex] = vec4(center, 1.0);
         targetPos.targetPositions[entityIndex] = vec4(center, 1.0);
+        
+        // Mark entity as initialized in GPU memory
+        entities.entityData[baseOffset + 7].y = 1.0; // Set initialized flag
     }
     
     // Get current position and target
