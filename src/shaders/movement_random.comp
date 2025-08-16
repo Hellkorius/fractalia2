@@ -40,6 +40,10 @@ layout(std430, binding = 3) buffer TargetPositionBuffer {
 
 /* ---------- Random Walk Movement Functions ---------- */
 
+// Constants for improved readability
+const float TWO_PI = 6.28318530718;
+const uint CYCLE_LENGTH = 600u;
+
 // Wang hash function for high-quality GPU pseudorandom generation
 uint wangHash(uint seed) {
     seed = (seed ^ 61u) ^ (seed >> 16u);
@@ -130,12 +134,10 @@ void main() {
     // Hot data access - movementParams1: center.xyz, movementType
     vec4 movementParams1 = entities.entityData[baseOffset + 5];
     vec3 center = movementParams1.xyz;
-    float movementType = movementParams1.w;
-    
-    // All entities now use random walk movement (movementType should always be 0.0)
+    // movementType is always 0.0 for random walk - no need to extract
     
     // Calculate cycle using frame number and entity offset for staggering
-    float cycle = mod(pc.frame + entityIndex * 37, 600.0);
+    float cycle = mod(pc.frame + entityIndex * 37u, float(CYCLE_LENGTH));
     
     // Initialize buffers on very first frame
     if (pc.frame < 1.0) {
@@ -150,16 +152,16 @@ void main() {
     // On cycle reset, generate new target position
     if (cycle < 1.0) {
         // Current position becomes the previous target (for continuity)
-        if (pc.frame >= 600.0) { // Not the very first cycle
+        if (pc.frame >= float(CYCLE_LENGTH)) { // Not the very first cycle
             currentPosition = target;
             currentPos.currentPositions[entityIndex] = vec4(currentPosition, 1.0);
         }
         
         // Generate new random step from current position
-        uint cycleNumber = uint(pc.frame / 600.0);
+        uint cycleNumber = uint(pc.frame / float(CYCLE_LENGTH));
         // Ensure unique seed per entity per cycle - multiple prime multipliers prevent collisions
         uint baseSeed = entityIndex * 2654435761u + cycleNumber * 1597334677u + uint(phase * 982451653.0) + uint(amplitude * 1640531371.0);
-        float randAngle = pseudoRandom(baseSeed) * 6.28318530718; // 2π
+        float randAngle = pseudoRandom(baseSeed) * TWO_PI;
         float stepMagnitude = pseudoRandom(baseSeed + 1u) * amplitude;
         
         vec3 randomStep = vec3(
@@ -174,7 +176,7 @@ void main() {
     }
     
     // Compute interpolated position and write to output
-    float t = smoothstep(0.0, 1.0, cycle / 600.0);
+    float t = smoothstep(0.0, 1.0, cycle / float(CYCLE_LENGTH));
     vec3 interpolatedPosition = mix(currentPosition, target, t);
     outPositions.positions[entityIndex] = vec4(interpolatedPosition, 1.0);
 }

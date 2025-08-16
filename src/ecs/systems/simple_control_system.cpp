@@ -27,7 +27,6 @@ namespace SimpleControlSystem {
         std::cout << "-: Show current GPU performance stats" << std::endl;
         std::cout << "Left Click: Create GPU entity with movement at mouse position" << std::endl;
         std::cout << "All entities use random walk movement pattern" << std::endl;
-        std::cout << "CAPS LOCK: Toggle Angel Mode (epic transition effect)" << std::endl;
         std::cout << "T: Run graphics buffer overflow tests" << std::endl;
         std::cout << "===============================================\n" << std::endl;
         
@@ -67,12 +66,6 @@ namespace SimpleControlSystem {
                 }
                 
                 // Movement type is fixed to random walk - no switching needed
-                
-                // Angel mode toggle - frame-based
-                if (keyboard->isKeyPressed(SDL_SCANCODE_CAPSLOCK)) {
-                    controlState->angelModeEnabled = !controlState->angelModeEnabled;
-                    std::cout << "Angel Mode " << (controlState->angelModeEnabled ? "ENABLED" : "DISABLED") << std::endl;
-                }
                 
                 // Performance stats - frame-based
                 if (keyboard->isKeyPressed(SDL_SCANCODE_P)) {

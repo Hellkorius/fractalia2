@@ -16,7 +16,7 @@ layout(location = 0) in vec3 inPos;
 
 // Instance data from GPUEntity buffer
 layout(location = 7) in vec4 ampFreqPhaseOff;  // amplitude, frequency, phase, timeOffset
-layout(location = 8) in vec4 centerType;       // center.xyz, movementType
+layout(location = 8) in vec4 centerType;       // center.xyz, movementType (always 0 for random walk)
 
 // Pre-computed positions from compute shader
 layout(std430, binding = 2) readonly buffer ComputedPositions {
@@ -44,23 +44,19 @@ vec3 hsv2rgb(float h, float s, float v) {
 }
 
 void main() {
-    // Extract movement type to determine if this is a random movement entity
-    float movementType = centerType.w;
-    vec3 worldPos;
-    
-    // All movement types now use pre-computed positions from compute shader
-    worldPos = computedPos[gl_InstanceIndex].xyz;
+    // All entities use random walk with pre-computed positions from compute shader
+    vec3 worldPos = computedPos[gl_InstanceIndex].xyz;
     
     // Extract movement parameters for color calculation
     float phase = ampFreqPhaseOff.z;
     float timeOffset = ampFreqPhaseOff.w;
     float entityTime = pc.time + timeOffset;
     
-    /* Calculate color based on movement parameters */
-    float hue = mod(phase + entityTime * 0.5, 6.28318) / 6.28318;
+    // Calculate dynamic color based on movement parameters
+    float hue = mod(phase + entityTime * 0.5, 6.28318530718) / 6.28318530718; // Use full precision PI constant
     color = hsv2rgb(hue, 0.8, 0.9);
     
-    /* Apply rotation based on time */
+    // Apply rotation based on time and final transformation
     float rot = entityTime * 0.1;
     mat4 rotationMatrix = mat4(
         cos(rot),  sin(rot), 0, 0,
@@ -69,6 +65,5 @@ void main() {
         worldPos,             1
     );
     
-    /* Final transformation */
     gl_Position = ubo.proj * ubo.view * rotationMatrix * vec4(inPos, 1.0);
 }

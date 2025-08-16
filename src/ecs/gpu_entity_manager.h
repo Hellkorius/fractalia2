@@ -65,6 +65,9 @@ struct GPUEntity {
     }
 };
 
+// Compile-time size validation for GPU memory layout optimization
+static_assert(sizeof(GPUEntity) == 128, "GPUEntity must be exactly 128 bytes for optimal GPU memory access");
+
 // Forward declarations
 class VulkanContext;
 class VulkanSync;
@@ -85,7 +88,7 @@ public:
     void addEntitiesFromECS(const std::vector<Entity>& entities);
     void uploadPendingEntities();
     void clearAllEntities();
-    void updateAllMovementTypes(int newMovementType, bool angelMode = false);
+    void updateAllMovementTypes(int newMovementType);
     
     // GPU buffer management  
     VkBuffer getCurrentEntityBuffer() const { return entityStorage; }

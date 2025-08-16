@@ -12,12 +12,9 @@ cp src/shaders/compiled/vertex.spv build/shaders/compiled/
 glslangValidator -V src/shaders/fragment.frag -o src/shaders/compiled/fragment.spv
 cp src/shaders/compiled/fragment.spv build/shaders/compiled/
 
-# Compile modular movement compute shaders
+# Compile compute shader (random walk movement)
 glslangValidator -V src/shaders/movement_random.comp -o src/shaders/compiled/movement_random.comp.spv
 cp src/shaders/compiled/movement_random.comp.spv build/shaders/compiled/
-
-glslangValidator -V src/shaders/movement_pattern.comp -o src/shaders/compiled/movement_pattern.comp.spv
-cp src/shaders/compiled/movement_pattern.comp.spv build/shaders/compiled/
 
 
 echo "Shaders compiled successfully!"

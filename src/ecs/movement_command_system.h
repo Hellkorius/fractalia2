@@ -15,7 +15,6 @@ struct MovementCommand {
     };
     
     Type targetType{Type::RandomWalk};
-    bool angelMode{false};
     double timestamp{0.0}; // When command was created
     
     // Validation

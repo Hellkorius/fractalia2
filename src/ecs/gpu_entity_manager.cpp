@@ -169,13 +169,12 @@ void* GPUEntityManager::getMappedData() const {
     return entityStorageHandle ? entityStorageHandle->mappedData : nullptr;
 }
 
-void GPUEntityManager::updateAllMovementTypes(int newMovementType, bool angelMode) {
+void GPUEntityManager::updateAllMovementTypes(int newMovementType) {
     if (activeEntityCount == 0) {
         return;
     }
     
     // Force GPU synchronization to ensure no buffers are being actively processed
-    // This gives us absolute control over buffer contents
     if (context) {
         context->getLoader().vkDeviceWaitIdle(context->getDevice());
     }
@@ -188,28 +187,16 @@ void GPUEntityManager::updateAllMovementTypes(int newMovementType, bool angelMod
             // Update the movementType field (w component of movementParams1)
             bufferPtr[i].movementParams1.w = static_cast<float>(newMovementType);
             
-            if (angelMode) {
-                // Angel Mode: Trigger biblical transition via origin
-                bufferPtr[i].runtimeState.z = 0.0f; // Reset state timer
-                bufferPtr[i].runtimeState.w = 2.0f; // STATE_ANGEL_TRANSITION
-            } else {
-                // Organic Mode: Trigger direct transition to target position
-                bufferPtr[i].runtimeState.z = 0.0f; // Reset state timer
-                bufferPtr[i].runtimeState.w = 3.0f; // STATE_ORGANIC_TRANSITION
-            }
+            // Reset state timer for new movement type
+            bufferPtr[i].runtimeState.z = 0.0f; // Reset state timer
+            bufferPtr[i].runtimeState.w = 1.0f; // STATE_INTERPOLATING
             
             // Keep initialized flag so center is preserved during transition
             // (Don't reset runtimeState.y - keep it as initialized)
         }
     }
     
-    if (angelMode) {
-        std::cout << "Started ANGEL MODE transition for " << activeEntityCount << " GPU entities to movement type " << newMovementType 
-                  << " (biblical 2-second transition via origin)" << std::endl;
-    } else {
-        std::cout << "Started organic transition for " << activeEntityCount << " GPU entities to movement type " << newMovementType 
-                  << " (direct movement to target positions)" << std::endl;
-    }
+    std::cout << "Updated " << activeEntityCount << " GPU entities to movement type " << newMovementType << std::endl;
 }
 
 

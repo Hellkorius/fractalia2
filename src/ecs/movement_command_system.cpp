@@ -147,7 +147,7 @@ bool MovementCommandProcessor::executeMovementUpdate(const MovementCommand& comm
     
     try {
         int movementType = static_cast<int>(command.targetType);
-        gpuEntityManager->updateAllMovementTypes(movementType, command.angelMode);
+        gpuEntityManager->updateAllMovementTypes(movementType);
         return true;
     }
     catch (const std::exception& e) {
@@ -169,11 +169,5 @@ void MovementCommandProcessor::logCommandExecution(const MovementCommand& comman
     const auto& movementName = MOVEMENT_NAMES[static_cast<size_t>(command.targetType)];
     const int movementType = static_cast<int>(command.targetType);
     
-    if (command.angelMode) {
-        std::cout << "Executed ANGEL MODE transition to " << movementName << " (" << movementType 
-                  << ") - biblical 2-second transition via origin" << std::endl;
-    } else {
-        std::cout << "Executed organic transition to " << movementName << " (" << movementType 
-                  << ") - direct movement to target positions" << std::endl;
-    }
+    std::cout << "Executed transition to " << movementName << " (" << movementType << ")" << std::endl;
 }
