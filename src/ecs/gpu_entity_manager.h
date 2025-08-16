@@ -8,13 +8,16 @@
 #include <queue>
 #include <memory>
 
-// GPU entity structure matching optimized compute shader layout
+// GPU entity structure optimized for cache efficiency
 struct GPUEntity {
-    glm::mat4 modelMatrix;        // 64 bytes - transform matrix (positions 0-3)
-    glm::vec4 movementParams0;    // 16 bytes - amplitude, frequency, phase, timeOffset (position 4)
-    glm::vec4 movementParams1;    // 16 bytes - center.xyz, movementType (position 5)
-    glm::vec4 color;              // 16 bytes - RGBA color (position 6)
-    glm::vec4 runtimeState;       // 16 bytes - totalTime, initialized, stateTimer, entityState (position 7)
+    // Cache Line 1 (bytes 0-63) - HOT DATA: All frequently accessed in compute shaders
+    glm::vec4 movementParams0;    // 16 bytes - amplitude, frequency, phase, timeOffset (position 0)
+    glm::vec4 movementParams1;    // 16 bytes - center.xyz, movementType (position 1)
+    glm::vec4 runtimeState;       // 16 bytes - totalTime, initialized, stateTimer, entityState (position 2)
+    glm::vec4 color;              // 16 bytes - RGBA color (position 3)
+    
+    // Cache Line 2 (bytes 64-127) - COLD DATA: Rarely accessed
+    glm::mat4 modelMatrix;        // 64 bytes - transform matrix (positions 4-7)
     
     GPUEntity() = default;
     
@@ -22,10 +25,7 @@ struct GPUEntity {
     static GPUEntity fromECS(const Transform& transform, const Renderable& renderable, const MovementPattern& pattern) {
         GPUEntity entity{};
         
-        // Copy transform matrix
-        entity.modelMatrix = transform.getMatrix();
-        
-        // Copy movement parameters (now in optimized positions 4-5)
+        // Copy movement parameters (now in optimized positions 0-1)
         entity.movementParams0 = glm::vec4(
             pattern.amplitude,
             pattern.frequency, 
@@ -40,8 +40,11 @@ struct GPUEntity {
             static_cast<float>(pattern.type)
         );
         
-        // Copy color (now in position 6)
+        // Copy color (now in position 3)
         entity.color = renderable.color;
+        
+        // Copy transform matrix (now in positions 4-7)
+        entity.modelMatrix = transform.getMatrix();
         
         // Initialize runtime state with random staggering for random walk movement
         // All entities now use random walk, so always apply staggering
