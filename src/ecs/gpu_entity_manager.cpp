@@ -32,17 +32,8 @@ bool GPUEntityManager::initialize(const VulkanContext& context, VulkanSync* sync
         return false;
     }
     
-    // Use provided layout if available, otherwise create our own
-    if (computeDescriptorSetLayout != VK_NULL_HANDLE) {
-        this->computeDescriptorSetLayout = computeDescriptorSetLayout;
-        this->ownsDescriptorSetLayout = false;
-    } else {
-        if (!createComputeDescriptorSetLayout()) {
-            std::cerr << "Failed to create compute descriptor set layout!" << std::endl;
-            return false;
-        }
-        this->ownsDescriptorSetLayout = true;
-    }
+    // Use provided layout from VulkanPipeline
+    this->computeDescriptorSetLayout = computeDescriptorSetLayout;
     
     if (!createComputeDescriptorSets()) {
         std::cerr << "Failed to create compute descriptor sets!" << std::endl;
@@ -85,10 +76,8 @@ void GPUEntityManager::cleanup() {
         computeDescriptorPool = VK_NULL_HANDLE;
     }
     
-    if (computeDescriptorSetLayout != VK_NULL_HANDLE && ownsDescriptorSetLayout) {
-        context->getLoader().vkDestroyDescriptorSetLayout(context->getDevice(), computeDescriptorSetLayout, nullptr);
-        computeDescriptorSetLayout = VK_NULL_HANDLE;
-    }
+    // Layout is owned by VulkanPipeline, don't destroy it here
+    computeDescriptorSetLayout = VK_NULL_HANDLE;
 }
 
 void GPUEntityManager::addEntity(const GPUEntity& entity) {
@@ -234,41 +223,6 @@ bool GPUEntityManager::createComputeDescriptorPool() {
     return computeDescriptorPool != VK_NULL_HANDLE;
 }
 
-bool GPUEntityManager::createComputeDescriptorSetLayout() {
-    // Four storage buffers: entities, positions, currentPositions, targetPositions
-    VkDescriptorSetLayoutBinding bindings[4] = {};
-    
-    // Input buffer binding (entities)
-    bindings[0].binding = 0;
-    bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    bindings[0].descriptorCount = 1;
-    bindings[0].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
-    
-    // Output buffer binding (positions)
-    bindings[1].binding = 1;
-    bindings[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    bindings[1].descriptorCount = 1;
-    bindings[1].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
-    
-    // Current positions buffer binding
-    bindings[2].binding = 2;
-    bindings[2].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    bindings[2].descriptorCount = 1;
-    bindings[2].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
-    
-    // Target positions buffer binding
-    bindings[3].binding = 3;
-    bindings[3].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    bindings[3].descriptorCount = 1;
-    bindings[3].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
-    
-    VkDescriptorSetLayoutCreateInfo layoutInfo{};
-    layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-    layoutInfo.bindingCount = 4;
-    layoutInfo.pBindings = bindings;
-    
-    return context->getLoader().vkCreateDescriptorSetLayout(context->getDevice(), &layoutInfo, nullptr, &computeDescriptorSetLayout) == VK_SUCCESS;
-}
 
 bool GPUEntityManager::createComputeDescriptorSets() {
     // Allocate single descriptor set
@@ -310,7 +264,10 @@ bool GPUEntityManager::createComputeDescriptorSets() {
     return true;
 }
 
-bool GPUEntityManager::recreateComputeDescriptorResources() {
+bool GPUEntityManager::recreateComputeDescriptorResources(VkDescriptorSetLayout newLayout) {
+    // Update layout reference
+    computeDescriptorSetLayout = newLayout;
+    
     // Reset the descriptor pool to free all allocated descriptor sets
     if (computeDescriptorPool != VK_NULL_HANDLE) {
         VkResult result = context->getLoader().vkResetDescriptorPool(context->getDevice(), computeDescriptorPool, 0);

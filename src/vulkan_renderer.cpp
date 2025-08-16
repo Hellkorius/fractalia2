@@ -381,8 +381,7 @@ bool VulkanRenderer::recreateSwapChain() {
     
     // Update GPU entity manager with new compute descriptor set layout from recreated pipeline
     if (gpuEntityManager) {
-        gpuEntityManager->setComputeDescriptorSetLayout(pipeline->getComputeDescriptorSetLayout());
-        if (!gpuEntityManager->recreateComputeDescriptorResources()) {
+        if (!gpuEntityManager->recreateComputeDescriptorResources(pipeline->getComputeDescriptorSetLayout())) {
             std::cerr << "Failed to recreate GPU entity manager descriptor sets!" << std::endl;
             recreationInProgress = false;
             return false;
