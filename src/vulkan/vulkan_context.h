@@ -31,6 +31,7 @@ public:
     VkDevice getDevice() const { return device; }
     VkQueue getGraphicsQueue() const { return graphicsQueue; }
     VkQueue getPresentQueue() const { return presentQueue; }
+    uint32_t getGraphicsQueueFamily() const { return queueFamilyIndices.graphicsFamily.value(); }
     
     class VulkanFunctionLoader& getLoader() const { return *loader; }
     

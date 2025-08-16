@@ -121,6 +121,7 @@ public:
     PFN_vkDestroyFence vkDestroyFence = nullptr;
     PFN_vkWaitForFences vkWaitForFences = nullptr;
     PFN_vkResetFences vkResetFences = nullptr;
+    PFN_vkGetFenceStatus vkGetFenceStatus = nullptr;
     
     // Command buffer functions
     PFN_vkCreateCommandPool vkCreateCommandPool = nullptr;

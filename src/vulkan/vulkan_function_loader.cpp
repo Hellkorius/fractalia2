@@ -242,6 +242,8 @@ void VulkanFunctionLoader::loadSynchronizationFunctions() {
         vkGetDeviceProcAddr(device, "vkWaitForFences"));
     vkResetFences = reinterpret_cast<PFN_vkResetFences>(
         vkGetDeviceProcAddr(device, "vkResetFences"));
+    vkGetFenceStatus = reinterpret_cast<PFN_vkGetFenceStatus>(
+        vkGetDeviceProcAddr(device, "vkGetFenceStatus"));
 }
 
 void VulkanFunctionLoader::loadCommandFunctions() {

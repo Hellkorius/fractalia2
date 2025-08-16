@@ -89,6 +89,9 @@ public:
     void copyToBuffer(const ResourceHandle& dst, const void* data, VkDeviceSize size, VkDeviceSize offset = 0);
     void copyBufferToBuffer(const ResourceHandle& src, const ResourceHandle& dst, VkDeviceSize size, VkDeviceSize srcOffset = 0, VkDeviceSize dstOffset = 0);
     
+    // Async staging operations using transfer queue
+    CommandExecutor::AsyncTransfer copyToBufferAsync(const ResourceHandle& dst, const void* data, VkDeviceSize size, VkDeviceSize offset = 0);
+    
     // Descriptor management (bindless-ready)
     struct DescriptorPoolConfig {
         uint32_t maxSets = 1024;

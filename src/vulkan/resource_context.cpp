@@ -165,8 +165,8 @@ bool ResourceContext::initialize(const VulkanContext& context, VkCommandPool com
         return false;
     }
     
-    // Initialize staging buffer (4MB default)
-    if (!stagingBuffer.initialize(context, 4 * 1024 * 1024)) {
+    // Initialize staging buffer (16MB for large entity uploads)
+    if (!stagingBuffer.initialize(context, 16 * 1024 * 1024)) {
         std::cerr << "Failed to initialize staging buffer!" << std::endl;
         return false;
     }
@@ -384,15 +384,37 @@ void ResourceContext::destroyResource(ResourceHandle& handle) {
 
 void ResourceContext::copyToBuffer(const ResourceHandle& dst, const void* data, VkDeviceSize size, VkDeviceSize offset) {
     if (dst.mappedData) {
-        // Direct copy to mapped buffer
+        // Direct copy to mapped buffer - synchronous
         memcpy(static_cast<char*>(dst.mappedData) + offset, data, size);
     } else {
-        // Use staging buffer
-        auto stagingRegion = stagingBuffer.allocate(size);
-        if (stagingRegion.mappedData) {
-            memcpy(stagingRegion.mappedData, data, size);
-            copyBufferToBuffer({stagingRegion.buffer, VK_NULL_HANDLE, VK_NULL_HANDLE, nullptr, stagingRegion.mappedData, size}, 
-                              dst, size, stagingRegion.offset, offset);
+        // Handle large uploads by chunking if necessary
+        const VkDeviceSize maxChunkSize = 8 * 1024 * 1024; // 8MB chunks
+        VkDeviceSize remaining = size;
+        VkDeviceSize currentOffset = 0;
+        
+        while (remaining > 0) {
+            VkDeviceSize chunkSize = std::min(remaining, maxChunkSize);
+            
+            // Try to allocate staging region for this chunk
+            auto stagingRegion = stagingBuffer.allocate(chunkSize);
+            if (!stagingRegion.mappedData) {
+                // Reset staging buffer and try again
+                stagingBuffer.reset();
+                stagingRegion = stagingBuffer.allocate(chunkSize);
+            }
+            
+            if (stagingRegion.mappedData) {
+                memcpy(stagingRegion.mappedData, static_cast<const char*>(data) + currentOffset, chunkSize);
+                // Use synchronous transfer to ensure data is available before returning
+                copyBufferToBuffer({stagingRegion.buffer, VK_NULL_HANDLE, VK_NULL_HANDLE, nullptr, stagingRegion.mappedData, chunkSize}, 
+                                  dst, chunkSize, stagingRegion.offset, offset + currentOffset);
+                
+                remaining -= chunkSize;
+                currentOffset += chunkSize;
+            } else {
+                std::cerr << "ResourceContext::copyToBuffer: Failed to allocate staging buffer for chunk of size " << chunkSize << std::endl;
+                break;
+            }
         }
     }
 }
@@ -409,6 +431,26 @@ void ResourceContext::copyBufferToBuffer(const ResourceHandle& src, const Resour
     }
     
     executor.copyBufferToBuffer(src.buffer, dst.buffer, size, srcOffset, dstOffset);
+}
+
+CommandExecutor::AsyncTransfer ResourceContext::copyToBufferAsync(const ResourceHandle& dst, const void* data, VkDeviceSize size, VkDeviceSize offset) {
+    if (dst.mappedData) {
+        // Direct copy to mapped buffer - no async needed
+        memcpy(static_cast<char*>(dst.mappedData) + offset, data, size);
+        return {}; // Return empty transfer (already complete)
+    } else {
+        // Use staging buffer with async transfer
+        auto stagingRegion = stagingBuffer.allocate(size);
+        if (stagingRegion.mappedData) {
+            memcpy(stagingRegion.mappedData, data, size);
+            return executor.copyBufferToBufferAsync(
+                stagingRegion.buffer, dst.buffer, size, 
+                stagingRegion.offset, offset
+            );
+        }
+    }
+    
+    return {}; // Failed allocation
 }
 
 VkDescriptorPool ResourceContext::createDescriptorPool() {
