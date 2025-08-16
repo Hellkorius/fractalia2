@@ -116,7 +116,7 @@ int main(int argc, char* argv[]) {
     Profiler::getInstance().setTargetFrameTime(TARGET_FRAME_TIME);
 
     // GPU stress test configuration - scale up to 10k for initial test
-    constexpr size_t ENTITY_COUNT = 80000; // GPU can handle much more
+    constexpr size_t ENTITY_COUNT = 1000; // Low because we're implementing collisions
     
     DEBUG_LOG("Creating " << ENTITY_COUNT << " GPU entities for stress testing...");
     
