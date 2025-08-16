@@ -93,6 +93,7 @@ private:
     
     // Key-frame look-ahead system
     uint32_t frameCounter = 0;
+    bool entityCountChanged = false;
     
     // RAII fence management for frame synchronization
     class FrameFences {

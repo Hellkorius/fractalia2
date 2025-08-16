@@ -485,6 +485,7 @@ void VulkanRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t
 void VulkanRenderer::uploadPendingGPUEntities() {
     if (gpuEntityManager) {
         gpuEntityManager->flushStagingBuffer();
+        entityCountChanged = true;
     }
 }
 
@@ -492,6 +493,11 @@ void VulkanRenderer::uploadPendingGPUEntities() {
 
 void VulkanRenderer::transitionBufferLayout(VkCommandBuffer commandBuffer) {
     if (!gpuEntityManager || gpuEntityManager->getEntityCount() == 0) {
+        return;
+    }
+    
+    // Only record barriers when entity count changed or periodic safety flush (every 64 frames)
+    if (!entityCountChanged && (frameCounter & 63u) != 0) {
         return;
     }
     
@@ -545,6 +551,8 @@ void VulkanRenderer::transitionBufferLayout(VkCommandBuffer commandBuffer) {
                         0, nullptr,                    // No general memory barriers
                         bufferBarriers.size(), bufferBarriers.data(),  // Buffer barriers
                         0, nullptr);                   // No image barriers
+    
+    entityCountChanged = false;
 }
 
 void VulkanRenderer::updateUniformBuffer(uint32_t currentImage) {
