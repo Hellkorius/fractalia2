@@ -28,8 +28,6 @@ public:
     VkExtent2D getExtent() const { return swapChainExtent; }
     const std::vector<VkImageView>& getImageViews() const { return swapChainImageViews; }
     
-    VkImage getDepthImage() const { return depthImage; }
-    VkImageView getDepthImageView() const { return depthImageView; }
     VkImage getMSAAColorImage() const { return msaaColorImage; }
     VkImageView getMSAAColorImageView() const { return msaaColorImageView; }
     const std::vector<VkFramebuffer>& getFramebuffers() const { return swapChainFramebuffers; }
@@ -46,9 +44,6 @@ private:
     VkExtent2D swapChainExtent;
     std::vector<VkImageView> swapChainImageViews;
     
-    VkImage depthImage = VK_NULL_HANDLE;
-    VkDeviceMemory depthImageMemory = VK_NULL_HANDLE;
-    VkImageView depthImageView = VK_NULL_HANDLE;
     
     VkImage msaaColorImage = VK_NULL_HANDLE;
     VkDeviceMemory msaaColorImageMemory = VK_NULL_HANDLE;
@@ -59,7 +54,6 @@ private:
 
     bool createSwapChain();
     bool createImageViews();
-    bool createDepthResources();
     bool createMSAAColorResources();
     void cleanupSwapChain();
     
