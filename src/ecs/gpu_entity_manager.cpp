@@ -164,35 +164,7 @@ void GPUEntityManager::clearAllEntities() {
     pendingEntities.clear();
 }
 
-void* GPUEntityManager::getMappedData() const {
-    // Entity buffer is now device-local, no mapped data available
-    // Use staging transfers via ResourceContext::copyToBuffer instead
-    return nullptr;
-}
 
-void GPUEntityManager::updateAllMovementTypes(int newMovementType) {
-    if (activeEntityCount == 0) {
-        return;
-    }
-    
-    // Force GPU synchronization to ensure no buffers are being actively processed
-    if (context) {
-        context->getLoader().vkDeviceWaitIdle(context->getDevice());
-    }
-    
-    // Create temporary buffer for updates since entity buffer is now device-local
-    std::vector<GPUEntity> updatedEntities(activeEntityCount);
-    
-    // Note: This is a limitation of device-local buffers - we can't read back efficiently
-    // For now, we'll need to maintain a CPU copy or implement a different approach
-    // This function is rarely used (only for movement type changes)
-    
-    // For the simplified random-walk only system, we can skip this update
-    // since all entities use the same movement type anyway
-    
-    std::cout << "Movement type updates not supported with device-local entity buffer" << std::endl;
-    std::cout << "All entities use random walk movement by default" << std::endl;
-}
 
 
 

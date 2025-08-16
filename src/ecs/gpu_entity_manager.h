@@ -91,7 +91,6 @@ public:
     void addEntitiesFromECS(const std::vector<Entity>& entities);
     void uploadPendingEntities();
     void clearAllEntities();
-    void updateAllMovementTypes(int newMovementType);
     
     // GPU buffer management  
     VkBuffer getCurrentEntityBuffer() const { return entityStorage; }
@@ -100,15 +99,12 @@ public:
     VkBuffer getTargetPositionStorageBuffer() const { return targetPositionStorage; }
     uint32_t getComputeInputIndex() const { return 0; }
     uint32_t getComputeOutputIndex() const { return 0; }
-    void advanceFrame() { /* No-op for single buffer */ }
     
     // Getters
     uint32_t getEntityCount() const { return activeEntityCount; }
     uint32_t getMaxEntities() const { return MAX_ENTITIES; }
     bool hasPendingUploads() const { return !pendingEntities.empty(); }
     
-    // Safe access to mapped data through ResourceHandle
-    void* getMappedData() const;
     
     // Descriptor set management
     VkDescriptorSetLayout getComputeDescriptorSetLayout() const { return computeDescriptorSetLayout; }

@@ -141,23 +141,8 @@ bool MovementCommandProcessor::validateCommand(const MovementCommand& command) {
 }
 
 bool MovementCommandProcessor::executeMovementUpdate(const MovementCommand& command) {
-    if (!gpuEntityManager) {
-        return false;
-    }
-    
-    try {
-        int movementType = static_cast<int>(command.targetType);
-        gpuEntityManager->updateAllMovementTypes(movementType);
-        return true;
-    }
-    catch (const std::exception& e) {
-        std::cerr << "MovementCommandProcessor: Exception during movement update: " << e.what() << std::endl;
-        return false;
-    }
-    catch (...) {
-        std::cerr << "MovementCommandProcessor: Unknown exception during movement update" << std::endl;
-        return false;
-    }
+    // Movement type updates no longer supported - all entities use random walk
+    return false;
 }
 
 void MovementCommandProcessor::logCommandExecution(const MovementCommand& command, bool success) {
