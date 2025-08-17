@@ -139,3 +139,19 @@ All entities now use a unified **random walk** movement pattern:
 - **Staggered Computation**: Entities compute new targets at different times to avoid performance spikes  
 - **Entity Personality**: Each entity has consistent drift characteristics based on its ID
 - **Cycle-based Updates**: 600-frame cycles with smooth interpolation between targets
+
+## Render Graph Transition (In Progress)
+
+### Current Status
+**Phase 1 Complete**: Core FrameGraph framework implemented in `src/vulkan/frame_graph.h/.cpp`
+- Resource abstraction with automatic Vulkan memory management
+- Node-based render pass system with dependency tracking
+- External resource import for existing GPU buffers
+- Multi-queue support (compute/graphics command buffers)
+
+**Next Phase**: Replace monolithic `VulkanRenderer::drawFrame()` with concrete render graph nodes
+
+### Implementation Plan
+See `rendergraph.md` for detailed transition plan and progress tracking.
+
+**IMPORTANT**: Update `rendergraph.md` whenever work is completed on the render graph transition.

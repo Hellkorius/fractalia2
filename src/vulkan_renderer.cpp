@@ -5,7 +5,12 @@
 #include "vulkan/vulkan_pipeline.h"
 #include "vulkan/vulkan_sync.h"
 #include "vulkan/resource_context.h"
+#include "vulkan/frame_graph.h"
+#include "vulkan/nodes/entity_compute_node.h"
+#include "vulkan/nodes/entity_graphics_node.h"
+#include "vulkan/nodes/swapchain_present_node.h"
 #include "ecs/gpu_entity_manager.h"
+#include "ecs/component.h"
 #include "ecs/systems/camera_system.h"
 #include "ecs/camera_component.h"
 #include "ecs/movement_command_system.h"
@@ -106,7 +111,11 @@ bool VulkanRenderer::initialize(SDL_Window* window) {
     movementCommandProcessor = std::make_unique<MovementCommandProcessor>(gpuEntityManager.get());
     std::cout << "Movement command processor initialized" << std::endl;
     
-    
+    // Initialize frame graph system
+    if (!initializeFrameGraph()) {
+        std::cerr << "Failed to initialize frame graph" << std::endl;
+        return false;
+    }
     
     // Initialize per-frame fences
     if (!frameFences.initialize(*context)) {
@@ -126,6 +135,9 @@ void VulkanRenderer::cleanup() {
         // Clean up per-frame fences
         frameFences.cleanup();
     }
+    
+    // Clean up frame graph system
+    cleanupFrameGraph();
     
     movementCommandProcessor.reset();
     gpuEntityManager.reset();
@@ -692,5 +704,167 @@ VkResult VulkanRenderer::waitForFenceRobust(VkFence fence, const char* fenceName
     }
     
     return result;
+}
+
+bool VulkanRenderer::initializeFrameGraph() {
+    // Create frame graph instance
+    frameGraph = std::make_unique<FrameGraph>();
+    if (!frameGraph->initialize(*context, sync.get())) {
+        std::cerr << "Failed to initialize frame graph" << std::endl;
+        return false;
+    }
+    
+    // Import external resources that are managed outside the frame graph
+    entityBufferId = frameGraph->importExternalBuffer(
+        "EntityBuffer", 
+        gpuEntityManager->getCurrentEntityBuffer(), 
+        gpuEntityManager->getMaxEntities() * sizeof(GPUEntity),
+        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT
+    );
+    
+    positionBufferId = frameGraph->importExternalBuffer(
+        "PositionBuffer",
+        gpuEntityManager->getCurrentPositionBuffer(),
+        gpuEntityManager->getMaxEntities() * sizeof(glm::vec4),
+        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT
+    );
+    
+    // Note: Swapchain images will be imported per-frame since they change
+    // Node creation will be done per-frame to handle dynamic swapchain images
+    
+    std::cout << "Frame graph initialized successfully" << std::endl;
+    return true;
+}
+
+void VulkanRenderer::cleanupFrameGraph() {
+    if (frameGraph) {
+        frameGraph->cleanup();
+        frameGraph.reset();
+    }
+    
+    computeNode.reset();
+    graphicsNode.reset();
+    presentNode.reset();
+}
+
+void VulkanRenderer::drawFrameWithFrameGraph() {
+    // 1. Wait for previous frame fences
+    if (frameFences.isComputeInUse(currentFrame)) {
+        VkResult computeResult = waitForFenceRobust(frameFences.getComputeFence(currentFrame), "compute");
+        if (computeResult == VK_ERROR_DEVICE_LOST) {
+            frameFences.setComputeInUse(currentFrame, false);
+            return;
+        }
+        frameFences.setComputeInUse(currentFrame, false);
+    }
+    
+    if (frameFences.isGraphicsInUse(currentFrame)) {
+        VkResult graphicsResult = waitForFenceRobust(frameFences.getGraphicsFence(currentFrame), "graphics");
+        if (graphicsResult == VK_ERROR_DEVICE_LOST) {
+            frameFences.setGraphicsInUse(currentFrame, false);
+            return;
+        }
+        frameFences.setGraphicsInUse(currentFrame, false);
+    }
+
+    // 2. Process movement commands
+    if (movementCommandProcessor) {
+        movementCommandProcessor->processCommands();
+    }
+
+    // 3. Acquire swapchain image
+    uint32_t imageIndex;
+    VkResult result = context->getLoader().vkAcquireNextImageKHR(
+        context->getDevice(), 
+        swapchain->getSwapchain(), 
+        UINT64_MAX, 
+        sync->getImageAvailableSemaphores()[currentFrame], 
+        VK_NULL_HANDLE, 
+        &imageIndex
+    );
+
+    if (result == VK_ERROR_OUT_OF_DATE_KHR) {
+        recreateSwapChain();
+        return;
+    } else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
+        std::cerr << "Failed to acquire swap chain image" << std::endl;
+        return;
+    }
+
+    // 4. Upload pending data and update buffers
+    uploadPendingGPUEntities();
+    updateUniformBuffer(currentFrame);
+
+    // 5. Setup frame graph for current frame
+    frameGraph->reset();
+    
+    // Import current swapchain image
+    VkImage swapchainImage = swapchain->getImages()[imageIndex];
+    VkImageView swapchainImageView = swapchain->getImageViews()[imageIndex];
+    swapchainImageId = frameGraph->importExternalImage(
+        "SwapchainImage",
+        swapchainImage,
+        swapchainImageView,
+        swapchain->getImageFormat(),
+        swapchain->getExtent()
+    );
+    
+    // Add nodes to frame graph
+    frameGraph->addNode<EntityComputeNode>(
+        entityBufferId,
+        positionBufferId,
+        pipeline.get(),
+        gpuEntityManager.get()
+    );
+    
+    frameGraph->addNode<EntityGraphicsNode>(
+        entityBufferId,
+        positionBufferId,
+        swapchainImageId,
+        pipeline.get(),
+        swapchain.get(),
+        resourceContext.get(),
+        gpuEntityManager.get()
+    );
+    
+    frameGraph->addNode<SwapchainPresentNode>(
+        swapchainImageId,
+        swapchain.get()
+    );
+    
+    // 6. Compile and execute frame graph
+    if (!frameGraph->compile()) {
+        std::cerr << "Failed to compile frame graph" << std::endl;
+        return;
+    }
+    
+    // Update frame data for nodes (this is a temporary solution)
+    // In a proper implementation, frame data would be passed through the frame graph system
+    totalTime += deltaTime;
+    frameCounter++;
+    
+    frameGraph->execute(currentFrame);
+    
+    // 7. Present immediately
+    VkPresentInfoKHR presentInfo{};
+    presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+    presentInfo.waitSemaphoreCount = 1;
+    presentInfo.pWaitSemaphores = &sync->getRenderFinishedSemaphores()[currentFrame];
+
+    VkSwapchainKHR swapChains[] = {swapchain->getSwapchain()};
+    presentInfo.swapchainCount = 1;
+    presentInfo.pSwapchains = swapChains;
+    presentInfo.pImageIndices = &imageIndex;
+
+    result = context->getLoader().vkQueuePresentKHR(context->getPresentQueue(), &presentInfo);
+    
+    if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || framebufferResized) {
+        framebufferResized = false;
+        recreateSwapChain();
+    } else if (result != VK_SUCCESS) {
+        std::cerr << "Failed to present swap chain image" << std::endl;
+    }
+
+    currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
 }
 

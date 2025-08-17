@@ -9,6 +9,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <flecs.h>
 #include "vulkan/vulkan_constants.h"
+#include "vulkan/frame_graph.h"
 
 // Forward declarations for modules
 class VulkanContext;
@@ -18,6 +19,10 @@ class VulkanSync;
 class ResourceContext;
 class GPUEntityManager;
 class MovementCommandProcessor;
+class FrameGraph;
+class EntityComputeNode;
+class EntityGraphicsNode;
+class SwapchainPresentNode;
 
 class VulkanRenderer {
 public:
@@ -73,6 +78,12 @@ private:
     std::unique_ptr<ResourceContext> resourceContext;
     std::unique_ptr<GPUEntityManager> gpuEntityManager;
     std::unique_ptr<MovementCommandProcessor> movementCommandProcessor;
+    
+    // Render graph system
+    std::unique_ptr<FrameGraph> frameGraph;
+    std::unique_ptr<EntityComputeNode> computeNode;
+    std::unique_ptr<EntityGraphicsNode> graphicsNode;
+    std::unique_ptr<SwapchainPresentNode> presentNode;
 
 
     // Helper functions
@@ -81,6 +92,11 @@ private:
     void updateUniformBuffer(uint32_t currentImage);
     void transitionBufferLayout(VkCommandBuffer commandBuffer);
     VkResult waitForFenceRobust(VkFence fence, const char* fenceName);
+    
+    // Frame graph setup
+    bool initializeFrameGraph();
+    void cleanupFrameGraph();
+    void drawFrameWithFrameGraph();
     
     
     
@@ -128,4 +144,9 @@ private:
     };
     
     FrameFences frameFences;
+    
+    // Frame graph resource IDs
+    FrameGraphTypes::ResourceId entityBufferId = 0;
+    FrameGraphTypes::ResourceId positionBufferId = 0;
+    FrameGraphTypes::ResourceId swapchainImageId = 0;
 };
