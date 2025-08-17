@@ -15,6 +15,8 @@ public:
     EntityComputeNode(
         FrameGraphTypes::ResourceId entityBuffer, 
         FrameGraphTypes::ResourceId positionBuffer,
+        FrameGraphTypes::ResourceId currentPositionBuffer,
+        FrameGraphTypes::ResourceId targetPositionBuffer,
         VulkanPipeline* pipeline,
         GPUEntityManager* gpuEntityManager
     );
@@ -32,10 +34,10 @@ public:
     void updateFrameData(float time, float deltaTime, uint32_t frameCounter);
 
 private:
-    // Memory barrier insertion for compute->graphics synchronization
-    void insertBufferBarriers(VkCommandBuffer commandBuffer, const VulkanContext* context);
     FrameGraphTypes::ResourceId entityBufferId;
     FrameGraphTypes::ResourceId positionBufferId;
+    FrameGraphTypes::ResourceId currentPositionBufferId;
+    FrameGraphTypes::ResourceId targetPositionBufferId;
     
     // External dependencies (not owned)
     VulkanPipeline* pipeline;

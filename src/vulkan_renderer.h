@@ -88,9 +88,6 @@ private:
 
     // Helper functions
     bool recreateSwapChain();
-    void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex);
-    void updateUniformBuffer(uint32_t currentImage);
-    void transitionBufferLayout(VkCommandBuffer commandBuffer);
     VkResult waitForFenceRobust(VkFence fence, const char* fenceName);
     
     // Frame graph setup
@@ -109,7 +106,6 @@ private:
     
     // Key-frame look-ahead system
     uint32_t frameCounter = 0;
-    bool entityCountChanged = false;
     
     // RAII fence management for frame synchronization
     class FrameFences {
@@ -148,5 +144,7 @@ private:
     // Frame graph resource IDs
     FrameGraphTypes::ResourceId entityBufferId = 0;
     FrameGraphTypes::ResourceId positionBufferId = 0;
+    FrameGraphTypes::ResourceId currentPositionBufferId = 0;
+    FrameGraphTypes::ResourceId targetPositionBufferId = 0;
     FrameGraphTypes::ResourceId swapchainImageId = 0;
 };

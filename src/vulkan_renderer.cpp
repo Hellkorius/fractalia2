@@ -151,199 +151,8 @@ void VulkanRenderer::cleanup() {
 }
 
 void VulkanRenderer::drawFrame() {
-    // Get sync objects
-    const auto& imageAvailableSemaphores = sync->getImageAvailableSemaphores();
-    const auto& renderFinishedSemaphores = sync->getRenderFinishedSemaphores();
-    const auto& commandBuffers = sync->getCommandBuffers();
-    const auto& computeCommandBuffers = sync->getComputeCommandBuffers();
-
-    // 1. Ensure GPU is done with THIS frame's resources
-    // Use immediate check first, then longer timeout if needed for smooth 60fps
-    
-    if (frameFences.isComputeInUse(currentFrame)) {
-        VkResult computeResult = waitForFenceRobust(frameFences.getComputeFence(currentFrame), "compute");
-#ifdef _DEBUG
-        assert(computeResult == VK_SUCCESS || computeResult == VK_ERROR_DEVICE_LOST);
-#endif
-        if (computeResult == VK_ERROR_DEVICE_LOST) {
-            frameFences.setComputeInUse(currentFrame, false);
-            return;
-        }
-        frameFences.setComputeInUse(currentFrame, false);
-    }
-    
-    if (frameFences.isGraphicsInUse(currentFrame)) {
-        VkResult graphicsResult = waitForFenceRobust(frameFences.getGraphicsFence(currentFrame), "graphics");
-#ifdef _DEBUG
-        assert(graphicsResult == VK_SUCCESS || graphicsResult == VK_ERROR_DEVICE_LOST);
-#endif
-        if (graphicsResult == VK_ERROR_DEVICE_LOST) {
-            frameFences.setGraphicsInUse(currentFrame, false);
-            return;
-        }
-        frameFences.setGraphicsInUse(currentFrame, false);
-    }
-
-    // 2. Process movement commands at very beginning of frame for complete buffer coverage
-    if (movementCommandProcessor) {
-        movementCommandProcessor->processCommands();
-    }
-
-    // 3. Acquire swapchain image
-    uint32_t imageIndex;
-    VkResult result = context->getLoader().vkAcquireNextImageKHR(context->getDevice(), swapchain->getSwapchain(), UINT64_MAX, imageAvailableSemaphores[currentFrame], VK_NULL_HANDLE, &imageIndex);
-
-    if (result == VK_ERROR_OUT_OF_DATE_KHR) {
-        recreateSwapChain();
-        return;
-    } else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
-        std::cerr << "Failed to acquire swap chain image" << std::endl;
-        return;
-    }
-
-    // 4. Upload pending data and update buffers
-    uploadPendingGPUEntities();
-    updateUniformBuffer(currentFrame);
-
-    // 5. Record compute command buffer
-    context->getLoader().vkResetCommandBuffer(computeCommandBuffers[currentFrame], 0);
-    
-    VkCommandBufferBeginInfo computeBeginInfo{};
-    computeBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    
-    VkResult beginResult = context->getLoader().vkBeginCommandBuffer(computeCommandBuffers[currentFrame], &computeBeginInfo);
-#ifdef _DEBUG
-    assert(beginResult == VK_SUCCESS);
-#else
-    (void)beginResult;
-#endif
-    
-    // Dispatch compute shader for movement calculation
-    if (gpuEntityManager && gpuEntityManager->getEntityCount() > 0) {
-        // Bind unified compute pipeline
-        context->getLoader().vkCmdBindPipeline(computeCommandBuffers[currentFrame], VK_PIPELINE_BIND_POINT_COMPUTE, pipeline->getComputePipeline());
-        
-        // Bind compute descriptor set
-        VkDescriptorSet computeDescriptorSet = gpuEntityManager->getCurrentComputeDescriptorSet();
-        context->getLoader().vkCmdBindDescriptorSets(
-            computeCommandBuffers[currentFrame], 
-            VK_PIPELINE_BIND_POINT_COMPUTE, 
-            pipeline->getComputePipelineLayout(), 
-            0, 1, &computeDescriptorSet, 0, nullptr
-        );
-        
-        // Update push constants for compute shader
-        struct ComputePushConstants {
-            float time;
-            float deltaTime;
-            uint32_t entityCount;
-            uint32_t frame;
-        } computePushConstants;
-        
-        computePushConstants.time = totalTime;
-        computePushConstants.deltaTime = deltaTime;
-        computePushConstants.entityCount = gpuEntityManager->getEntityCount();
-        computePushConstants.frame = frameCounter;
-        
-        context->getLoader().vkCmdPushConstants(
-            computeCommandBuffers[currentFrame],
-            pipeline->getComputePipelineLayout(),
-            VK_SHADER_STAGE_COMPUTE_BIT,
-            0, sizeof(ComputePushConstants),
-            &computePushConstants
-        );
-        
-        // Dispatch compute shader (32 threads per workgroup)
-        uint32_t numWorkgroups = (gpuEntityManager->getEntityCount() + 31) / 32;
-        context->getLoader().vkCmdDispatch(computeCommandBuffers[currentFrame], numWorkgroups, 1, 1);
-    }
-    
-    // Update total simulation time
-    totalTime += deltaTime;
-    
-    // Memory barrier to ensure compute write completes before graphics read
-    transitionBufferLayout(computeCommandBuffers[currentFrame]);
-    
-    // Update frame counter
-    frameCounter++;
-    
-    VkResult endResult = context->getLoader().vkEndCommandBuffer(computeCommandBuffers[currentFrame]);
-#ifdef _DEBUG
-    assert(endResult == VK_SUCCESS);
-#else
-    (void)endResult;
-#endif
-
-    // 6. Record graphics command buffer
-    context->getLoader().vkResetCommandBuffer(commandBuffers[currentFrame], 0);
-    recordCommandBuffer(commandBuffers[currentFrame], imageIndex);
-
-    // 7. Submit compute work with its own fence - NO BLOCKING
-    VkFence computeFence = frameFences.getComputeFence(currentFrame);
-    context->getLoader().vkResetFences(context->getDevice(), 1, &computeFence);
-    
-    VkSubmitInfo computeSubmitInfo{};
-    computeSubmitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    computeSubmitInfo.commandBufferCount = 1;
-    computeSubmitInfo.pCommandBuffers = &computeCommandBuffers[currentFrame];
-    
-    VkResult computeSubmitResult = context->getLoader().vkQueueSubmit(context->getGraphicsQueue(), 1, &computeSubmitInfo, computeFence);
-#ifdef _DEBUG
-    assert(computeSubmitResult == VK_SUCCESS);
-#else
-    (void)computeSubmitResult;
-#endif
-    frameFences.setComputeInUse(currentFrame, true);
-
-    // 8. Submit graphics work with its own fence - NO BLOCKING
-    VkFence graphicsFence = frameFences.getGraphicsFence(currentFrame);
-    context->getLoader().vkResetFences(context->getDevice(), 1, &graphicsFence);
-    
-    VkSubmitInfo graphicsSubmitInfo{};
-    graphicsSubmitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-
-    VkSemaphore waitSemaphores[] = {imageAvailableSemaphores[currentFrame]};
-    VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
-    graphicsSubmitInfo.waitSemaphoreCount = 1;
-    graphicsSubmitInfo.pWaitSemaphores = waitSemaphores;
-    graphicsSubmitInfo.pWaitDstStageMask = waitStages;
-    graphicsSubmitInfo.commandBufferCount = 1;
-    graphicsSubmitInfo.pCommandBuffers = &commandBuffers[currentFrame];
-
-    VkSemaphore signalSemaphores[] = {renderFinishedSemaphores[currentFrame]};
-    graphicsSubmitInfo.signalSemaphoreCount = 1;
-    graphicsSubmitInfo.pSignalSemaphores = signalSemaphores;
-
-    VkResult graphicsSubmitResult = context->getLoader().vkQueueSubmit(context->getGraphicsQueue(), 1, &graphicsSubmitInfo, graphicsFence);
-#ifdef _DEBUG
-    assert(graphicsSubmitResult == VK_SUCCESS);
-#else
-    (void)graphicsSubmitResult;
-#endif
-    frameFences.setGraphicsInUse(currentFrame, true);
-
-    // 9. Present immediately - no fence waiting
-    VkPresentInfoKHR presentInfo{};
-    presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
-    presentInfo.waitSemaphoreCount = 1;
-    presentInfo.pWaitSemaphores = signalSemaphores;
-
-    VkSwapchainKHR swapChains[] = {swapchain->getSwapchain()};
-    presentInfo.swapchainCount = 1;
-    presentInfo.pSwapchains = swapChains;
-    presentInfo.pImageIndices = &imageIndex;
-
-    result = context->getLoader().vkQueuePresentKHR(context->getPresentQueue(), &presentInfo);
-    
-
-    if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || framebufferResized) {
-        framebufferResized = false;
-        recreateSwapChain();
-    } else if (result != VK_SUCCESS) {
-        std::cerr << "Failed to present swap chain image" << std::endl;
-    }
-
-    currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
+    // Phase 3: Cutover to frame graph system
+    drawFrameWithFrameGraph();
 }
 
 bool VulkanRenderer::recreateSwapChain() {
@@ -411,191 +220,17 @@ bool VulkanRenderer::recreateSwapChain() {
     return true;
 }
 
-void VulkanRenderer::recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex) {
-    // Begin graphics command buffer
-    VkCommandBufferBeginInfo beginInfo{};
-    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    
-    VkResult graphicsBeginResult = context->getLoader().vkBeginCommandBuffer(commandBuffer, &beginInfo);
-#ifdef _DEBUG
-    assert(graphicsBeginResult == VK_SUCCESS);
-#else
-    (void)graphicsBeginResult;
-#endif
-
-    VkRenderPassBeginInfo renderPassInfo{};
-    renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-    renderPassInfo.renderPass = pipeline->getRenderPass();
-    renderPassInfo.framebuffer = swapchain->getFramebuffers()[imageIndex];
-    renderPassInfo.renderArea.offset = {0, 0};
-    renderPassInfo.renderArea.extent = swapchain->getExtent();
-
-    std::array<VkClearValue, 3> clearValues{};
-    clearValues[0].color = {{0.1f, 0.1f, 0.2f, 1.0f}};
-    clearValues[1].color = {{0.1f, 0.1f, 0.2f, 1.0f}};
-    clearValues[2].depthStencil = {1.0f, 0};
-    renderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
-    renderPassInfo.pClearValues = clearValues.data();
-
-    context->getLoader().vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
-
-    context->getLoader().vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->getGraphicsPipeline());
-    
-    const auto& descriptorSets = resourceContext->getGraphicsDescriptorSets();
-    context->getLoader().vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->getPipelineLayout(), 0, 1, &descriptorSets[currentFrame], 0, nullptr);
-
-    // Push constants for vertex shader
-    struct VertexPushConstants {
-        float time;                 // Current simulation time
-        float dt;                   // Time per frame  
-        uint32_t count;             // Total number of entities
-    } vertexPushConstants = { 
-        totalTime,
-        deltaTime,
-        gpuEntityManager ? gpuEntityManager->getEntityCount() : 0
-    };
-    
-    context->getLoader().vkCmdPushConstants(commandBuffer, pipeline->getPipelineLayout(),
-                      VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(VertexPushConstants), &vertexPushConstants);
-
-    VkViewport viewport{};
-    viewport.x = 0.0f;
-    viewport.y = 0.0f;
-    viewport.width = (float) swapchain->getExtent().width;
-    viewport.height = (float) swapchain->getExtent().height;
-    viewport.minDepth = 0.0f;
-    viewport.maxDepth = 1.0f;
-    context->getLoader().vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
-
-    VkRect2D scissor{};
-    scissor.offset = {0, 0};
-    scissor.extent = swapchain->getExtent();
-    context->getLoader().vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
-
-
-    // GPU-only rendering - all entities are triangles
-    uint32_t gpuEntityCount = gpuEntityManager ? gpuEntityManager->getEntityCount() : 0;
-    if (gpuEntityCount > 0) {
-        VkBuffer vertexBuffers[] = {resourceContext->getVertexBuffer(), gpuEntityManager->getCurrentEntityBuffer()};
-        VkDeviceSize offsets[] = {0, 0};
-        context->getLoader().vkCmdBindVertexBuffers(commandBuffer, 0, 2, vertexBuffers, offsets);
-        context->getLoader().vkCmdBindIndexBuffer(commandBuffer, resourceContext->getIndexBuffer(), 0, VK_INDEX_TYPE_UINT16);
-        context->getLoader().vkCmdDrawIndexed(commandBuffer, resourceContext->getIndexCount(), gpuEntityCount, 0, 0, 0);
-    }
-
-    context->getLoader().vkCmdEndRenderPass(commandBuffer);
-
-    VkResult graphicsEndResult = context->getLoader().vkEndCommandBuffer(commandBuffer);
-#ifdef _DEBUG
-    assert(graphicsEndResult == VK_SUCCESS);
-#else
-    (void)graphicsEndResult;
-#endif
-}
 
 
 void VulkanRenderer::uploadPendingGPUEntities() {
     if (gpuEntityManager) {
         gpuEntityManager->flushStagingBuffer();
-        entityCountChanged = true;
     }
 }
 
 
 
-void VulkanRenderer::transitionBufferLayout(VkCommandBuffer commandBuffer) {
-    if (!gpuEntityManager || gpuEntityManager->getEntityCount() == 0) {
-        return;
-    }
-    
-    // Only record barriers when entity count changed or periodic safety flush (every 64 frames)
-    if (!entityCountChanged && (frameCounter & 63u) != 0) {
-        return;
-    }
-    
-    // Buffer memory barriers to ensure proper synchronization between compute and graphics stages
-    std::array<VkBufferMemoryBarrier, 4> bufferBarriers{};
-    
-    // GPUEntity buffer barrier (compute read/write -> vertex shader instance data read)
-    bufferBarriers[0].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-    bufferBarriers[0].srcAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
-    bufferBarriers[0].dstAccessMask = VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT;
-    bufferBarriers[0].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    bufferBarriers[0].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    bufferBarriers[0].buffer = gpuEntityManager->getCurrentEntityBuffer();
-    bufferBarriers[0].offset = 0;
-    bufferBarriers[0].size = VK_WHOLE_SIZE;
-    
-    // Position buffer barrier (compute write -> vertex shader storage buffer read)
-    bufferBarriers[1].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-    bufferBarriers[1].srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-    bufferBarriers[1].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-    bufferBarriers[1].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    bufferBarriers[1].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    bufferBarriers[1].buffer = gpuEntityManager->getCurrentPositionBuffer();
-    bufferBarriers[1].offset = 0;
-    bufferBarriers[1].size = VK_WHOLE_SIZE;
-    
-    // Current position buffer barrier (compute read/write -> potential next frame access)
-    bufferBarriers[2].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-    bufferBarriers[2].srcAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
-    bufferBarriers[2].dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
-    bufferBarriers[2].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    bufferBarriers[2].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    bufferBarriers[2].buffer = gpuEntityManager->getCurrentPositionStorageBuffer();
-    bufferBarriers[2].offset = 0;
-    bufferBarriers[2].size = VK_WHOLE_SIZE;
-    
-    // Target position buffer barrier (compute read/write -> potential next frame access)
-    bufferBarriers[3].sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-    bufferBarriers[3].srcAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
-    bufferBarriers[3].dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
-    bufferBarriers[3].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    bufferBarriers[3].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    bufferBarriers[3].buffer = gpuEntityManager->getTargetPositionStorageBuffer();
-    bufferBarriers[3].offset = 0;
-    bufferBarriers[3].size = VK_WHOLE_SIZE;
-    
-    context->getLoader().vkCmdPipelineBarrier(commandBuffer,
-                        VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                        VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_VERTEX_INPUT_BIT,
-                        0, 
-                        0, nullptr,                    // No general memory barriers
-                        bufferBarriers.size(), bufferBarriers.data(),  // Buffer barriers
-                        0, nullptr);                   // No image barriers
-    
-    entityCountChanged = false;
-}
 
-void VulkanRenderer::updateUniformBuffer(uint32_t currentImage) {
-    struct UniformBufferObject {
-        glm::mat4 view;
-        glm::mat4 proj;
-    } ubo{};
-
-    // Get camera matrices from ECS if available
-    if (world != nullptr) {
-        auto cameraMatrices = CameraManager::getCameraMatrices(*world);
-        if (cameraMatrices.valid) {
-            ubo.view = cameraMatrices.view;
-            ubo.proj = cameraMatrices.projection;
-        } else {
-            // Fallback to default matrices if no camera found
-            ubo.view = glm::mat4(1.0f);
-            ubo.proj = glm::ortho(-4.0f, 4.0f, -3.0f, 3.0f, -5.0f, 5.0f);
-            ubo.proj[1][1] *= -1; // Flip Y for Vulkan
-        }
-    } else {
-        // Original fallback matrices when no world is set
-        ubo.view = glm::mat4(1.0f);
-        ubo.proj = glm::ortho(-4.0f, 4.0f, -3.0f, 3.0f, -5.0f, 5.0f);
-        ubo.proj[1][1] *= -1; // Flip Y for Vulkan
-    }
-    
-    // Update the uniform buffer for the current frame
-    void* data = resourceContext->getUniformBuffersMapped()[currentImage];
-    memcpy(data, &ubo, sizeof(ubo));
-}
 
 
 
@@ -729,6 +364,20 @@ bool VulkanRenderer::initializeFrameGraph() {
         VK_BUFFER_USAGE_STORAGE_BUFFER_BIT
     );
     
+    currentPositionBufferId = frameGraph->importExternalBuffer(
+        "CurrentPositionBuffer",
+        gpuEntityManager->getCurrentPositionStorageBuffer(),
+        gpuEntityManager->getMaxEntities() * sizeof(glm::vec4),
+        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT
+    );
+    
+    targetPositionBufferId = frameGraph->importExternalBuffer(
+        "TargetPositionBuffer",
+        gpuEntityManager->getTargetPositionStorageBuffer(),
+        gpuEntityManager->getMaxEntities() * sizeof(glm::vec4),
+        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT
+    );
+    
     // Note: Swapchain images will be imported per-frame since they change
     // Node creation will be done per-frame to handle dynamic swapchain images
     
@@ -791,18 +440,18 @@ void VulkanRenderer::drawFrameWithFrameGraph() {
         return;
     }
 
-    // 4. Upload pending data and update buffers
+    // 4. Upload pending data
     uploadPendingGPUEntities();
-    updateUniformBuffer(currentFrame);
 
     // 5. Setup frame graph for current frame
     frameGraph->reset();
     
-    // Import current swapchain image
+    // Import current swapchain image with unique name per frame
     VkImage swapchainImage = swapchain->getImages()[imageIndex];
     VkImageView swapchainImageView = swapchain->getImageViews()[imageIndex];
+    std::string swapchainName = "SwapchainImage_" + std::to_string(imageIndex);
     swapchainImageId = frameGraph->importExternalImage(
-        "SwapchainImage",
+        swapchainName,
         swapchainImage,
         swapchainImageView,
         swapchain->getImageFormat(),
@@ -813,11 +462,13 @@ void VulkanRenderer::drawFrameWithFrameGraph() {
     frameGraph->addNode<EntityComputeNode>(
         entityBufferId,
         positionBufferId,
+        currentPositionBufferId,
+        targetPositionBufferId,
         pipeline.get(),
         gpuEntityManager.get()
     );
     
-    frameGraph->addNode<EntityGraphicsNode>(
+    FrameGraphTypes::NodeId graphicsNodeId = frameGraph->addNode<EntityGraphicsNode>(
         entityBufferId,
         positionBufferId,
         swapchainImageId,
@@ -827,10 +478,19 @@ void VulkanRenderer::drawFrameWithFrameGraph() {
         gpuEntityManager.get()
     );
     
-    frameGraph->addNode<SwapchainPresentNode>(
+    FrameGraphTypes::NodeId presentNodeId = frameGraph->addNode<SwapchainPresentNode>(
         swapchainImageId,
         swapchain.get()
     );
+    
+    // Set the correct image index for the current frame and world reference
+    if (EntityGraphicsNode* graphicsNode = frameGraph->getNode<EntityGraphicsNode>(graphicsNodeId)) {
+        graphicsNode->setImageIndex(imageIndex);
+        graphicsNode->setWorld(world);
+    }
+    if (SwapchainPresentNode* presentNode = frameGraph->getNode<SwapchainPresentNode>(presentNodeId)) {
+        presentNode->setImageIndex(imageIndex);
+    }
     
     // 6. Compile and execute frame graph
     if (!frameGraph->compile()) {
@@ -838,31 +498,93 @@ void VulkanRenderer::drawFrameWithFrameGraph() {
         return;
     }
     
-    // Update frame data for nodes (this is a temporary solution)
-    // In a proper implementation, frame data would be passed through the frame graph system
+    // 6. Update frame data and reset command buffers
     totalTime += deltaTime;
     frameCounter++;
     
-    frameGraph->execute(currentFrame);
+    const auto& computeCommandBuffers = sync->getComputeCommandBuffers();
+    const auto& commandBuffers = sync->getCommandBuffers();
+    context->getLoader().vkResetCommandBuffer(computeCommandBuffers[currentFrame], 0);
+    context->getLoader().vkResetCommandBuffer(commandBuffers[currentFrame], 0);
     
-    // 7. Present immediately
-    VkPresentInfoKHR presentInfo{};
-    presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
-    presentInfo.waitSemaphoreCount = 1;
-    presentInfo.pWaitSemaphores = &sync->getRenderFinishedSemaphores()[currentFrame];
-
-    VkSwapchainKHR swapChains[] = {swapchain->getSwapchain()};
-    presentInfo.swapchainCount = 1;
-    presentInfo.pSwapchains = swapChains;
-    presentInfo.pImageIndices = &imageIndex;
-
-    result = context->getLoader().vkQueuePresentKHR(context->getPresentQueue(), &presentInfo);
+    // Update frame data in nodes (AAA pattern: frame graph manages per-frame data)
+    frameGraph->updateFrameData(totalTime, deltaTime, currentFrame);
     
-    if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || framebufferResized) {
-        framebufferResized = false;
-        recreateSwapChain();
-    } else if (result != VK_SUCCESS) {
-        std::cerr << "Failed to present swap chain image" << std::endl;
+    auto executionResult = frameGraph->execute(currentFrame);
+    
+    // 7. Submit compute work with fence if compute commands were recorded
+    if (executionResult.computeCommandBufferUsed) {
+        VkFence computeFence = frameFences.getComputeFence(currentFrame);
+        VkResult resetResult = context->getLoader().vkResetFences(context->getDevice(), 1, &computeFence);
+        if (resetResult != VK_SUCCESS) {
+            std::cerr << "Failed to reset compute fence: " << resetResult << std::endl;
+            return;
+        }
+        
+        VkSubmitInfo computeSubmitInfo{};
+        computeSubmitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+        computeSubmitInfo.commandBufferCount = 1;
+        computeSubmitInfo.pCommandBuffers = &computeCommandBuffers[currentFrame];
+        
+        VkResult computeSubmitResult = context->getLoader().vkQueueSubmit(context->getGraphicsQueue(), 1, &computeSubmitInfo, computeFence);
+        if (computeSubmitResult != VK_SUCCESS) {
+            std::cerr << "Failed to submit compute commands: " << computeSubmitResult << std::endl;
+            return;
+        }
+        frameFences.setComputeInUse(currentFrame, true);
+    }
+
+    // 8. Submit graphics work with fence and semaphores if graphics commands were recorded
+    // 9. Present only if graphics work was submitted
+    if (executionResult.graphicsCommandBufferUsed) {
+        VkFence graphicsFence = frameFences.getGraphicsFence(currentFrame);
+        VkResult graphicsResetResult = context->getLoader().vkResetFences(context->getDevice(), 1, &graphicsFence);
+        if (graphicsResetResult != VK_SUCCESS) {
+            std::cerr << "Failed to reset graphics fence: " << graphicsResetResult << std::endl;
+            return;
+        }
+        
+        VkSubmitInfo graphicsSubmitInfo{};
+        graphicsSubmitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+
+        VkSemaphore waitSemaphores[] = {sync->getImageAvailableSemaphores()[currentFrame]};
+        VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
+        graphicsSubmitInfo.waitSemaphoreCount = 1;
+        graphicsSubmitInfo.pWaitSemaphores = waitSemaphores;
+        graphicsSubmitInfo.pWaitDstStageMask = waitStages;
+        graphicsSubmitInfo.commandBufferCount = 1;
+        graphicsSubmitInfo.pCommandBuffers = &commandBuffers[currentFrame];
+
+        VkSemaphore signalSemaphores[] = {sync->getRenderFinishedSemaphores()[currentFrame]};
+        graphicsSubmitInfo.signalSemaphoreCount = 1;
+        graphicsSubmitInfo.pSignalSemaphores = signalSemaphores;
+
+        VkResult graphicsSubmitResult = context->getLoader().vkQueueSubmit(context->getGraphicsQueue(), 1, &graphicsSubmitInfo, graphicsFence);
+        if (graphicsSubmitResult != VK_SUCCESS) {
+            std::cerr << "Failed to submit graphics commands: " << graphicsSubmitResult << std::endl;
+            return;
+        }
+        frameFences.setGraphicsInUse(currentFrame, true);
+        
+        // Present (only if graphics was submitted)
+        VkPresentInfoKHR presentInfo{};
+        presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+        presentInfo.waitSemaphoreCount = 1;
+        presentInfo.pWaitSemaphores = signalSemaphores;
+
+        VkSwapchainKHR swapChains[] = {swapchain->getSwapchain()};
+        presentInfo.swapchainCount = 1;
+        presentInfo.pSwapchains = swapChains;
+        presentInfo.pImageIndices = &imageIndex;
+
+        result = context->getLoader().vkQueuePresentKHR(context->getPresentQueue(), &presentInfo);
+        
+        if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || framebufferResized) {
+            framebufferResized = false;
+            recreateSwapChain();
+        } else if (result != VK_SUCCESS) {
+            std::cerr << "Failed to present swap chain image: " << result << std::endl;
+        }
     }
 
     currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;

@@ -123,9 +123,26 @@ public:
         return id;
     }
     
+    // Get typed node reference after creation
+    template<typename NodeType>
+    NodeType* getNode(FrameGraphTypes::NodeId nodeId) {
+        auto it = nodes.find(nodeId);
+        if (it != nodes.end()) {
+            return dynamic_cast<NodeType*>(it->second.get());
+        }
+        return nullptr;
+    }
+    
     // Graph compilation and execution
     bool compile();
-    void execute(uint32_t frameIndex);
+    void updateFrameData(float time, float deltaTime, uint32_t frameCounter);
+    
+    // Execution result to indicate which command buffers were used
+    struct ExecutionResult {
+        bool computeCommandBufferUsed = false;
+        bool graphicsCommandBufferUsed = false;
+    };
+    ExecutionResult execute(uint32_t frameIndex);
     void reset(); // Clear for next frame
     
     // Resource access
@@ -156,8 +173,16 @@ private:
     
     // Compiled execution order
     std::vector<FrameGraphTypes::NodeId> executionOrder;
-    std::vector<VkBufferMemoryBarrier> bufferBarriers;
-    std::vector<VkImageMemoryBarrier> imageBarriers;
+    
+    // Barrier information with pipeline stages
+    struct BarrierInfo {
+        std::vector<VkBufferMemoryBarrier> bufferBarriers;
+        std::vector<VkImageMemoryBarrier> imageBarriers;
+        VkPipelineStageFlags srcStage = 0;
+        VkPipelineStageFlags dstStage = 0;
+    };
+    BarrierInfo computeToGraphicsBarriers;
+    
     bool compiled = false;
     
     // Internal methods
@@ -166,6 +191,10 @@ private:
     bool buildDependencyGraph();
     bool topologicalSort();
     void insertSynchronizationBarriers();
+    void insertBarrierForResource(FrameGraphTypes::ResourceId resourceId, 
+                                  PipelineStage srcStage, PipelineStage dstStage,
+                                  ResourceAccess srcAccess, ResourceAccess dstAccess);
+    void insertBarriersIntoCommandBuffer(VkCommandBuffer commandBuffer);
     void cleanupResources();
     
     // Resource helpers

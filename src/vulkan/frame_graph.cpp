@@ -2,10 +2,14 @@
 #include "vulkan_context.h"
 #include "vulkan_sync.h"
 #include "vulkan_utils.h"
+#include "nodes/entity_compute_node.h"
+#include "nodes/entity_graphics_node.h"
 #include <iostream>
 #include <queue>
 #include <algorithm>
 #include <cassert>
+#include <functional>
+#include <unordered_set>
 
 FrameGraph::FrameGraph() {
 }
@@ -37,8 +41,8 @@ void FrameGraph::cleanup() {
     resources.clear();
     resourceNameMap.clear();
     executionOrder.clear();
-    bufferBarriers.clear();
-    imageBarriers.clear();
+    computeToGraphicsBarriers.bufferBarriers.clear();
+    computeToGraphicsBarriers.imageBarriers.clear();
     
     nextResourceId = 1;
     nextNodeId = 1;
@@ -180,8 +184,8 @@ bool FrameGraph::compile() {
     
     // Clear previous compilation
     executionOrder.clear();
-    bufferBarriers.clear();
-    imageBarriers.clear();
+    computeToGraphicsBarriers.bufferBarriers.clear();
+    computeToGraphicsBarriers.imageBarriers.clear();
     
     // Build dependency graph and sort nodes
     if (!buildDependencyGraph()) {
@@ -218,43 +222,171 @@ bool FrameGraph::compile() {
     return true;
 }
 
-void FrameGraph::execute(uint32_t frameIndex) {
+void FrameGraph::updateFrameData(float time, float deltaTime, uint32_t frameCounter) {
+    // Update frame data for all nodes that support it
+    for (auto& [nodeId, node] : nodes) {
+        // Check if this is an EntityComputeNode and update it
+        auto* computeNode = dynamic_cast<EntityComputeNode*>(node.get());
+        if (computeNode) {
+            computeNode->updateFrameData(time, deltaTime, frameCounter);
+        }
+        
+        // Check if this is an EntityGraphicsNode and update it
+        auto* graphicsNode = dynamic_cast<EntityGraphicsNode*>(node.get());
+        if (graphicsNode) {
+            graphicsNode->updateFrameData(time, deltaTime, frameCounter);
+        }
+    }
+}
+
+FrameGraph::ExecutionResult FrameGraph::execute(uint32_t frameIndex) {
+    ExecutionResult result;
     if (!compiled) {
         std::cerr << "FrameGraph: Cannot execute, not compiled" << std::endl;
-        return;
+        return result;
     }
     
     if (!sync) {
         std::cerr << "FrameGraph: Cannot execute, no sync object" << std::endl;
-        return;
+        return result;
     }
     
-    // Get command buffers (assuming we have both compute and graphics)
+    // Get command buffers and synchronization objects
     const auto& computeCommandBuffers = sync->getComputeCommandBuffers();
     const auto& graphicsCommandBuffers = sync->getCommandBuffers();
     
     VkCommandBuffer currentComputeCmd = computeCommandBuffers[frameIndex];
     VkCommandBuffer currentGraphicsCmd = graphicsCommandBuffers[frameIndex];
     
+    // Note: Command buffer reset is handled by VulkanRenderer after fence waits
+    // Frame graph assumes command buffers are already reset and ready for recording
+    
+    VkCommandBufferBeginInfo beginInfo{};
+    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    
+    // Check which command buffers we'll need
+    for (auto nodeId : executionOrder) {
+        auto it = nodes.find(nodeId);
+        if (it != nodes.end()) {
+            if (it->second->needsComputeQueue()) result.computeCommandBufferUsed = true;
+            if (it->second->needsGraphicsQueue()) result.graphicsCommandBufferUsed = true;
+        }
+    }
+    
+    // Only begin command buffers that will be used
+    if (result.computeCommandBufferUsed) {
+        context->getLoader().vkBeginCommandBuffer(currentComputeCmd, &beginInfo);
+    }
+    if (result.graphicsCommandBufferUsed) {
+        context->getLoader().vkBeginCommandBuffer(currentGraphicsCmd, &beginInfo);
+    }
+    
     // Execute nodes in dependency order
+    bool computeExecuted = false;
     for (auto nodeId : executionOrder) {
         auto it = nodes.find(nodeId);
         if (it == nodes.end()) continue;
         
         auto& node = it->second;
         
+        // If switching from compute to graphics, insert barriers first
+        if (computeExecuted && node->needsGraphicsQueue() && (!computeToGraphicsBarriers.bufferBarriers.empty() || !computeToGraphicsBarriers.imageBarriers.empty())) {
+            std::cout << "FrameGraph: Inserting " << computeToGraphicsBarriers.bufferBarriers.size() 
+                      << " buffer barriers and " << computeToGraphicsBarriers.imageBarriers.size() 
+                      << " image barriers between compute and graphics" << std::endl;
+            
+            // Debug: Print barrier details
+            for (const auto& barrier : computeToGraphicsBarriers.bufferBarriers) {
+                std::cout << "  Buffer barrier: buffer=" << barrier.buffer 
+                          << " srcAccess=0x" << std::hex << barrier.srcAccessMask
+                          << " dstAccess=0x" << barrier.dstAccessMask << std::dec
+                          << " size=" << barrier.size << std::endl;
+            }
+            
+            // Insert barriers into graphics command buffer BEFORE graphics work
+            context->getLoader().vkCmdPipelineBarrier(
+                currentGraphicsCmd,
+                VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_VERTEX_INPUT_BIT,
+                0,
+                0, nullptr,
+                static_cast<uint32_t>(computeToGraphicsBarriers.bufferBarriers.size()), 
+                computeToGraphicsBarriers.bufferBarriers.data(),
+                static_cast<uint32_t>(computeToGraphicsBarriers.imageBarriers.size()), 
+                computeToGraphicsBarriers.imageBarriers.data()
+            );
+            std::cout << "  Barrier insertion complete" << std::endl;
+            
+            // Clear the flag to avoid inserting barriers multiple times
+            computeExecuted = false;
+        }
+        
         // Choose appropriate command buffer based on node requirements
         VkCommandBuffer cmdBuffer = node->needsComputeQueue() ? currentComputeCmd : currentGraphicsCmd;
         
+        // Track if compute was executed
+        if (node->needsComputeQueue()) {
+            computeExecuted = true;
+        }
+        
+        std::cout << "FrameGraph: About to execute node: " << node->getName() << std::endl;
+        
         // Execute the node
         node->execute(cmdBuffer, *this);
+        
+        std::cout << "FrameGraph: Completed execution of node: " << node->getName() << std::endl;
     }
+    
+    // End only the command buffers that were begun
+    if (result.computeCommandBufferUsed) {
+        context->getLoader().vkEndCommandBuffer(currentComputeCmd);
+    }
+    if (result.graphicsCommandBufferUsed) {
+        context->getLoader().vkEndCommandBuffer(currentGraphicsCmd);
+    }
+    
+    // Frame graph complete - command buffers are ready for submission by VulkanRenderer
+    return result;
 }
 
 void FrameGraph::reset() {
-    // Reset for next frame - keep resources and nodes, just clear execution state
-    // This allows recompilation with different resource states if needed
+    // Reset for next frame - clear transient state but keep persistent resources
+    nodes.clear();
+    executionOrder.clear();
+    computeToGraphicsBarriers.bufferBarriers.clear();
+    computeToGraphicsBarriers.imageBarriers.clear();
+    computeToGraphicsBarriers.srcStage = 0;
+    computeToGraphicsBarriers.dstStage = 0;
     compiled = false;
+    
+    // Clear transient resources (including swapchain images that change per frame)
+    // Keep only persistent external buffers (entity/position buffers)
+    auto it = resources.begin();
+    while (it != resources.end()) {
+        bool shouldRemove = false;
+        
+        std::visit([&shouldRemove](const auto& resource) {
+            // Remove non-external resources (frame-created)
+            if (!resource.isExternal) {
+                shouldRemove = true;
+                return;
+            }
+            
+            // Remove transient external images (swapchain images)
+            if constexpr (std::is_same_v<std::decay_t<decltype(resource)>, FrameGraphImage>) {
+                if (resource.debugName.find("SwapchainImage_") == 0) {
+                    shouldRemove = true;
+                }
+            }
+        }, it->second);
+        
+        if (shouldRemove) {
+            resourceNameMap.erase(std::visit([](const auto& resource) { return resource.debugName; }, it->second));
+            it = resources.erase(it);
+        } else {
+            ++it;
+        }
+    }
 }
 
 VkBuffer FrameGraph::getBuffer(FrameGraphTypes::ResourceId id) const {
@@ -419,21 +551,192 @@ bool FrameGraph::buildDependencyGraph() {
 }
 
 bool FrameGraph::topologicalSort() {
-    // Simple implementation: just add nodes in order they were added
-    // In a full implementation, this would do proper topological sorting
-    // based on the dependency graph
+    // Implement proper topological sorting based on resource dependencies
+    executionOrder.clear();
     
-    for (const auto& [nodeId, node] : nodes) {
+    std::unordered_set<FrameGraphTypes::NodeId> visited;
+    std::unordered_set<FrameGraphTypes::NodeId> visiting;
+    
+    std::function<bool(FrameGraphTypes::NodeId)> visit = [&](FrameGraphTypes::NodeId nodeId) -> bool {
+        if (visiting.count(nodeId)) {
+            std::cerr << "FrameGraph: Circular dependency detected involving node " << nodeId << std::endl;
+            return false; // Circular dependency
+        }
+        if (visited.count(nodeId)) {
+            return true; // Already processed
+        }
+        
+        visiting.insert(nodeId);
+        
+        auto nodeIt = nodes.find(nodeId);
+        if (nodeIt == nodes.end()) return false;
+        
+        auto& node = nodeIt->second;
+        auto inputs = node->getInputs();
+        
+        // Find nodes that produce our input resources (dependencies)
+        for (const auto& input : inputs) {
+            for (const auto& [otherNodeId, otherNode] : nodes) {
+                if (otherNodeId == nodeId) continue;
+                
+                auto outputs = otherNode->getOutputs();
+                for (const auto& output : outputs) {
+                    if (output.resourceId == input.resourceId) {
+                        // This node depends on otherNode
+                        if (!visit(otherNodeId)) {
+                            return false;
+                        }
+                    }
+                }
+            }
+        }
+        
+        visiting.erase(nodeId);
+        visited.insert(nodeId);
         executionOrder.push_back(nodeId);
+        return true;
+    };
+    
+    // Visit all nodes
+    for (const auto& [nodeId, node] : nodes) {
+        if (!visited.count(nodeId)) {
+            if (!visit(nodeId)) {
+                return false;
+            }
+        }
     }
     
     return true;
 }
 
 void FrameGraph::insertSynchronizationBarriers() {
-    // Placeholder for barrier insertion logic
-    // In a full implementation, this would analyze resource dependencies
-    // and insert appropriate memory barriers between nodes
+    // AAA-standard barrier insertion: analyze node dependencies and insert barriers
+    
+    // Clear existing barriers
+    computeToGraphicsBarriers.bufferBarriers.clear();
+    computeToGraphicsBarriers.imageBarriers.clear();
+    computeToGraphicsBarriers.srcStage = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+    computeToGraphicsBarriers.dstStage = VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_VERTEX_INPUT_BIT;
+    
+    // For each node, check if it reads resources written by previous nodes
+    for (size_t i = 0; i < executionOrder.size(); ++i) {
+        auto currentNodeId = executionOrder[i];
+        auto currentNodeIt = nodes.find(currentNodeId);
+        if (currentNodeIt == nodes.end()) continue;
+        
+        auto currentInputs = currentNodeIt->second->getInputs();
+        bool isGraphicsNode = currentNodeIt->second->needsGraphicsQueue();
+        
+        // Check previous nodes for write hazards
+        for (size_t j = 0; j < i; ++j) {
+            auto prevNodeId = executionOrder[j];
+            auto prevNodeIt = nodes.find(prevNodeId);
+            if (prevNodeIt == nodes.end()) continue;
+            
+            auto prevOutputs = prevNodeIt->second->getOutputs();
+            bool isComputeNode = prevNodeIt->second->needsComputeQueue();
+            
+            // Only insert barriers for compute->graphics transitions
+            if (!(isComputeNode && isGraphicsNode)) {
+                continue;
+            }
+            
+            // Check for resource dependencies that need barriers
+            for (const auto& input : currentInputs) {
+                for (const auto& output : prevOutputs) {
+                    if (input.resourceId == output.resourceId) {
+                        // Found dependency - need barrier between these stages
+                        std::cout << "FrameGraph: Creating compute->graphics barrier for resource " << input.resourceId 
+                                  << " from stage " << static_cast<int>(output.stage) << " (access " << static_cast<int>(output.access) << ")"
+                                  << " to stage " << static_cast<int>(input.stage) << " (access " << static_cast<int>(input.access) << ")" << std::endl;
+                        insertBarrierForResource(input.resourceId, output.stage, input.stage, output.access, input.access);
+                    }
+                }
+            }
+        }
+    }
+}
+
+void FrameGraph::insertBarrierForResource(FrameGraphTypes::ResourceId resourceId, 
+                                          PipelineStage srcStage, PipelineStage dstStage,
+                                          ResourceAccess srcAccess, ResourceAccess dstAccess) {
+    
+    auto convertAccess = [](ResourceAccess access, PipelineStage stage) -> VkAccessFlags {
+        switch (access) {
+            case ResourceAccess::Read: 
+                // Special case: vertex shader reading as vertex attributes
+                if (stage == PipelineStage::VertexShader) {
+                    return VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT | VK_ACCESS_SHADER_READ_BIT;
+                }
+                return VK_ACCESS_SHADER_READ_BIT;
+            case ResourceAccess::Write: 
+                return VK_ACCESS_SHADER_WRITE_BIT;
+            case ResourceAccess::ReadWrite: 
+                return VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+            default: 
+                return 0;
+        }
+    };
+    
+    // Check if this is a buffer or image resource
+    const FrameGraphBuffer* buffer = getBufferResource(resourceId);
+    if (buffer) {
+        VkAccessFlags srcMask = convertAccess(srcAccess, srcStage);
+        VkAccessFlags dstMask = convertAccess(dstAccess, dstStage);
+        std::cout << "  -> Buffer resource: " << buffer->debugName 
+                  << " srcAccess=0x" << std::hex << srcMask 
+                  << " dstAccess=0x" << std::hex << dstMask << std::dec << std::endl;
+        
+        VkBufferMemoryBarrier barrier{};
+        barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+        barrier.srcAccessMask = srcMask;
+        barrier.dstAccessMask = dstMask;
+        barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier.buffer = buffer->buffer;
+        barrier.offset = 0;
+        barrier.size = VK_WHOLE_SIZE;
+        
+        computeToGraphicsBarriers.bufferBarriers.push_back(barrier);
+        return;
+    }
+    
+    const FrameGraphImage* image = getImageResource(resourceId);
+    if (image) {
+        std::cout << "  -> Image resource: " << image->debugName << std::endl;
+        VkImageMemoryBarrier barrier{};
+        barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        barrier.srcAccessMask = convertAccess(srcAccess, srcStage);
+        barrier.dstAccessMask = convertAccess(dstAccess, dstStage);
+        barrier.oldLayout = VK_IMAGE_LAYOUT_GENERAL; // Simplified for now
+        barrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
+        barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier.image = image->image;
+        barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        barrier.subresourceRange.baseMipLevel = 0;
+        barrier.subresourceRange.levelCount = 1;
+        barrier.subresourceRange.baseArrayLayer = 0;
+        barrier.subresourceRange.layerCount = 1;
+        
+        computeToGraphicsBarriers.imageBarriers.push_back(barrier);
+    }
+}
+
+void FrameGraph::insertBarriersIntoCommandBuffer(VkCommandBuffer commandBuffer) {
+    if (computeToGraphicsBarriers.bufferBarriers.empty() && computeToGraphicsBarriers.imageBarriers.empty()) return;
+    
+    context->getLoader().vkCmdPipelineBarrier(
+        commandBuffer,
+        computeToGraphicsBarriers.srcStage,
+        computeToGraphicsBarriers.dstStage,
+        0, // dependencyFlags
+        0, nullptr, // memory barriers
+        static_cast<uint32_t>(computeToGraphicsBarriers.bufferBarriers.size()), 
+        computeToGraphicsBarriers.bufferBarriers.data(),
+        static_cast<uint32_t>(computeToGraphicsBarriers.imageBarriers.size()), 
+        computeToGraphicsBarriers.imageBarriers.data()
+    );
 }
 
 void FrameGraph::cleanupResources() {

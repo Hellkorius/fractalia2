@@ -3,6 +3,7 @@
 #define VK_NO_PROTOTYPES
 #include <vulkan/vulkan.h>
 #include "../frame_graph.h"
+#include <flecs.h>
 
 // Forward declarations
 class VulkanPipeline;
@@ -36,14 +37,21 @@ public:
     // Update swapchain image index for current frame
     void setImageIndex(uint32_t imageIndex) { this->imageIndex = imageIndex; }
     
-    // Update frame data for vertex shader push constants
+    // Update frame data for vertex shader push constants and uniform buffers
     void updateFrameData(float time, float deltaTime, uint32_t frameIndex) { 
         this->frameTime = time; 
         this->frameDeltaTime = deltaTime; 
         this->currentFrameIndex = frameIndex;
     }
+    
+    // Set world reference for camera matrix access
+    void setWorld(flecs::world* world) { this->world = world; }
 
 private:
+    // Internal uniform buffer update
+    void updateUniformBuffer();
+    
+    // Resources
     FrameGraphTypes::ResourceId entityBufferId;
     FrameGraphTypes::ResourceId positionBufferId;
     FrameGraphTypes::ResourceId colorTargetId;
@@ -59,4 +67,7 @@ private:
     float frameTime = 0.0f;
     float frameDeltaTime = 0.0f;
     uint32_t currentFrameIndex = 0;
+    
+    // ECS world reference for camera matrices
+    flecs::world* world = nullptr;
 };

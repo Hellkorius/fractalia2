@@ -1,56 +1,44 @@
-# Render Graph Implementation Plan
+# Render Graph Architecture
 
-## Completed (Phase 1)
-- ✅ **Core Framework**: `FrameGraph` class with resource/node abstractions
-- ✅ **Resource Management**: External import + automatic Vulkan resource creation
-- ✅ **Node System**: `FrameGraphNode` base class with dependency tracking
-- ✅ **Basic Nodes**: Placeholder `ComputeNode` and `GraphicsNode` implementations
+## Status: ✅ OPERATIONAL - 80,000 entities at 60+ FPS
 
-## Phase 2: Concrete Implementation ✅ COMPLETE
-### 2.1 Current Pipeline Nodes ✅
-- **EntityComputeNode**: ✅ Complete compute shader dispatch with memory barriers
-- **EntityGraphicsNode**: ✅ Complete graphics pipeline with render pass management
-- **SwapchainPresentNode**: ✅ Complete presentation dependency tracking
+## Design
+**FrameGraph**: Resource tracking, barrier insertion, node execution
+**VulkanRenderer**: Queue submission, synchronization, swapchain management
+**Nodes**: Declare dependencies, frame graph handles barriers automatically
 
-### 2.2 Integration ✅
-- ✅ `VulkanRenderer::drawFrameWithFrameGraph()` implemented
-- ✅ Import existing buffers: entity buffer, position buffer
-- ✅ Import swapchain images as external resources per-frame
-- ✅ Maintain current compute→graphics→present execution order
-- ✅ Complete feature parity with legacy `drawFrame()`
+## Implemented Nodes ✅ WORKING
 
-### 2.3 Advanced Features (Future)
-- Automatic synchronization barrier insertion
-- Multi-frame resource overlap
-- Dynamic graph compilation based on entity count
-- GPU-driven culling passes
-- Multiple render targets for post-processing
+### EntityComputeNode
+- Dispatches compute shader for 80,000 entities (2500 workgroups)
+- Resources: ReadWrite entity/current/target buffers, Write position buffer
+- Automatic barriers to graphics stage
 
-## Implemented File Hierarchy ✅
-```
-src/vulkan/
-├── frame_graph.h/.cpp               # ✅ Core framework 
-├── nodes/
-│   ├── entity_compute_node.h/.cpp   # ✅ Compute movement calculation
-│   ├── entity_graphics_node.h/.cpp  # ✅ Graphics rendering  
-│   └── swapchain_present_node.h/.cpp # ✅ Presentation
-└── vulkan_renderer.h/.cpp           # ✅ Frame graph integration
-```
+### EntityGraphicsNode  
+- Renders 80,000 entities with instanced drawing
+- Frame-in-flight safe uniform buffer updates
+- Integrated camera matrix management
 
-## Migration Strategy ✅ COMPLETE  
-1. ✅ **Minimal Disruption**: Kept existing `GPUEntityManager`, `VulkanPipeline`, `ResourceContext` unchanged
-2. ✅ **Parallel Implementation**: Created `drawFrameWithFrameGraph()` alongside legacy `drawFrame()`
-3. ✅ **Validation**: Maintained identical visual output during transition
-4. ✅ **Performance**: No performance regression vs. current direct Vulkan approach
+### SwapchainPresentNode
+- Declares dependency on color target for proper synchronization
 
-## Next Steps (Phase 3: Cutover)
-1. **Switch main loop**: Replace `drawFrame()` call with `drawFrameWithFrameGraph()`
-2. **Remove legacy code**: Clean up monolithic `drawFrame()` implementation  
-3. **Optimize**: Fine-tune frame graph execution and resource management
+## Features ✅
+- **Automatic barriers**: SHADER_WRITE → VERTEX_ATTRIBUTE_READ for entity buffer
+- **Resource tracking**: 4 buffers (entity, position, current, target) + swapchain image
+- **Frame safety**: Frame-in-flight index validation (0-1, not unbounded counter)
+- **Selective execution**: Only begin/end command buffers that are actually used
 
-## Key Benefits
-- **AAA Architecture**: Industry-standard render graph pattern
-- **Resource Safety**: Automatic lifetime management prevents use-after-free
-- **Extensibility**: Easy to add new passes (shadows, post-processing, etc.)
-- **Debug/Profiling**: Clear pass boundaries for GPU profiler integration
-- **Multi-threading**: Foundation for parallel command buffer recording
+## Remaining Work ❌
+- **Legacy cleanup**: Remove unused methods from VulkanRenderer
+- **Additional nodes**: Shadow mapping, post-processing, etc.
+- **Multi-queue**: Async compute on dedicated queue families
+
+## Execution Flow
+1. **VulkanRenderer**: waitForFences() → acquireImage() → uploadEntities()
+2. **FrameGraph**: reset() → importResources() → addNodes() → compile() → execute()
+3. **VulkanRenderer**: submitCompute() → submitGraphics() → present()
+
+## Files
+- `src/vulkan/frame_graph.h/.cpp` - Core coordinator
+- `src/vulkan/nodes/entity_*.h/.cpp` - Node implementations  
+- `src/vulkan_renderer.h/.cpp` - Integration point

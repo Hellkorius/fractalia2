@@ -5,8 +5,13 @@
 #include "../../ecs/gpu_entity_manager.h"
 #include "../vulkan_context.h"
 #include "../vulkan_function_loader.h"
+#include "../../ecs/systems/camera_system.h"
+#include "../../ecs/camera_component.h"
 #include <iostream>
 #include <array>
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <flecs.h>
 
 EntityGraphicsNode::EntityGraphicsNode(
     FrameGraphTypes::ResourceId entityBuffer, 
@@ -50,6 +55,11 @@ void EntityGraphicsNode::execute(VkCommandBuffer commandBuffer, const FrameGraph
         std::cerr << "EntityGraphicsNode: Missing Vulkan context" << std::endl;
         return;
     }
+    
+    // Update uniform buffer with camera matrices
+    std::cout << "EntityGraphicsNode: Updating uniform buffer" << std::endl;
+    updateUniformBuffer();
+    std::cout << "EntityGraphicsNode: Uniform buffer updated" << std::endl;
     
     // Begin render pass
     VkRenderPassBeginInfo renderPassInfo{};
@@ -156,4 +166,49 @@ void EntityGraphicsNode::execute(VkCommandBuffer commandBuffer, const FrameGraph
 
     // End render pass
     context->getLoader().vkCmdEndRenderPass(commandBuffer);
+}
+
+void EntityGraphicsNode::updateUniformBuffer() {
+    if (!resourceContext) return;
+    
+    struct UniformBufferObject {
+        glm::mat4 view;
+        glm::mat4 proj;
+    } ubo{};
+
+    // Get camera matrices from ECS if available
+    if (world != nullptr) {
+        auto cameraMatrices = CameraManager::getCameraMatrices(*world);
+        if (cameraMatrices.valid) {
+            ubo.view = cameraMatrices.view;
+            ubo.proj = cameraMatrices.projection;
+        } else {
+            // Fallback to default matrices if no camera found
+            ubo.view = glm::mat4(1.0f);
+            ubo.proj = glm::ortho(-4.0f, 4.0f, -3.0f, 3.0f, -5.0f, 5.0f);
+            ubo.proj[1][1] *= -1; // Flip Y for Vulkan
+        }
+    } else {
+        // Original fallback matrices when no world is set
+        ubo.view = glm::mat4(1.0f);
+        ubo.proj = glm::ortho(-4.0f, 4.0f, -3.0f, 3.0f, -5.0f, 5.0f);
+        ubo.proj[1][1] *= -1; // Flip Y for Vulkan
+    }
+    
+    // Update the uniform buffer for the current frame
+    std::cout << "  currentFrameIndex=" << currentFrameIndex << std::endl;
+    auto uniformBuffers = resourceContext->getUniformBuffersMapped();
+    std::cout << "  uniformBuffers size=" << uniformBuffers.size() << std::endl;
+    if (!uniformBuffers.empty() && currentFrameIndex < uniformBuffers.size()) {
+        void* data = uniformBuffers[currentFrameIndex];
+        std::cout << "  uniform buffer data pointer=" << data << std::endl;
+        if (data) {
+            memcpy(data, &ubo, sizeof(ubo));
+            std::cout << "  memcpy completed" << std::endl;
+        } else {
+            std::cout << "  ERROR: uniform buffer data is null!" << std::endl;
+        }
+    } else {
+        std::cout << "  ERROR: invalid currentFrameIndex or empty uniformBuffers!" << std::endl;
+    }
 }
