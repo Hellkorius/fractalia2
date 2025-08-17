@@ -42,5 +42,5 @@ void SwapchainPresentNode::execute(VkCommandBuffer commandBuffer, const FrameGra
     // The important work of this node is declaring the dependency on the color target,
     // which ensures proper synchronization before presentation.
     
-    std::cout << "SwapchainPresentNode: Ready for presentation of image " << imageIndex << std::endl;
+    // Ready for presentation
 }

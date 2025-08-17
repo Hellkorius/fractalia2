@@ -170,7 +170,7 @@ FrameGraphTypes::ResourceId FrameGraph::importExternalImage(const std::string& n
     resources[id] = frameGraphImage;
     resourceNameMap[name] = id;
     
-    std::cout << "FrameGraph: Imported external image '" << name << "' (ID: " << id << ")" << std::endl;
+    // Imported external image
     return id;
 }
 
@@ -180,7 +180,11 @@ bool FrameGraph::compile() {
         return false;
     }
     
-    std::cout << "FrameGraph: Compiling with " << nodes.size() << " nodes and " << resources.size() << " resources" << std::endl;
+    // Compiling frame graph
+    static int compileCount = 0;
+    if (compileCount++ < 5) {  // Only log first 5 compilations
+        std::cout << "FrameGraph compilation #" << compileCount << std::endl;
+    }
     
     // Clear previous compilation
     executionOrder.clear();
@@ -210,19 +214,12 @@ bool FrameGraph::compile() {
     }
     
     compiled = true;
-    std::cout << "FrameGraph: Compilation successful, execution order: ";
-    for (auto nodeId : executionOrder) {
-        auto it = nodes.find(nodeId);
-        if (it != nodes.end()) {
-            std::cout << it->second->getName() << " ";
-        }
-    }
-    std::cout << std::endl;
+    // Compilation successful
     
     return true;
 }
 
-void FrameGraph::updateFrameData(float time, float deltaTime, uint32_t frameCounter) {
+void FrameGraph::updateFrameData(float time, float deltaTime, uint32_t frameCounter, uint32_t currentFrameIndex) {
     // Update frame data for all nodes that support it
     for (auto& [nodeId, node] : nodes) {
         // Check if this is an EntityComputeNode and update it
@@ -231,10 +228,10 @@ void FrameGraph::updateFrameData(float time, float deltaTime, uint32_t frameCoun
             computeNode->updateFrameData(time, deltaTime, frameCounter);
         }
         
-        // Check if this is an EntityGraphicsNode and update it
+        // Check if this is an EntityGraphicsNode and update it  
         auto* graphicsNode = dynamic_cast<EntityGraphicsNode*>(node.get());
         if (graphicsNode) {
-            graphicsNode->updateFrameData(time, deltaTime, frameCounter);
+            graphicsNode->updateFrameData(time, deltaTime, currentFrameIndex); // Use currentFrameIndex for buffer sync
         }
     }
 }
@@ -291,17 +288,9 @@ FrameGraph::ExecutionResult FrameGraph::execute(uint32_t frameIndex) {
         
         // If switching from compute to graphics, insert barriers first
         if (computeExecuted && node->needsGraphicsQueue() && (!computeToGraphicsBarriers.bufferBarriers.empty() || !computeToGraphicsBarriers.imageBarriers.empty())) {
-            std::cout << "FrameGraph: Inserting " << computeToGraphicsBarriers.bufferBarriers.size() 
-                      << " buffer barriers and " << computeToGraphicsBarriers.imageBarriers.size() 
-                      << " image barriers between compute and graphics" << std::endl;
+            // Inserting barriers between compute and graphics
             
-            // Debug: Print barrier details
-            for (const auto& barrier : computeToGraphicsBarriers.bufferBarriers) {
-                std::cout << "  Buffer barrier: buffer=" << barrier.buffer 
-                          << " srcAccess=0x" << std::hex << barrier.srcAccessMask
-                          << " dstAccess=0x" << barrier.dstAccessMask << std::dec
-                          << " size=" << barrier.size << std::endl;
-            }
+            // Barriers ready for insertion
             
             // Insert barriers into graphics command buffer BEFORE graphics work
             context->getLoader().vkCmdPipelineBarrier(
@@ -315,7 +304,7 @@ FrameGraph::ExecutionResult FrameGraph::execute(uint32_t frameIndex) {
                 static_cast<uint32_t>(computeToGraphicsBarriers.imageBarriers.size()), 
                 computeToGraphicsBarriers.imageBarriers.data()
             );
-            std::cout << "  Barrier insertion complete" << std::endl;
+            // Barrier insertion complete
             
             // Clear the flag to avoid inserting barriers multiple times
             computeExecuted = false;
@@ -329,12 +318,12 @@ FrameGraph::ExecutionResult FrameGraph::execute(uint32_t frameIndex) {
             computeExecuted = true;
         }
         
-        std::cout << "FrameGraph: About to execute node: " << node->getName() << std::endl;
+        // Executing node
         
         // Execute the node
         node->execute(cmdBuffer, *this);
         
-        std::cout << "FrameGraph: Completed execution of node: " << node->getName() << std::endl;
+        // Node execution completed
     }
     
     // End only the command buffers that were begun
@@ -350,14 +339,15 @@ FrameGraph::ExecutionResult FrameGraph::execute(uint32_t frameIndex) {
 }
 
 void FrameGraph::reset() {
-    // Reset for next frame - clear transient state but keep persistent resources
-    nodes.clear();
-    executionOrder.clear();
-    computeToGraphicsBarriers.bufferBarriers.clear();
-    computeToGraphicsBarriers.imageBarriers.clear();
-    computeToGraphicsBarriers.srcStage = 0;
-    computeToGraphicsBarriers.dstStage = 0;
-    compiled = false;
+    // Reset for next frame - clear transient state but keep persistent resources and nodes
+    // Keep execution order and barriers once compiled
+    if (!compiled) {
+        executionOrder.clear();
+        computeToGraphicsBarriers.bufferBarriers.clear();
+        computeToGraphicsBarriers.imageBarriers.clear();
+        computeToGraphicsBarriers.srcStage = 0;
+        computeToGraphicsBarriers.dstStage = 0;
+    }
     
     // Clear transient resources (including swapchain images that change per frame)
     // Keep only persistent external buffers (entity/position buffers)
@@ -372,12 +362,7 @@ void FrameGraph::reset() {
                 return;
             }
             
-            // Remove transient external images (swapchain images)
-            if constexpr (std::is_same_v<std::decay_t<decltype(resource)>, FrameGraphImage>) {
-                if (resource.debugName.find("SwapchainImage_") == 0) {
-                    shouldRemove = true;
-                }
-            }
+            // Keep all external images including swapchain images (now cached)
         }, it->second);
         
         if (shouldRemove) {
@@ -646,9 +631,7 @@ void FrameGraph::insertSynchronizationBarriers() {
                 for (const auto& output : prevOutputs) {
                     if (input.resourceId == output.resourceId) {
                         // Found dependency - need barrier between these stages
-                        std::cout << "FrameGraph: Creating compute->graphics barrier for resource " << input.resourceId 
-                                  << " from stage " << static_cast<int>(output.stage) << " (access " << static_cast<int>(output.access) << ")"
-                                  << " to stage " << static_cast<int>(input.stage) << " (access " << static_cast<int>(input.access) << ")" << std::endl;
+                        // Creating barrier for resource dependency
                         insertBarrierForResource(input.resourceId, output.stage, input.stage, output.access, input.access);
                     }
                 }
@@ -683,9 +666,7 @@ void FrameGraph::insertBarrierForResource(FrameGraphTypes::ResourceId resourceId
     if (buffer) {
         VkAccessFlags srcMask = convertAccess(srcAccess, srcStage);
         VkAccessFlags dstMask = convertAccess(dstAccess, dstStage);
-        std::cout << "  -> Buffer resource: " << buffer->debugName 
-                  << " srcAccess=0x" << std::hex << srcMask 
-                  << " dstAccess=0x" << std::hex << dstMask << std::dec << std::endl;
+        // Buffer barrier for resource dependency
         
         VkBufferMemoryBarrier barrier{};
         barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;

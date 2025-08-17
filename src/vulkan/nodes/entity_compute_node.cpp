@@ -47,6 +47,10 @@ void EntityComputeNode::execute(VkCommandBuffer commandBuffer, const FrameGraph&
     
     // Only dispatch if we have entities to process
     if (gpuEntityManager->getEntityCount() == 0) {
+        static int noEntitiesCounter = 0;
+        if (noEntitiesCounter++ % 60 == 0) {
+            std::cout << "EntityComputeNode: No entities to process" << std::endl;
+        }
         return;
     }
     
@@ -65,7 +69,7 @@ void EntityComputeNode::execute(VkCommandBuffer commandBuffer, const FrameGraph&
     );
     
     // Bind compute descriptor set
-    VkDescriptorSet computeDescriptorSet = gpuEntityManager->getCurrentComputeDescriptorSet();
+    VkDescriptorSet computeDescriptorSet = gpuEntityManager->getComputeDescriptorSet();
     context->getLoader().vkCmdBindDescriptorSets(
         commandBuffer, 
         VK_PIPELINE_BIND_POINT_COMPUTE, 
@@ -88,9 +92,13 @@ void EntityComputeNode::execute(VkCommandBuffer commandBuffer, const FrameGraph&
     uint32_t numWorkgroups = (pushConstants.entityCount + 31) / 32;
     context->getLoader().vkCmdDispatch(commandBuffer, numWorkgroups, 1, 1);
     
-    std::cout << "EntityComputeNode: Dispatched compute for " 
-              << pushConstants.entityCount << " entities (" 
-              << numWorkgroups << " workgroups)" << std::endl;
+    // Debug compute dispatch (once per second)
+    static int dispatchCounter = 0;
+    if (dispatchCounter++ % 60 == 0) {
+        std::cout << "EntityComputeNode: Dispatched " << numWorkgroups << " workgroups for " 
+                  << pushConstants.entityCount << " entities (frame=" << pushConstants.frame 
+                  << ", time=" << pushConstants.time << ")" << std::endl;
+    }
 }
 
 void EntityComputeNode::updateFrameData(float time, float deltaTime, uint32_t frameCounter) {

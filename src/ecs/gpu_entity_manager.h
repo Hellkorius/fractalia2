@@ -5,143 +5,97 @@
 #include <vulkan/vulkan.h>
 #include <glm/glm.hpp>
 #include <vector>
-#include <queue>
 #include <memory>
-
-// GPU entity structure optimized for cache efficiency
-struct GPUEntity {
-    // Cache Line 1 (bytes 0-63) - HOT DATA: All frequently accessed in compute shaders
-    glm::vec4 movementParams0;    // 16 bytes - amplitude, frequency, phase, timeOffset (position 0)
-    glm::vec4 movementParams1;    // 16 bytes - center.xyz, movementType (position 1)
-    glm::vec4 runtimeState;       // 16 bytes - totalTime, initialized, stateTimer, entityState (position 2)
-    glm::vec4 color;              // 16 bytes - RGBA color (position 3)
-    
-    // Cache Line 2 (bytes 64-127) - COLD DATA: Rarely accessed
-    glm::mat4 modelMatrix;        // 64 bytes - transform matrix (positions 4-7)
-    
-    GPUEntity() = default;
-    
-    // Create from ECS components
-    static GPUEntity fromECS(const Transform& transform, const Renderable& renderable, const MovementPattern& pattern) {
-        GPUEntity entity{};
-        
-        // Copy movement parameters (now in optimized positions 0-1)
-        entity.movementParams0 = glm::vec4(
-            pattern.amplitude,
-            pattern.frequency, 
-            pattern.phase,
-            pattern.timeOffset
-        );
-        
-        entity.movementParams1 = glm::vec4(
-            pattern.center.x,
-            pattern.center.y, 
-            pattern.center.z,
-            static_cast<float>(pattern.type)
-        );
-        
-        // Copy color (now in position 3)
-        entity.color = renderable.color;
-        
-        // Copy transform matrix (now in positions 4-7)
-        entity.modelMatrix = transform.getMatrix();
-        
-        // Initialize runtime state with random staggering for random walk movement
-        // All entities now use random walk, so always apply staggering
-        uint32_t seed = static_cast<uint32_t>(pattern.phase * 10000.0f);
-        seed = (seed ^ 61u) ^ (seed >> 16u);
-        seed *= 9u;
-        float randomFactor = static_cast<float>(seed % 1000) / 1000.0f;
-        
-        // Random initial timer between 0-600 frames to stagger computation
-        float initialTimer = randomFactor * 600.0f;
-        float initialState = 1.0f; // Start in INTERPOLATING state with random timer
-        
-        entity.runtimeState = glm::vec4(
-            pattern.totalTime,
-            pattern.initialized ? 1.0f : 0.0f,
-            initialTimer, // stateTimer: interpolation frame counter (0-600)
-            initialState  // entityState: 0=COMPUTING, 1=INTERPOLATING
-        );
-        
-        return entity;
-    }
-};
-
-// Compile-time size validation for GPU memory layout optimization
-static_assert(sizeof(GPUEntity) == 128, "GPUEntity must be exactly 128 bytes for optimal GPU memory access");
 
 // Forward declarations
 class VulkanContext;
 class VulkanSync;
 class ResourceContext;
-class GPUBufferRing;
 
-// Include ResourceHandle definition since we access its members inline
-#include "../vulkan/resource_context.h"
+// GPU entity structure optimized for cache efficiency
+struct GPUEntity {
+    // Cache Line 1 (bytes 0-63) - HOT DATA: All frequently accessed in compute shaders
+    glm::vec4 movementParams0;    // 16 bytes - amplitude, frequency, phase, timeOffset
+    glm::vec4 movementParams1;    // 16 bytes - center.xyz, movementType
+    glm::vec4 runtimeState;       // 16 bytes - totalTime, initialized, stateTimer, entityState
+    glm::vec4 color;              // 16 bytes - RGBA color
+    
+    // Cache Line 2 (bytes 64-127) - COLD DATA: Rarely accessed
+    glm::mat4 modelMatrix;        // 64 bytes - transform matrix
+    
+    GPUEntity() = default;
+    
+    // Create from ECS components
+    static GPUEntity fromECS(const Transform& transform, const Renderable& renderable, const MovementPattern& pattern);
+};
 
-// Manages GPU entity storage and CPU->GPU handover
+// Modular GPU Entity Manager for AAA Frame Graph Architecture
 class GPUEntityManager {
 public:
     GPUEntityManager();
     ~GPUEntityManager();
-    
-    bool initialize(const VulkanContext& context, VulkanSync* sync, ResourceContext* resourceContext, VkDescriptorSetLayout computeDescriptorSetLayout);
+
+    bool initialize(const VulkanContext& context, VulkanSync* sync, ResourceContext* resourceContext);
     void cleanup();
     
     // Entity management
     void addEntity(const GPUEntity& entity);
     void addEntitiesFromECS(const std::vector<Entity>& entities);
-    void flushStagingBuffer(); // Replaces uploadPendingEntities
+    void uploadPendingEntities(); // Upload staged entities to GPU
     void clearAllEntities();
     
-    // GPU buffer management  
-    VkBuffer getCurrentEntityBuffer() const;
+    // Direct buffer access for frame graph
+    VkBuffer getEntityBuffer() const;
+    VkBuffer getPositionBuffer() const;
     VkBuffer getCurrentPositionBuffer() const;
-    VkBuffer getCurrentPositionStorageBuffer() const;
-    VkBuffer getTargetPositionStorageBuffer() const;
-    uint32_t getComputeInputIndex() const { return 0; }
-    uint32_t getComputeOutputIndex() const { return 0; }
+    VkBuffer getTargetPositionBuffer() const;
     
-    // Getters
+    // Buffer properties
+    VkDeviceSize getEntityBufferSize() const { return ENTITY_BUFFER_SIZE; }
+    VkDeviceSize getPositionBufferSize() const { return POSITION_BUFFER_SIZE; }
+    
+    // Entity state
     uint32_t getEntityCount() const { return activeEntityCount; }
     uint32_t getMaxEntities() const { return MAX_ENTITIES; }
-    bool hasPendingUploads() const;
+    bool hasPendingUploads() const { return !stagingEntities.empty(); }
     
-    
-    // Descriptor set management
-    VkDescriptorSetLayout getComputeDescriptorSetLayout() const { return computeDescriptorSetLayout; }
-    VkDescriptorSet getCurrentComputeDescriptorSet() const { return computeDescriptorSet; }
-    
-    bool createComputeDescriptorSets();
-    bool recreateComputeDescriptorResources(VkDescriptorSetLayout newLayout);
+    // Compute descriptor set support for frame graph
+    bool createComputeDescriptorSets(VkDescriptorSetLayout layout);
+    VkDescriptorSet getComputeDescriptorSet() const { return computeDescriptorSet; }
 
 private:
-    static constexpr uint32_t MAX_ENTITIES = 131072; // 128k entities max (16MB / 128 bytes)
+    static constexpr uint32_t MAX_ENTITIES = 131072; // 128k entities max
     static constexpr size_t ENTITY_BUFFER_SIZE = MAX_ENTITIES * sizeof(GPUEntity);
-    static constexpr size_t POSITION_BUFFER_SIZE = MAX_ENTITIES * sizeof(glm::vec4); // 16 bytes per position
+    static constexpr size_t POSITION_BUFFER_SIZE = MAX_ENTITIES * sizeof(glm::vec4);
     
+    // Dependencies
     const VulkanContext* context = nullptr;
     VulkanSync* sync = nullptr;
     ResourceContext* resourceContext = nullptr;
     
-    // GPU buffers using GPUBufferRing for unified management
-    std::unique_ptr<GPUBufferRing> entityBuffer;      // Entity storage buffer
-    std::unique_ptr<GPUBufferRing> positionBuffer;    // Position output buffer
-    std::unique_ptr<GPUBufferRing> currentPositionBuffer; // Current interpolation positions
-    std::unique_ptr<GPUBufferRing> targetPositionBuffer;  // Target interpolation positions
+    // GPU buffers (simplified - no double buffering, frame graph handles that)
+    VkBuffer entityBuffer = VK_NULL_HANDLE;
+    VkDeviceMemory entityBufferMemory = VK_NULL_HANDLE;
     
-    // Entity state
+    VkBuffer positionBuffer = VK_NULL_HANDLE;  
+    VkDeviceMemory positionBufferMemory = VK_NULL_HANDLE;
+    
+    VkBuffer currentPositionBuffer = VK_NULL_HANDLE;
+    VkDeviceMemory currentPositionBufferMemory = VK_NULL_HANDLE;
+    
+    VkBuffer targetPositionBuffer = VK_NULL_HANDLE;
+    VkDeviceMemory targetPositionBufferMemory = VK_NULL_HANDLE;
+    
+    // Staging data
+    std::vector<GPUEntity> stagingEntities;
     uint32_t activeEntityCount = 0;
-    uint32_t lastFlushedCount = 0; // Track entities already on GPU
     
-    
-    // Single compute descriptor set for unified pipeline
+    // Compute descriptor sets
     VkDescriptorPool computeDescriptorPool = VK_NULL_HANDLE;
-    VkDescriptorSetLayout computeDescriptorSetLayout = VK_NULL_HANDLE; // Unified layout (4 bindings) - owned by VulkanPipeline
     VkDescriptorSet computeDescriptorSet = VK_NULL_HANDLE;
     
-    
-    bool createEntityBuffers();
+    // Helper methods
+    bool createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkBuffer& buffer, VkDeviceMemory& bufferMemory);
+    void copyDataToBuffer(VkBuffer buffer, const void* data, VkDeviceSize size);
     bool createComputeDescriptorPool();
 };

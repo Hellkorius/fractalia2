@@ -24,6 +24,13 @@ class EntityComputeNode;
 class EntityGraphicsNode;
 class SwapchainPresentNode;
 
+// New modular architecture
+class RenderFrameDirector;
+class CommandSubmissionService;
+class FrameGraphResourceRegistry;
+class GPUSynchronizationService;
+class PresentationSurface;
+
 class VulkanRenderer {
 public:
     
@@ -70,7 +77,7 @@ private:
     bool framebufferResized = false;
     bool recreationInProgress = false;
 
-    // Module instances
+    // Core Vulkan modules
     std::unique_ptr<VulkanContext> context;
     std::unique_ptr<VulkanSwapchain> swapchain;
     std::unique_ptr<VulkanPipeline> pipeline;
@@ -81,21 +88,19 @@ private:
     
     // Render graph system
     std::unique_ptr<FrameGraph> frameGraph;
-    std::unique_ptr<EntityComputeNode> computeNode;
-    std::unique_ptr<EntityGraphicsNode> graphicsNode;
-    std::unique_ptr<SwapchainPresentNode> presentNode;
+    
+    // New modular architecture
+    std::unique_ptr<RenderFrameDirector> frameDirector;
+    std::unique_ptr<CommandSubmissionService> submissionService;
+    std::unique_ptr<FrameGraphResourceRegistry> resourceRegistry;
+    std::unique_ptr<GPUSynchronizationService> syncService;
+    std::unique_ptr<PresentationSurface> presentationSurface;
 
 
     // Helper functions
-    bool recreateSwapChain();
-    VkResult waitForFenceRobust(VkFence fence, const char* fenceName);
-    
-    // Frame graph setup
-    bool initializeFrameGraph();
-    void cleanupFrameGraph();
-    void drawFrameWithFrameGraph();
-    
-    
+    bool initializeModularArchitecture();
+    void cleanupModularArchitecture();
+    void drawFrameModular();
     
     // GPU compute state
     float deltaTime = 0.0f;
@@ -106,45 +111,4 @@ private:
     
     // Key-frame look-ahead system
     uint32_t frameCounter = 0;
-    
-    // RAII fence management for frame synchronization
-    class FrameFences {
-    public:
-        FrameFences() = default;
-        ~FrameFences() { cleanup(); }
-        
-        // Non-copyable, movable
-        FrameFences(const FrameFences&) = delete;
-        FrameFences& operator=(const FrameFences&) = delete;
-        FrameFences(FrameFences&&) = default;
-        FrameFences& operator=(FrameFences&&) = default;
-        
-        bool initialize(const class VulkanContext& context);
-        void cleanup();
-        
-        VkFence getComputeFence(uint32_t frameIndex) const { return computeFences[frameIndex]; }
-        VkFence getGraphicsFence(uint32_t frameIndex) const { return graphicsFences[frameIndex]; }
-        
-        bool isComputeInUse(uint32_t frameIndex) const { return computeInUse[frameIndex]; }
-        bool isGraphicsInUse(uint32_t frameIndex) const { return graphicsInUse[frameIndex]; }
-        void setComputeInUse(uint32_t frameIndex, bool inUse) { computeInUse[frameIndex] = inUse; }
-        void setGraphicsInUse(uint32_t frameIndex, bool inUse) { graphicsInUse[frameIndex] = inUse; }
-        
-    private:
-        std::array<VkFence, MAX_FRAMES_IN_FLIGHT> computeFences{};
-        std::array<VkFence, MAX_FRAMES_IN_FLIGHT> graphicsFences{};
-        std::array<bool, MAX_FRAMES_IN_FLIGHT> computeInUse{};
-        std::array<bool, MAX_FRAMES_IN_FLIGHT> graphicsInUse{};
-        const class VulkanContext* context = nullptr;
-        bool initialized = false;
-    };
-    
-    FrameFences frameFences;
-    
-    // Frame graph resource IDs
-    FrameGraphTypes::ResourceId entityBufferId = 0;
-    FrameGraphTypes::ResourceId positionBufferId = 0;
-    FrameGraphTypes::ResourceId currentPositionBufferId = 0;
-    FrameGraphTypes::ResourceId targetPositionBufferId = 0;
-    FrameGraphTypes::ResourceId swapchainImageId = 0;
 };

@@ -62,6 +62,10 @@ void camera_control_system(flecs::entity e, Camera& camera, const float dt) {
     
     // Apply movement with speed multiplier
     if (glm::length(moveDelta) > 0.0f) {
+        static int debugCounter = 0;
+        if (debugCounter++ % 60 == 0) {  // Print once per second at 60 FPS
+            std::cout << "Camera moving: delta=(" << moveDelta.x << ", " << moveDelta.y << ", " << moveDelta.z << ")" << std::endl;
+        }
         // Apply rotation to movement direction for camera-relative movement
         if (camera.rotation != 0.0f) {
             float cosRot = cos(camera.rotation);

@@ -28,10 +28,10 @@
 - **Frame safety**: Frame-in-flight index validation (0-1, not unbounded counter)
 - **Selective execution**: Only begin/end command buffers that are actually used
 
-## Remaining Work ❌
-- **Legacy cleanup**: Remove unused methods from VulkanRenderer
-- **Additional nodes**: Shadow mapping, post-processing, etc.
-- **Multi-queue**: Async compute on dedicated queue families
+## AAA Modularization Complete ✅
+- **Legacy cleanup**: VulkanRenderer fully modularized into 5 services
+- **Industry naming**: RenderFrameDirector, CommandSubmissionService, etc.
+- **Next**: Additional nodes (shadows, post-processing), multi-queue async compute
 
 ## Execution Flow
 1. **VulkanRenderer**: waitForFences() → acquireImage() → uploadEntities()

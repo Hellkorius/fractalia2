@@ -135,7 +135,8 @@ public:
     
     // Graph compilation and execution
     bool compile();
-    void updateFrameData(float time, float deltaTime, uint32_t frameCounter);
+    bool isCompiled() const { return compiled; }
+    void updateFrameData(float time, float deltaTime, uint32_t frameCounter, uint32_t currentFrameIndex);
     
     // Execution result to indicate which command buffers were used
     struct ExecutionResult {

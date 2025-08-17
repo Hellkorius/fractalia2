@@ -64,20 +64,49 @@ Random walk algorithm with interpolated movement:
 - 600-frame cycles with smooth interpolation
 - Staggered computation to avoid frame spikes
 
-## Render Graph Architecture ✅ OPERATIONAL
+## AAA Modular Architecture ✅ OPERATIONAL
 
 ### Current State
-- ✅ **Working**: EntityComputeNode + EntityGraphicsNode + SwapchainPresentNode
-- ✅ **Automatic barriers**: Compute→graphics synchronization with proper access masks
-- ✅ **Frame safety**: Frame-in-flight index validation, resource tracking
-- ✅ **Performance**: 80,000 entities at 60+ FPS
+- ✅ **Fully Modularized**: VulkanRenderer decomposed into 5 specialized services
+- ✅ **Industry Names**: Proper AAA naming conventions throughout
+- ✅ **Single Responsibility**: Each module has one clear purpose
+- ✅ **Working**: 80,000 entities rendering with compute-driven movement
 
-### Architecture
-**FrameGraph**: Resource dependency tracking, automatic barrier insertion, node execution
-**VulkanRenderer**: Queue submission, fence/semaphore management, swapchain coordination
+### Modules
+**RenderFrameDirector**: Frame execution orchestration (`directFrame()`)
+**CommandSubmissionService**: GPU queue submission management
+**FrameGraphResourceRegistry**: Resource registration with frame graph
+**GPUSynchronizationService**: GPU synchronization primitives
+**PresentationSurface**: Swapchain and presentation management
 
-### Remaining Migration
-- Consult with Rendergraph.md for full details.
-- ❌ Legacy methods still in VulkanRenderer need complete removal
+## Recent Debugging Session - January 2025
+
+### Issues Identified & Fixed
+1. **Compute Shader Access** ✅ FIXED
+   - Missing compute descriptor sets prevented buffer access
+   - GPUEntityManager now creates and binds compute descriptor sets
+   - EntityComputeNode properly binds descriptor sets before dispatch
+
+2. **Entity Initialization** ✅ FIXED  
+   - CPU was setting `initialized = 1.0f`, but compute shader expected `0.0f`
+   - Fixed in `GPUEntity::fromECS()` - entities now start uninitialized
+   - Compute shader properly initializes position buffers on first pass
+
+3. **Frame Graph Performance** ✅ IMPROVED
+   - Eliminated redundant node creation every frame
+   - Optimized swapchain image resource caching  
+   - Reduced debug spam from thousands of barrier logs per frame
+   - Frame graph now compiles only when necessary
+
+### Current Status
+- ✅ **Rendering**: 80,000 entities displaying with compute movement
+- ✅ **Performance**: Optimized frame graph execution  
+- ✅ **Controls**: Mouse click entity spawning works
+- ⚠️ **Camera**: System registers input but viewport doesn't update
+- ⚠️ **Stability**: Occasional screen flashing persists
+
+### Next Steps
+- ❌ **Camera Viewport Integration**: Debug why camera transforms don't affect rendering
+- ❌ **Frame Graph Stability**: Investigate remaining compilation triggers causing flashing
 - ❌ Additional render passes (shadows, post-processing) need node implementation
-- ❌ Multi-queue async compute not yet integrated
+- ❌ Multi-queue async compute integration pending

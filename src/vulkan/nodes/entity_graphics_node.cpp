@@ -57,9 +57,7 @@ void EntityGraphicsNode::execute(VkCommandBuffer commandBuffer, const FrameGraph
     }
     
     // Update uniform buffer with camera matrices
-    std::cout << "EntityGraphicsNode: Updating uniform buffer" << std::endl;
     updateUniformBuffer();
-    std::cout << "EntityGraphicsNode: Uniform buffer updated" << std::endl;
     
     // Begin render pass
     VkRenderPassBeginInfo renderPassInfo{};
@@ -139,7 +137,7 @@ void EntityGraphicsNode::execute(VkCommandBuffer commandBuffer, const FrameGraph
         // Bind vertex buffers: geometry vertices + entity instance data
         VkBuffer vertexBuffers[] = {
             resourceContext->getVertexBuffer(),           // Vertex positions for triangle geometry
-            gpuEntityManager->getCurrentEntityBuffer()    // Per-instance entity data
+            gpuEntityManager->getEntityBuffer()    // Per-instance entity data
         };
         VkDeviceSize offsets[] = {0, 0};
         context->getLoader().vkCmdBindVertexBuffers(commandBuffer, 0, 2, vertexBuffers, offsets);
@@ -160,8 +158,7 @@ void EntityGraphicsNode::execute(VkCommandBuffer commandBuffer, const FrameGraph
             0, 0, 0                          // Index/vertex/instance offsets
         );
         
-        std::cout << "EntityGraphicsNode: Drew " << gpuEntityCount 
-                  << " entities with " << resourceContext->getIndexCount() << " indices each" << std::endl;
+        // Drew entities
     }
 
     // End render pass
@@ -182,33 +179,43 @@ void EntityGraphicsNode::updateUniformBuffer() {
         if (cameraMatrices.valid) {
             ubo.view = cameraMatrices.view;
             ubo.proj = cameraMatrices.projection;
+            
+            // Debug camera matrix application (once per second)
+            static int debugCounter = 0;
+            if (debugCounter++ % 60 == 0) {
+                std::cout << "EntityGraphicsNode: Using camera matrices from ECS" << std::endl;
+            }
         } else {
             // Fallback to default matrices if no camera found
             ubo.view = glm::mat4(1.0f);
             ubo.proj = glm::ortho(-4.0f, 4.0f, -3.0f, 3.0f, -5.0f, 5.0f);
             ubo.proj[1][1] *= -1; // Flip Y for Vulkan
+            
+            static int fallbackCounter = 0;
+            if (fallbackCounter++ % 60 == 0) {
+                std::cout << "EntityGraphicsNode: Using fallback matrices - no valid camera" << std::endl;
+            }
         }
     } else {
         // Original fallback matrices when no world is set
         ubo.view = glm::mat4(1.0f);
         ubo.proj = glm::ortho(-4.0f, 4.0f, -3.0f, 3.0f, -5.0f, 5.0f);
         ubo.proj[1][1] *= -1; // Flip Y for Vulkan
+        
+        static int noWorldCounter = 0;
+        if (noWorldCounter++ % 60 == 0) {
+            std::cout << "EntityGraphicsNode: Using fallback matrices - no world reference" << std::endl;
+        }
     }
     
     // Update the uniform buffer for the current frame
-    std::cout << "  currentFrameIndex=" << currentFrameIndex << std::endl;
     auto uniformBuffers = resourceContext->getUniformBuffersMapped();
-    std::cout << "  uniformBuffers size=" << uniformBuffers.size() << std::endl;
     if (!uniformBuffers.empty() && currentFrameIndex < uniformBuffers.size()) {
         void* data = uniformBuffers[currentFrameIndex];
-        std::cout << "  uniform buffer data pointer=" << data << std::endl;
         if (data) {
             memcpy(data, &ubo, sizeof(ubo));
-            std::cout << "  memcpy completed" << std::endl;
-        } else {
-            std::cout << "  ERROR: uniform buffer data is null!" << std::endl;
         }
     } else {
-        std::cout << "  ERROR: invalid currentFrameIndex or empty uniformBuffers!" << std::endl;
+        std::cerr << "EntityGraphicsNode: ERROR: invalid currentFrameIndex or empty uniformBuffers!" << std::endl;
     }
 }
