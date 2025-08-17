@@ -168,17 +168,20 @@ void EntityGraphicsNode::execute(VkCommandBuffer commandBuffer, const FrameGraph
 void EntityGraphicsNode::updateUniformBuffer() {
     if (!resourceContext) return;
     
+    // Check if uniform buffer needs updating for this frame index
+    bool needsUpdate = uniformBufferDirty || (lastUpdatedFrameIndex != currentFrameIndex);
+    
     struct UniformBufferObject {
         glm::mat4 view;
         glm::mat4 proj;
-    } ubo{};
+    } newUBO{};
 
     // Get camera matrices from ECS if available
     if (world != nullptr) {
         auto cameraMatrices = CameraManager::getCameraMatrices(*world);
         if (cameraMatrices.valid) {
-            ubo.view = cameraMatrices.view;
-            ubo.proj = cameraMatrices.projection;
+            newUBO.view = cameraMatrices.view;
+            newUBO.proj = cameraMatrices.projection;
             
             // Debug camera matrix application (once per second)
             static int debugCounter = 0;
@@ -187,9 +190,9 @@ void EntityGraphicsNode::updateUniformBuffer() {
             }
         } else {
             // Fallback to default matrices if no camera found
-            ubo.view = glm::mat4(1.0f);
-            ubo.proj = glm::ortho(-4.0f, 4.0f, -3.0f, 3.0f, -5.0f, 5.0f);
-            ubo.proj[1][1] *= -1; // Flip Y for Vulkan
+            newUBO.view = glm::mat4(1.0f);
+            newUBO.proj = glm::ortho(-4.0f, 4.0f, -3.0f, 3.0f, -5.0f, 5.0f);
+            newUBO.proj[1][1] *= -1; // Flip Y for Vulkan
             
             static int fallbackCounter = 0;
             if (fallbackCounter++ % 60 == 0) {
@@ -198,9 +201,9 @@ void EntityGraphicsNode::updateUniformBuffer() {
         }
     } else {
         // Original fallback matrices when no world is set
-        ubo.view = glm::mat4(1.0f);
-        ubo.proj = glm::ortho(-4.0f, 4.0f, -3.0f, 3.0f, -5.0f, 5.0f);
-        ubo.proj[1][1] *= -1; // Flip Y for Vulkan
+        newUBO.view = glm::mat4(1.0f);
+        newUBO.proj = glm::ortho(-4.0f, 4.0f, -3.0f, 3.0f, -5.0f, 5.0f);
+        newUBO.proj[1][1] *= -1; // Flip Y for Vulkan
         
         static int noWorldCounter = 0;
         if (noWorldCounter++ % 60 == 0) {
@@ -208,14 +211,31 @@ void EntityGraphicsNode::updateUniformBuffer() {
         }
     }
     
-    // Update the uniform buffer for the current frame
-    auto uniformBuffers = resourceContext->getUniformBuffersMapped();
-    if (!uniformBuffers.empty() && currentFrameIndex < uniformBuffers.size()) {
-        void* data = uniformBuffers[currentFrameIndex];
-        if (data) {
-            memcpy(data, &ubo, sizeof(ubo));
+    // Check if matrices actually changed (avoid memcmp by comparing key components)
+    bool matricesChanged = (newUBO.view != cachedUBO.view) || (newUBO.proj != cachedUBO.proj);
+    
+    // Only update if dirty, frame changed, or matrices changed
+    if (needsUpdate || matricesChanged) {
+        auto uniformBuffers = resourceContext->getUniformBuffersMapped();
+        if (!uniformBuffers.empty() && currentFrameIndex < uniformBuffers.size()) {
+            void* data = uniformBuffers[currentFrameIndex];
+            if (data) {
+                memcpy(data, &newUBO, sizeof(newUBO));
+                
+                // Update cache and tracking
+                cachedUBO.view = newUBO.view;
+                cachedUBO.proj = newUBO.proj;
+                uniformBufferDirty = false;
+                lastUpdatedFrameIndex = currentFrameIndex;
+                
+                // Debug optimized updates (once per second)
+                static int updateCounter = 0;
+                if (updateCounter++ % 60 == 0) {
+                    std::cout << "EntityGraphicsNode: Updated uniform buffer (optimized)" << std::endl;
+                }
+            }
+        } else {
+            std::cerr << "EntityGraphicsNode: ERROR: invalid currentFrameIndex or empty uniformBuffers!" << std::endl;
         }
-    } else {
-        std::cerr << "EntityGraphicsNode: ERROR: invalid currentFrameIndex or empty uniformBuffers!" << std::endl;
     }
 }

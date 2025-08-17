@@ -4,6 +4,8 @@
 #include <vulkan/vulkan.h>
 #include "../frame_graph.h"
 #include <flecs.h>
+#include <cstdint>
+#include <glm/glm.hpp>
 
 // Forward declarations
 class VulkanPipeline;
@@ -46,6 +48,9 @@ public:
     
     // Set world reference for camera matrix access
     void setWorld(flecs::world* world) { this->world = world; }
+    
+    // Force uniform buffer update on next frame (call when camera changes)
+    void markUniformBufferDirty() { uniformBufferDirty = true; }
 
 private:
     // Internal uniform buffer update
@@ -70,4 +75,13 @@ private:
     
     // ECS world reference for camera matrices
     flecs::world* world = nullptr;
+    
+    // Uniform buffer optimization - cache and dirty tracking
+    struct CachedUBO {
+        glm::mat4 view;
+        glm::mat4 proj;
+    } cachedUBO{};
+    
+    bool uniformBufferDirty = true;  // Force update on first frame
+    uint32_t lastUpdatedFrameIndex = UINT32_MAX; // Track which frame index was last updated
 };
