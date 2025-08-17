@@ -595,7 +595,7 @@ bool FrameGraph::topologicalSort() {
 }
 
 void FrameGraph::insertSynchronizationBarriers() {
-    // AAA-standard barrier insertion: analyze node dependencies and insert barriers
+    // Optimized O(n) barrier insertion with resource-based batching
     
     // Clear existing barriers
     computeToGraphicsBarriers.bufferBarriers.clear();
@@ -603,39 +603,41 @@ void FrameGraph::insertSynchronizationBarriers() {
     computeToGraphicsBarriers.srcStage = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
     computeToGraphicsBarriers.dstStage = VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_VERTEX_INPUT_BIT;
     
-    // For each node, check if it reads resources written by previous nodes
-    for (size_t i = 0; i < executionOrder.size(); ++i) {
-        auto currentNodeId = executionOrder[i];
-        auto currentNodeIt = nodes.find(currentNodeId);
-        if (currentNodeIt == nodes.end()) continue;
+    // Track resource write states for linear dependency checking
+    std::unordered_map<FrameGraphTypes::ResourceId, std::pair<PipelineStage, ResourceAccess>> lastResourceWrites;
+    std::unordered_set<FrameGraphTypes::ResourceId> barrierPendingResources;
+    
+    // Single pass through execution order - O(n) complexity
+    for (auto nodeId : executionOrder) {
+        auto nodeIt = nodes.find(nodeId);
+        if (nodeIt == nodes.end()) continue;
         
-        auto currentInputs = currentNodeIt->second->getInputs();
-        bool isGraphicsNode = currentNodeIt->second->needsGraphicsQueue();
+        auto& node = nodeIt->second;
+        bool isComputeNode = node->needsComputeQueue();
+        bool isGraphicsNode = node->needsGraphicsQueue();
         
-        // Check previous nodes for write hazards
-        for (size_t j = 0; j < i; ++j) {
-            auto prevNodeId = executionOrder[j];
-            auto prevNodeIt = nodes.find(prevNodeId);
-            if (prevNodeIt == nodes.end()) continue;
-            
-            auto prevOutputs = prevNodeIt->second->getOutputs();
-            bool isComputeNode = prevNodeIt->second->needsComputeQueue();
-            
-            // Only insert barriers for compute->graphics transitions
-            if (!(isComputeNode && isGraphicsNode)) {
-                continue;
-            }
-            
-            // Check for resource dependencies that need barriers
-            for (const auto& input : currentInputs) {
-                for (const auto& output : prevOutputs) {
-                    if (input.resourceId == output.resourceId) {
-                        // Found dependency - need barrier between these stages
-                        // Creating barrier for resource dependency
-                        insertBarrierForResource(input.resourceId, output.stage, input.stage, output.access, input.access);
-                    }
+        // Process node inputs - check for barriers needed
+        auto inputs = node->getInputs();
+        for (const auto& input : inputs) {
+            auto writeIt = lastResourceWrites.find(input.resourceId);
+            if (writeIt != lastResourceWrites.end()) {
+                // Resource was previously written - check if barrier needed
+                auto [lastStage, lastAccess] = writeIt->second;
+                
+                // Only create barriers for compute->graphics transitions
+                if (isGraphicsNode && !barrierPendingResources.count(input.resourceId)) {
+                    insertBarrierForResource(input.resourceId, lastStage, input.stage, lastAccess, input.access);
+                    barrierPendingResources.insert(input.resourceId);
                 }
             }
+        }
+        
+        // Update resource write tracking for node outputs
+        auto outputs = node->getOutputs();
+        for (const auto& output : outputs) {
+            lastResourceWrites[output.resourceId] = {output.stage, output.access};
+            // Clear barrier pending since this is a new write
+            barrierPendingResources.erase(output.resourceId);
         }
     }
 }
@@ -666,7 +668,15 @@ void FrameGraph::insertBarrierForResource(FrameGraphTypes::ResourceId resourceId
     if (buffer) {
         VkAccessFlags srcMask = convertAccess(srcAccess, srcStage);
         VkAccessFlags dstMask = convertAccess(dstAccess, dstStage);
-        // Buffer barrier for resource dependency
+        
+        // Check for duplicate barriers on same buffer
+        for (const auto& existingBarrier : computeToGraphicsBarriers.bufferBarriers) {
+            if (existingBarrier.buffer == buffer->buffer && 
+                existingBarrier.srcAccessMask == srcMask && 
+                existingBarrier.dstAccessMask == dstMask) {
+                return; // Duplicate barrier - skip
+            }
+        }
         
         VkBufferMemoryBarrier barrier{};
         barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
@@ -684,11 +694,22 @@ void FrameGraph::insertBarrierForResource(FrameGraphTypes::ResourceId resourceId
     
     const FrameGraphImage* image = getImageResource(resourceId);
     if (image) {
-        std::cout << "  -> Image resource: " << image->debugName << std::endl;
+        VkAccessFlags srcMask = convertAccess(srcAccess, srcStage);
+        VkAccessFlags dstMask = convertAccess(dstAccess, dstStage);
+        
+        // Check for duplicate barriers on same image
+        for (const auto& existingBarrier : computeToGraphicsBarriers.imageBarriers) {
+            if (existingBarrier.image == image->image && 
+                existingBarrier.srcAccessMask == srcMask && 
+                existingBarrier.dstAccessMask == dstMask) {
+                return; // Duplicate barrier - skip
+            }
+        }
+        
         VkImageMemoryBarrier barrier{};
         barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-        barrier.srcAccessMask = convertAccess(srcAccess, srcStage);
-        barrier.dstAccessMask = convertAccess(dstAccess, dstStage);
+        barrier.srcAccessMask = srcMask;
+        barrier.dstAccessMask = dstMask;
         barrier.oldLayout = VK_IMAGE_LAYOUT_GENERAL; // Simplified for now
         barrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
         barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;

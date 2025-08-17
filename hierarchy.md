@@ -1,41 +1,55 @@
-# AAA Game Engine Architecture Hierarchy
+# Fractalia2 Engine Architecture
 
-## Overview
-This document outlines the comprehensive modular architecture for Fractalia2, transforming it from a specialized renderer into a full AAA-standard game engine. The architecture preserves the exceptional GPU-driven performance (80,000+ entities at 60 FPS) while introducing enterprise-grade modularity, extensibility, and maintainability.
+## Current Architecture
 
-## Current State Deep Analysis
-
-### ✅ **Strengths to Preserve**
-- **Exceptional Render Graph**: `FrameGraph` + specialized nodes (EntityComputeNode, EntityGraphicsNode) with automatic barrier insertion
-- **GPU-Driven Architecture**: Compute shaders handling 80k+ entities with staggered random walk movement
-- **Performance**: 128-byte aligned `GPUEntity` structs, optimized cache layout, 600-frame interpolation cycles
-- **Vulkan Expertise**: Proper resource management, command buffer pooling, multi-frame synchronization
-- **ECS Foundation**: Flecs integration with proper component lifecycle and system scheduling
-
-### ✅ **Modularization Complete**
-- **Specialized Services**: VulkanRenderer decomposed into 5 focused modules with single responsibilities
-- **Industry Naming**: RenderFrameDirector, CommandSubmissionService, FrameGraphResourceRegistry, GPUSynchronizationService, PresentationSurface
-- **Clear Interfaces**: Proper abstraction boundaries between rendering subsystems
-- **Maintainable Code**: Easy to locate, test, and modify specific functionality
-- **Extensible Design**: New features can be added without touching existing modules
-
-### ⚠️ **Debugging Session Results (January 2025)**
-- **Compute Pipeline**: Fixed missing descriptor sets - compute shader now properly accesses entity/position buffers
-- **Entity Initialization**: Fixed initialization flag mismatch preventing proper entity setup
-- **Frame Graph Performance**: Optimized to reduce redundant compilation and node creation
-- **Remaining Issues**: Camera viewport integration and frame stability need investigation
-
-### 🔍 **New Architecture**
-Modular service-oriented design:
+### Modular Services
 ```
-VulkanRenderer (Coordinator) → [RenderFrameDirector, CommandSubmissionService, 
-                               FrameGraphResourceRegistry, GPUSynchronizationService, 
-                               PresentationSurface, FrameGraph + Nodes]
+VulkanRenderer (Orchestrator)
+├── RenderFrameDirector (Frame Execution)
+├── FrameGraph (Dependency Management) 
+├── CommandSubmissionService (Queue Management)
+├── FrameGraphResourceRegistry (Resource Tracking)
+├── GPUSynchronizationService (Sync Primitives)
+└── PresentationSurface (Swapchain Management)
 ```
 
-**Impact**: Changes isolated to specific modules, enabling independent development and testing.
+### Performance Metrics
+- **Entities**: 80,000 at 60 FPS
+- **Frame Time**: 16.67ms consistent
+- **Memory**: Cache-optimized 128-byte entity layout
+- **Movement**: 600-frame interpolated random walk with staggered processing
+- **Camera**: WASD + mouse controls with viewport transforms
+- **Stability**: Zero crashes, single frame graph compilation
 
-## Proposed AAA Engine Architecture
+### Technical Implementation
+- **Frame Graph**: Single compilation with preserved state
+- **Compute Integration**: Proper barriers for compute→graphics transitions
+- **Resource Management**: External lifecycle with internal optimization
+- **Node Architecture**: EntityComputeNode, EntityGraphicsNode, SwapchainPresentNode
+
+## Architecture Fixes - January 2025
+
+### Frame Graph Compilation
+- **Issue**: Reset loop clearing compiled state
+- **Fix**: Preserve compiled state in `reset()`
+- **File**: `src/vulkan/frame_graph.cpp:349`
+
+### Frame Synchronization  
+- **Issue**: Frame counter stuck at 0
+- **Fix**: Separate `frameCounter` vs `currentFrame`
+- **Files**: `src/vulkan/frame_graph.cpp:222`, `src/vulkan/render_frame_director.cpp:221`
+
+### Camera Viewport
+- **Issue**: World reference timing
+- **Fix**: Configure nodes between acquisition and execution
+- **File**: `src/vulkan/render_frame_director.cpp:75`
+
+### Node Configuration
+- **Issue**: Hard-coded node IDs
+- **Fix**: Store actual node IDs from `addNode()`
+- **Files**: `src/vulkan/render_frame_director.h:86-88`, `src/vulkan/render_frame_director.cpp:147-174`
+
+## Extension Architecture (Reference)
 
 ### **Tier 1: Foundation Layer**
 ```

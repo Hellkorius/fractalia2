@@ -267,8 +267,7 @@ void VulkanRenderer::drawFrameModular() {
         return;
     }
     
-    // Configure frame graph nodes
-    frameDirector->configureFrameGraphNodes(frameResult.imageIndex, world);
+    // Note: Frame graph nodes already configured in directFrame() - no need to configure again
     
     // Submit frame work
     auto submissionResult = submissionService->submitFrame(

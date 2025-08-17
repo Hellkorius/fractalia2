@@ -182,8 +182,13 @@ void RenderFrameDirector::configureFrameGraphNodes(uint32_t imageIndex, flecs::w
     if (auto* graphicsNode = frameGraph->getNode<EntityGraphicsNode>(graphicsNodeId)) {
         graphicsNode->setImageIndex(imageIndex);
         graphicsNode->setWorld(world);
-        std::cout << "RenderFrameDirector: Configured graphics node " << graphicsNodeId 
-                  << " with imageIndex=" << imageIndex << " and world=" << (world ? "valid" : "null") << std::endl;
+        
+        // Rate-limited debug output (once per second)
+        static int configCounter = 0;
+        if (configCounter++ % 60 == 0) {
+            std::cout << "RenderFrameDirector: Configured graphics node " << graphicsNodeId 
+                      << " with imageIndex=" << imageIndex << " and world=" << (world ? "valid" : "null") << std::endl;
+        }
     } else {
         std::cerr << "RenderFrameDirector: Failed to find graphics node with ID " << graphicsNodeId << std::endl;
     }
