@@ -270,6 +270,19 @@ void EntityGraphicsNode::updateUniformBuffer() {
     // Only update if dirty, frame changed, or matrices changed
     if (needsUpdate || matricesChanged) {
         auto uniformBuffers = resourceContext->getUniformBuffersMapped();
+        
+        // Auto-recreate uniform buffers if they were destroyed (e.g., during resize)
+        if (uniformBuffers.empty()) {
+            std::cout << "EntityGraphicsNode: Uniform buffers missing, attempting to recreate..." << std::endl;
+            if (resourceContext->createUniformBuffers()) {
+                std::cout << "EntityGraphicsNode: Successfully recreated uniform buffers" << std::endl;
+                uniformBuffers = resourceContext->getUniformBuffersMapped();
+            } else {
+                std::cerr << "EntityGraphicsNode: CRITICAL ERROR: Failed to recreate uniform buffers!" << std::endl;
+                return;
+            }
+        }
+        
         if (!uniformBuffers.empty() && currentFrameIndex < uniformBuffers.size()) {
             void* data = uniformBuffers[currentFrameIndex];
             if (data) {
@@ -288,7 +301,8 @@ void EntityGraphicsNode::updateUniformBuffer() {
                 }
             }
         } else {
-            std::cerr << "EntityGraphicsNode: ERROR: invalid currentFrameIndex or empty uniformBuffers!" << std::endl;
+            std::cerr << "EntityGraphicsNode: ERROR: invalid currentFrameIndex (" << currentFrameIndex 
+                     << ") or uniformBuffers size (" << uniformBuffers.size() << ")!" << std::endl;
         }
     }
 }

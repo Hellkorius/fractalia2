@@ -14,23 +14,11 @@ class VulkanFunctionLoader;
 class ResourceContext;
 
 #include "command_executor.h"
-
-// VMA allocator wrapper - simplified interface without external dependency
-class VmaAllocator_Impl;
-using VmaAllocator = VmaAllocator_Impl*;
-using VmaAllocation = void*;
-
-// Resource handle combining buffer/image with allocation
-struct ResourceHandle {
-    vulkan_raii::Buffer buffer;
-    vulkan_raii::Image image;
-    vulkan_raii::ImageView imageView;
-    vulkan_raii::DeviceMemory memory;
-    void* mappedData = nullptr;
-    VkDeviceSize size = 0;
-    
-    bool isValid() const { return buffer || image; }
-};
+#include "memory_allocator.h"
+#include "buffer_factory.h"
+#include "descriptor_pool_manager.h"
+#include "graphics_resource_manager.h"
+#include "resource_handle.h"
 
 // Staging ring buffer for efficient CPU->GPU transfers
 class StagingRingBuffer {
@@ -105,6 +93,9 @@ public:
     bool initialize(const VulkanContext& context, VkCommandPool commandPool = VK_NULL_HANDLE);
     void cleanup();
     
+    // Update command pool without reinitializing everything
+    bool updateCommandPool(VkCommandPool newCommandPool);
+    
     // Cleanup method for proper destruction order
     void cleanupBeforeContextDestruction();
     
@@ -142,18 +133,8 @@ public:
     // Async staging operations using transfer queue
     CommandExecutor::AsyncTransfer copyToBufferAsync(const ResourceHandle& dst, const void* data, VkDeviceSize size, VkDeviceSize offset = 0);
     
-    // Descriptor management (bindless-ready)
-    struct DescriptorPoolConfig {
-        uint32_t maxSets = 1024;
-        uint32_t uniformBuffers = 1024;
-        uint32_t storageBuffers = 1024;
-        uint32_t sampledImages = 1024;
-        uint32_t storageImages = 512;
-        uint32_t samplers = 512;
-        bool allowFreeDescriptorSets = true;
-        bool bindlessReady = false; // Future-proof for bindless
-    };
-    
+    // Descriptor management (delegated to DescriptorPoolManager)
+    using DescriptorPoolConfig = DescriptorPoolManager::DescriptorPoolConfig;
     vulkan_raii::DescriptorPool createDescriptorPool(const DescriptorPoolConfig& config);
     vulkan_raii::DescriptorPool createDescriptorPool(); // Overload with default config
     void destroyDescriptorPool(VkDescriptorPool pool);
@@ -167,48 +148,33 @@ public:
     bool updateDescriptorSetsWithPositionBuffers(VkBuffer currentPositionBuffer, VkBuffer targetPositionBuffer);
     bool updateDescriptorSetsWithEntityAndPositionBuffers(VkBuffer entityBuffer, VkBuffer positionBuffer);
     
-    // Getters for graphics resources
-    const std::vector<VkBuffer>& getUniformBuffers() const { return uniformBuffers; }
-    const std::vector<void*>& getUniformBuffersMapped() const { return uniformBuffersMapped; }
-    VkBuffer getVertexBuffer() const { return vertexBufferHandle.buffer.get(); }
-    VkBuffer getIndexBuffer() const { return indexBufferHandle.buffer.get(); }
-    uint32_t getIndexCount() const { return indexCount; }
-    VkDescriptorPool getGraphicsDescriptorPool() const { return graphicsDescriptorPool.get(); }
-    const std::vector<VkDescriptorSet>& getGraphicsDescriptorSets() const { return graphicsDescriptorSets; }
+    // Recreation for swapchain rebuild
+    bool recreateGraphicsDescriptors();
     
-    // Statistics and debugging
-    struct MemoryStats {
-        VkDeviceSize totalAllocated = 0;
-        VkDeviceSize totalFreed = 0;
-        uint32_t activeAllocations = 0;
-    };
+    // Getters for graphics resources (delegated to GraphicsResourceManager)
+    const std::vector<VkBuffer>& getUniformBuffers() const;
+    const std::vector<void*>& getUniformBuffersMapped() const;
+    VkBuffer getVertexBuffer() const;
+    VkBuffer getIndexBuffer() const;
+    uint32_t getIndexCount() const;
+    VkDescriptorPool getGraphicsDescriptorPool() const;
+    const std::vector<VkDescriptorSet>& getGraphicsDescriptorSets() const;
     
-    MemoryStats getMemoryStats() const { return memoryStats; }
+    // Statistics and debugging (delegated to MemoryAllocator)
+    using MemoryStats = MemoryAllocator::MemoryStats;
+    MemoryStats getMemoryStats() const;
     
 private:
     const VulkanContext* context = nullptr;
-    VmaAllocator allocator = nullptr;
     StagingRingBuffer stagingBuffer;
-    MemoryStats memoryStats;
     CommandExecutor executor;
     
-    // Internal VMA wrapper functions
-    bool initializeVMA();
-    void cleanupVMA();
-    uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties);
+    // Specialized managers
+    std::unique_ptr<MemoryAllocator> memoryAllocator;
+    std::unique_ptr<BufferFactory> bufferFactory;
+    std::unique_ptr<DescriptorPoolManager> descriptorPoolManager;
+    std::unique_ptr<GraphicsResourceManager> graphicsResourceManager;
     
     // Resource tracking
     std::vector<std::function<void()>> cleanupCallbacks;
-    
-    // Graphics pipeline resources (moved from VulkanResources)
-    std::vector<ResourceHandle> uniformBufferHandles;
-    std::vector<VkBuffer> uniformBuffers;  // For compatibility
-    std::vector<void*> uniformBuffersMapped;
-    
-    ResourceHandle vertexBufferHandle;
-    ResourceHandle indexBufferHandle;
-    uint32_t indexCount = 0;
-    
-    vulkan_raii::DescriptorPool graphicsDescriptorPool;
-    std::vector<VkDescriptorSet> graphicsDescriptorSets;
 };

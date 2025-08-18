@@ -13,14 +13,19 @@
   - vulkan/core/vulkan_function_loader.cpp: 100+ identical function loading patterns
   done
   - vulkan/core/vulkan_raii.cpp: 20+ identical deleter implementations
+  done
   - vulkan/pipelines/: Hash calculation patterns repeated across multiple files
+  done
   - Impact: Maintenance nightmare, bug multiplication, development velocity reduction
 
   2. God Classes (Critical Priority)
 
   - vulkan/pipelines/graphics_pipeline_manager.cpp: 769 lines, excessive responsibilities
+  done
   - vulkan/pipelines/compute_pipeline_manager.cpp: 682 lines, violates SRP
+  done
   - vulkan/core/vulkan_function_loader.h: 150+ function pointers in single class
+  we'll think about it
   - vulkan/resources/resource_context.h: Manages memory, staging, graphics, descriptors
 
   3. Extremely Long Methods (High Priority)
