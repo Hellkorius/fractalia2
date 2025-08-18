@@ -11,9 +11,10 @@
 struct QueueFamilyIndices {
     std::optional<uint32_t> graphicsFamily;
     std::optional<uint32_t> presentFamily;
+    std::optional<uint32_t> computeFamily;
 
     bool isComplete() {
-        return graphicsFamily.has_value() && presentFamily.has_value();
+        return graphicsFamily.has_value() && presentFamily.has_value() && computeFamily.has_value();
     }
 };
 
@@ -31,7 +32,9 @@ public:
     VkDevice getDevice() const { return device; }
     VkQueue getGraphicsQueue() const { return graphicsQueue; }
     VkQueue getPresentQueue() const { return presentQueue; }
+    VkQueue getComputeQueue() const { return computeQueue; }
     uint32_t getGraphicsQueueFamily() const { return queueFamilyIndices.graphicsFamily.value(); }
+    uint32_t getComputeQueueFamily() const { return queueFamilyIndices.computeFamily.value(); }
     
     class VulkanFunctionLoader& getLoader() const { return *loader; }
     
@@ -47,6 +50,7 @@ private:
     VkDevice device = VK_NULL_HANDLE;
     VkQueue graphicsQueue = VK_NULL_HANDLE;
     VkQueue presentQueue = VK_NULL_HANDLE;
+    VkQueue computeQueue = VK_NULL_HANDLE;
     QueueFamilyIndices queueFamilyIndices; // Store indices for queue retrieval after device creation
 
     std::unique_ptr<class VulkanFunctionLoader> loader;

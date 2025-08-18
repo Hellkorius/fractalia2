@@ -47,8 +47,13 @@ public:
     // Direct buffer access for frame graph
     VkBuffer getEntityBuffer() const;
     VkBuffer getPositionBuffer() const;
+    VkBuffer getPositionBufferAlternate() const; // For async compute ping-pong
     VkBuffer getCurrentPositionBuffer() const;
     VkBuffer getTargetPositionBuffer() const;
+    
+    // Async compute support - ping-pong between position buffers
+    VkBuffer getComputeWriteBuffer(uint32_t frameIndex) const;  // Buffer compute writes to
+    VkBuffer getGraphicsReadBuffer(uint32_t frameIndex) const;  // Buffer graphics reads from
     
     // Buffer properties
     VkDeviceSize getEntityBufferSize() const { return ENTITY_BUFFER_SIZE; }
@@ -86,6 +91,9 @@ private:
     
     VkBuffer positionBuffer = VK_NULL_HANDLE;  
     VkDeviceMemory positionBufferMemory = VK_NULL_HANDLE;
+    
+    VkBuffer positionBufferAlternate = VK_NULL_HANDLE; // For async compute ping-pong
+    VkDeviceMemory positionBufferAlternateMemory = VK_NULL_HANDLE;
     
     VkBuffer currentPositionBuffer = VK_NULL_HANDLE;
     VkDeviceMemory currentPositionBufferMemory = VK_NULL_HANDLE;

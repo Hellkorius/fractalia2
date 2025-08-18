@@ -40,6 +40,9 @@ void VulkanSync::cleanup() {
         if (i < renderFinishedSemaphores.size() && renderFinishedSemaphores[i] != VK_NULL_HANDLE && context) {
             context->getLoader().vkDestroySemaphore(context->getDevice(), renderFinishedSemaphores[i], nullptr);
         }
+        if (i < computeFinishedSemaphores.size() && computeFinishedSemaphores[i] != VK_NULL_HANDLE && context) {
+            context->getLoader().vkDestroySemaphore(context->getDevice(), computeFinishedSemaphores[i], nullptr);
+        }
         if (i < imageAvailableSemaphores.size() && imageAvailableSemaphores[i] != VK_NULL_HANDLE && context) {
             context->getLoader().vkDestroySemaphore(context->getDevice(), imageAvailableSemaphores[i], nullptr);
         }
@@ -96,6 +99,7 @@ bool VulkanSync::createCommandBuffers() {
 bool VulkanSync::createSyncObjects() {
     imageAvailableSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
     renderFinishedSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
+    computeFinishedSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
     inFlightFences.resize(MAX_FRAMES_IN_FLIGHT);
     computeFences.resize(MAX_FRAMES_IN_FLIGHT);
     
@@ -109,6 +113,7 @@ bool VulkanSync::createSyncObjects() {
     for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
         if (context->getLoader().vkCreateSemaphore(context->getDevice(), &semaphoreInfo, nullptr, &imageAvailableSemaphores[i]) != VK_SUCCESS ||
             context->getLoader().vkCreateSemaphore(context->getDevice(), &semaphoreInfo, nullptr, &renderFinishedSemaphores[i]) != VK_SUCCESS ||
+            context->getLoader().vkCreateSemaphore(context->getDevice(), &semaphoreInfo, nullptr, &computeFinishedSemaphores[i]) != VK_SUCCESS ||
             context->getLoader().vkCreateFence(context->getDevice(), &fenceInfo, nullptr, &inFlightFences[i]) != VK_SUCCESS ||
             context->getLoader().vkCreateFence(context->getDevice(), &fenceInfo, nullptr, &computeFences[i]) != VK_SUCCESS) {
             std::cerr << "Failed to create synchronization objects" << std::endl;

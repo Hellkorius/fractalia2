@@ -31,15 +31,18 @@ SubmissionResult CommandSubmissionService::submitFrame(
 ) {
     SubmissionResult result;
 
-    // 1. Submit compute work if compute commands were recorded
+    // ASYNC COMPUTE: Submit compute and graphics work in parallel
+    // Compute calculates frame N+1 while graphics renders frame N
+    
+    // 1. Submit compute work asynchronously (no waiting for graphics)
     if (executionResult.computeCommandBufferUsed) {
-        result = submitComputeWork(currentFrame);
+        result = submitComputeWorkAsync(currentFrame + 1); // Compute for NEXT frame
         if (!result.success) {
             return result;
         }
     }
 
-    // 2. Submit graphics work and present if graphics commands were recorded
+    // 2. Submit graphics work in parallel (uses previous frame's compute results)
     if (executionResult.graphicsCommandBufferUsed) {
         result = submitGraphicsWork(currentFrame);
         if (!result.success) {
@@ -53,14 +56,16 @@ SubmissionResult CommandSubmissionService::submitFrame(
     return result;
 }
 
-SubmissionResult CommandSubmissionService::submitComputeWork(uint32_t currentFrame) {
+SubmissionResult CommandSubmissionService::submitComputeWorkAsync(uint32_t computeFrame) {
     SubmissionResult result;
 
+    // Use current frame index for command buffer selection (not computeFrame)
+    uint32_t frameIndex = computeFrame % sync->getComputeCommandBuffers().size();
     const auto& computeCommandBuffers = sync->getComputeCommandBuffers();
-    VkCommandBuffer computeCommandBuffer = computeCommandBuffers[currentFrame];
+    VkCommandBuffer computeCommandBuffer = computeCommandBuffers[frameIndex];
 
-    // Reset compute fence
-    VkFence computeFence = sync->getComputeFences()[currentFrame];
+    // Reset compute fence for this frame
+    VkFence computeFence = sync->getComputeFences()[frameIndex];
     VkResult resetResult = context->getLoader().vkResetFences(context->getDevice(), 1, &computeFence);
     if (resetResult != VK_SUCCESS) {
         std::cerr << "CommandSubmissionService: Failed to reset compute fence: " << resetResult << std::endl;
@@ -68,14 +73,17 @@ SubmissionResult CommandSubmissionService::submitComputeWork(uint32_t currentFra
         return result;
     }
 
-    // Submit compute work
+    // Submit compute work with semaphore signaling for multi-queue synchronization
     VkSubmitInfo computeSubmitInfo{};
     computeSubmitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
     computeSubmitInfo.commandBufferCount = 1;
     computeSubmitInfo.pCommandBuffers = &computeCommandBuffer;
+    
+    // ASYNC COMPUTE: No semaphore signaling needed since compute works on frame N+1
+    // Graphics reads from frame N-1 buffer, so no synchronization required
 
     VkResult computeSubmitResult = context->getLoader().vkQueueSubmit(
-        context->getGraphicsQueue(), 
+        context->getComputeQueue(), 
         1, 
         &computeSubmitInfo, 
         computeFence
@@ -105,10 +113,11 @@ SubmissionResult CommandSubmissionService::submitGraphicsWork(uint32_t currentFr
         return result;
     }
 
-    // Setup graphics submission with synchronization
+    // Setup graphics submission - async compute model (no compute sync needed)
     VkSubmitInfo graphicsSubmitInfo{};
     graphicsSubmitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 
+    // Only wait for swapchain image availability (async compute works on different buffer)
     VkSemaphore waitSemaphores[] = {sync->getImageAvailableSemaphores()[currentFrame]};
     VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
     graphicsSubmitInfo.waitSemaphoreCount = 1;

@@ -170,6 +170,18 @@ void EntityComputeNode::execute(VkCommandBuffer commandBuffer, const FrameGraph&
             timeoutDetector->endComputeDispatch();
         }
         
+        // CRITICAL: Add memory barrier to ensure compute writes are visible to graphics
+        VkMemoryBarrier memoryBarrier{};
+        memoryBarrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+        memoryBarrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+        memoryBarrier.dstAccessMask = VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT;
+        
+        context->getLoader().vkCmdPipelineBarrier(
+            commandBuffer,
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+            VK_PIPELINE_STAGE_VERTEX_INPUT_BIT,
+            0, 1, &memoryBarrier, 0, nullptr, 0, nullptr);
+        
         if (debugCounter % 300 == 0) {
             std::cout << "EntityComputeNode: Single dispatch " << totalWorkgroups 
                       << " workgroups for " << entityCount << " entities" << std::endl;
@@ -230,6 +242,18 @@ void EntityComputeNode::execute(VkCommandBuffer commandBuffer, const FrameGraph&
             processedWorkgroups += currentChunkSize;
             chunkCount++;
         }
+        
+        // CRITICAL: Add memory barrier after all chunks to ensure compute writes are visible to graphics
+        VkMemoryBarrier finalMemoryBarrier{};
+        finalMemoryBarrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+        finalMemoryBarrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+        finalMemoryBarrier.dstAccessMask = VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT;
+        
+        context->getLoader().vkCmdPipelineBarrier(
+            commandBuffer,
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+            VK_PIPELINE_STAGE_VERTEX_INPUT_BIT,
+            0, 1, &finalMemoryBarrier, 0, nullptr, 0, nullptr);
         
         if (debugCounter % 300 == 0) {
             std::cout << "EntityComputeNode: Split dispatch into " << chunkCount 

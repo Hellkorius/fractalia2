@@ -268,10 +268,17 @@ void VulkanRenderer::cleanupModularArchitecture() {
 }
 
 void VulkanRenderer::drawFrameModular() {
-    // Wait for previous frame synchronization
-    if (syncService->waitForComputeFence(currentFrame) != VK_SUCCESS) {
+    // CRITICAL FIX: Wait for previous frame compute work to complete
+    // Use the same fence system that CommandSubmissionService uses (VulkanSync)
+    VkFence computeFence = sync->getComputeFences()[currentFrame];
+    VkResult waitResult = context->getLoader().vkWaitForFences(
+        context->getDevice(), 1, &computeFence, VK_TRUE, UINT64_MAX);
+    if (waitResult != VK_SUCCESS) {
+        std::cerr << "VulkanRenderer: Failed to wait for compute fence: " << waitResult << std::endl;
         return;
     }
+    
+    // Wait for graphics fence using existing system
     if (syncService->waitForGraphicsFence(currentFrame) != VK_SUCCESS) {
         return;
     }

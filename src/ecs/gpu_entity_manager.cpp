@@ -76,6 +76,14 @@ bool GPUEntityManager::initialize(const VulkanContext& context, VulkanSync* sync
         return false;
     }
     
+    // Create alternate position buffer for async compute ping-pong
+    if (!createBuffer(POSITION_BUFFER_SIZE,
+                     VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+                     positionBufferAlternate, positionBufferAlternateMemory)) {
+        std::cerr << "GPUEntityManager: Failed to create alternate position buffer" << std::endl;
+        return false;
+    }
+    
     // Create current position buffer
     if (!createBuffer(POSITION_BUFFER_SIZE,
                      VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
@@ -148,6 +156,15 @@ void GPUEntityManager::cleanup() {
     if (positionBufferMemory != VK_NULL_HANDLE) {
         loader.vkFreeMemory(device, positionBufferMemory, nullptr);
         positionBufferMemory = VK_NULL_HANDLE;
+    }
+    
+    if (positionBufferAlternate != VK_NULL_HANDLE) {
+        loader.vkDestroyBuffer(device, positionBufferAlternate, nullptr);
+        positionBufferAlternate = VK_NULL_HANDLE;
+    }
+    if (positionBufferAlternateMemory != VK_NULL_HANDLE) {
+        loader.vkFreeMemory(device, positionBufferAlternateMemory, nullptr);
+        positionBufferAlternateMemory = VK_NULL_HANDLE;
     }
     
     if (currentPositionBuffer != VK_NULL_HANDLE) {
@@ -237,6 +254,21 @@ VkBuffer GPUEntityManager::getCurrentPositionBuffer() const {
 
 VkBuffer GPUEntityManager::getTargetPositionBuffer() const {
     return targetPositionBuffer;
+}
+
+VkBuffer GPUEntityManager::getPositionBufferAlternate() const {
+    return positionBufferAlternate;
+}
+
+VkBuffer GPUEntityManager::getComputeWriteBuffer(uint32_t frameIndex) const {
+    // Ping-pong: even frames write to positionBuffer, odd frames write to positionBufferAlternate
+    return (frameIndex % 2 == 0) ? positionBuffer : positionBufferAlternate;
+}
+
+VkBuffer GPUEntityManager::getGraphicsReadBuffer(uint32_t frameIndex) const {
+    // Graphics reads from the buffer compute wrote to in the PREVIOUS frame
+    // So if compute is writing to buffer A (frame N), graphics reads from buffer B (frame N-1)
+    return (frameIndex % 2 == 0) ? positionBufferAlternate : positionBuffer;
 }
 
 bool GPUEntityManager::createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkBuffer& buffer, VkDeviceMemory& bufferMemory) {

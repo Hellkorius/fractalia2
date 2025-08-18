@@ -19,6 +19,7 @@ public:
     const std::vector<VkCommandBuffer>& getCommandBuffers() const { return commandBuffers; }
     const std::vector<VkSemaphore>& getImageAvailableSemaphores() const { return imageAvailableSemaphores; }
     const std::vector<VkSemaphore>& getRenderFinishedSemaphores() const { return renderFinishedSemaphores; }
+    const std::vector<VkSemaphore>& getComputeFinishedSemaphores() const { return computeFinishedSemaphores; }
     const std::vector<VkFence>& getInFlightFences() const { return inFlightFences; }
     const std::vector<VkFence>& getComputeFences() const { return computeFences; }
     const std::vector<VkCommandBuffer>& getComputeCommandBuffers() const { return computeCommandBuffers; }
@@ -35,6 +36,7 @@ private:
     std::vector<VkCommandBuffer> computeCommandBuffers; // Compute command buffers
     std::vector<VkSemaphore> imageAvailableSemaphores;
     std::vector<VkSemaphore> renderFinishedSemaphores;
+    std::vector<VkSemaphore> computeFinishedSemaphores; // Compute-to-graphics synchronization
     std::vector<VkFence> inFlightFences;                // Graphics fences
     std::vector<VkFence> computeFences;                 // Compute fences
 

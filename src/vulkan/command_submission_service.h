@@ -38,7 +38,7 @@ private:
     VulkanSwapchain* swapchain = nullptr;
 
     // Helper methods
-    SubmissionResult submitComputeWork(uint32_t currentFrame);
+    SubmissionResult submitComputeWorkAsync(uint32_t computeFrame);
     SubmissionResult submitGraphicsWork(uint32_t currentFrame);
     SubmissionResult presentFrame(uint32_t currentFrame, uint32_t imageIndex, bool framebufferResized);
 

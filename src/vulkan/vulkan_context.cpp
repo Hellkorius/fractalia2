@@ -176,7 +176,11 @@ bool VulkanContext::createLogicalDevice() {
     
 
     std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
-    std::set<uint32_t> uniqueQueueFamilies = {indices.graphicsFamily.value(), indices.presentFamily.value()};
+    std::set<uint32_t> uniqueQueueFamilies = {
+        indices.graphicsFamily.value(), 
+        indices.presentFamily.value(),
+        indices.computeFamily.value()
+    };
 
     float queuePriority = 1.0f;
     for (uint32_t queueFamily : uniqueQueueFamilies) {
@@ -243,6 +247,11 @@ void VulkanContext::getDeviceQueues() {
     
     loader->vkGetDeviceQueue(device, queueFamilyIndices.graphicsFamily.value(), 0, &graphicsQueue);
     loader->vkGetDeviceQueue(device, queueFamilyIndices.presentFamily.value(), 0, &presentQueue);
+    loader->vkGetDeviceQueue(device, queueFamilyIndices.computeFamily.value(), 0, &computeQueue);
+    
+    std::cout << "VulkanContext: Queue families - Graphics: " << queueFamilyIndices.graphicsFamily.value() 
+              << ", Present: " << queueFamilyIndices.presentFamily.value()
+              << ", Compute: " << queueFamilyIndices.computeFamily.value() << std::endl;
 }
 
 QueueFamilyIndices VulkanContext::findQueueFamilies(VkPhysicalDevice device) const {
@@ -265,10 +274,12 @@ QueueFamilyIndices VulkanContext::findQueueFamilies(VkPhysicalDevice device) con
 
     int i = 0;
     for (const auto& queueFamily : queueFamilies) {
+        // Find graphics queue
         if (queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT) {
             indices.graphicsFamily = i;
         }
 
+        // Find present queue
         VkBool32 presentSupport = false;
         if (!loader->vkGetPhysicalDeviceSurfaceSupportKHR) {
             std::cerr << "vkGetPhysicalDeviceSurfaceSupportKHR is null!" << std::endl;
@@ -283,6 +294,15 @@ QueueFamilyIndices VulkanContext::findQueueFamilies(VkPhysicalDevice device) con
         if (presentSupport) {
             indices.presentFamily = i;
         }
+        
+        // Find dedicated compute queue (prefer compute-only, fall back to graphics+compute)
+        if (queueFamily.queueFlags & VK_QUEUE_COMPUTE_BIT) {
+            // Prefer dedicated compute queue (compute without graphics)
+            if (!indices.computeFamily.has_value() || 
+                !(queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT)) {
+                indices.computeFamily = i;
+            }
+        }
 
         if (indices.isComplete()) {
             break;
@@ -290,6 +310,13 @@ QueueFamilyIndices VulkanContext::findQueueFamilies(VkPhysicalDevice device) con
 
         i++;
     }
+    
+    // Fallback: if no dedicated compute queue, use graphics queue for compute
+    if (!indices.computeFamily.has_value() && indices.graphicsFamily.has_value()) {
+        std::cout << "VulkanContext: No dedicated compute queue found, using graphics queue for compute" << std::endl;
+        indices.computeFamily = indices.graphicsFamily;
+    }
+    
     return indices;
 }
 
