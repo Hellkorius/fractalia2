@@ -8,9 +8,16 @@ AAA-tier Vulkan pipeline management system with advanced caching, optimization, 
 ### Core Managers
 - **`pipeline_system_manager.*`** - Unified interface for all pipeline operations
 - **`compute_pipeline_manager.*`** - Compute pipeline caching & dispatch optimization  
-- **`graphics_pipeline_manager.*`** - Graphics pipeline state objects with LRU caching
+- **`graphics_pipeline_manager.*`** - Refactored modular graphics pipeline coordinator
 - **`shader_manager.*`** - SPIR-V loading, compilation & hot-reload support
 - **`descriptor_layout_manager.*`** - Descriptor set layout caching & pool management
+
+### Graphics Pipeline Components (New Modular Architecture)
+- **`graphics_pipeline_state_hash.*`** - Pipeline state comparison and hashing utilities
+- **`graphics_pipeline_cache.*`** - LRU cache with statistics tracking
+- **`graphics_render_pass_manager.*`** - Render pass creation and caching
+- **`graphics_pipeline_factory.*`** - Core pipeline compilation engine
+- **`graphics_pipeline_layout_builder.*`** - Pipeline layout creation utilities
 
 ### Legacy/Utilities
 - **`vulkan_pipeline.*`** - Legacy pipeline utilities (being phased out)
@@ -102,16 +109,23 @@ manager.dispatchBuffer(commandBuffer, state, entityCount,
 - Workgroup optimization based on hardware limits
 - Batch creation for reduced driver overhead
 
-### GraphicsPipelineManager
+### GraphicsPipelineManager (Refactored Modular Architecture)
+
+**Architecture**: Refactored from monolithic 769-line class into focused components:
+- **GraphicsPipelineCache**: LRU caching with statistics (was inline cache logic)
+- **GraphicsRenderPassManager**: Render pass creation/caching (was 118-line method)
+- **GraphicsPipelineFactory**: Core compilation engine (was 182-line method)
+- **GraphicsPipelineLayoutBuilder**: Layout creation utilities (was inline logic)
+- **GraphicsPipelineStateHash**: State comparison and hashing (was complex operators)
 
 **Input:**
 - `GraphicsPipelineState` - Complete graphics pipeline specification
 - Render pass, vertex input, rasterization, blending state
 
 **Output:**  
-- `VkPipeline` - Cached graphics pipeline
-- `VkPipelineLayout` - Associated pipeline layout
-- `VkRenderPass` - Render pass objects
+- `VkPipeline` - Cached graphics pipeline via coordinated components
+- `VkPipelineLayout` - Associated pipeline layout via layout builder
+- `VkRenderPass` - Render pass objects via dedicated manager
 
 **Key APIs:**
 ```cpp

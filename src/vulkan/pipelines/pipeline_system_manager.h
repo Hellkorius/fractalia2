@@ -4,6 +4,7 @@
 #include "compute_pipeline_manager.h"
 #include "descriptor_layout_manager.h"
 #include "shader_manager.h"
+#include "graphics_pipeline_cache.h"
 #include "../core/vulkan_context.h"
 #include <memory>
 
@@ -59,7 +60,7 @@ public:
 
     // Statistics aggregation
     struct SystemStats {
-        GraphicsPipelineManager::PipelineStats graphics;
+        PipelineStats graphics;
         ComputePipelineManager::ComputeStats compute;
         DescriptorLayoutManager::LayoutStats layouts;
         ShaderManager::ShaderStats shaders;
