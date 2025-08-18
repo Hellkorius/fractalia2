@@ -239,29 +239,22 @@ bool PipelineSystemManager::recreateRenderPass(VkFormat newFormat) {
         return false;
     }
     
-    std::cout << "PipelineSystemManager: Starting render pass recreation..." << std::endl;
     
     // CRITICAL FIX FOR SECOND RESIZE CRASH: Clear cache BEFORE destroying currentRenderPass
     // clearCache() destroys ALL render passes including the one currentRenderPass points to
     // This prevents double-destruction which was causing the second resize crash
-    std::cout << "PipelineSystemManager: About to clear graphics pipeline cache..." << std::endl;
     graphicsManager->clearCache();
-    std::cout << "PipelineSystemManager: Cleared graphics pipeline cache (including render passes)" << std::endl;
     
     // IMPORTANT: Set currentRenderPass to null since clearCache() already destroyed it
     // This prevents the redundant destroy call that was causing the crash
     if (currentRenderPass != VK_NULL_HANDLE) {
-        std::cout << "PipelineSystemManager: Current render pass already destroyed by clearCache(), setting to null" << std::endl;
         currentRenderPass = VK_NULL_HANDLE;
     }
     
     // Create new render pass
-    std::cout << "PipelineSystemManager: About to create new render pass with format " << newFormat << std::endl;
     currentRenderPass = graphicsManager->createRenderPass(newFormat, VK_FORMAT_UNDEFINED, VK_SAMPLE_COUNT_2_BIT, true);
     if (currentRenderPass != VK_NULL_HANDLE) {
-        std::cout << "PipelineSystemManager: New render pass created successfully: " << (void*)currentRenderPass << std::endl;
     } else {
-        std::cout << "PipelineSystemManager: ERROR - Failed to create new render pass" << std::endl;
     }
     return currentRenderPass != VK_NULL_HANDLE;
 }

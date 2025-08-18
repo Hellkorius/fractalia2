@@ -75,12 +75,9 @@ RenderFrameResult RenderFrameDirector::directFrame(
     configureFrameGraphNodes(result.imageIndex, world);
 
     // 6. Execute frame graph
-    std::cout << "RenderFrameDirector: About to execute frame graph for frame " << currentFrame << std::endl;
     result.executionResult = frameGraph->execute(currentFrame);
-    std::cout << "RenderFrameDirector: Frame graph execution completed successfully" << std::endl;
     result.success = true;
 
-    std::cout << "RenderFrameDirector: directFrame completed successfully" << std::endl;
     return result;
 }
 

@@ -46,7 +46,6 @@ std::vector<ResourceDependency> EntityGraphicsNode::getOutputs() const {
 }
 
 void EntityGraphicsNode::execute(VkCommandBuffer commandBuffer, const FrameGraph& frameGraph) {
-    std::cout << "EntityGraphicsNode: Starting execute method..." << std::endl;
     
     if (!graphicsManager || !swapchain || !resourceContext || !gpuEntityManager) {
         std::cerr << "EntityGraphicsNode: Missing dependencies" << std::endl;
@@ -54,7 +53,6 @@ void EntityGraphicsNode::execute(VkCommandBuffer commandBuffer, const FrameGraph
     }
     
     const uint32_t entityCount = gpuEntityManager->getEntityCount();
-    std::cout << "EntityGraphicsNode: Entity count: " << entityCount << std::endl;
     
     if (entityCount == 0) {
         static int noEntitiesCounter = 0;
@@ -65,46 +63,34 @@ void EntityGraphicsNode::execute(VkCommandBuffer commandBuffer, const FrameGraph
     }
     
     // Get Vulkan context from frame graph
-    std::cout << "EntityGraphicsNode: Getting Vulkan context..." << std::endl;
     const VulkanContext* context = frameGraph.getContext();
     if (!context) {
         std::cerr << "EntityGraphicsNode: Missing Vulkan context" << std::endl;
         return;
     }
-    std::cout << "EntityGraphicsNode: Got Vulkan context successfully" << std::endl;
     
     // Update uniform buffer with camera matrices
-    std::cout << "EntityGraphicsNode: Updating uniform buffer..." << std::endl;
     updateUniformBuffer();
-    std::cout << "EntityGraphicsNode: Uniform buffer updated successfully" << std::endl;
     
     // Create graphics pipeline state for entity rendering - use same layout as ResourceContext
-    std::cout << "EntityGraphicsNode: Creating graphics pipeline state..." << std::endl;
     auto layoutSpec = DescriptorLayoutPresets::createEntityGraphicsLayout();
     VkDescriptorSetLayout descriptorLayout = graphicsManager->getLayoutManager()->getLayout(layoutSpec);
-    std::cout << "EntityGraphicsNode: Got descriptor layout: " << (void*)descriptorLayout << std::endl;
     
     // Get the render pass that was used to create the framebuffers
-    std::cout << "EntityGraphicsNode: Creating render pass..." << std::endl;
     VkRenderPass renderPass = graphicsManager->createRenderPass(
         swapchain->getImageFormat(), 
         VK_FORMAT_UNDEFINED,  // No depth (match VulkanRenderer setup)
         VK_SAMPLE_COUNT_2_BIT, // MSAA samples
         true  // Enable MSAA
     );
-    std::cout << "EntityGraphicsNode: Got render pass: " << (void*)renderPass << std::endl;
     
     GraphicsPipelineState pipelineState = GraphicsPipelinePresets::createEntityRenderingState(
         renderPass, descriptorLayout);
-    std::cout << "EntityGraphicsNode: Pipeline state created successfully" << std::endl;
     
     // Get pipeline and layout
-    std::cout << "EntityGraphicsNode: Getting graphics pipeline..." << std::endl;
     VkPipeline pipeline = graphicsManager->getPipeline(pipelineState);
-    std::cout << "EntityGraphicsNode: Got pipeline: " << (void*)pipeline << std::endl;
     
     VkPipelineLayout pipelineLayout = graphicsManager->getPipelineLayout(pipelineState);
-    std::cout << "EntityGraphicsNode: Got pipeline layout: " << (void*)pipelineLayout << std::endl;
     
     if (pipeline == VK_NULL_HANDLE || pipelineLayout == VK_NULL_HANDLE) {
         std::cerr << "EntityGraphicsNode: Failed to get graphics pipeline" << std::endl;
@@ -224,9 +210,7 @@ void EntityGraphicsNode::execute(VkCommandBuffer commandBuffer, const FrameGraph
     }
 
     // End render pass
-    std::cout << "EntityGraphicsNode: Ending render pass..." << std::endl;
     context->getLoader().vkCmdEndRenderPass(commandBuffer);
-    std::cout << "EntityGraphicsNode: Execute method completed successfully" << std::endl;
 }
 
 void EntityGraphicsNode::updateUniformBuffer() {
