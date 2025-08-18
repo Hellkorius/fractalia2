@@ -224,6 +224,15 @@ void RenderFrameDirector::resetSwapchainCache() {
         std::cerr << "  This may cause subsequent frame rendering to fail or crash." << std::endl;
     } else {
         std::cout << "RenderFrameDirector: Successfully recreated command pool during swapchain recreation" << std::endl;
+        
+        // CRITICAL FIX FOR ENTITY UPLOAD CRASH: Reinitialize ResourceContext with new command pool
+        // ResourceContext holds staging buffers that depend on the command pool for transfers
+        if (resourceContext && context && !resourceContext->initialize(*context, sync->getCommandPool())) {
+            std::cerr << "RenderFrameDirector: CRITICAL ERROR - Failed to reinitialize ResourceContext with new command pool!" << std::endl;
+            std::cerr << "  This may cause staging buffer operations (entity uploads) to crash." << std::endl;
+        } else {
+            std::cout << "RenderFrameDirector: Successfully reinitialized ResourceContext with new command pool" << std::endl;
+        }
     }
     
     // 4. CRITICAL FIX: Update BOTH graphics AND compute descriptor sets after swapchain recreation

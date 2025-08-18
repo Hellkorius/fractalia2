@@ -70,7 +70,7 @@ bool GPUEntityManager::initialize(const VulkanContext& context, VulkanSync* sync
     
     // Create position buffer
     if (!createBuffer(POSITION_BUFFER_SIZE,
-                     VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+                     VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
                      positionBuffer, positionBufferMemory)) {
         std::cerr << "GPUEntityManager: Failed to create position buffer" << std::endl;
         return false;
@@ -78,7 +78,7 @@ bool GPUEntityManager::initialize(const VulkanContext& context, VulkanSync* sync
     
     // Create alternate position buffer for async compute ping-pong
     if (!createBuffer(POSITION_BUFFER_SIZE,
-                     VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+                     VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
                      positionBufferAlternate, positionBufferAlternateMemory)) {
         std::cerr << "GPUEntityManager: Failed to create alternate position buffer" << std::endl;
         return false;
@@ -86,7 +86,7 @@ bool GPUEntityManager::initialize(const VulkanContext& context, VulkanSync* sync
     
     // Create current position buffer
     if (!createBuffer(POSITION_BUFFER_SIZE,
-                     VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                     VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
                      currentPositionBuffer, currentPositionBufferMemory)) {
         std::cerr << "GPUEntityManager: Failed to create current position buffer" << std::endl;
         return false;
@@ -94,7 +94,7 @@ bool GPUEntityManager::initialize(const VulkanContext& context, VulkanSync* sync
     
     // Create target position buffer
     if (!createBuffer(POSITION_BUFFER_SIZE,
-                     VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+                     VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
                      targetPositionBuffer, targetPositionBufferMemory)) {
         std::cerr << "GPUEntityManager: Failed to create target position buffer" << std::endl;
         return false;
@@ -220,16 +220,19 @@ void GPUEntityManager::uploadPendingEntities() {
     VkDeviceSize uploadSize = stagingEntities.size() * sizeof(GPUEntity);
     VkDeviceSize offset = activeEntityCount * sizeof(GPUEntity);
     
-    // Create ResourceHandle wrapper for entity buffer
+    // Create ResourceHandle wrapper for entity buffer with proper memory reference
     ResourceHandle entityBufferHandle{};
     entityBufferHandle.buffer = vulkan_raii::make_buffer(entityBuffer, context);
+    entityBufferHandle.memory = vulkan_raii::make_device_memory(entityBufferMemory, context);
     entityBufferHandle.size = ENTITY_BUFFER_SIZE;
+    entityBufferHandle.mappedData = nullptr; // Device-local memory is not mappable
     
     // Use ResourceContext to copy data via staging buffer to device-local memory
     resourceContext->copyToBuffer(entityBufferHandle, stagingEntities.data(), uploadSize, offset);
     
-    // Detach the handle to prevent automatic cleanup (we manage the buffer lifetime)
+    // Detach the handles to prevent automatic cleanup (we manage the buffer lifetime)
     entityBufferHandle.buffer.detach();
+    entityBufferHandle.memory.detach();
     
     activeEntityCount += stagingEntities.size();
     stagingEntities.clear();
