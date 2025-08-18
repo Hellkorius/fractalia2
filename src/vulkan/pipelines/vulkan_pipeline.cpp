@@ -14,7 +14,7 @@ VulkanPipeline::VulkanPipeline() {
 }
 
 VulkanPipeline::~VulkanPipeline() {
-    cleanup();
+    cleanupBeforeContextDestruction();
 }
 
 bool VulkanPipeline::initialize(const VulkanContext& context, VkFormat swapChainImageFormat) {
@@ -23,10 +23,12 @@ bool VulkanPipeline::initialize(const VulkanContext& context, VkFormat swapChain
     std::cout << "Creating pipeline cache..." << std::endl;
     VkPipelineCacheCreateInfo pipelineCacheInfo{};
     pipelineCacheInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
-    if (context.getLoader().vkCreatePipelineCache(context.getDevice(), &pipelineCacheInfo, nullptr, &pipelineCache) != VK_SUCCESS) {
+    VkPipelineCache rawCache;
+    if (context.getLoader().vkCreatePipelineCache(context.getDevice(), &pipelineCacheInfo, nullptr, &rawCache) != VK_SUCCESS) {
         std::cerr << "Failed to create pipeline cache" << std::endl;
         return false;
     }
+    pipelineCache = vulkan_raii::make_pipeline_cache(rawCache, &context);
     std::cout << "Pipeline cache created successfully" << std::endl;
     
     std::cout << "Creating descriptor set layout..." << std::endl;
@@ -68,45 +70,38 @@ bool VulkanPipeline::initialize(const VulkanContext& context, VkFormat swapChain
 }
 
 void VulkanPipeline::cleanup() {
+    cleanupBeforeContextDestruction();
+}
+
+void VulkanPipeline::cleanupBeforeContextDestruction() {
     if (!context) return;
     
     // Cache loader and device references for performance
     const auto& vk = context->getLoader();
     const VkDevice device = context->getDevice();
     
-    if (graphicsPipeline != VK_NULL_HANDLE) {
-        vk.vkDestroyPipeline(device, graphicsPipeline, nullptr);
-        graphicsPipeline = VK_NULL_HANDLE;
-    }
-    if (computePipeline != VK_NULL_HANDLE) {
-        vk.vkDestroyPipeline(device, computePipeline, nullptr);
-        computePipeline = VK_NULL_HANDLE;
-    }
+    // Reset RAII wrappers (automatic cleanup)
+    graphicsPipeline.reset();
+    computePipeline.reset();
     
-    for (auto& pair : pipelineLayoutCache) {
-        vk.vkDestroyPipelineLayout(device, pair.second, nullptr);
-    }
+    // Clean up cached pipeline layouts
     pipelineLayoutCache.clear();
     
-    pipelineLayout = VK_NULL_HANDLE;
-    computePipelineLayout = VK_NULL_HANDLE;
+    // Clean up raw pipeline layouts (these aren't wrapped yet)
+    if (pipelineLayout != VK_NULL_HANDLE) {
+        vk.vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
+        pipelineLayout = VK_NULL_HANDLE;
+    }
+    if (computePipelineLayout != VK_NULL_HANDLE) {
+        vk.vkDestroyPipelineLayout(device, computePipelineLayout, nullptr);
+        computePipelineLayout = VK_NULL_HANDLE;
+    }
     
-    if (renderPass != VK_NULL_HANDLE) {
-        vk.vkDestroyRenderPass(device, renderPass, nullptr);
-        renderPass = VK_NULL_HANDLE;
-    }
-    if (descriptorSetLayout != VK_NULL_HANDLE) {
-        vk.vkDestroyDescriptorSetLayout(device, descriptorSetLayout, nullptr);
-        descriptorSetLayout = VK_NULL_HANDLE;
-    }
-    if (computeDescriptorSetLayout != VK_NULL_HANDLE) {
-        vk.vkDestroyDescriptorSetLayout(device, computeDescriptorSetLayout, nullptr);
-        computeDescriptorSetLayout = VK_NULL_HANDLE;
-    }
-    if (pipelineCache != VK_NULL_HANDLE) {
-        vk.vkDestroyPipelineCache(device, pipelineCache, nullptr);
-        pipelineCache = VK_NULL_HANDLE;
-    }
+    // Reset RAII wrappers (automatic cleanup)
+    renderPass.reset();
+    descriptorSetLayout.reset();
+    computeDescriptorSetLayout.reset();
+    pipelineCache.reset();
 }
 
 bool VulkanPipeline::recreate(VkFormat swapChainImageFormat) {
@@ -114,10 +109,12 @@ bool VulkanPipeline::recreate(VkFormat swapChainImageFormat) {
     
     VkPipelineCacheCreateInfo pipelineCacheInfo{};
     pipelineCacheInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
-    if (context->getLoader().vkCreatePipelineCache(context->getDevice(), &pipelineCacheInfo, nullptr, &pipelineCache) != VK_SUCCESS) {
+    VkPipelineCache rawCache;
+    if (context->getLoader().vkCreatePipelineCache(context->getDevice(), &pipelineCacheInfo, nullptr, &rawCache) != VK_SUCCESS) {
         std::cerr << "Failed to recreate pipeline cache" << std::endl;
         return false;
     }
+    pipelineCache = vulkan_raii::make_pipeline_cache(rawCache, context);
     
     if (!createDescriptorSetLayout()) {
         std::cerr << "Failed to recreate descriptor set layout!" << std::endl;
@@ -200,10 +197,12 @@ bool VulkanPipeline::createRenderPass(VkFormat swapChainImageFormat) {
     renderPassInfo.dependencyCount = 1;
     renderPassInfo.pDependencies = &dependency;
 
-    if (context->getLoader().vkCreateRenderPass(context->getDevice(), &renderPassInfo, nullptr, &renderPass) != VK_SUCCESS) {
+    VkRenderPass rawRenderPass;
+    if (context->getLoader().vkCreateRenderPass(context->getDevice(), &renderPassInfo, nullptr, &rawRenderPass) != VK_SUCCESS) {
         std::cerr << "Failed to create render pass" << std::endl;
         return false;
     }
+    renderPass = vulkan_raii::make_render_pass(rawRenderPass, context);
 
     return true;
 }
@@ -228,10 +227,12 @@ bool VulkanPipeline::createDescriptorSetLayout() {
     layoutInfo.bindingCount = bindings.size();
     layoutInfo.pBindings = bindings.data();
     
-    if (context->getLoader().vkCreateDescriptorSetLayout(context->getDevice(), &layoutInfo, nullptr, &descriptorSetLayout) != VK_SUCCESS) {
+    VkDescriptorSetLayout rawLayout;
+    if (context->getLoader().vkCreateDescriptorSetLayout(context->getDevice(), &layoutInfo, nullptr, &rawLayout) != VK_SUCCESS) {
         std::cerr << "Failed to create descriptor set layout!" << std::endl;
         return false;
     }
+    descriptorSetLayout = vulkan_raii::make_descriptor_set_layout(rawLayout, context);
     
     return true;
 }
@@ -408,7 +409,7 @@ bool VulkanPipeline::createGraphicsPipeline() {
     dynamicState.dynamicStateCount = static_cast<uint32_t>(dynamicStates.size());
     dynamicState.pDynamicStates = dynamicStates.data();
 
-    pipelineLayout = getOrCreatePipelineLayout(descriptorSetLayout);
+    pipelineLayout = getOrCreatePipelineLayout(descriptorSetLayout.get());
 
     VkGraphicsPipelineCreateInfo pipelineInfo{};
     pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
@@ -423,14 +424,16 @@ bool VulkanPipeline::createGraphicsPipeline() {
     pipelineInfo.pColorBlendState = &colorBlending;
     pipelineInfo.pDynamicState = &dynamicState;
     pipelineInfo.layout = pipelineLayout;
-    pipelineInfo.renderPass = renderPass;
+    pipelineInfo.renderPass = renderPass.get();
     pipelineInfo.subpass = 0;
     pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
 
-    if (context->getLoader().vkCreateGraphicsPipelines(context->getDevice(), pipelineCache, 1, &pipelineInfo, nullptr, &graphicsPipeline) != VK_SUCCESS) {
+    VkPipeline rawPipeline;
+    if (context->getLoader().vkCreateGraphicsPipelines(context->getDevice(), pipelineCache.get(), 1, &pipelineInfo, nullptr, &rawPipeline) != VK_SUCCESS) {
         std::cerr << "Failed to create graphics pipeline" << std::endl;
         return false;
     }
+    graphicsPipeline = vulkan_raii::make_pipeline(rawPipeline, context);
 
     context->getLoader().vkDestroyShaderModule(context->getDevice(), fragShaderModule, nullptr);
     context->getLoader().vkDestroyShaderModule(context->getDevice(), vertShaderModule, nullptr);
@@ -467,13 +470,15 @@ VkPipelineLayout VulkanPipeline::getOrCreatePipelineLayout(VkDescriptorSetLayout
         pipelineLayoutInfo.pPushConstantRanges = nullptr;
     }
     
-    VkPipelineLayout newLayout;
-    if (context->getLoader().vkCreatePipelineLayout(context->getDevice(), &pipelineLayoutInfo, nullptr, &newLayout) != VK_SUCCESS) {
+    VkPipelineLayout rawLayout;
+    if (context->getLoader().vkCreatePipelineLayout(context->getDevice(), &pipelineLayoutInfo, nullptr, &rawLayout) != VK_SUCCESS) {
         throw std::runtime_error("Failed to create pipeline layout");
     }
     
-    pipelineLayoutCache[key] = newLayout;
-    return newLayout;
+    vulkan_raii::PipelineLayout newLayout = vulkan_raii::make_pipeline_layout(rawLayout, context);
+    VkPipelineLayout handle = newLayout.get();
+    pipelineLayoutCache[key] = std::move(newLayout);
+    return handle;
 }
 
 bool VulkanPipeline::createComputeDescriptorSetLayout() {
@@ -509,7 +514,12 @@ bool VulkanPipeline::createComputeDescriptorSetLayout() {
     layoutInfo.bindingCount = 4;
     layoutInfo.pBindings = bindings;
     
-    return context->getLoader().vkCreateDescriptorSetLayout(context->getDevice(), &layoutInfo, nullptr, &computeDescriptorSetLayout) == VK_SUCCESS;
+    VkDescriptorSetLayout rawLayout;
+    if (context->getLoader().vkCreateDescriptorSetLayout(context->getDevice(), &layoutInfo, nullptr, &rawLayout) != VK_SUCCESS) {
+        return false;
+    }
+    computeDescriptorSetLayout = vulkan_raii::make_descriptor_set_layout(rawLayout, context);
+    return true;
 }
 
 
@@ -523,7 +533,8 @@ bool VulkanPipeline::createComputePipeline() {
     VkPipelineLayoutCreateInfo layoutInfo{};
     layoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
     layoutInfo.setLayoutCount = 1;
-    layoutInfo.pSetLayouts = &computeDescriptorSetLayout;
+    VkDescriptorSetLayout setLayout = computeDescriptorSetLayout.get();
+    layoutInfo.pSetLayouts = &setLayout;
     layoutInfo.pushConstantRangeCount = 1;
     layoutInfo.pPushConstantRanges = &pushConstantRange;
     
@@ -552,11 +563,13 @@ bool VulkanPipeline::createComputePipeline() {
     pipelineInfo.stage = shaderStageInfo;
     pipelineInfo.layout = computePipelineLayout;
     
-    if (context->getLoader().vkCreateComputePipelines(context->getDevice(), pipelineCache, 1, &pipelineInfo, nullptr, &computePipeline) != VK_SUCCESS) {
+    VkPipeline rawComputePipeline;
+    if (context->getLoader().vkCreateComputePipelines(context->getDevice(), pipelineCache.get(), 1, &pipelineInfo, nullptr, &rawComputePipeline) != VK_SUCCESS) {
         std::cerr << "Failed to create unified compute pipeline" << std::endl;
         context->getLoader().vkDestroyShaderModule(context->getDevice(), shaderModule, nullptr);
         return false;
     }
+    computePipeline = vulkan_raii::make_pipeline(rawComputePipeline, context);
     
     context->getLoader().vkDestroyShaderModule(context->getDevice(), shaderModule, nullptr);
     return true;

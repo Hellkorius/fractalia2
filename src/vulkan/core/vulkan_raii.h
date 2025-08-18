@@ -257,4 +257,16 @@ inline Fence make_fence(VkFence handle, const VulkanContext* context) {
     return make_handle<VkFence, FenceDeleter>(handle, context);
 }
 
+inline RenderPass make_render_pass(VkRenderPass handle, const VulkanContext* context) {
+    return make_handle<VkRenderPass, RenderPassDeleter>(handle, context);
+}
+
+inline DescriptorPool make_descriptor_pool(VkDescriptorPool handle, const VulkanContext* context) {
+    return make_handle<VkDescriptorPool, DescriptorPoolDeleter>(handle, context);
+}
+
+inline PipelineCache make_pipeline_cache(VkPipelineCache handle, const VulkanContext* context) {
+    return make_handle<VkPipelineCache, PipelineCacheDeleter>(handle, context);
+}
+
 } // namespace vulkan_raii

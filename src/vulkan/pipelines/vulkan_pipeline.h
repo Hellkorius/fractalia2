@@ -7,6 +7,7 @@
 #include <array>
 #include <unordered_map>
 #include "../core/vulkan_context.h"
+#include "../core/vulkan_raii.h"
 
 
 struct PipelineLayoutKey {
@@ -38,34 +39,35 @@ public:
 
     bool initialize(const VulkanContext& context, VkFormat swapChainImageFormat);
     void cleanup();
+    void cleanupBeforeContextDestruction();
     bool recreate(VkFormat swapChainImageFormat);
 
-    VkRenderPass getRenderPass() const { return renderPass; }
+    VkRenderPass getRenderPass() const { return renderPass.get(); }
     VkPipelineLayout getPipelineLayout() const { return pipelineLayout; }
-    VkPipeline getGraphicsPipeline() const { return graphicsPipeline; }
-    VkDescriptorSetLayout getDescriptorSetLayout() const { return descriptorSetLayout; }
+    VkPipeline getGraphicsPipeline() const { return graphicsPipeline.get(); }
+    VkDescriptorSetLayout getDescriptorSetLayout() const { return descriptorSetLayout.get(); }
     
     // Unified compute pipeline support
-    VkPipeline getComputePipeline() const { return computePipeline; }
+    VkPipeline getComputePipeline() const { return computePipeline.get(); }
     VkPipelineLayout getComputePipelineLayout() const { return computePipelineLayout; }
-    VkDescriptorSetLayout getComputeDescriptorSetLayout() const { return computeDescriptorSetLayout; }
+    VkDescriptorSetLayout getComputeDescriptorSetLayout() const { return computeDescriptorSetLayout.get(); }
 
 private:
     const VulkanContext* context = nullptr;
     
-    VkRenderPass renderPass = VK_NULL_HANDLE;
+    vulkan_raii::RenderPass renderPass;
     VkPipelineLayout pipelineLayout = VK_NULL_HANDLE;
-    VkPipeline graphicsPipeline = VK_NULL_HANDLE;
-    VkDescriptorSetLayout descriptorSetLayout = VK_NULL_HANDLE;
-    VkPipelineCache pipelineCache = VK_NULL_HANDLE;
+    vulkan_raii::Pipeline graphicsPipeline;
+    vulkan_raii::DescriptorSetLayout descriptorSetLayout;
+    vulkan_raii::PipelineCache pipelineCache;
     
     // Unified compute pipeline resources
     VkPipelineLayout computePipelineLayout = VK_NULL_HANDLE; // Unified pipeline layout
-    VkDescriptorSetLayout computeDescriptorSetLayout = VK_NULL_HANDLE; // Unified layout (3 bindings)
-    VkPipeline computePipeline = VK_NULL_HANDLE;
+    vulkan_raii::DescriptorSetLayout computeDescriptorSetLayout; // Unified layout (3 bindings)
+    vulkan_raii::Pipeline computePipeline;
     
     // Pipeline layout cache (instance-owned for proper cleanup)
-    std::unordered_map<PipelineLayoutKey, VkPipelineLayout, PipelineLayoutKeyHash> pipelineLayoutCache;
+    std::unordered_map<PipelineLayoutKey, vulkan_raii::PipelineLayout, PipelineLayoutKeyHash> pipelineLayoutCache;
 
 
     bool createRenderPass(VkFormat swapChainImageFormat);
