@@ -1,7 +1,7 @@
 #version 450
 
-// Local workgroup size - optimized for better occupancy on most GPUs
-layout(local_size_x = 32, local_size_y = 1, local_size_z = 1) in;
+// Optimized workgroup size for maximum GPU occupancy
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 
 // Push constants for timing and control
 layout(push_constant) uniform ComputePushConstants {
@@ -9,6 +9,7 @@ layout(push_constant) uniform ComputePushConstants {
     float deltaTime;
     uint entityCount;
     uint frame;
+    uint entityOffset;  // For chunked dispatches
 } pc;
 
 // Input: GPUEntity buffer (read/write for state updates)
@@ -38,141 +39,145 @@ layout(std430, binding = 3) buffer TargetPositionBuffer {
     vec4 targetPositions[]; // xyz target position + w unused
 } targetPos;
 
-/* ---------- Random Walk Movement Functions ---------- */
+/* ---------- Optimized Random Walk Movement Functions ---------- */
 
-// Constants for improved readability
+// Constants for improved performance
 const float TWO_PI = 6.28318530718;
 const uint CYCLE_LENGTH = 600u;
+const float INV_4294967295 = 2.3283064e-10; // 1.0 / 4294967295.0
 
-// Wang hash function for high-quality GPU pseudorandom generation
-uint wangHash(uint seed) {
-    seed = (seed ^ 61u) ^ (seed >> 16u);
-    seed *= 9u;
-    seed = seed ^ (seed >> 4u);
-    seed *= 0x27d4eb2du;
-    seed = seed ^ (seed >> 15u);
+// Optimized Wang hash - fewer operations
+uint fastHash(uint seed) {
+    seed ^= seed >> 16u;
+    seed *= 0x7feb352du;
+    seed ^= seed >> 15u;
+    seed *= 0x846ca68bu;
+    seed ^= seed >> 16u;
     return seed;
 }
 
-// Convert hash to normalized float [0.0, 1.0]
+// Fast hash to float conversion
 float hashToFloat(uint hash) {
-    return float(hash) / 4294967295.0;
+    return float(hash) * INV_4294967295;
 }
 
-// Generate pseudorandom float in range [0.0, 1.0] from seed
-float pseudoRandom(uint seed) {
-    return hashToFloat(wangHash(seed));
+// Pre-computed sine/cosine lookup tables (shared memory)
+shared float sinLookup[64];
+shared float cosLookup[64];
+
+// Fast trigonometric approximation using lookup table
+void initTrigTables() {
+    uint tid = gl_LocalInvocationID.x;
+    float angle = float(tid) * (TWO_PI / 64.0);
+    sinLookup[tid] = sin(angle);
+    cosLookup[tid] = cos(angle);
 }
 
-// Pure random step movement pattern - no center constraints
-vec3 randomStep(vec3 center, float amplitude, float frequency, float phase, float time, uint entityId) {
-    // Step frequency determines how often entities change direction
-    float stepInterval = 1.0 / max(frequency, 0.1);
-    float stepTime = floor(time / stepInterval);
+vec2 fastSinCos(float angle) {
+    // Normalize angle to [0, TWO_PI]
+    angle = mod(angle, TWO_PI);
     
-    // Create unique seed for this entity at this step time
-    uint baseSeed = entityId ^ uint(stepTime * 1000.0) ^ uint(phase * 10000.0);
+    // Map to lookup table index
+    float indexFloat = angle * (64.0 / TWO_PI);
+    uint index0 = uint(indexFloat) & 63u;
+    uint index1 = (index0 + 1u) & 63u;
     
-    // Generate entity-specific characteristics
-    uint entitySeed = entityId ^ 0x12345678u;
-    float driftiness = pseudoRandom(entitySeed); // Entity exploration factor
+    // Linear interpolation
+    float t = fract(indexFloat);
+    float sinVal = mix(sinLookup[index0], sinLookup[index1], t);
+    float cosVal = mix(cosLookup[index0], cosLookup[index1], t);
     
-    // Single random step
-    float randAngle = pseudoRandom(baseSeed) * TWO_PI;
-    float stepMagnitude = pseudoRandom(baseSeed + 31u) * amplitude;
-    
-    // Moderate exploration boost for natural movement
-    stepMagnitude *= (2.0 + driftiness * 1.0);
-    
-    // Calculate step vector - pure random movement
-    vec3 stepOffset = vec3(
-        stepMagnitude * cos(randAngle),
-        stepMagnitude * sin(randAngle),
-        0.0
-    );
-    
-    return center + stepOffset;
+    return vec2(sinVal, cosVal);
 }
 
 void main() {
-    // Get current entity index
-    uint entityIndex = gl_GlobalInvocationID.x;
+    // Initialize shared trigonometric lookup tables once per workgroup
+    initTrigTables();
+    barrier(); // Wait for lookup table initialization
     
-    // Bounds check
+    // Get current entity index with chunk offset
+    uint entityIndex = gl_GlobalInvocationID.x + pc.entityOffset;
+    
+    // Early exit for out-of-bounds entities
     if (entityIndex >= pc.entityCount) {
         return;
     }
     
     // Calculate base offset for this entity (8 vec4s per entity = 128 bytes)
-    uint baseOffset = entityIndex * 8;
+    uint baseOffset = entityIndex * 8u;
     
-    // Extract movement parameters from GPUEntity structure
-    // Actual C++ layout: movementParams0 + movementParams1 + runtimeState + color + modelMatrix(4 vec4s)
-    // movementParams0: amplitude, frequency, phase, timeOffset
-    vec4 movementParams0 = entities.entityData[baseOffset + 0];
+    // Batch load entity data for better memory access patterns
+    vec4 movementParams0 = entities.entityData[baseOffset];
+    vec4 movementParams1 = entities.entityData[baseOffset + 1u];
+    vec4 runtimeState = entities.entityData[baseOffset + 2u];
+    
+    // Extract movement parameters
     float amplitude = movementParams0.x;
     float frequency = movementParams0.y;
     float phase = movementParams0.z;
-    float timeOffset = movementParams0.w;
-    
-    // movementParams1: center.xyz, movementType
-    vec4 movementParams1 = entities.entityData[baseOffset + 1];
     vec3 center = movementParams1.xyz;
-    // movementType is always 0.0 for random walk - no need to extract
+    float initialized = runtimeState.y;
     
     // Calculate cycle using frame number and entity offset for staggering
-    float cycle = mod(pc.frame + entityIndex * 37u, float(CYCLE_LENGTH));
+    float cycle = mod(float(pc.frame + entityIndex * 37u), float(CYCLE_LENGTH));
     
-    // Extract runtime state from GPUEntity
-    vec4 runtimeState = entities.entityData[baseOffset + 2]; // runtimeState at position 2
-    float initialized = runtimeState.y; // initialized flag
+    // Load current position and target (safe initialization)
+    vec3 currentPosition;
+    vec3 target;
     
-    // Initialize buffers for new entities using the entity's initialized flag
-    if (initialized < 0.5) { // Entity not yet initialized
-        currentPos.currentPositions[entityIndex] = vec4(center, 1.0);
-        targetPos.targetPositions[entityIndex] = vec4(center, 1.0);
-        
-        // Mark entity as initialized in GPU memory
-        entities.entityData[baseOffset + 2].y = 1.0; // Set initialized flag
+    // Initialize buffers for new entities
+    if (initialized < 0.5) {
+        currentPosition = center;
+        target = center;
+        currentPos.currentPositions[entityIndex] = vec4(currentPosition, 1.0);
+        targetPos.targetPositions[entityIndex] = vec4(target, 1.0);
+        entities.entityData[baseOffset + 2u].y = 1.0; // Mark as initialized
+    } else {
+        // Load from buffers only if already initialized
+        currentPosition = currentPos.currentPositions[entityIndex].xyz;
+        target = targetPos.targetPositions[entityIndex].xyz;
     }
     
-    // Get current position and target
-    vec3 currentPosition = currentPos.currentPositions[entityIndex].xyz;
-    vec3 target = targetPos.targetPositions[entityIndex].xyz;
-    
-    // On cycle reset, generate new target position
+    // Generate new target on cycle reset
     if (cycle < 1.0) {
-        // Current position becomes the previous target (for continuity)
-        if (pc.frame >= float(CYCLE_LENGTH)) { // Not the very first cycle
+        // Continuity: current becomes previous target
+        if (pc.frame >= float(CYCLE_LENGTH)) {
             currentPosition = target;
             currentPos.currentPositions[entityIndex] = vec4(currentPosition, 1.0);
         }
         
-        // Generate new random step from current position
-        uint cycleNumber = uint(pc.frame / float(CYCLE_LENGTH));
-        // Ensure unique seed per entity per cycle - multiple prime multipliers prevent collisions
-        uint baseSeed = entityIndex * 2654435761u + cycleNumber * 1597334677u + uint(phase * 982451653.0) + uint(amplitude * 1640531371.0);
-        float randAngle = pseudoRandom(baseSeed) * TWO_PI;
-        float stepMagnitude = pseudoRandom(baseSeed + 1u) * amplitude;
+        // Optimized random generation with fewer hash operations
+        uint cycleNumber = pc.frame / CYCLE_LENGTH;
+        uint seed = entityIndex ^ (cycleNumber << 16u) ^ uint(phase * 1000.0);
         
-        // Apply moderate drift for natural movement without center clustering
-        uint entitySeed = entityIndex ^ 0x12345678u;
-        float driftiness = pseudoRandom(entitySeed);
-        stepMagnitude *= (2.0 + driftiness * 1.0);
+        // Single hash call for angle and magnitude
+        uint hash1 = fastHash(seed);
+        uint hash2 = fastHash(seed ^ 0xAAAAAAAAu);
         
+        float randAngle = hashToFloat(hash1) * TWO_PI;
+        float stepMagnitude = hashToFloat(hash2) * amplitude;
+        
+        // Entity drift characteristic (computed once per cycle)
+        float driftiness = hashToFloat(fastHash(entityIndex ^ 0x12345678u));
+        stepMagnitude *= (2.0 + driftiness);
+        
+        // Fast trigonometric calculation using lookup table
+        vec2 sinCos = fastSinCos(randAngle);
         vec3 randomStep = vec3(
-            stepMagnitude * cos(randAngle),
-            stepMagnitude * sin(randAngle),
+            stepMagnitude * sinCos.y, // cosine
+            stepMagnitude * sinCos.x, // sine
             0.0
         );
         
-        // New target is current position + random step
         target = currentPosition + randomStep;
         targetPos.targetPositions[entityIndex] = vec4(target, 1.0);
     }
     
-    // Compute interpolated position and write to output
-    float t = smoothstep(0.0, 1.0, cycle / float(CYCLE_LENGTH));
+    // Optimized interpolation with pre-computed t
+    float t = cycle * (1.0 / float(CYCLE_LENGTH));
+    t = t * t * (3.0 - 2.0 * t); // Fast smoothstep approximation
     vec3 interpolatedPosition = mix(currentPosition, target, t);
+    
+    // Single output write
     outPositions.positions[entityIndex] = vec4(interpolatedPosition, 1.0);
 }

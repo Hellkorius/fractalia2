@@ -216,6 +216,21 @@ void ComputePipelineManager::dispatch(VkCommandBuffer commandBuffer, const Compu
     stats.dispatchesThisFrame++;
     stats.totalDispatches++;
     
+    // Validate dispatch parameters
+    if (dispatch.pipeline == VK_NULL_HANDLE) {
+        std::cerr << "ComputePipelineManager: Invalid pipeline handle" << std::endl;
+        return;
+    }
+    if (dispatch.layout == VK_NULL_HANDLE) {
+        std::cerr << "ComputePipelineManager: Invalid pipeline layout handle" << std::endl;
+        return;
+    }
+    if (dispatch.groupCountX == 0 || dispatch.groupCountY == 0 || dispatch.groupCountZ == 0) {
+        std::cerr << "ComputePipelineManager: Invalid dispatch size: " 
+                  << dispatch.groupCountX << "x" << dispatch.groupCountY << "x" << dispatch.groupCountZ << std::endl;
+        return;
+    }
+    
     // Bind pipeline
     context->getLoader().vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, dispatch.pipeline);
     
@@ -234,10 +249,8 @@ void ComputePipelineManager::dispatch(VkCommandBuffer commandBuffer, const Compu
             0, dispatch.pushConstantSize, dispatch.pushConstantData);
     }
     
-    // Insert memory barriers if needed
-    if (dispatch.requiresMemoryBarrier && 
-        (!dispatch.memoryBarriers.empty() || !dispatch.bufferBarriers.empty() || !dispatch.imageBarriers.empty())) {
-        
+    // Insert memory barriers if any are provided
+    if (!dispatch.memoryBarriers.empty() || !dispatch.bufferBarriers.empty() || !dispatch.imageBarriers.empty()) {
         insertOptimalBarriers(commandBuffer, dispatch.bufferBarriers, dispatch.imageBarriers);
     }
     
@@ -578,16 +591,16 @@ namespace ComputePipelinePresets {
         ComputePipelineState state{};
         state.shaderPath = "shaders/movement_random.comp.spv";
         state.descriptorSetLayouts.push_back(descriptorLayout);
-        state.workgroupSizeX = 32;  // Optimal for entity processing
+        state.workgroupSizeX = 64;  // MUST match shader local_size_x = 64
         state.workgroupSizeY = 1;
         state.workgroupSizeZ = 1;
         state.isFrequentlyUsed = true;
         
-        // Add push constants for time/frame data
+        // Add push constants for time/frame data (must match ComputePushConstants struct)
         VkPushConstantRange pushConstant{};
         pushConstant.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
         pushConstant.offset = 0;
-        pushConstant.size = sizeof(float) * 4;  // time, deltaTime, entityCount, frame
+        pushConstant.size = sizeof(float) * 2 + sizeof(uint32_t) * 6;  // time, deltaTime, entityCount, frame, entityOffset, padding[3]
         state.pushConstantRanges.push_back(pushConstant);
         
         return state;
