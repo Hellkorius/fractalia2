@@ -93,7 +93,7 @@ ComputePipelineManager::ComputePipelineManager(VulkanContext* ctx) : VulkanManag
 }
 
 ComputePipelineManager::~ComputePipelineManager() {
-    cleanup();
+    cleanupBeforeContextDestruction();
 }
 
 bool ComputePipelineManager::initialize(ShaderManager* shaderManager,
@@ -107,12 +107,14 @@ bool ComputePipelineManager::initialize(ShaderManager* shaderManager,
     cacheInfo.initialDataSize = 0;
     cacheInfo.pInitialData = nullptr;
     
-    VkResult result = createPipelineCache(&cacheInfo, &pipelineCache);
+    VkPipelineCache rawCache;
+    VkResult result = createPipelineCache(&cacheInfo, &rawCache);
     
     if (result != VK_SUCCESS) {
         std::cerr << "Failed to create compute pipeline cache: " << result << std::endl;
         return false;
     }
+    pipelineCache = vulkan_raii::make_pipeline_cache(rawCache, context);
     
     // Query and cache device properties
     loader->vkGetPhysicalDeviceProperties(context->getPhysicalDevice(), &deviceProperties);
@@ -125,6 +127,10 @@ bool ComputePipelineManager::initialize(ShaderManager* shaderManager,
 }
 
 void ComputePipelineManager::cleanup() {
+    cleanupBeforeContextDestruction();
+}
+
+void ComputePipelineManager::cleanupBeforeContextDestruction() {
     if (!context) return;
     
     // Wait for any async compilations to complete
@@ -135,14 +141,11 @@ void ComputePipelineManager::cleanup() {
     }
     asyncCompilations.clear();
     
-    // Clear pipeline cache
+    // Clear pipeline cache (RAII handles cleanup automatically)
     clearCache();
     
-    // Destroy pipeline cache
-    if (pipelineCache != VK_NULL_HANDLE) {
-        context->getLoader().vkDestroyPipelineCache(context->getDevice(), pipelineCache, nullptr);
-        pipelineCache = VK_NULL_HANDLE;
-    }
+    // Reset pipeline cache (RAII handles cleanup automatically)
+    pipelineCache.reset();
     
     context = nullptr;
 }
@@ -155,7 +158,7 @@ VkPipeline ComputePipelineManager::getPipeline(const ComputePipelineState& state
         stats.cacheHits++;
         it->second->lastUsedFrame = stats.cacheHits + stats.cacheMisses;  // Rough frame counter
         it->second->useCount++;
-        return it->second->pipeline;
+        return it->second->pipeline.get();
     }
     
     // Check async compilation
@@ -167,7 +170,7 @@ VkPipeline ComputePipelineManager::getPipeline(const ComputePipelineState& state
             asyncCompilations.erase(asyncIt);
             
             if (cachedPipeline) {
-                VkPipeline pipeline = cachedPipeline->pipeline;
+                VkPipeline pipeline = cachedPipeline->pipeline.get();
                 pipelineCache_[state] = std::move(cachedPipeline);
                 stats.totalPipelines++;
                 return pipeline;
@@ -184,7 +187,7 @@ VkPipeline ComputePipelineManager::getPipeline(const ComputePipelineState& state
         return VK_NULL_HANDLE;
     }
     
-    VkPipeline pipeline = cachedPipeline->pipeline;
+    VkPipeline pipeline = cachedPipeline->pipeline.get();
     
     // Store in cache
     pipelineCache_[state] = std::move(cachedPipeline);
@@ -201,7 +204,7 @@ VkPipeline ComputePipelineManager::getPipeline(const ComputePipelineState& state
 VkPipelineLayout ComputePipelineManager::getPipelineLayout(const ComputePipelineState& state) {
     auto it = pipelineCache_.find(state);
     if (it != pipelineCache_.end()) {
-        return it->second->layout;
+        return it->second->layout.get();
     }
     
     // If pipeline doesn't exist, create it
@@ -213,7 +216,7 @@ VkPipelineLayout ComputePipelineManager::getPipelineLayout(const ComputePipeline
     // Should now be in cache
     it = pipelineCache_.find(state);
     assert(it != pipelineCache_.end());
-    return it->second->layout;
+    return it->second->layout.get();
 }
 
 void ComputePipelineManager::dispatch(VkCommandBuffer commandBuffer, const ComputeDispatch& dispatch) {
@@ -336,19 +339,18 @@ std::unique_ptr<CachedComputePipeline> ComputePipelineManager::createPipelineInt
     cachedPipeline->state = state;
     
     // Create pipeline layout
-    cachedPipeline->layout = createPipelineLayout(state.descriptorSetLayouts, state.pushConstantRanges);
-    if (cachedPipeline->layout == VK_NULL_HANDLE) {
+    VkPipelineLayout rawLayout = createPipelineLayout(state.descriptorSetLayouts, state.pushConstantRanges);
+    if (rawLayout == VK_NULL_HANDLE) {
         std::cerr << "Failed to create compute pipeline layout" << std::endl;
         return nullptr;
     }
+    cachedPipeline->layout = vulkan_raii::make_pipeline_layout(rawLayout, context);
     
     // Load shader through ShaderManager
     VkShaderModule shaderModule = shaderManager->loadSPIRVFromFile(state.shaderPath);
     if (shaderModule == VK_NULL_HANDLE) {
         std::cerr << "Failed to load compute shader: " << state.shaderPath << std::endl;
-        if (cachedPipeline->layout != VK_NULL_HANDLE) {
-            destroyPipelineLayout(cachedPipeline->layout);
-        }
+        // RAII layout will cleanup automatically
         return nullptr;
     }
     
@@ -383,33 +385,34 @@ std::unique_ptr<CachedComputePipeline> ComputePipelineManager::createPipelineInt
     VkComputePipelineCreateInfo pipelineInfo{};
     pipelineInfo.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
     pipelineInfo.stage = shaderStageInfo;
-    pipelineInfo.layout = cachedPipeline->layout;
+    pipelineInfo.layout = cachedPipeline->layout.get();
     pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
     
     // Create compute pipeline with detailed error logging
     std::cout << "ComputePipelineManager: Creating compute pipeline for shader: " << state.shaderPath << std::endl;
-    std::cout << "  Pipeline layout: " << (void*)cachedPipeline->layout << std::endl;
-    std::cout << "  Pipeline cache: " << (void*)pipelineCache << std::endl;
+    std::cout << "  Pipeline layout: " << (void*)cachedPipeline->layout.get() << std::endl;
+    std::cout << "  Pipeline cache: " << (void*)pipelineCache.get() << std::endl;
     std::cout << "  Shader module: " << (void*)shaderModule << std::endl;
     
-    VkResult result = createComputePipelines(pipelineCache, 1, &pipelineInfo, &cachedPipeline->pipeline);
+    VkPipeline rawPipeline;
+    VkResult result = createComputePipelines(pipelineCache.get(), 1, &pipelineInfo, &rawPipeline);
     
     if (result != VK_SUCCESS) {
         std::cerr << "ComputePipelineManager: CRITICAL ERROR - Failed to create compute pipeline!" << std::endl;
         std::cerr << "  Shader path: " << state.shaderPath << std::endl;
         std::cerr << "  VkResult: " << result << std::endl;
-        std::cerr << "  Pipeline layout valid: " << (cachedPipeline->layout != VK_NULL_HANDLE ? "YES" : "NO") << std::endl;
-        std::cerr << "  Pipeline cache valid: " << (pipelineCache != VK_NULL_HANDLE ? "YES" : "NO") << std::endl;
+        std::cerr << "  Pipeline layout valid: " << (cachedPipeline->layout ? "YES" : "NO") << std::endl;
+        std::cerr << "  Pipeline cache valid: " << (pipelineCache ? "YES" : "NO") << std::endl;
         std::cerr << "  Shader module valid: " << (shaderModule != VK_NULL_HANDLE ? "YES" : "NO") << std::endl;
         std::cerr << "  Device valid: " << (context->getDevice() != VK_NULL_HANDLE ? "YES" : "NO") << std::endl;
         
-        if (cachedPipeline->layout != VK_NULL_HANDLE) {
-            destroyPipelineLayout(cachedPipeline->layout);
-        }
+        // RAII layout will cleanup automatically
         return nullptr;
     } else {
         std::cout << "ComputePipelineManager: Compute pipeline created successfully" << std::endl;
     }
+    
+    cachedPipeline->pipeline = vulkan_raii::make_pipeline(rawPipeline, context);
     
     // Set up dispatch optimization info
     cachedPipeline->dispatchInfo.optimalWorkgroupSize = getDeviceOptimalWorkgroupSize();
@@ -459,16 +462,7 @@ VkPipelineLayout ComputePipelineManager::createPipelineLayout(const std::vector<
 void ComputePipelineManager::clearCache() {
     if (!context) return;
     
-    // Destroy all cached pipelines
-    for (auto& [state, pipeline] : pipelineCache_) {
-        if (pipeline->pipeline != VK_NULL_HANDLE) {
-            destroyPipeline(pipeline->pipeline);
-        }
-        if (pipeline->layout != VK_NULL_HANDLE) {
-            destroyPipelineLayout(pipeline->layout);
-        }
-    }
-    
+    // Clear all cached pipelines (RAII handles cleanup automatically)
     pipelineCache_.clear();
     stats.totalPipelines = 0;
 }
@@ -492,10 +486,9 @@ bool ComputePipelineManager::recreatePipelineCache() {
     }
     
     // Destroy and recreate the VkPipelineCache object itself
-    if (pipelineCache != VK_NULL_HANDLE) {
+    if (pipelineCache) {
         std::cout << "ComputePipelineManager: Destroying corrupted pipeline cache" << std::endl;
-        context->getLoader().vkDestroyPipelineCache(context->getDevice(), pipelineCache, nullptr);
-        pipelineCache = VK_NULL_HANDLE;
+        pipelineCache.reset();
     }
     
     // Create fresh pipeline cache
@@ -504,10 +497,12 @@ bool ComputePipelineManager::recreatePipelineCache() {
     cacheInfo.initialDataSize = 0;
     cacheInfo.pInitialData = nullptr;
     
-    if (createPipelineCache(&cacheInfo, &pipelineCache) != VK_SUCCESS) {
+    VkPipelineCache rawCache;
+    if (createPipelineCache(&cacheInfo, &rawCache) != VK_SUCCESS) {
         std::cerr << "ComputePipelineManager: CRITICAL FAILURE - Failed to recreate pipeline cache" << std::endl;
         return false;
     }
+    pipelineCache = vulkan_raii::make_pipeline_cache(rawCache, context);
     
     std::cout << "ComputePipelineManager: Pipeline cache successfully recreated" << std::endl;
     return true;
@@ -524,14 +519,7 @@ void ComputePipelineManager::evictLeastRecentlyUsed() {
         }
     }
     
-    // Destroy the pipeline
-    if (lruIt->second->pipeline != VK_NULL_HANDLE) {
-        destroyPipeline(lruIt->second->pipeline);
-    }
-    if (lruIt->second->layout != VK_NULL_HANDLE) {
-        destroyPipelineLayout(lruIt->second->layout);
-    }
-    
+    // Erase the pipeline (RAII handles cleanup automatically)
     pipelineCache_.erase(lruIt);
     stats.totalPipelines--;
 }
@@ -681,12 +669,7 @@ void ComputePipelineManager::optimizeCache(uint64_t currentFrame) {
     // Simple LRU eviction for compute pipeline cache
     for (auto it = pipelineCache_.begin(); it != pipelineCache_.end();) {
         if (currentFrame - it->second->lastUsedFrame > 1000) { // Evict after 1000 frames
-            if (it->second->pipeline != VK_NULL_HANDLE) {
-                destroyPipeline(it->second->pipeline);
-            }
-            if (it->second->layout != VK_NULL_HANDLE) {
-                destroyPipelineLayout(it->second->layout);
-            }
+            // Erase pipeline (RAII handles cleanup automatically)
             it = pipelineCache_.erase(it);
             stats.totalPipelines--;
         } else {

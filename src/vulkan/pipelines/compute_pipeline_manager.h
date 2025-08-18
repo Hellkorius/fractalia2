@@ -12,6 +12,7 @@
 #include <glm/glm.hpp>
 #include "../core/vulkan_context.h"
 #include "../core/vulkan_manager_base.h"
+#include "../core/vulkan_raii.h"
 
 // Forward declarations
 class ShaderManager;
@@ -52,8 +53,8 @@ struct ComputePipelineStateHash {
 
 // Cached compute pipeline with metadata
 struct CachedComputePipeline {
-    VkPipeline pipeline = VK_NULL_HANDLE;
-    VkPipelineLayout layout = VK_NULL_HANDLE;
+    vulkan_raii::Pipeline pipeline;
+    vulkan_raii::PipelineLayout layout;
     ComputePipelineState state;
     
     // Usage tracking
@@ -113,6 +114,7 @@ public:
     bool initialize(ShaderManager* shaderManager,
                    DescriptorLayoutManager* layoutManager);
     void cleanup();
+    void cleanupBeforeContextDestruction();
 
     // Pipeline creation and caching
     VkPipeline getPipeline(const ComputePipelineState& state);
@@ -199,7 +201,7 @@ public:
 
 private:
     // Core Vulkan objects
-    VkPipelineCache pipelineCache = VK_NULL_HANDLE;
+    vulkan_raii::PipelineCache pipelineCache;
     
     // Dependencies
     ShaderManager* shaderManager = nullptr;
