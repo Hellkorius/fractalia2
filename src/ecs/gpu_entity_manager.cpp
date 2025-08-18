@@ -216,23 +216,25 @@ void GPUEntityManager::addEntitiesFromECS(const std::vector<Entity>& entities) {
 void GPUEntityManager::uploadPendingEntities() {
     if (stagingEntities.empty()) return;
     
-    // Copy staging entities to GPU buffer
+    // Copy staging entities to GPU buffer using ResourceContext staging infrastructure
     VkDeviceSize uploadSize = stagingEntities.size() * sizeof(GPUEntity);
     VkDeviceSize offset = activeEntityCount * sizeof(GPUEntity);
     
-    // Map memory and copy data
-    void* data;
-    if (context->getLoader().vkMapMemory(context->getDevice(), entityBufferMemory, offset, uploadSize, 0, &data) == VK_SUCCESS) {
-        std::memcpy(data, stagingEntities.data(), uploadSize);
-        context->getLoader().vkUnmapMemory(context->getDevice(), entityBufferMemory);
-        
-        activeEntityCount += stagingEntities.size();
-        stagingEntities.clear();
-        
-        std::cout << "GPUEntityManager: Uploaded " << (uploadSize / sizeof(GPUEntity)) << " entities, total: " << activeEntityCount << std::endl;
-    } else {
-        std::cerr << "GPUEntityManager: Failed to map entity buffer memory" << std::endl;
-    }
+    // Create ResourceHandle wrapper for entity buffer
+    ResourceHandle entityBufferHandle{};
+    entityBufferHandle.buffer = vulkan_raii::make_buffer(entityBuffer, context);
+    entityBufferHandle.size = ENTITY_BUFFER_SIZE;
+    
+    // Use ResourceContext to copy data via staging buffer to device-local memory
+    resourceContext->copyToBuffer(entityBufferHandle, stagingEntities.data(), uploadSize, offset);
+    
+    // Detach the handle to prevent automatic cleanup (we manage the buffer lifetime)
+    entityBufferHandle.buffer.detach();
+    
+    activeEntityCount += stagingEntities.size();
+    stagingEntities.clear();
+    
+    std::cout << "GPUEntityManager: Uploaded " << (uploadSize / sizeof(GPUEntity)) << " entities to GPU-local memory, total: " << activeEntityCount << std::endl;
 }
 
 void GPUEntityManager::clearAllEntities() {
@@ -289,7 +291,7 @@ bool GPUEntityManager::createBuffer(VkDeviceSize size, VkBufferUsageFlags usage,
     allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
     allocInfo.allocationSize = memRequirements.size;
     allocInfo.memoryTypeIndex = VulkanUtils::findMemoryType(context->getPhysicalDevice(), context->getLoader(), memRequirements.memoryTypeBits, 
-                                                            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+                                                            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
     
     if (context->getLoader().vkAllocateMemory(context->getDevice(), &allocInfo, nullptr, &bufferMemory) != VK_SUCCESS) {
         context->getLoader().vkDestroyBuffer(context->getDevice(), buffer, nullptr);
