@@ -122,12 +122,15 @@ bool VulkanRenderer::initialize(SDL_Window* window) {
         return false;
     }
     
-    // Update graphics descriptor sets with position buffer for compute-based rendering
-    if (!resourceContext->updateDescriptorSetsWithPositionBuffer(gpuEntityManager->getPositionBuffer())) {
-        std::cerr << "Failed to update descriptor sets with position buffer" << std::endl;
+    // Update graphics descriptor sets with BOTH entity buffer AND position buffer for compute-based rendering
+    // CRITICAL FIX: This ensures both binding 1 (entity buffer) and binding 2 (position buffer) are bound
+    if (!resourceContext->updateDescriptorSetsWithEntityAndPositionBuffers(
+            gpuEntityManager->getEntityBuffer(),
+            gpuEntityManager->getPositionBuffer())) {
+        std::cerr << "Failed to update descriptor sets with entity and position buffers" << std::endl;
         return false;
     }
-    std::cout << "Graphics descriptor sets updated with position buffer" << std::endl;
+    std::cout << "Graphics descriptor sets updated with entity and position buffers" << std::endl;
     
     // Create compute descriptor layout using new pipeline system
     auto computeLayoutSpec = DescriptorLayoutPresets::createEntityComputeLayout();
@@ -296,14 +299,32 @@ void VulkanRenderer::drawFrameModular() {
     );
     
     if (!frameResult.success) {
+        std::cerr << "VulkanRenderer: Frame " << frameCounter << " FAILED in frameDirector->directFrame()" << std::endl;
         // Check if swapchain recreation is needed
         if (presentationSurface->isFramebufferResized() && !recreationInProgress) {
+            std::cout << "VulkanRenderer: Attempting swapchain recreation due to frame failure" << std::endl;
             recreationInProgress = true;
             presentationSurface->recreateSwapchain();
             frameDirector->resetSwapchainCache();
             recreationInProgress = false;
         }
         return;
+    } else {
+        // DETAILED LOGGING: Monitor first few frames after resize
+        static uint32_t lastRecreationFrame = 0;
+        static uint32_t framesAfterRecreation = 0;
+        
+        if (recreationInProgress || (frameCounter - lastRecreationFrame <= 10 && lastRecreationFrame > 0)) {
+            if (recreationInProgress) {
+                lastRecreationFrame = frameCounter;
+                framesAfterRecreation = 0;
+            } else {
+                framesAfterRecreation = frameCounter - lastRecreationFrame;
+            }
+            
+            std::cout << "VulkanRenderer: Frame " << frameCounter << " SUCCESS (+" << framesAfterRecreation 
+                     << " frames post-resize) - Frame direction completed successfully" << std::endl;
+        }
     }
     
     // Note: Frame graph nodes already configured in directFrame() - no need to configure again
@@ -317,17 +338,44 @@ void VulkanRenderer::drawFrameModular() {
     );
     
     if (!submissionResult.success) {
-        std::cerr << "Frame submission failed" << std::endl;
+        std::cerr << "VulkanRenderer: Frame " << frameCounter << " FAILED in submissionService->submitFrame()" << std::endl;
+        std::cerr << "  VkResult: " << submissionResult.lastResult << std::endl;
         return;
+    } else {
+        // DETAILED LOGGING: Monitor first few frames after resize for submission success
+        static uint32_t lastRecreationFrame2 = 0;
+        static uint32_t framesAfterRecreation2 = 0;
+        
+        if (recreationInProgress || (frameCounter - lastRecreationFrame2 <= 10 && lastRecreationFrame2 > 0)) {
+            if (recreationInProgress) {
+                lastRecreationFrame2 = frameCounter;
+                framesAfterRecreation2 = 0;
+            } else {
+                framesAfterRecreation2 = frameCounter - lastRecreationFrame2;
+            }
+            
+            std::cout << "VulkanRenderer: Frame " << frameCounter << " SUCCESS (+" << framesAfterRecreation2 
+                     << " frames post-resize) - Frame submission completed successfully" << std::endl;
+        }
     }
     
     // Handle swapchain recreation if needed
     if ((submissionResult.swapchainRecreationNeeded || framebufferResized) && !recreationInProgress) {
+        std::cout << "VulkanRenderer: SWAPCHAIN RECREATION INITIATED - Frame " << frameCounter << std::endl;
         recreationInProgress = true;
         framebufferResized = false;
-        presentationSurface->recreateSwapchain();
-        frameDirector->resetSwapchainCache();
+        
+        bool recreationSuccess = presentationSurface->recreateSwapchain();
+        if (recreationSuccess) {
+            std::cout << "VulkanRenderer: Swapchain recreation SUCCESSFUL" << std::endl;
+            frameDirector->resetSwapchainCache();
+            std::cout << "VulkanRenderer: Swapchain cache reset SUCCESSFUL" << std::endl;
+        } else {
+            std::cerr << "VulkanRenderer: CRITICAL ERROR - Swapchain recreation FAILED" << std::endl;
+        }
+        
         recreationInProgress = false;
+        std::cout << "VulkanRenderer: SWAPCHAIN RECREATION COMPLETED - Next frames should render normally" << std::endl;
     }
     
     // Update frame state

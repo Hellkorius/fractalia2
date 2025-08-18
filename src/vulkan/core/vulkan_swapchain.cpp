@@ -17,7 +17,7 @@ bool VulkanSwapchain::initialize(const VulkanContext& context, SDL_Window* windo
     this->context = &context;
     this->window = window;
     
-    if (!createSwapChain()) {
+    if (!createSwapChain(VK_NULL_HANDLE)) {
         std::cerr << "Failed to create swap chain" << std::endl;
         return false;
     }
@@ -49,11 +49,24 @@ bool VulkanSwapchain::recreate(VkRenderPass renderPass) {
         SDL_WaitEvent(nullptr);
     }
 
-    cleanupSwapChain();
+    // Store old swapchain for proper recreation
+    VkSwapchainKHR oldSwapchain = swapChain;
+    
+    // Clean up everything except the old swapchain itself
+    cleanupSwapChainExceptSwapchain();
 
-    if (!createSwapChain()) {
+    if (!createSwapChain(oldSwapchain)) {
         std::cerr << "Failed to recreate swap chain!" << std::endl;
+        // If creation failed, we still need to clean up the old swapchain
+        if (oldSwapchain != VK_NULL_HANDLE) {
+            context->getLoader().vkDestroySwapchainKHR(context->getDevice(), oldSwapchain, nullptr);
+        }
         return false;
+    }
+    
+    // Now destroy the old swapchain after successful recreation
+    if (oldSwapchain != VK_NULL_HANDLE) {
+        context->getLoader().vkDestroySwapchainKHR(context->getDevice(), oldSwapchain, nullptr);
     }
     
     if (!createImageViews()) {
@@ -75,7 +88,7 @@ bool VulkanSwapchain::recreate(VkRenderPass renderPass) {
     return true;
 }
 
-bool VulkanSwapchain::createSwapChain() {
+bool VulkanSwapchain::createSwapChain(VkSwapchainKHR oldSwapchainKHR) {
     SwapChainSupportDetails swapChainSupport = querySwapChainSupport(context->getPhysicalDevice());
 
     VkSurfaceFormatKHR surfaceFormat = chooseSwapSurfaceFormat(swapChainSupport.formats);
@@ -124,7 +137,7 @@ bool VulkanSwapchain::createSwapChain() {
     createInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
     createInfo.presentMode = presentMode;
     createInfo.clipped = VK_TRUE;
-    createInfo.oldSwapchain = VK_NULL_HANDLE;
+    createInfo.oldSwapchain = oldSwapchainKHR;
 
     if (context->getLoader().vkCreateSwapchainKHR(context->getDevice(), &createInfo, nullptr, &swapChain) != VK_SUCCESS) {
         std::cerr << "Failed to create swap chain" << std::endl;
@@ -212,6 +225,45 @@ void VulkanSwapchain::cleanupSwapChain() {
         context->getLoader().vkDestroySwapchainKHR(context->getDevice(), swapChain, nullptr);
         swapChain = VK_NULL_HANDLE;
     }
+}
+
+void VulkanSwapchain::cleanupSwapChainExceptSwapchain() {
+    std::cout << "VulkanSwapchain: Starting cleanup of swapchain resources (except swapchain handle)" << std::endl;
+    
+    // Cleanup framebuffers
+    std::cout << "VulkanSwapchain: Destroying " << swapChainFramebuffers.size() << " framebuffers" << std::endl;
+    for (auto framebuffer : swapChainFramebuffers) {
+        context->getLoader().vkDestroyFramebuffer(context->getDevice(), framebuffer, nullptr);
+    }
+    swapChainFramebuffers.clear();
+    
+    // Cleanup MSAA resources - CRITICAL for memory leak detection
+    if (msaaColorImageView != VK_NULL_HANDLE) {
+        std::cout << "VulkanSwapchain: Destroying MSAA color image view" << std::endl;
+        context->getLoader().vkDestroyImageView(context->getDevice(), msaaColorImageView, nullptr);
+        msaaColorImageView = VK_NULL_HANDLE;
+    }
+    if (msaaColorImage != VK_NULL_HANDLE) {
+        std::cout << "VulkanSwapchain: Destroying MSAA color image" << std::endl;
+        context->getLoader().vkDestroyImage(context->getDevice(), msaaColorImage, nullptr);
+        msaaColorImage = VK_NULL_HANDLE;
+    }
+    if (msaaColorImageMemory != VK_NULL_HANDLE) {
+        std::cout << "VulkanSwapchain: CRITICAL - Freeing MSAA color image memory" << std::endl;
+        context->getLoader().vkFreeMemory(context->getDevice(), msaaColorImageMemory, nullptr);
+        msaaColorImageMemory = VK_NULL_HANDLE;
+        std::cout << "VulkanSwapchain: MSAA memory successfully freed" << std::endl;
+    }
+    
+    // Cleanup swapchain image views
+    std::cout << "VulkanSwapchain: Destroying " << swapChainImageViews.size() << " image views" << std::endl;
+    for (auto imageView : swapChainImageViews) {
+        context->getLoader().vkDestroyImageView(context->getDevice(), imageView, nullptr);
+    }
+    swapChainImageViews.clear();
+    
+    std::cout << "VulkanSwapchain: Cleanup completed successfully" << std::endl;
+    // Note: We deliberately do NOT destroy the swapchain here - that's handled separately
 }
 
 SwapChainSupportDetails VulkanSwapchain::querySwapChainSupport(VkPhysicalDevice device) {

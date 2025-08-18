@@ -1,5 +1,6 @@
 #include "graphics_pipeline_manager.h"
 #include "shader_manager.h"
+#include "descriptor_layout_manager.h"
 #include "../core/vulkan_function_loader.h"
 #include "../core/vulkan_utils.h"
 #include <iostream>
@@ -216,22 +217,26 @@ VkPipelineLayout GraphicsPipelineManager::getPipelineLayout(const GraphicsPipeli
 }
 
 std::unique_ptr<CachedGraphicsPipeline> GraphicsPipelineManager::createPipelineInternal(const GraphicsPipelineState& state) {
+    std::cout << "GraphicsPipelineManager: Starting createPipelineInternal..." << std::endl;
     auto startTime = std::chrono::high_resolution_clock::now();
     
     if (!validatePipelineState(state)) {
-        std::cerr << "Invalid pipeline state" << std::endl;
+        std::cerr << "GraphicsPipelineManager: Invalid pipeline state" << std::endl;
         return nullptr;
     }
+    std::cout << "GraphicsPipelineManager: Pipeline state validation successful" << std::endl;
     
     auto cachedPipeline = std::make_unique<CachedGraphicsPipeline>();
     cachedPipeline->state = state;
     
     // Create pipeline layout
+    std::cout << "GraphicsPipelineManager: Creating pipeline layout..." << std::endl;
     cachedPipeline->layout = createPipelineLayout(state.descriptorSetLayouts, state.pushConstantRanges);
     if (cachedPipeline->layout == VK_NULL_HANDLE) {
-        std::cerr << "Failed to create pipeline layout" << std::endl;
+        std::cerr << "GraphicsPipelineManager: CRITICAL ERROR - Failed to create pipeline layout" << std::endl;
         return nullptr;
     }
+    std::cout << "GraphicsPipelineManager: Pipeline layout created successfully: " << (void*)cachedPipeline->layout << std::endl;
     
     // Shader loading is implemented later in this function using ShaderManager
     
@@ -297,13 +302,22 @@ std::unique_ptr<CachedGraphicsPipeline> GraphicsPipelineManager::createPipelineI
     depthStencilInfo.stencilTestEnable = state.stencilTestEnable;
     
     // Load shaders through ShaderManager
+    std::cout << "GraphicsPipelineManager: Loading shaders..." << std::endl;
     std::vector<VkPipelineShaderStageCreateInfo> shaderStages;
     std::vector<VkShaderModule> shaderModules;  // Keep track for cleanup
     
+    std::cout << "GraphicsPipelineManager: Shader stages to load: " << state.shaderStages.size() << std::endl;
+    for (size_t i = 0; i < state.shaderStages.size(); ++i) {
+        std::cout << "  Shader[" << i << "]: " << state.shaderStages[i] << std::endl;
+    }
+    
     for (const auto& shaderPath : state.shaderStages) {
+        std::cout << "GraphicsPipelineManager: Loading shader: " << shaderPath << std::endl;
         VkShaderModule shaderModule = shaderManager->loadSPIRVFromFile(shaderPath);
+        std::cout << "GraphicsPipelineManager: Shader module: " << (void*)shaderModule << std::endl;
+        
         if (shaderModule == VK_NULL_HANDLE) {
-            std::cerr << "Failed to load graphics shader: " << shaderPath << std::endl;
+            std::cerr << "GraphicsPipelineManager: CRITICAL ERROR - Failed to load graphics shader: " << shaderPath << std::endl;
             // Cleanup previously loaded shaders
             for (VkShaderModule module : shaderModules) {
                 context->getLoader().vkDestroyShaderModule(context->getDevice(), module, nullptr);
@@ -318,6 +332,7 @@ std::unique_ptr<CachedGraphicsPipeline> GraphicsPipelineManager::createPipelineI
         
         // Determine shader stage from filename
         VkShaderStageFlagBits stage = shaderManager->getShaderStageFromFilename(shaderPath);
+        std::cout << "GraphicsPipelineManager: Shader stage determined: " << stage << std::endl;
         
         VkPipelineShaderStageCreateInfo shaderStageInfo{};
         shaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
@@ -326,7 +341,10 @@ std::unique_ptr<CachedGraphicsPipeline> GraphicsPipelineManager::createPipelineI
         shaderStageInfo.pName = "main";
         
         shaderStages.push_back(shaderStageInfo);
+        std::cout << "GraphicsPipelineManager: Added shader stage successfully" << std::endl;
     }
+    
+    std::cout << "GraphicsPipelineManager: All shaders loaded successfully, total stages: " << shaderStages.size() << std::endl;
     
     // Create graphics pipeline
     VkGraphicsPipelineCreateInfo pipelineInfo{};
@@ -346,15 +364,32 @@ std::unique_ptr<CachedGraphicsPipeline> GraphicsPipelineManager::createPipelineI
     pipelineInfo.subpass = state.subpass;
     pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
     
+    // Create graphics pipeline with detailed error logging
+    std::cout << "GraphicsPipelineManager: Creating graphics pipeline with parameters:" << std::endl;
+    std::cout << "  Pipeline layout: " << (void*)cachedPipeline->layout << std::endl;
+    std::cout << "  Pipeline cache: " << (void*)pipelineCache << std::endl;
+    std::cout << "  Render pass: " << (void*)state.renderPass << std::endl;
+    std::cout << "  Subpass: " << state.subpass << std::endl;
+    std::cout << "  Shader stages count: " << pipelineInfo.stageCount << std::endl;
+    std::cout << "  About to call vkCreateGraphicsPipelines..." << std::endl;
+    
     VkResult result = context->getLoader().vkCreateGraphicsPipelines(
         context->getDevice(), pipelineCache, 1, &pipelineInfo, nullptr, &cachedPipeline->pipeline);
     
     if (result != VK_SUCCESS) {
-        std::cerr << "Failed to create graphics pipeline: " << result << std::endl;
+        std::cerr << "GraphicsPipelineManager: CRITICAL ERROR - Failed to create graphics pipeline!" << std::endl;
+        std::cerr << "  VkResult: " << result << std::endl;
+        std::cerr << "  Pipeline layout valid: " << (cachedPipeline->layout != VK_NULL_HANDLE ? "YES" : "NO") << std::endl;
+        std::cerr << "  Pipeline cache valid: " << (pipelineCache != VK_NULL_HANDLE ? "YES" : "NO") << std::endl;
+        std::cerr << "  Render pass valid: " << (state.renderPass != VK_NULL_HANDLE ? "YES" : "NO") << std::endl;
+        std::cerr << "  Device valid: " << (context->getDevice() != VK_NULL_HANDLE ? "YES" : "NO") << std::endl;
+        
         if (cachedPipeline->layout != VK_NULL_HANDLE) {
             context->getLoader().vkDestroyPipelineLayout(context->getDevice(), cachedPipeline->layout, nullptr);
         }
         return nullptr;
+    } else {
+        std::cout << "GraphicsPipelineManager: Graphics pipeline created successfully!" << std::endl;
     }
     
     auto endTime = std::chrono::high_resolution_clock::now();
@@ -368,6 +403,13 @@ std::unique_ptr<CachedGraphicsPipeline> GraphicsPipelineManager::createPipelineI
 
 VkPipelineLayout GraphicsPipelineManager::createPipelineLayout(const std::vector<VkDescriptorSetLayout>& setLayouts,
                                                               const std::vector<VkPushConstantRange>& pushConstants) {
+    std::cout << "GraphicsPipelineManager: Creating graphics pipeline layout" << std::endl;
+    std::cout << "  Descriptor set layouts count: " << setLayouts.size() << std::endl;
+    for (size_t i = 0; i < setLayouts.size(); ++i) {
+        std::cout << "    Layout[" << i << "]: " << (void*)setLayouts[i] << (setLayouts[i] != VK_NULL_HANDLE ? " (valid)" : " (INVALID!)") << std::endl;
+    }
+    std::cout << "  Push constant ranges count: " << pushConstants.size() << std::endl;
+    
     VkPipelineLayoutCreateInfo layoutInfo{};
     layoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
     layoutInfo.setLayoutCount = static_cast<uint32_t>(setLayouts.size());
@@ -380,8 +422,12 @@ VkPipelineLayout GraphicsPipelineManager::createPipelineLayout(const std::vector
         context->getDevice(), &layoutInfo, nullptr, &layout);
     
     if (result != VK_SUCCESS) {
-        std::cerr << "Failed to create pipeline layout: " << result << std::endl;
+        std::cerr << "GraphicsPipelineManager: CRITICAL ERROR - Failed to create graphics pipeline layout!" << std::endl;
+        std::cerr << "  VkResult: " << result << std::endl;
+        std::cerr << "  Device valid: " << (context->getDevice() != VK_NULL_HANDLE ? "YES" : "NO") << std::endl;
         return VK_NULL_HANDLE;
+    } else {
+        std::cout << "GraphicsPipelineManager: Graphics pipeline layout created successfully: " << (void*)layout << std::endl;
     }
     
     return layout;
@@ -523,8 +569,59 @@ void GraphicsPipelineManager::clearCache() {
         }
     }
     
+    // CRITICAL FIX FOR SECOND RESIZE CRASH: Clear render pass cache to prevent stale render passes
+    // Render passes become invalid after swapchain recreation and must be recreated
+    std::cout << "GraphicsPipelineManager: Clearing render pass cache (" << renderPassCache.size() << " render passes)" << std::endl;
+    for (auto& [hash, renderPass] : renderPassCache) {
+        if (renderPass != VK_NULL_HANDLE) {
+            context->getLoader().vkDestroyRenderPass(context->getDevice(), renderPass, nullptr);
+        }
+    }
+    renderPassCache.clear();
+    std::cout << "GraphicsPipelineManager: Render pass cache cleared successfully" << std::endl;
+    
     pipelineCache_.clear();
     stats.totalPipelines = 0;
+}
+
+bool GraphicsPipelineManager::recreatePipelineCache() {
+    if (!context) {
+        std::cerr << "GraphicsPipelineManager: Cannot recreate pipeline cache - no context" << std::endl;
+        return false;
+    }
+    
+    std::cout << "GraphicsPipelineManager: CRITICAL FIX - Recreating pipeline cache to prevent second resize corruption" << std::endl;
+    
+    // Clear existing pipeline objects first
+    clearCache();
+    
+    // CRITICAL FIX: Also clear descriptor layout cache to prevent stale layout handles
+    // Descriptor layouts may become invalid after command pool recreation
+    if (layoutManager) {
+        std::cout << "GraphicsPipelineManager: Also clearing descriptor layout cache to prevent stale handles" << std::endl;
+        layoutManager->clearCache();
+    }
+    
+    // Destroy and recreate the VkPipelineCache object itself
+    if (pipelineCache != VK_NULL_HANDLE) {
+        std::cout << "GraphicsPipelineManager: Destroying corrupted pipeline cache" << std::endl;
+        context->getLoader().vkDestroyPipelineCache(context->getDevice(), pipelineCache, nullptr);
+        pipelineCache = VK_NULL_HANDLE;
+    }
+    
+    // Create fresh pipeline cache
+    VkPipelineCacheCreateInfo cacheInfo{};
+    cacheInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
+    cacheInfo.initialDataSize = 0;
+    cacheInfo.pInitialData = nullptr;
+    
+    if (context->getLoader().vkCreatePipelineCache(context->getDevice(), &cacheInfo, nullptr, &pipelineCache) != VK_SUCCESS) {
+        std::cerr << "GraphicsPipelineManager: CRITICAL FAILURE - Failed to recreate pipeline cache" << std::endl;
+        return false;
+    }
+    
+    std::cout << "GraphicsPipelineManager: Pipeline cache successfully recreated" << std::endl;
+    return true;
 }
 
 void GraphicsPipelineManager::evictLeastRecentlyUsed() {

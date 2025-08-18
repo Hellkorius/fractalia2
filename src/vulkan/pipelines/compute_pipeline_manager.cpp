@@ -1,5 +1,6 @@
 #include "compute_pipeline_manager.h"
 #include "shader_manager.h"
+#include "descriptor_layout_manager.h"
 #include "../core/vulkan_function_loader.h"
 #include "../core/vulkan_utils.h"
 #include <iostream>
@@ -388,16 +389,30 @@ std::unique_ptr<CachedComputePipeline> ComputePipelineManager::createPipelineInt
     pipelineInfo.layout = cachedPipeline->layout;
     pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
     
-    // Create compute pipeline
+    // Create compute pipeline with detailed error logging
+    std::cout << "ComputePipelineManager: Creating compute pipeline for shader: " << state.shaderPath << std::endl;
+    std::cout << "  Pipeline layout: " << (void*)cachedPipeline->layout << std::endl;
+    std::cout << "  Pipeline cache: " << (void*)pipelineCache << std::endl;
+    std::cout << "  Shader module: " << (void*)shaderModule << std::endl;
+    
     VkResult result = context->getLoader().vkCreateComputePipelines(
         context->getDevice(), pipelineCache, 1, &pipelineInfo, nullptr, &cachedPipeline->pipeline);
     
     if (result != VK_SUCCESS) {
-        std::cerr << "Failed to create compute pipeline: " << result << std::endl;
+        std::cerr << "ComputePipelineManager: CRITICAL ERROR - Failed to create compute pipeline!" << std::endl;
+        std::cerr << "  Shader path: " << state.shaderPath << std::endl;
+        std::cerr << "  VkResult: " << result << std::endl;
+        std::cerr << "  Pipeline layout valid: " << (cachedPipeline->layout != VK_NULL_HANDLE ? "YES" : "NO") << std::endl;
+        std::cerr << "  Pipeline cache valid: " << (pipelineCache != VK_NULL_HANDLE ? "YES" : "NO") << std::endl;
+        std::cerr << "  Shader module valid: " << (shaderModule != VK_NULL_HANDLE ? "YES" : "NO") << std::endl;
+        std::cerr << "  Device valid: " << (context->getDevice() != VK_NULL_HANDLE ? "YES" : "NO") << std::endl;
+        
         if (cachedPipeline->layout != VK_NULL_HANDLE) {
             context->getLoader().vkDestroyPipelineLayout(context->getDevice(), cachedPipeline->layout, nullptr);
         }
         return nullptr;
+    } else {
+        std::cout << "ComputePipelineManager: Compute pipeline created successfully" << std::endl;
     }
     
     // Set up dispatch optimization info
@@ -416,6 +431,13 @@ std::unique_ptr<CachedComputePipeline> ComputePipelineManager::createPipelineInt
 
 VkPipelineLayout ComputePipelineManager::createPipelineLayout(const std::vector<VkDescriptorSetLayout>& setLayouts,
                                                              const std::vector<VkPushConstantRange>& pushConstants) {
+    std::cout << "ComputePipelineManager: Creating pipeline layout" << std::endl;
+    std::cout << "  Descriptor set layouts count: " << setLayouts.size() << std::endl;
+    for (size_t i = 0; i < setLayouts.size(); ++i) {
+        std::cout << "    Layout[" << i << "]: " << (void*)setLayouts[i] << (setLayouts[i] != VK_NULL_HANDLE ? " (valid)" : " (INVALID!)") << std::endl;
+    }
+    std::cout << "  Push constant ranges count: " << pushConstants.size() << std::endl;
+    
     VkPipelineLayoutCreateInfo layoutInfo{};
     layoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
     layoutInfo.setLayoutCount = static_cast<uint32_t>(setLayouts.size());
@@ -428,8 +450,12 @@ VkPipelineLayout ComputePipelineManager::createPipelineLayout(const std::vector<
         context->getDevice(), &layoutInfo, nullptr, &layout);
     
     if (result != VK_SUCCESS) {
-        std::cerr << "Failed to create compute pipeline layout: " << result << std::endl;
+        std::cerr << "ComputePipelineManager: CRITICAL ERROR - Failed to create pipeline layout!" << std::endl;
+        std::cerr << "  VkResult: " << result << std::endl;
+        std::cerr << "  Device valid: " << (context->getDevice() != VK_NULL_HANDLE ? "YES" : "NO") << std::endl;
         return VK_NULL_HANDLE;
+    } else {
+        std::cout << "ComputePipelineManager: Pipeline layout created successfully: " << (void*)layout << std::endl;
     }
     
     return layout;
@@ -450,6 +476,46 @@ void ComputePipelineManager::clearCache() {
     
     pipelineCache_.clear();
     stats.totalPipelines = 0;
+}
+
+bool ComputePipelineManager::recreatePipelineCache() {
+    if (!context) {
+        std::cerr << "ComputePipelineManager: Cannot recreate pipeline cache - no context" << std::endl;
+        return false;
+    }
+    
+    std::cout << "ComputePipelineManager: CRITICAL FIX - Recreating pipeline cache to prevent second resize corruption" << std::endl;
+    
+    // Clear existing pipeline objects first
+    clearCache();
+    
+    // CRITICAL FIX: Also clear descriptor layout cache to prevent stale layout handles
+    // Descriptor layouts may become invalid after command pool recreation
+    if (layoutManager) {
+        std::cout << "ComputePipelineManager: Also clearing descriptor layout cache to prevent stale handles" << std::endl;
+        layoutManager->clearCache();
+    }
+    
+    // Destroy and recreate the VkPipelineCache object itself
+    if (pipelineCache != VK_NULL_HANDLE) {
+        std::cout << "ComputePipelineManager: Destroying corrupted pipeline cache" << std::endl;
+        context->getLoader().vkDestroyPipelineCache(context->getDevice(), pipelineCache, nullptr);
+        pipelineCache = VK_NULL_HANDLE;
+    }
+    
+    // Create fresh pipeline cache
+    VkPipelineCacheCreateInfo cacheInfo{};
+    cacheInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
+    cacheInfo.initialDataSize = 0;
+    cacheInfo.pInitialData = nullptr;
+    
+    if (context->getLoader().vkCreatePipelineCache(context->getDevice(), &cacheInfo, nullptr, &pipelineCache) != VK_SUCCESS) {
+        std::cerr << "ComputePipelineManager: CRITICAL FAILURE - Failed to recreate pipeline cache" << std::endl;
+        return false;
+    }
+    
+    std::cout << "ComputePipelineManager: Pipeline cache successfully recreated" << std::endl;
+    return true;
 }
 
 void ComputePipelineManager::evictLeastRecentlyUsed() {

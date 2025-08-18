@@ -385,13 +385,42 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
     const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
     void* pUserData) {
     
-    // Filter out less important messages but include surface-related warnings
-    if (messageSeverity >= VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT ||
-        (pCallbackData && pCallbackData->pMessage && 
-         (strstr(pCallbackData->pMessage, "surface") || 
-          strstr(pCallbackData->pMessage, "swapchain") ||
-          strstr(pCallbackData->pMessage, "queue family")))) {
-        std::cerr << "Validation layer: " << pCallbackData->pMessage << std::endl;
+    // Enhanced validation for resize issue investigation
+    // Show ALL messages during resize troubleshooting
+    const char* severityStr = "";
+    switch (messageSeverity) {
+        case VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT: severityStr = "VERBOSE"; break;
+        case VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT: severityStr = "INFO"; break;
+        case VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT: severityStr = "WARNING"; break;
+        case VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT: severityStr = "ERROR"; break;
+        default: severityStr = "UNKNOWN"; break;
+    }
+    
+    const char* typeStr = "";
+    switch (messageType) {
+        case VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT: typeStr = "GENERAL"; break;
+        case VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT: typeStr = "VALIDATION"; break;
+        case VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT: typeStr = "PERFORMANCE"; break;
+        default: typeStr = "UNKNOWN"; break;
+    }
+    
+    // Priority keywords for resize investigation
+    bool isResizeRelated = pCallbackData && pCallbackData->pMessage && 
+        (strstr(pCallbackData->pMessage, "surface") || 
+         strstr(pCallbackData->pMessage, "swapchain") ||
+         strstr(pCallbackData->pMessage, "queue family") ||
+         strstr(pCallbackData->pMessage, "command buffer") ||
+         strstr(pCallbackData->pMessage, "fence") ||
+         strstr(pCallbackData->pMessage, "semaphore") ||
+         strstr(pCallbackData->pMessage, "pipeline") ||
+         strstr(pCallbackData->pMessage, "descriptor") ||
+         strstr(pCallbackData->pMessage, "memory") ||
+         strstr(pCallbackData->pMessage, "buffer") ||
+         strstr(pCallbackData->pMessage, "image"));
+    
+    // Show important messages or resize-related messages
+    if (messageSeverity >= VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT || isResizeRelated) {
+        std::cerr << "[VULKAN " << severityStr << " " << typeStr << "] " << pCallbackData->pMessage << std::endl;
     }
     
     return VK_FALSE;

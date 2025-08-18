@@ -52,10 +52,11 @@ private:
     std::vector<VkFramebuffer> swapChainFramebuffers;
 
 
-    bool createSwapChain();
+    bool createSwapChain(VkSwapchainKHR oldSwapchainKHR = VK_NULL_HANDLE);
     bool createImageViews();
     bool createMSAAColorResources();
     void cleanupSwapChain();
+    void cleanupSwapChainExceptSwapchain();
     
     SwapChainSupportDetails querySwapChainSupport(VkPhysicalDevice device);
     VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats);

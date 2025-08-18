@@ -75,9 +75,12 @@ RenderFrameResult RenderFrameDirector::directFrame(
     configureFrameGraphNodes(result.imageIndex, world);
 
     // 6. Execute frame graph
+    std::cout << "RenderFrameDirector: About to execute frame graph for frame " << currentFrame << std::endl;
     result.executionResult = frameGraph->execute(currentFrame);
+    std::cout << "RenderFrameDirector: Frame graph execution completed successfully" << std::endl;
     result.success = true;
 
+    std::cout << "RenderFrameDirector: directFrame completed successfully" << std::endl;
     return result;
 }
 
@@ -217,7 +220,42 @@ void RenderFrameDirector::resetSwapchainCache() {
     // 2. Reset cache for new swapchain size  
     swapchainImageIds.assign(swapchain->getImages().size(), 0);
     
-    // 3. That's it! Next frame will naturally import new images
+    // 3. CRITICAL FIX FOR SECOND RESIZE CRASH: Recreate command pool to prevent corruption
+    // This addresses cumulative command pool corruption that survives first resize but crashes on second
+    if (sync && !sync->recreateCommandPool()) {
+        std::cerr << "RenderFrameDirector: CRITICAL ERROR - Failed to recreate command pool during swapchain recreation!" << std::endl;
+        std::cerr << "  This may cause subsequent frame rendering to fail or crash." << std::endl;
+    } else {
+        std::cout << "RenderFrameDirector: Successfully recreated command pool during swapchain recreation" << std::endl;
+    }
+    
+    // 4. CRITICAL FIX: Update BOTH graphics AND compute descriptor sets after swapchain recreation
+    // This fixes the second window resize crash by ensuring all descriptor sets have valid buffer bindings
+    if (gpuEntityManager && resourceContext) {
+        VkBuffer entityBuffer = gpuEntityManager->getEntityBuffer();
+        VkBuffer positionBuffer = gpuEntityManager->getPositionBuffer();
+        
+        if (entityBuffer != VK_NULL_HANDLE && positionBuffer != VK_NULL_HANDLE) {
+            bool graphicsSuccess = resourceContext->updateDescriptorSetsWithEntityAndPositionBuffers(entityBuffer, positionBuffer);
+            bool computeSuccess = gpuEntityManager->recreateComputeDescriptorSets();
+            
+            if (graphicsSuccess && computeSuccess) {
+                std::cout << "RenderFrameDirector: Successfully updated graphics AND compute descriptor sets after swapchain recreation" << std::endl;
+            } else {
+                std::cerr << "RenderFrameDirector: ERROR - Failed to update descriptor sets after swapchain recreation!" << std::endl;
+                std::cerr << "  Graphics descriptor sets: " << (graphicsSuccess ? "SUCCESS" : "FAILED") << std::endl;
+                std::cerr << "  Compute descriptor sets: " << (computeSuccess ? "SUCCESS" : "FAILED") << std::endl;
+            }
+        } else {
+            std::cerr << "RenderFrameDirector: WARNING - Invalid entity or position buffer during swapchain recreation" << std::endl;
+            std::cerr << "  Entity buffer: " << (entityBuffer != VK_NULL_HANDLE ? "VALID" : "NULL") << std::endl;
+            std::cerr << "  Position buffer: " << (positionBuffer != VK_NULL_HANDLE ? "VALID" : "NULL") << std::endl;
+        }
+    } else {
+        std::cerr << "RenderFrameDirector: WARNING - Missing gpuEntityManager or resourceContext during swapchain recreation" << std::endl;
+    }
+    
+    // 5. That's it! Next frame will naturally import new images
     // No forced rebuilds, no stale references, no complexity
 }
 

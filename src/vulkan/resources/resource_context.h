@@ -158,6 +158,7 @@ public:
     bool createGraphicsDescriptorSets(VkDescriptorSetLayout descriptorSetLayout);
     bool updateDescriptorSetsWithPositionBuffer(VkBuffer positionBuffer);
     bool updateDescriptorSetsWithPositionBuffers(VkBuffer currentPositionBuffer, VkBuffer targetPositionBuffer);
+    bool updateDescriptorSetsWithEntityAndPositionBuffers(VkBuffer entityBuffer, VkBuffer positionBuffer);
     
     // Getters for graphics resources
     const std::vector<VkBuffer>& getUniformBuffers() const { return uniformBuffers; }

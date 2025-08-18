@@ -100,9 +100,13 @@ void EntityComputeNode::execute(VkCommandBuffer commandBuffer, const FrameGraph&
     ComputePipelineState pipelineState = ComputePipelinePresets::createEntityMovementState(descriptorLayout);
     
     // Create compute dispatch
+    std::cout << "EntityComputeNode: Creating compute dispatch..." << std::endl;
     ComputeDispatch dispatch{};
     dispatch.pipeline = computeManager->getPipeline(pipelineState);
+    std::cout << "EntityComputeNode: Got compute pipeline: " << (void*)dispatch.pipeline << std::endl;
+    
     dispatch.layout = computeManager->getPipelineLayout(pipelineState);
+    std::cout << "EntityComputeNode: Got pipeline layout: " << (void*)dispatch.layout << std::endl;
     
     if (dispatch.pipeline == VK_NULL_HANDLE || dispatch.layout == VK_NULL_HANDLE) {
         std::cerr << "EntityComputeNode: Failed to get compute pipeline or layout" << std::endl;
@@ -110,9 +114,13 @@ void EntityComputeNode::execute(VkCommandBuffer commandBuffer, const FrameGraph&
     }
     
     // Set up descriptor sets
+    std::cout << "EntityComputeNode: Getting compute descriptor set..." << std::endl;
     VkDescriptorSet computeDescriptorSet = gpuEntityManager->getComputeDescriptorSet();
+    std::cout << "EntityComputeNode: Got descriptor set: " << (void*)computeDescriptorSet << std::endl;
+    
     if (computeDescriptorSet != VK_NULL_HANDLE) {
         dispatch.descriptorSets.push_back(computeDescriptorSet);
+        std::cout << "EntityComputeNode: Added descriptor set to dispatch" << std::endl;
     } else {
         std::cerr << "EntityComputeNode: ERROR - Missing compute descriptor set!" << std::endl;
         return;
@@ -166,28 +174,40 @@ void EntityComputeNode::execute(VkCommandBuffer commandBuffer, const FrameGraph&
         return;
     }
     
+    std::cout << "EntityComputeNode: About to bind compute pipeline..." << std::endl;
     // Bind pipeline and descriptor sets once
     context->getLoader().vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, dispatch.pipeline);
+    std::cout << "EntityComputeNode: Pipeline bound successfully" << std::endl;
+    
+    std::cout << "EntityComputeNode: About to bind descriptor sets..." << std::endl;
     context->getLoader().vkCmdBindDescriptorSets(
         commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, dispatch.layout,
         0, 1, &dispatch.descriptorSets[0], 0, nullptr);
+    std::cout << "EntityComputeNode: Descriptor sets bound successfully" << std::endl;
     
     if (!dispatchParams.useChunking) {
         // Single dispatch execution
+        std::cout << "EntityComputeNode: Starting single dispatch execution..." << std::endl;
         if (timeoutDetector) {
             timeoutDetector->beginComputeDispatch("EntityMovement", dispatchParams.totalWorkgroups);
         }
         
+        std::cout << "EntityComputeNode: About to push constants..." << std::endl;
         context->getLoader().vkCmdPushConstants(
             commandBuffer, dispatch.layout, VK_SHADER_STAGE_COMPUTE_BIT,
             0, sizeof(ComputePushConstants), &pushConstants);
+        std::cout << "EntityComputeNode: Push constants completed" << std::endl;
+        
+        std::cout << "EntityComputeNode: About to dispatch " << dispatchParams.totalWorkgroups << " workgroups..." << std::endl;
         context->getLoader().vkCmdDispatch(commandBuffer, dispatchParams.totalWorkgroups, 1, 1);
+        std::cout << "EntityComputeNode: Dispatch completed successfully" << std::endl;
         
         if (timeoutDetector) {
             timeoutDetector->endComputeDispatch();
         }
         
         // Memory barrier for compute→graphics synchronization
+        std::cout << "EntityComputeNode: About to set memory barrier..." << std::endl;
         VkMemoryBarrier memoryBarrier{};
         memoryBarrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
         memoryBarrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
@@ -198,10 +218,15 @@ void EntityComputeNode::execute(VkCommandBuffer commandBuffer, const FrameGraph&
             VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
             VK_PIPELINE_STAGE_VERTEX_INPUT_BIT,
             0, 1, &memoryBarrier, 0, nullptr, 0, nullptr);
+        std::cout << "EntityComputeNode: Memory barrier completed successfully" << std::endl;
     } else {
+        std::cout << "EntityComputeNode: Starting chunked dispatch execution..." << std::endl;
         executeChunkedDispatch(commandBuffer, context, dispatch, 
                               dispatchParams.totalWorkgroups, dispatchParams.maxWorkgroupsPerChunk, entityCount);
+        std::cout << "EntityComputeNode: Chunked dispatch completed successfully" << std::endl;
     }
+    
+    std::cout << "EntityComputeNode: Execute method completed successfully" << std::endl;
 }
 
 void EntityComputeNode::executeChunkedDispatch(

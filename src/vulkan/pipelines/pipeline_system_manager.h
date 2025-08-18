@@ -50,6 +50,9 @@ public:
     void warmupCommonPipelines();
     void optimizeCaches(uint64_t currentFrame);
     void resetFrameStats();
+    
+    // CRITICAL FIX: Pipeline cache corruption fix for second resize crash
+    bool recreateAllPipelineCaches();
 
     // Statistics aggregation
     struct SystemStats {

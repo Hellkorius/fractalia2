@@ -67,6 +67,7 @@ public:
     // Descriptor set support for frame graph
     bool createComputeDescriptorSets(VkDescriptorSetLayout layout);
     bool createGraphicsDescriptorSets(VkDescriptorSetLayout layout);
+    bool recreateComputeDescriptorSets(); // CRITICAL FIX: Recreate compute descriptor sets during swapchain recreation
     VkDescriptorSet getComputeDescriptorSet() const { return computeDescriptorSet; }
     VkDescriptorSet getGraphicsDescriptorSet() const { return graphicsDescriptorSet; }
     

@@ -137,6 +137,9 @@ public:
     void optimizeCache(uint64_t currentFrame);  // Remove unused pipelines
     void clearCache();
     
+    // CRITICAL FIX: Pipeline cache corruption fix for second resize crash
+    bool recreatePipelineCache();
+    
     // Access to layout manager for descriptor layout creation
     DescriptorLayoutManager* getLayoutManager() { return layoutManager; }
     const DescriptorLayoutManager* getLayoutManager() const { return layoutManager; }

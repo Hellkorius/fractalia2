@@ -545,3 +545,109 @@ bool GPUEntityManager::createDescriptorSetLayouts() {
     std::cout << "GPUEntityManager: Descriptor set layouts created successfully" << std::endl;
     return true;
 }
+
+bool GPUEntityManager::recreateComputeDescriptorSets() {
+    // CRITICAL FIX: Recreate compute descriptor sets during swapchain recreation
+    // This is essential because compute descriptor sets can become stale during swapchain recreation
+    
+    // Validate that we have the compute descriptor set layout
+    if (computeDescriptorSetLayout == VK_NULL_HANDLE) {
+        std::cerr << "GPUEntityManager: ERROR - Cannot recreate compute descriptor sets: layout not available" << std::endl;
+        return false;
+    }
+    
+    // Validate buffers are available
+    if (entityBuffer == VK_NULL_HANDLE || positionBuffer == VK_NULL_HANDLE || 
+        currentPositionBuffer == VK_NULL_HANDLE || targetPositionBuffer == VK_NULL_HANDLE) {
+        std::cerr << "GPUEntityManager: ERROR - Cannot recreate compute descriptor sets: buffers not available" << std::endl;
+        return false;
+    }
+    
+    // CRITICAL FIX: Reset the descriptor pool to allow reallocation
+    // The pool was created with maxSets=1, so we need to reset it to reallocate
+    if (computeDescriptorPool != VK_NULL_HANDLE) {
+        if (context->getLoader().vkResetDescriptorPool(context->getDevice(), computeDescriptorPool, 0) != VK_SUCCESS) {
+            std::cerr << "GPUEntityManager: ERROR - Failed to reset compute descriptor pool" << std::endl;
+            return false;
+        }
+        std::cout << "GPUEntityManager: Reset compute descriptor pool for reallocation" << std::endl;
+        computeDescriptorSet = VK_NULL_HANDLE; // Pool reset invalidates all descriptor sets
+    }
+    
+    // Allocate new descriptor set (reusing same layout and pool)
+    VkDescriptorSetAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    allocInfo.descriptorPool = computeDescriptorPool;
+    allocInfo.descriptorSetCount = 1;
+    allocInfo.pSetLayouts = &computeDescriptorSetLayout;
+
+    if (context->getLoader().vkAllocateDescriptorSets(context->getDevice(), &allocInfo, &computeDescriptorSet) != VK_SUCCESS) {
+        std::cerr << "GPUEntityManager: ERROR - Failed to reallocate compute descriptor set" << std::endl;
+        return false;
+    }
+
+    // Update descriptor set with current buffer bindings (same as createComputeDescriptorSets)
+    std::array<VkWriteDescriptorSet, 4> descriptorWrites{};
+
+    // Binding 0: Entity buffer
+    VkDescriptorBufferInfo entityBufferInfo{};
+    entityBufferInfo.buffer = entityBuffer;
+    entityBufferInfo.offset = 0;
+    entityBufferInfo.range = VK_WHOLE_SIZE;
+
+    descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    descriptorWrites[0].dstSet = computeDescriptorSet;
+    descriptorWrites[0].dstBinding = 0;
+    descriptorWrites[0].dstArrayElement = 0;
+    descriptorWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    descriptorWrites[0].descriptorCount = 1;
+    descriptorWrites[0].pBufferInfo = &entityBufferInfo;
+
+    // Binding 1: Position buffer (output)
+    VkDescriptorBufferInfo positionBufferInfo{};
+    positionBufferInfo.buffer = positionBuffer;
+    positionBufferInfo.offset = 0;
+    positionBufferInfo.range = VK_WHOLE_SIZE;
+
+    descriptorWrites[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    descriptorWrites[1].dstSet = computeDescriptorSet;
+    descriptorWrites[1].dstBinding = 1;
+    descriptorWrites[1].dstArrayElement = 0;
+    descriptorWrites[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    descriptorWrites[1].descriptorCount = 1;
+    descriptorWrites[1].pBufferInfo = &positionBufferInfo;
+
+    // Binding 2: Current position buffer
+    VkDescriptorBufferInfo currentPosBufferInfo{};
+    currentPosBufferInfo.buffer = currentPositionBuffer;
+    currentPosBufferInfo.offset = 0;
+    currentPosBufferInfo.range = VK_WHOLE_SIZE;
+
+    descriptorWrites[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    descriptorWrites[2].dstSet = computeDescriptorSet;
+    descriptorWrites[2].dstBinding = 2;
+    descriptorWrites[2].dstArrayElement = 0;
+    descriptorWrites[2].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    descriptorWrites[2].descriptorCount = 1;
+    descriptorWrites[2].pBufferInfo = &currentPosBufferInfo;
+
+    // Binding 3: Target position buffer
+    VkDescriptorBufferInfo targetPosBufferInfo{};
+    targetPosBufferInfo.buffer = targetPositionBuffer;
+    targetPosBufferInfo.offset = 0;
+    targetPosBufferInfo.range = VK_WHOLE_SIZE;
+
+    descriptorWrites[3].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    descriptorWrites[3].dstSet = computeDescriptorSet;
+    descriptorWrites[3].dstBinding = 3;
+    descriptorWrites[3].dstArrayElement = 0;
+    descriptorWrites[3].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    descriptorWrites[3].descriptorCount = 1;
+    descriptorWrites[3].pBufferInfo = &targetPosBufferInfo;
+
+    // Update all descriptor bindings
+    context->getLoader().vkUpdateDescriptorSets(context->getDevice(), static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
+
+    std::cout << "GPUEntityManager: Compute descriptor sets successfully recreated during swapchain recreation" << std::endl;
+    return true;
+}

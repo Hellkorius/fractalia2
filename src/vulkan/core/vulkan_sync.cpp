@@ -139,19 +139,69 @@ void VulkanSync::resetCommandBuffersForFrame(uint32_t frameIndex) {
 void VulkanSync::resetAllCommandBuffers() {
     if (!context) return;
     
+    // POTENTIAL FIX: Add detailed logging for command pool reset during resize
+    std::cout << "VulkanSync: Attempting to reset command pool..." << std::endl;
+    
     // Optimized: Use vkResetCommandPool for batch reset of all buffers
     // This is more efficient than individual resets when resetting many buffers
     VkResult result = context->getLoader().vkResetCommandPool(context->getDevice(), commandPool, 0);
     if (result != VK_SUCCESS) {
-        std::cerr << "VulkanSync: Failed to reset command pool, falling back to individual resets" << std::endl;
+        std::cerr << "VulkanSync: CRITICAL - Command pool reset FAILED with VkResult: " << result << std::endl;
+        std::cerr << "VulkanSync: This may indicate command pool corruption - falling back to individual resets" << std::endl;
         
         // Fallback to individual resets if pool reset fails
         for (size_t i = 0; i < commandBuffers.size(); ++i) {
-            context->getLoader().vkResetCommandBuffer(commandBuffers[i], 0);
+            VkResult cmdResult = context->getLoader().vkResetCommandBuffer(commandBuffers[i], 0);
+            if (cmdResult != VK_SUCCESS) {
+                std::cerr << "VulkanSync: Individual graphics command buffer " << i << " reset failed: " << cmdResult << std::endl;
+            }
         }
         for (size_t i = 0; i < computeCommandBuffers.size(); ++i) {
-            context->getLoader().vkResetCommandBuffer(computeCommandBuffers[i], 0);
+            VkResult cmdResult = context->getLoader().vkResetCommandBuffer(computeCommandBuffers[i], 0);
+            if (cmdResult != VK_SUCCESS) {
+                std::cerr << "VulkanSync: Individual compute command buffer " << i << " reset failed: " << cmdResult << std::endl;
+            }
         }
+    } else {
+        std::cout << "VulkanSync: Command pool reset successful" << std::endl;
     }
+}
+
+bool VulkanSync::recreateCommandPool() {
+    if (!context) {
+        std::cerr << "VulkanSync: Cannot recreate command pool - no context" << std::endl;
+        return false;
+    }
+    
+    std::cout << "VulkanSync: CRITICAL FIX - Recreating command pool to fix resize corruption" << std::endl;
+    
+    // Wait for device to be idle before destroying command pool
+    context->getLoader().vkDeviceWaitIdle(context->getDevice());
+    
+    // Destroy old command pool (this automatically frees all command buffers)
+    if (commandPool != VK_NULL_HANDLE) {
+        std::cout << "VulkanSync: Destroying corrupted command pool" << std::endl;
+        context->getLoader().vkDestroyCommandPool(context->getDevice(), commandPool, nullptr);
+        commandPool = VK_NULL_HANDLE;
+    }
+    
+    // Clear command buffer vectors (handles are now invalid)
+    commandBuffers.clear();
+    computeCommandBuffers.clear();
+    
+    // Recreate command pool
+    if (!createCommandPool()) {
+        std::cerr << "VulkanSync: CRITICAL FAILURE - Could not recreate command pool" << std::endl;
+        return false;
+    }
+    
+    // Recreate command buffers
+    if (!createCommandBuffers()) {
+        std::cerr << "VulkanSync: CRITICAL FAILURE - Could not recreate command buffers" << std::endl;
+        return false;
+    }
+    
+    std::cout << "VulkanSync: Command pool and buffers successfully recreated" << std::endl;
+    return true;
 }
 

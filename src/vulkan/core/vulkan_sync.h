@@ -27,6 +27,9 @@ public:
     // Optimized command buffer management
     void resetCommandBuffersForFrame(uint32_t frameIndex);
     void resetAllCommandBuffers();
+    
+    // CRITICAL FIX: Command pool recreation for resize corruption fix
+    bool recreateCommandPool();
 
 private:
     const VulkanContext* context = nullptr;

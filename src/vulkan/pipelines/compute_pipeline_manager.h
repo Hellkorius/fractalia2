@@ -147,6 +147,9 @@ public:
     void optimizeCache(uint64_t currentFrame);
     void clearCache();
     
+    // CRITICAL FIX: Pipeline cache corruption fix for second resize crash
+    bool recreatePipelineCache();
+    
     // Async compilation for hot reloading
     bool compileAsync(const ComputePipelineState& state);
     bool isAsyncCompilationComplete(const ComputePipelineState& state);

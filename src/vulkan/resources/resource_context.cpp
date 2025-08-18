@@ -928,3 +928,72 @@ bool ResourceContext::updateDescriptorSetsWithPositionBuffers(VkBuffer currentPo
     
     return true;
 }
+
+bool ResourceContext::updateDescriptorSetsWithEntityAndPositionBuffers(VkBuffer entityBuffer, VkBuffer positionBuffer) {
+    // Validate inputs
+    if (entityBuffer == VK_NULL_HANDLE) {
+        std::cerr << "ResourceContext: ERROR - Entity buffer is null in updateDescriptorSetsWithEntityAndPositionBuffers" << std::endl;
+        return false;
+    }
+    if (positionBuffer == VK_NULL_HANDLE) {
+        std::cerr << "ResourceContext: ERROR - Position buffer is null in updateDescriptorSetsWithEntityAndPositionBuffers" << std::endl;
+        return false;
+    }
+    if (graphicsDescriptorSets.empty()) {
+        std::cerr << "ResourceContext: ERROR - Graphics descriptor sets not created yet" << std::endl;
+        return false;
+    }
+    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+        // UBO binding (binding 0)
+        VkDescriptorBufferInfo uboBufferInfo{};
+        uboBufferInfo.buffer = uniformBuffers[i];
+        uboBufferInfo.offset = 0;
+        uboBufferInfo.range = sizeof(glm::mat4) * 2;
+        
+        // Entity buffer binding (binding 1) - THE MISSING BINDING!
+        VkDescriptorBufferInfo entityBufferInfo{};
+        entityBufferInfo.buffer = entityBuffer;
+        entityBufferInfo.offset = 0;
+        entityBufferInfo.range = VK_WHOLE_SIZE;
+        
+        // Position buffer binding (binding 2)
+        VkDescriptorBufferInfo positionBufferInfo{};
+        positionBufferInfo.buffer = positionBuffer;
+        positionBufferInfo.offset = 0;
+        positionBufferInfo.range = VK_WHOLE_SIZE;
+        
+        // Write all three descriptors
+        VkWriteDescriptorSet descriptorWrites[3] = {};
+        
+        // UBO write (binding 0)
+        descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        descriptorWrites[0].dstSet = graphicsDescriptorSets[i];
+        descriptorWrites[0].dstBinding = 0;
+        descriptorWrites[0].dstArrayElement = 0;
+        descriptorWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        descriptorWrites[0].descriptorCount = 1;
+        descriptorWrites[0].pBufferInfo = &uboBufferInfo;
+        
+        // Entity buffer write (binding 1)
+        descriptorWrites[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        descriptorWrites[1].dstSet = graphicsDescriptorSets[i];
+        descriptorWrites[1].dstBinding = 1;
+        descriptorWrites[1].dstArrayElement = 0;
+        descriptorWrites[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        descriptorWrites[1].descriptorCount = 1;
+        descriptorWrites[1].pBufferInfo = &entityBufferInfo;
+        
+        // Position buffer write (binding 2)
+        descriptorWrites[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        descriptorWrites[2].dstSet = graphicsDescriptorSets[i];
+        descriptorWrites[2].dstBinding = 2;
+        descriptorWrites[2].dstArrayElement = 0;
+        descriptorWrites[2].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        descriptorWrites[2].descriptorCount = 1;
+        descriptorWrites[2].pBufferInfo = &positionBufferInfo;
+        
+        context->getLoader().vkUpdateDescriptorSets(context->getDevice(), 3, descriptorWrites, 0, nullptr);
+    }
+    
+    return true;
+}

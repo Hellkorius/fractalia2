@@ -81,22 +81,48 @@ VkResult GPUSynchronizationService::waitForGraphicsFence(uint32_t frameIndex, co
 }
 
 bool GPUSynchronizationService::waitForAllFrames() {
+    std::cout << "GPUSynchronizationService: CRITICAL - Waiting for all frames before swapchain recreation" << std::endl;
+    
     for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
         if (computeInUse[i]) {
+            std::cout << "GPUSynchronizationService: Waiting for compute fence " << i << std::endl;
             VkResult result = waitForFenceRobust(computeFences[i], "compute");
             if (result == VK_ERROR_DEVICE_LOST) {
                 return false;
             }
             computeInUse[i] = false;
+            std::cout << "GPUSynchronizationService: Compute fence " << i << " signaled successfully" << std::endl;
         }
         if (graphicsInUse[i]) {
+            std::cout << "GPUSynchronizationService: Waiting for graphics fence " << i << std::endl;
             VkResult result = waitForFenceRobust(graphicsFences[i], "graphics");
             if (result == VK_ERROR_DEVICE_LOST) {
                 return false;
             }
             graphicsInUse[i] = false;
+            std::cout << "GPUSynchronizationService: Graphics fence " << i << " signaled successfully" << std::endl;
         }
     }
+    
+    // CRITICAL FIX FOR SECOND RESIZE CRASH: Reset all fences after waiting
+    // This prevents fence timeline corruption that can survive first resize but crash on second
+    std::cout << "GPUSynchronizationService: CRITICAL FIX - Resetting all fences after swapchain recreation wait" << std::endl;
+    std::vector<VkFence> allFences;
+    for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
+        allFences.push_back(computeFences[i]);
+        allFences.push_back(graphicsFences[i]);
+    }
+    
+    VkResult resetResult = context->getLoader().vkResetFences(context->getDevice(), 
+                                                             static_cast<uint32_t>(allFences.size()), 
+                                                             allFences.data());
+    if (resetResult != VK_SUCCESS) {
+        std::cerr << "GPUSynchronizationService: WARNING - Failed to reset fences after swapchain recreation: " << resetResult << std::endl;
+        std::cerr << "  This may cause fence synchronization corruption in subsequent frames" << std::endl;
+    } else {
+        std::cout << "GPUSynchronizationService: All fences successfully reset after swapchain recreation" << std::endl;
+    }
+    
     return true;
 }
 
