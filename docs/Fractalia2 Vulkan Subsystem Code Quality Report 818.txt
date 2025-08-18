@@ -11,6 +11,7 @@
   1. Massive Code Duplication (Critical Priority)
 
   - vulkan/core/vulkan_function_loader.cpp: 100+ identical function loading patterns
+  done
   - vulkan/core/vulkan_raii.cpp: 20+ identical deleter implementations
   - vulkan/pipelines/: Hash calculation patterns repeated across multiple files
   - Impact: Maintenance nightmare, bug multiplication, development velocity reduction

@@ -4,125 +4,235 @@
 
 namespace vulkan_raii {
 
-void ShaderModuleDeleter::operator()(VkShaderModule handle) {
-    if (context && handle != VK_NULL_HANDLE && context->getDevice() != VK_NULL_HANDLE) {
-        context->getLoader().vkDestroyShaderModule(context->getDevice(), handle, nullptr);
+// Generic deleter template
+template<typename VkType>
+struct GenericDeleter : VulkanDeleter {
+    using DeleteFunction = void(*)(const VulkanFunctionLoader&, VkDevice, VkType, const VkAllocationCallbacks*);
+    using InstanceDeleteFunction = void(*)(const VulkanFunctionLoader&, VkInstance, VkType, const VkAllocationCallbacks*);
+    
+    DeleteFunction deleteFunc;
+    InstanceDeleteFunction instanceDeleteFunc;
+    bool requiresDeviceCheck;
+    
+    GenericDeleter(DeleteFunction func, bool deviceCheck = false) 
+        : VulkanDeleter(), deleteFunc(func), instanceDeleteFunc(nullptr), requiresDeviceCheck(deviceCheck) {}
+    
+    GenericDeleter(InstanceDeleteFunction func) 
+        : VulkanDeleter(), deleteFunc(nullptr), instanceDeleteFunc(func), requiresDeviceCheck(false) {}
+    
+    GenericDeleter(const VulkanContext* ctx, DeleteFunction func, bool deviceCheck = false) 
+        : VulkanDeleter(ctx), deleteFunc(func), instanceDeleteFunc(nullptr), requiresDeviceCheck(deviceCheck) {}
+    
+    GenericDeleter(const VulkanContext* ctx, InstanceDeleteFunction func) 
+        : VulkanDeleter(ctx), deleteFunc(nullptr), instanceDeleteFunc(func), requiresDeviceCheck(false) {}
+    
+    void operator()(VkType handle) {
+        if (!context || handle == VK_NULL_HANDLE) {
+            return;
+        }
+        
+        if (instanceDeleteFunc) {
+            if (context->getInstance() != VK_NULL_HANDLE) {
+                instanceDeleteFunc(context->getLoader(), context->getInstance(), handle, nullptr);
+            }
+        } else if (deleteFunc) {
+            if (!requiresDeviceCheck || context->getDevice() != VK_NULL_HANDLE) {
+                deleteFunc(context->getLoader(), context->getDevice(), handle, nullptr);
+            }
+        }
     }
+};
+
+// Specialized deleter for VkDeviceMemory (uses vkFreeMemory)
+struct DeviceMemoryDeleterImpl : VulkanDeleter {
+    DeviceMemoryDeleterImpl() : VulkanDeleter() {}
+    explicit DeviceMemoryDeleterImpl(const VulkanContext* ctx) : VulkanDeleter(ctx) {}
+    
+    void operator()(VkDeviceMemory handle) {
+        if (context && handle != VK_NULL_HANDLE) {
+            context->getLoader().vkFreeMemory(context->getDevice(), handle, nullptr);
+        }
+    }
+};
+
+// Function pointer wrappers for deleteFunc parameters
+static void destroyShaderModule(const VulkanFunctionLoader& loader, VkDevice device, VkShaderModule handle, const VkAllocationCallbacks* allocator) {
+    loader.vkDestroyShaderModule(device, handle, allocator);
+}
+
+static void destroyPipeline(const VulkanFunctionLoader& loader, VkDevice device, VkPipeline handle, const VkAllocationCallbacks* allocator) {
+    loader.vkDestroyPipeline(device, handle, allocator);
+}
+
+static void destroyPipelineLayout(const VulkanFunctionLoader& loader, VkDevice device, VkPipelineLayout handle, const VkAllocationCallbacks* allocator) {
+    loader.vkDestroyPipelineLayout(device, handle, allocator);
+}
+
+static void destroyDescriptorSetLayout(const VulkanFunctionLoader& loader, VkDevice device, VkDescriptorSetLayout handle, const VkAllocationCallbacks* allocator) {
+    loader.vkDestroyDescriptorSetLayout(device, handle, allocator);
+}
+
+static void destroyDescriptorPool(const VulkanFunctionLoader& loader, VkDevice device, VkDescriptorPool handle, const VkAllocationCallbacks* allocator) {
+    loader.vkDestroyDescriptorPool(device, handle, allocator);
+}
+
+static void destroyRenderPass(const VulkanFunctionLoader& loader, VkDevice device, VkRenderPass handle, const VkAllocationCallbacks* allocator) {
+    loader.vkDestroyRenderPass(device, handle, allocator);
+}
+
+static void destroySemaphore(const VulkanFunctionLoader& loader, VkDevice device, VkSemaphore handle, const VkAllocationCallbacks* allocator) {
+    loader.vkDestroySemaphore(device, handle, allocator);
+}
+
+static void destroyFence(const VulkanFunctionLoader& loader, VkDevice device, VkFence handle, const VkAllocationCallbacks* allocator) {
+    loader.vkDestroyFence(device, handle, allocator);
+}
+
+static void destroyCommandPool(const VulkanFunctionLoader& loader, VkDevice device, VkCommandPool handle, const VkAllocationCallbacks* allocator) {
+    loader.vkDestroyCommandPool(device, handle, allocator);
+}
+
+static void destroyBuffer(const VulkanFunctionLoader& loader, VkDevice device, VkBuffer handle, const VkAllocationCallbacks* allocator) {
+    loader.vkDestroyBuffer(device, handle, allocator);
+}
+
+static void destroyImage(const VulkanFunctionLoader& loader, VkDevice device, VkImage handle, const VkAllocationCallbacks* allocator) {
+    loader.vkDestroyImage(device, handle, allocator);
+}
+
+static void destroyImageView(const VulkanFunctionLoader& loader, VkDevice device, VkImageView handle, const VkAllocationCallbacks* allocator) {
+    loader.vkDestroyImageView(device, handle, allocator);
+}
+
+static void destroyFramebuffer(const VulkanFunctionLoader& loader, VkDevice device, VkFramebuffer handle, const VkAllocationCallbacks* allocator) {
+    loader.vkDestroyFramebuffer(device, handle, allocator);
+}
+
+static void destroyPipelineCache(const VulkanFunctionLoader& loader, VkDevice device, VkPipelineCache handle, const VkAllocationCallbacks* allocator) {
+    loader.vkDestroyPipelineCache(device, handle, allocator);
+}
+
+static void destroyQueryPool(const VulkanFunctionLoader& loader, VkDevice device, VkQueryPool handle, const VkAllocationCallbacks* allocator) {
+    loader.vkDestroyQueryPool(device, handle, allocator);
+}
+
+static void destroyDevice(const VulkanFunctionLoader& loader, VkDevice device, VkDevice handle, const VkAllocationCallbacks* allocator) {
+    loader.vkDestroyDevice(handle, allocator);
+}
+
+// Instance-based destroy functions
+static void destroyInstance(const VulkanFunctionLoader& loader, VkInstance instance, VkInstance handle, const VkAllocationCallbacks* allocator) {
+    loader.vkDestroyInstance(handle, allocator);
+}
+
+static void destroySurfaceKHR(const VulkanFunctionLoader& loader, VkInstance instance, VkSurfaceKHR handle, const VkAllocationCallbacks* allocator) {
+    loader.vkDestroySurfaceKHR(instance, handle, allocator);
+}
+
+static void destroyDebugUtilsMessengerEXT(const VulkanFunctionLoader& loader, VkInstance instance, VkDebugUtilsMessengerEXT handle, const VkAllocationCallbacks* allocator) {
+    loader.vkDestroyDebugUtilsMessengerEXT(instance, handle, allocator);
+}
+
+// Concrete deleter implementations using generic template
+void ShaderModuleDeleter::operator()(VkShaderModule handle) {
+    GenericDeleter<VkShaderModule> deleter(context, destroyShaderModule, true);
+    deleter(handle);
 }
 
 void PipelineDeleter::operator()(VkPipeline handle) {
-    if (context && handle != VK_NULL_HANDLE) {
-        context->getLoader().vkDestroyPipeline(context->getDevice(), handle, nullptr);
-    }
+    GenericDeleter<VkPipeline> deleter(context, destroyPipeline);
+    deleter(handle);
 }
 
 void PipelineLayoutDeleter::operator()(VkPipelineLayout handle) {
-    if (context && handle != VK_NULL_HANDLE) {
-        context->getLoader().vkDestroyPipelineLayout(context->getDevice(), handle, nullptr);
-    }
+    GenericDeleter<VkPipelineLayout> deleter(context, destroyPipelineLayout);
+    deleter(handle);
 }
 
 void DescriptorSetLayoutDeleter::operator()(VkDescriptorSetLayout handle) {
-    if (context && handle != VK_NULL_HANDLE) {
-        context->getLoader().vkDestroyDescriptorSetLayout(context->getDevice(), handle, nullptr);
-    }
+    GenericDeleter<VkDescriptorSetLayout> deleter(context, destroyDescriptorSetLayout);
+    deleter(handle);
 }
 
 void DescriptorPoolDeleter::operator()(VkDescriptorPool handle) {
-    if (context && handle != VK_NULL_HANDLE) {
-        context->getLoader().vkDestroyDescriptorPool(context->getDevice(), handle, nullptr);
-    }
+    GenericDeleter<VkDescriptorPool> deleter(context, destroyDescriptorPool);
+    deleter(handle);
 }
 
 void RenderPassDeleter::operator()(VkRenderPass handle) {
-    if (context && handle != VK_NULL_HANDLE) {
-        context->getLoader().vkDestroyRenderPass(context->getDevice(), handle, nullptr);
-    }
+    GenericDeleter<VkRenderPass> deleter(context, destroyRenderPass);
+    deleter(handle);
 }
 
 void SemaphoreDeleter::operator()(VkSemaphore handle) {
-    if (context && handle != VK_NULL_HANDLE && context->getDevice() != VK_NULL_HANDLE) {
-        context->getLoader().vkDestroySemaphore(context->getDevice(), handle, nullptr);
-    }
+    GenericDeleter<VkSemaphore> deleter(context, destroySemaphore, true);
+    deleter(handle);
 }
 
 void FenceDeleter::operator()(VkFence handle) {
-    if (context && handle != VK_NULL_HANDLE && context->getDevice() != VK_NULL_HANDLE) {
-        context->getLoader().vkDestroyFence(context->getDevice(), handle, nullptr);
-    }
+    GenericDeleter<VkFence> deleter(context, destroyFence, true);
+    deleter(handle);
 }
 
 void CommandPoolDeleter::operator()(VkCommandPool handle) {
-    if (context && handle != VK_NULL_HANDLE) {
-        context->getLoader().vkDestroyCommandPool(context->getDevice(), handle, nullptr);
-    }
+    GenericDeleter<VkCommandPool> deleter(context, destroyCommandPool);
+    deleter(handle);
 }
 
 void BufferDeleter::operator()(VkBuffer handle) {
-    if (context && handle != VK_NULL_HANDLE) {
-        context->getLoader().vkDestroyBuffer(context->getDevice(), handle, nullptr);
-    }
+    GenericDeleter<VkBuffer> deleter(context, destroyBuffer);
+    deleter(handle);
 }
 
 void ImageDeleter::operator()(VkImage handle) {
-    if (context && handle != VK_NULL_HANDLE) {
-        context->getLoader().vkDestroyImage(context->getDevice(), handle, nullptr);
-    }
+    GenericDeleter<VkImage> deleter(context, destroyImage);
+    deleter(handle);
 }
 
 void ImageViewDeleter::operator()(VkImageView handle) {
-    if (context && handle != VK_NULL_HANDLE) {
-        context->getLoader().vkDestroyImageView(context->getDevice(), handle, nullptr);
-    }
+    GenericDeleter<VkImageView> deleter(context, destroyImageView);
+    deleter(handle);
 }
 
 void DeviceMemoryDeleter::operator()(VkDeviceMemory handle) {
-    if (context && handle != VK_NULL_HANDLE) {
-        context->getLoader().vkFreeMemory(context->getDevice(), handle, nullptr);
-    }
+    DeviceMemoryDeleterImpl deleter(context);
+    deleter(handle);
 }
 
 void FramebufferDeleter::operator()(VkFramebuffer handle) {
-    if (context && handle != VK_NULL_HANDLE) {
-        context->getLoader().vkDestroyFramebuffer(context->getDevice(), handle, nullptr);
-    }
+    GenericDeleter<VkFramebuffer> deleter(context, destroyFramebuffer);
+    deleter(handle);
 }
 
 void PipelineCacheDeleter::operator()(VkPipelineCache handle) {
-    if (context && handle != VK_NULL_HANDLE) {
-        context->getLoader().vkDestroyPipelineCache(context->getDevice(), handle, nullptr);
-    }
+    GenericDeleter<VkPipelineCache> deleter(context, destroyPipelineCache);
+    deleter(handle);
 }
 
 void QueryPoolDeleter::operator()(VkQueryPool handle) {
-    if (context && handle != VK_NULL_HANDLE) {
-        context->getLoader().vkDestroyQueryPool(context->getDevice(), handle, nullptr);
-    }
+    GenericDeleter<VkQueryPool> deleter(context, destroyQueryPool);
+    deleter(handle);
 }
 
 // Core context object deleters
 void InstanceDeleter::operator()(VkInstance handle) {
-    if (context && handle != VK_NULL_HANDLE) {
-        context->getLoader().vkDestroyInstance(handle, nullptr);
-    }
+    GenericDeleter<VkInstance> deleter(context, destroyInstance);
+    deleter(handle);
 }
 
 void DeviceDeleter::operator()(VkDevice handle) {
-    if (context && handle != VK_NULL_HANDLE) {
-        context->getLoader().vkDestroyDevice(handle, nullptr);
-    }
+    GenericDeleter<VkDevice> deleter(context, destroyDevice);
+    deleter(handle);
 }
 
 void SurfaceKHRDeleter::operator()(VkSurfaceKHR handle) {
-    if (context && handle != VK_NULL_HANDLE && context->getInstance() != VK_NULL_HANDLE) {
-        context->getLoader().vkDestroySurfaceKHR(context->getInstance(), handle, nullptr);
-    }
+    GenericDeleter<VkSurfaceKHR> deleter(context, destroySurfaceKHR);
+    deleter(handle);
 }
 
 void DebugUtilsMessengerEXTDeleter::operator()(VkDebugUtilsMessengerEXT handle) {
-    if (context && handle != VK_NULL_HANDLE && context->getInstance() != VK_NULL_HANDLE) {
-        context->getLoader().vkDestroyDebugUtilsMessengerEXT(context->getInstance(), handle, nullptr);
-    }
+    GenericDeleter<VkDebugUtilsMessengerEXT> deleter(context, destroyDebugUtilsMessengerEXT);
+    deleter(handle);
 }
 
 
