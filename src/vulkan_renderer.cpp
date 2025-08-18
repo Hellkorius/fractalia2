@@ -29,7 +29,6 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
-// Static member definition
 float VulkanRenderer::clampedDeltaTime = 0.0f;
 
 VulkanRenderer::VulkanRenderer() {
@@ -41,7 +40,6 @@ VulkanRenderer::~VulkanRenderer() {
 
 bool VulkanRenderer::initialize(SDL_Window* window) {
     this->window = window;
-    
     
     context = std::make_unique<VulkanContext>();
     if (!context->initialize(window)) {
@@ -55,14 +53,12 @@ bool VulkanRenderer::initialize(SDL_Window* window) {
         return false;
     }
     
-    // Initialize AAA Pipeline System
     pipelineSystem = std::make_unique<PipelineSystemManager>();
     if (!pipelineSystem->initialize(*context)) {
         std::cerr << "Failed to initialize AAA Pipeline System" << std::endl;
         return false;
     }
     
-    // Create render pass using new pipeline system
     VkRenderPass renderPass = pipelineSystem->getGraphicsManager()->createRenderPass(
         swapchain->getImageFormat(), VK_FORMAT_UNDEFINED, VK_SAMPLE_COUNT_2_BIT, true);
     if (renderPass == VK_NULL_HANDLE) {
@@ -97,7 +93,6 @@ bool VulkanRenderer::initialize(SDL_Window* window) {
         return false;
     }
     
-    // Create descriptor layout using new pipeline system
     auto layoutSpec = DescriptorLayoutPresets::createEntityGraphicsLayout();
     VkDescriptorSetLayout descriptorLayout = pipelineSystem->getLayoutManager()->getLayout(layoutSpec);
     if (descriptorLayout == VK_NULL_HANDLE) {
@@ -115,15 +110,12 @@ bool VulkanRenderer::initialize(SDL_Window* window) {
         return false;
     }
     
-    // Initialize GPU entity manager after sync and resource context are created
     gpuEntityManager = std::make_unique<GPUEntityManager>();
     if (!gpuEntityManager->initialize(*context, sync.get(), resourceContext.get())) {
         std::cerr << "Failed to initialize GPU entity manager" << std::endl;
         return false;
     }
     
-    // Update graphics descriptor sets with BOTH entity buffer AND position buffer for compute-based rendering
-    // CRITICAL FIX: This ensures both binding 1 (entity buffer) and binding 2 (position buffer) are bound
     if (!resourceContext->updateDescriptorSetsWithEntityAndPositionBuffers(
             gpuEntityManager->getEntityBuffer(),
             gpuEntityManager->getPositionBuffer())) {
@@ -132,7 +124,6 @@ bool VulkanRenderer::initialize(SDL_Window* window) {
     }
     std::cout << "Graphics descriptor sets updated with entity and position buffers" << std::endl;
     
-    // Create compute descriptor layout using new pipeline system
     auto computeLayoutSpec = DescriptorLayoutPresets::createEntityComputeLayout();
     VkDescriptorSetLayout computeDescriptorLayout = pipelineSystem->getLayoutManager()->getLayout(computeLayoutSpec);
     if (computeDescriptorLayout == VK_NULL_HANDLE) {
@@ -140,23 +131,19 @@ bool VulkanRenderer::initialize(SDL_Window* window) {
         return false;
     }
     
-    // Create compute descriptor sets for GPU entity manager
     if (!gpuEntityManager->createComputeDescriptorSets(computeDescriptorLayout)) {
         std::cerr << "Failed to create compute descriptor sets" << std::endl;
         return false;
     }
     
-    // Initialize movement command processor
     movementCommandProcessor = std::make_unique<MovementCommandProcessor>(gpuEntityManager.get());
     std::cout << "Movement command processor initialized" << std::endl;
     
-    // Initialize modular architecture
     if (!initializeModularArchitecture()) {
         std::cerr << "Failed to initialize modular architecture" << std::endl;
         return false;
     }
     
-    // Warmup common pipelines for better performance
     pipelineSystem->warmupCommonPipelines();
     
     std::cout << "VulkanRenderer: AAA Pipeline System initialization complete" << std::endl;
@@ -170,15 +157,12 @@ void VulkanRenderer::cleanup() {
         context->getLoader().vkDeviceWaitIdle(context->getDevice());
     }
     
-    // Clean up modular architecture
     cleanupModularArchitecture();
     
-    // Explicit RAII cleanup before context destruction
     if (sync) {
         sync->cleanupBeforeContextDestruction();
     }
     if (pipelineSystem) {
-        // PipelineSystemManager should have similar cleanup for ShaderManager
         pipelineSystem->cleanupBeforeContextDestruction();
     }
     
@@ -194,48 +178,40 @@ void VulkanRenderer::cleanup() {
 }
 
 void VulkanRenderer::drawFrame() {
-    // New modular architecture
     drawFrameModular();
 }
 
-// ========== NEW MODULAR ARCHITECTURE METHODS ==========
 
 bool VulkanRenderer::initializeModularArchitecture() {
-    // Initialize frame graph
     frameGraph = std::make_unique<FrameGraph>();
     if (!frameGraph->initialize(*context, sync.get())) {
         std::cerr << "Failed to initialize frame graph" << std::endl;
         return false;
     }
     
-    // Initialize resource importer
     resourceRegistry = std::make_unique<FrameGraphResourceRegistry>();
     if (!resourceRegistry->initialize(frameGraph.get(), gpuEntityManager.get())) {
         std::cerr << "Failed to initialize resource importer" << std::endl;
         return false;
     }
     
-    // Import resources into frame graph
     if (!resourceRegistry->importEntityResources()) {
         std::cerr << "Failed to import entity resources" << std::endl;
         return false;
     }
     
-    // Initialize synchronization manager
     syncService = std::make_unique<GPUSynchronizationService>();
     if (!syncService->initialize(*context)) {
         std::cerr << "Failed to initialize synchronization manager" << std::endl;
         return false;
     }
     
-    // Initialize swapchain coordinator
     presentationSurface = std::make_unique<PresentationSurface>();
     if (!presentationSurface->initialize(context.get(), swapchain.get(), pipelineSystem.get(), syncService.get())) {
         std::cerr << "Failed to initialize swapchain coordinator" << std::endl;
         return false;
     }
     
-    // Initialize frame orchestrator
     frameDirector = std::make_unique<RenderFrameDirector>();
     if (!frameDirector->initialize(
         context.get(),
@@ -251,7 +227,6 @@ bool VulkanRenderer::initializeModularArchitecture() {
         return false;
     }
     
-    // Update frame orchestrator with resource IDs
     frameDirector->updateResourceIds(
         resourceRegistry->getEntityBufferId(),
         resourceRegistry->getPositionBufferId(),
@@ -259,7 +234,6 @@ bool VulkanRenderer::initializeModularArchitecture() {
         resourceRegistry->getTargetPositionBufferId()
     );
     
-    // Initialize queue submission manager
     submissionService = std::make_unique<CommandSubmissionService>();
     if (!submissionService->initialize(context.get(), sync.get(), swapchain.get())) {
         std::cerr << "Failed to initialize queue submission manager" << std::endl;
@@ -309,7 +283,6 @@ void VulkanRenderer::drawFrameModular() {
     
     if (!frameResult.success) {
         std::cerr << "VulkanRenderer: Frame " << frameCounter << " FAILED in frameDirector->directFrame()" << std::endl;
-        // Check if swapchain recreation is needed
         if (presentationSurface->isFramebufferResized() && !recreationInProgress) {
             std::cout << "VulkanRenderer: Attempting swapchain recreation due to frame failure" << std::endl;
             recreationInProgress = true;
@@ -368,7 +341,6 @@ void VulkanRenderer::drawFrameModular() {
         }
     }
     
-    // Handle swapchain recreation if needed
     if ((submissionResult.swapchainRecreationNeeded || framebufferResized) && !recreationInProgress) {
         std::cout << "VulkanRenderer: SWAPCHAIN RECREATION INITIATED - Frame " << frameCounter << std::endl;
         recreationInProgress = true;
@@ -387,7 +359,6 @@ void VulkanRenderer::drawFrameModular() {
         std::cout << "VulkanRenderer: SWAPCHAIN RECREATION COMPLETED - Next frames should render normally" << std::endl;
     }
     
-    // Update frame state
     totalTime += deltaTime;
     frameCounter++;
     currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;

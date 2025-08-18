@@ -12,7 +12,6 @@
 GPUEntity GPUEntity::fromECS(const Transform& transform, const Renderable& renderable, const MovementPattern& pattern) {
     GPUEntity entity{};
     
-    // Copy movement parameters
     entity.movementParams0 = glm::vec4(
         pattern.amplitude,
         pattern.frequency, 
@@ -27,13 +26,10 @@ GPUEntity GPUEntity::fromECS(const Transform& transform, const Renderable& rende
         static_cast<float>(pattern.type)
     );
     
-    // Copy color
     entity.color = renderable.color;
     
-    // Copy transform matrix
     entity.modelMatrix = transform.getMatrix();
     
-    // Initialize runtime state with random staggering
     std::random_device rd;
     std::mt19937 gen(rd());
     std::uniform_real_distribution<float> dis(0.0f, 600.0f);
@@ -60,7 +56,6 @@ bool GPUEntityManager::initialize(const VulkanContext& context, VulkanSync* sync
     this->sync = sync;
     this->resourceContext = resourceContext;
     
-    // Create entity buffer
     if (!createBuffer(ENTITY_BUFFER_SIZE, 
                      VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
                      entityBuffer, entityBufferMemory)) {
@@ -68,7 +63,6 @@ bool GPUEntityManager::initialize(const VulkanContext& context, VulkanSync* sync
         return false;
     }
     
-    // Create position buffer
     if (!createBuffer(POSITION_BUFFER_SIZE,
                      VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
                      positionBuffer, positionBufferMemory)) {
@@ -76,7 +70,6 @@ bool GPUEntityManager::initialize(const VulkanContext& context, VulkanSync* sync
         return false;
     }
     
-    // Create alternate position buffer for async compute ping-pong
     if (!createBuffer(POSITION_BUFFER_SIZE,
                      VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
                      positionBufferAlternate, positionBufferAlternateMemory)) {
@@ -84,7 +77,6 @@ bool GPUEntityManager::initialize(const VulkanContext& context, VulkanSync* sync
         return false;
     }
     
-    // Create current position buffer
     if (!createBuffer(POSITION_BUFFER_SIZE,
                      VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
                      currentPositionBuffer, currentPositionBufferMemory)) {
@@ -92,7 +84,6 @@ bool GPUEntityManager::initialize(const VulkanContext& context, VulkanSync* sync
         return false;
     }
     
-    // Create target position buffer
     if (!createBuffer(POSITION_BUFFER_SIZE,
                      VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
                      targetPositionBuffer, targetPositionBufferMemory)) {
@@ -100,7 +91,6 @@ bool GPUEntityManager::initialize(const VulkanContext& context, VulkanSync* sync
         return false;
     }
     
-    // Create descriptor set layouts for pipeline system integration
     if (!createDescriptorSetLayouts()) {
         std::cerr << "GPUEntityManager: Failed to create descriptor set layouts" << std::endl;
         return false;
@@ -116,20 +106,18 @@ void GPUEntityManager::cleanup() {
     const auto& loader = context->getLoader();
     VkDevice device = context->getDevice();
     
-    // Cleanup descriptor resources
     if (computeDescriptorPool != VK_NULL_HANDLE) {
         loader.vkDestroyDescriptorPool(device, computeDescriptorPool, nullptr);
         computeDescriptorPool = VK_NULL_HANDLE;
-        computeDescriptorSet = VK_NULL_HANDLE; // Automatically freed with pool
+        computeDescriptorSet = VK_NULL_HANDLE;
     }
     
     if (graphicsDescriptorPool != VK_NULL_HANDLE) {
         loader.vkDestroyDescriptorPool(device, graphicsDescriptorPool, nullptr);
         graphicsDescriptorPool = VK_NULL_HANDLE;
-        graphicsDescriptorSet = VK_NULL_HANDLE; // Automatically freed with pool
+        graphicsDescriptorSet = VK_NULL_HANDLE;
     }
     
-    // Cleanup descriptor set layouts
     if (computeDescriptorSetLayout != VK_NULL_HANDLE) {
         loader.vkDestroyDescriptorSetLayout(device, computeDescriptorSetLayout, nullptr);
         computeDescriptorSetLayout = VK_NULL_HANDLE;

@@ -24,10 +24,6 @@ int main(int argc, char* argv[]) {
     constexpr int TARGET_FPS = 60;
     constexpr float TARGET_FRAME_TIME = 1000.0f / TARGET_FPS; // 16.67ms
     
-    // For silky smooth rendering, we'll rely more on Vulkan present modes (MAILBOX/FIFO)
-    // and use a more relaxed frame cap to prevent conflicts
-    
-    
     // Set SDL vsync hint to 0 for safety (ignored with pure Vulkan, but good practice)
     SDL_SetHint(SDL_HINT_RENDER_VSYNC, "0");
     
@@ -36,7 +32,6 @@ int main(int argc, char* argv[]) {
         return -1;
     }
     
-
     // Check Vulkan support
     uint32_t extensionCount = 0;
     const char* const* extensions = SDL_Vulkan_GetInstanceExtensions(&extensionCount);
@@ -47,7 +42,6 @@ int main(int argc, char* argv[]) {
         return -1;
     }
     
-
     SDL_Window* window = SDL_CreateWindow(
         "Fractalia2 - SDL3 + Vulkan + Flecs",
         800, 600,
@@ -60,7 +54,6 @@ int main(int argc, char* argv[]) {
         return -1;
     }
     
-
     VulkanRenderer renderer;
     if (!renderer.initialize(window)) {
         std::cerr << "Failed to initialize Vulkan renderer" << std::endl;
@@ -71,17 +64,12 @@ int main(int argc, char* argv[]) {
 
     flecs::world world;
     
-    // Create entity factory and system scheduler directly
     EntityFactory entityFactory(world);
     SystemScheduler scheduler(world);
     
-    // Initialize scheduler first (creates phases and globals)
     scheduler.initialize();
     
     // Direct Flecs system registration with phases
-    
-    // Note: Input processing is handled by InputManager::processSDLEvents() in main loop
-    // No input system registration needed since it's done manually
     
     // Camera systems - registered with input phase for proper ordering
     world.system<Camera>("CameraControlSystem")
@@ -96,44 +84,35 @@ int main(int argc, char* argv[]) {
         
     DEBUG_LOG("Camera systems registered");
     
-    // Physics/lifetime - third phase
     world.system<Lifetime>("LifetimeSystem")
         .each(lifetime_system)
         .child_of(scheduler.getPhysicsPhase());
     
-    // Create input singleton entity and set window reference for accurate screen coordinates
     InputManager::createInputEntity(world);
     InputManager::setWindow(window);
     
-    // Create camera entity with proper initialization
     CameraManager::createMainCamera(world);
     DEBUG_LOG("Camera entities: " << world.count<Camera>());
     
-    // Set world reference in renderer for camera integration
     renderer.setWorld(&world);
     
-    // Configure profiler for 60 FPS
     Profiler::getInstance().setTargetFrameTime(TARGET_FRAME_TIME);
 
-    // GPU stress test configuration - scale up to 10k for initial test
-    constexpr size_t ENTITY_COUNT = 80000; // GPU can handle much more
+    constexpr size_t ENTITY_COUNT = 80000;
     
     DEBUG_LOG("Creating " << ENTITY_COUNT << " GPU entities for stress testing...");
     
-    // Create a swarm of entities for stress testing - spawn away from center
     auto swarmEntities = entityFactory.createSwarm(
         ENTITY_COUNT,
-        glm::vec3(10.0f, 10.0f, 0.0f), // spawn far from center
-        8.0f  // much larger radius for wide spread
+        glm::vec3(10.0f, 10.0f, 0.0f),
+        8.0f
     );
     
-    // Upload all entities to GPU immediately (before Flecs systems are initialized)
     renderer.getGPUEntityManager()->addEntitiesFromECS(swarmEntities);
-    renderer.uploadPendingGPUEntities(); // Ensure they're actually uploaded to buffers
+    renderer.uploadPendingGPUEntities();
     
     DEBUG_LOG("Created " << swarmEntities.size() << " GPU entities!");
     
-    // Initialize simple Flecs control system (just handles input) with Input phase
     bool running = true;
     SimpleControlSystem::initialize(world);
     
@@ -146,25 +125,18 @@ int main(int argc, char* argv[]) {
         float deltaTime = std::chrono::duration<float>(frameStartTime - lastFrameTime).count();
         lastFrameTime = frameStartTime;
         
-        // Hard-cap deltaTime to prevent frame-rate sensitive collision math explosions
-        deltaTime = std::min(deltaTime, 1.0f / 30.0f);  // never exceed 33 ms
+        deltaTime = std::min(deltaTime, 1.0f / 30.0f);
         
-        // Process SDL events through the input system
         InputManager::processSDLEvents(world);
         
-        // Check application state from Flecs systems
         auto* appState = world.get<ApplicationState>();
         if (appState && (appState->requestQuit || !appState->running)) {
             running = false;
         }
         
-        // Update renderer delta time for GPU compute
         renderer.setDeltaTime(deltaTime);
         
-        // Handle GPU operations based on control state (after Flecs systems)
         SimpleControlSystem::processControlActions(world, renderer, entityFactory);
-        
-        // Systems now handle controls automatically through scheduler
         
         // Handle window resize for camera aspect ratio
         auto inputEntity = world.lookup("InputManager");
@@ -182,16 +154,13 @@ int main(int argc, char* argv[]) {
             }
         }
 
-        // Profile the main update loop
         PROFILE_BEGIN_FRAME();
         
         {
             PROFILE_SCOPE("ECS Update");
-            // Simple Flecs execution
             world.progress(deltaTime);
         }
         
-        // Clear input frame states AFTER all systems have processed input
         {
             PROFILE_SCOPE("Input Cleanup");
             auto inputEntity = world.lookup("InputManager");
@@ -213,13 +182,11 @@ int main(int argc, char* argv[]) {
         frameCount++;
         PROFILE_END_FRAME();
         
-        // Show periodic performance info
-        if (frameCount % 300 == 0) { // Every 5 seconds at 60fps
+        if (frameCount % 300 == 0) {
             float avgFrameTime = Profiler::getInstance().getFrameTime();
             size_t activeEntities = static_cast<size_t>(world.count<Transform>());
             size_t estimatedMemory = activeEntities * (sizeof(Transform) + sizeof(Renderable) + sizeof(MovementPattern));
             
-            // Update profiler with estimated memory usage
             Profiler::getInstance().updateMemoryUsage(estimatedMemory);
             
             float fps = avgFrameTime > 0.0f ? (1000.0f / avgFrameTime) : 0.0f;
@@ -231,12 +198,10 @@ int main(int argc, char* argv[]) {
                       << std::endl;
         }
         
-        // Light frame pacing - let Vulkan present modes handle most of the timing
         auto frameEndTime = std::chrono::high_resolution_clock::now();
         float frameTimeMs = std::chrono::duration<float, std::milli>(frameEndTime - frameStartTime).count();
         
-        // Only cap if we're running way too fast (>90fps) to prevent GPU overheating
-        constexpr float MIN_FRAME_TIME = 11.0f; // ~90fps cap
+        constexpr float MIN_FRAME_TIME = 11.0f;
         if (frameTimeMs < MIN_FRAME_TIME) {
             float remainingMs = MIN_FRAME_TIME - frameTimeMs;
             if (remainingMs > 0.5f) {

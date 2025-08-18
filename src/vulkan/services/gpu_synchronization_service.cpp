@@ -14,11 +14,8 @@ GPUSynchronizationService::~GPUSynchronizationService() {
 bool GPUSynchronizationService::initialize(const VulkanContext& context) {
     this->context = &context;
     
-    // Cache loader and device references for performance
     const auto& vk = context.getLoader();
     const VkDevice device = context.getDevice();
-    
-    // Create compute fences using RAII wrappers
     for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
         VkFence computeFenceHandle = VulkanUtils::createFence(device, vk, true);
         if (computeFenceHandle == VK_NULL_HANDLE) {

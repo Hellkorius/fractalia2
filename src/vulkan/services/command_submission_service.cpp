@@ -21,7 +21,6 @@ bool CommandSubmissionService::initialize(VulkanContext* context, VulkanSync* sy
 }
 
 void CommandSubmissionService::cleanup() {
-    // Dependencies are managed externally
 }
 
 SubmissionResult CommandSubmissionService::submitFrame(

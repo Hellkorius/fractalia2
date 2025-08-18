@@ -10,7 +10,6 @@
 #include <glm/glm.hpp>
 
 namespace {
-    // Centralized debug logging with configurable intervals
     class DebugLogger {
     public:
         static void logPeriodic(const std::string& message, int& counter, int interval = 300) {
@@ -26,7 +25,6 @@ namespace {
         }
     };
     
-    // Helper function for dispatch calculation
     struct DispatchParams {
         uint32_t totalWorkgroups;
         uint32_t maxWorkgroupsPerChunk;
@@ -34,7 +32,7 @@ namespace {
     };
     
     DispatchParams calculateDispatchParams(uint32_t entityCount, uint32_t maxWorkgroups, bool forceChunking) {
-        const uint32_t totalWorkgroups = (entityCount + 63) / 64; // 64 threads per workgroup
+        const uint32_t totalWorkgroups = (entityCount + 63) / 64;
         return {
             totalWorkgroups,
             maxWorkgroups,
@@ -62,9 +60,7 @@ EntityComputeNode::EntityComputeNode(
 
 std::vector<ResourceDependency> EntityComputeNode::getInputs() const {
     return {
-        // Entity buffer is read/write - declare as ReadWrite in inputs only
         {entityBufferId, ResourceAccess::ReadWrite, PipelineStage::ComputeShader},
-        // Current and target position buffers are read/write for interpolation
         {currentPositionBufferId, ResourceAccess::ReadWrite, PipelineStage::ComputeShader},
         {targetPositionBufferId, ResourceAccess::ReadWrite, PipelineStage::ComputeShader},
     };
@@ -72,9 +68,7 @@ std::vector<ResourceDependency> EntityComputeNode::getInputs() const {
 
 std::vector<ResourceDependency> EntityComputeNode::getOutputs() const {
     return {
-        // Position buffer receives the final computed positions (write-only)
         {positionBufferId, ResourceAccess::Write, PipelineStage::ComputeShader},
-        // Don't list ReadWrite resources here - they're already in inputs
     };
 }
 

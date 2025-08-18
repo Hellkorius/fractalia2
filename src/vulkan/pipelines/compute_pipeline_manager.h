@@ -19,34 +19,27 @@
 #include "compute_dispatcher.h"
 #include "compute_device_info.h"
 
-// Forward declarations
 class ShaderManager;
 class DescriptorLayoutManager;
 
-// Refactored Compute Pipeline Manager - coordinates focused components
 class ComputePipelineManager : public VulkanManagerBase {
 public:
     explicit ComputePipelineManager(VulkanContext* ctx);
     ~ComputePipelineManager();
 
-    // Initialization
     bool initialize(ShaderManager* shaderManager,
                    DescriptorLayoutManager* layoutManager);
     void cleanup();
     void cleanupBeforeContextDestruction();
 
-    // Pipeline creation and caching
     VkPipeline getPipeline(const ComputePipelineState& state);
     VkPipelineLayout getPipelineLayout(const ComputePipelineState& state);
     
-    // Batch pipeline creation for reduced driver overhead
     std::vector<VkPipeline> createPipelinesBatch(const std::vector<ComputePipelineState>& states);
     
-    // High-level dispatch interface
     void dispatch(VkCommandBuffer commandBuffer, const ComputeDispatch& dispatch);
     void dispatchIndirect(VkCommandBuffer commandBuffer, VkBuffer buffer, VkDeviceSize offset);
     
-    // Optimized dispatch patterns
     void dispatchBuffer(VkCommandBuffer commandBuffer, const ComputePipelineState& state,
                        uint32_t elementCount, const std::vector<VkDescriptorSet>& descriptorSets,
                        const void* pushConstants = nullptr, uint32_t pushConstantSize = 0);

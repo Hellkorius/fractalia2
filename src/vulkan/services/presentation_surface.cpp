@@ -27,24 +27,21 @@ bool PresentationSurface::initialize(
 }
 
 void PresentationSurface::cleanup() {
-    // Dependencies are managed externally
 }
 
 SurfaceAcquisitionResult PresentationSurface::acquireNextImage(uint32_t currentFrame) {
     SurfaceAcquisitionResult result;
 
-    // Check if recreation is needed due to framebuffer resize
     if (framebufferResized) {
         result.recreationNeeded = true;
         return result;
     }
 
-    // Acquire next swapchain image
     VkResult acquireResult = context->getLoader().vkAcquireNextImageKHR(
         context->getDevice(),
         swapchain->getSwapchain(),
         UINT64_MAX,
-        VK_NULL_HANDLE, // We'll handle semaphore synchronization externally
+        VK_NULL_HANDLE,
         VK_NULL_HANDLE,
         &result.imageIndex
     );

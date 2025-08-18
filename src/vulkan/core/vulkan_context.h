@@ -27,7 +27,6 @@ public:
     bool initialize(SDL_Window* window);
     void cleanup();
     
-    // Explicit cleanup before context destruction
     void cleanupBeforeContextDestruction();
 
     VkInstance getInstance() const { return instance.get(); }
@@ -52,12 +51,12 @@ private:
     SDL_Window* window = nullptr;
     vulkan_raii::Instance instance;
     vulkan_raii::SurfaceKHR surface;
-    VkPhysicalDevice physicalDevice = VK_NULL_HANDLE; // Physical devices are not owned
+    VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
     vulkan_raii::Device device;
-    VkQueue graphicsQueue = VK_NULL_HANDLE; // Queues are not owned
+    VkQueue graphicsQueue = VK_NULL_HANDLE;
     VkQueue presentQueue = VK_NULL_HANDLE;
     VkQueue computeQueue = VK_NULL_HANDLE;
-    QueueFamilyIndices queueFamilyIndices; // Store indices for queue retrieval after device creation
+    QueueFamilyIndices queueFamilyIndices;
 
     std::unique_ptr<class VulkanFunctionLoader> loader;
     vulkan_raii::DebugUtilsMessengerEXT debugMessenger;
