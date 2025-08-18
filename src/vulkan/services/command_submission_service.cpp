@@ -3,6 +3,7 @@
 #include "../core/vulkan_sync.h"
 #include "../core/vulkan_swapchain.h"
 #include "../core/vulkan_function_loader.h"
+#include "../core/vulkan_utils.h"
 #include <iostream>
 
 CommandSubmissionService::CommandSubmissionService() {
@@ -77,24 +78,22 @@ SubmissionResult CommandSubmissionService::submitComputeWorkAsync(uint32_t compu
         return result;
     }
 
-    // Submit compute work with semaphore signaling for multi-queue synchronization
-    VkSubmitInfo computeSubmitInfo{};
-    computeSubmitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    computeSubmitInfo.commandBufferCount = 1;
-    computeSubmitInfo.pCommandBuffers = &computeCommandBuffer;
-    
+    // Submit compute work using VulkanUtils
     // ASYNC COMPUTE: No semaphore signaling needed since compute works on frame N+1
     // Graphics reads from frame N-1 buffer, so no synchronization required
-
-    VkResult computeSubmitResult = vk.vkQueueSubmit(
-        context->getComputeQueue(), 
-        1, 
-        &computeSubmitInfo, 
+    std::vector<VkCommandBuffer> computeCmdBuffers = {computeCommandBuffer};
+    
+    VkResult computeSubmitResult = VulkanUtils::submitCommands(
+        context->getComputeQueue(),
+        vk,
+        computeCmdBuffers,
+        {}, // no wait semaphores
+        {}, // no wait stages
+        {}, // no signal semaphores
         computeFence
     );
 
-    if (computeSubmitResult != VK_SUCCESS) {
-        std::cerr << "CommandSubmissionService: Failed to submit compute commands: " << computeSubmitResult << std::endl;
+    if (!VulkanUtils::checkVkResult(computeSubmitResult, "submit compute commands")) {
         result.lastResult = computeSubmitResult;
         return result;
     }

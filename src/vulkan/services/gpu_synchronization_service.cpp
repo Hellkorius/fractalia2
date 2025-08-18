@@ -1,6 +1,7 @@
 #include "gpu_synchronization_service.h"
 #include "../core/vulkan_context.h"
 #include "../core/vulkan_function_loader.h"
+#include "../core/vulkan_utils.h"
 #include <iostream>
 
 GPUSynchronizationService::GPUSynchronizationService() {
@@ -17,19 +18,17 @@ bool GPUSynchronizationService::initialize(const VulkanContext& context) {
     const auto& vk = context.getLoader();
     const VkDevice device = context.getDevice();
     
-    // Create compute fences
+    // Create compute fences using VulkanUtils
     for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
-        VkFenceCreateInfo fenceInfo{};
-        fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-        fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
-        
-        if (vk.vkCreateFence(device, &fenceInfo, nullptr, &computeFences[i]) != VK_SUCCESS) {
+        computeFences[i] = VulkanUtils::createFence(device, vk, true);
+        if (computeFences[i] == VK_NULL_HANDLE) {
             std::cerr << "GPUSynchronizationService: Failed to create compute fence for frame " << i << std::endl;
             cleanup();
             return false;
         }
         
-        if (vk.vkCreateFence(device, &fenceInfo, nullptr, &graphicsFences[i]) != VK_SUCCESS) {
+        graphicsFences[i] = VulkanUtils::createFence(device, vk, true);
+        if (graphicsFences[i] == VK_NULL_HANDLE) {
             std::cerr << "GPUSynchronizationService: Failed to create graphics fence for frame " << i << std::endl;
             cleanup();
             return false;
@@ -50,16 +49,21 @@ void GPUSynchronizationService::cleanup() {
     const auto& vk = context->getLoader();
     const VkDevice device = context->getDevice();
     
+    // Collect fences for batch destruction
+    std::vector<VkFence> fencesToDestroy;
     for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
         if (computeFences[i] != VK_NULL_HANDLE) {
-            vk.vkDestroyFence(device, computeFences[i], nullptr);
+            fencesToDestroy.push_back(computeFences[i]);
             computeFences[i] = VK_NULL_HANDLE;
         }
         if (graphicsFences[i] != VK_NULL_HANDLE) {
-            vk.vkDestroyFence(device, graphicsFences[i], nullptr);
+            fencesToDestroy.push_back(graphicsFences[i]);
             graphicsFences[i] = VK_NULL_HANDLE;
         }
     }
+    
+    // Destroy fences using VulkanUtils
+    VulkanUtils::destroyFences(device, vk, fencesToDestroy);
     
     initialized = false;
 }

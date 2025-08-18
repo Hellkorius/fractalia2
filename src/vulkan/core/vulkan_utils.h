@@ -101,4 +101,57 @@ public:
                                   VkDescriptorSet descriptorSet,
                                   const std::vector<VkDescriptorBufferInfo>& bufferInfos,
                                   VkDescriptorType descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+    
+    // Synchronization utilities (cross-domain: services, core, resources, monitoring)
+    static VkFence createFence(VkDevice device,
+                             const VulkanFunctionLoader& loader,
+                             bool signaled = false);
+    
+    static VkSemaphore createSemaphore(VkDevice device,
+                                     const VulkanFunctionLoader& loader);
+    
+    static void destroyFences(VkDevice device,
+                            const VulkanFunctionLoader& loader,
+                            const std::vector<VkFence>& fences);
+    
+    static void destroySemaphores(VkDevice device,
+                                const VulkanFunctionLoader& loader,
+                                const std::vector<VkSemaphore>& semaphores);
+    
+    static VkResult waitForFences(VkDevice device,
+                                const VulkanFunctionLoader& loader,
+                                const std::vector<VkFence>& fences,
+                                bool waitAll = true,
+                                uint64_t timeout = UINT64_MAX);
+    
+    // Command buffer utilities (cross-domain: services, core, resources, monitoring)
+    static VkResult submitCommands(VkQueue queue,
+                                 const VulkanFunctionLoader& loader,
+                                 const std::vector<VkCommandBuffer>& commandBuffers,
+                                 const std::vector<VkSemaphore>& waitSemaphores = {},
+                                 const std::vector<VkPipelineStageFlags>& waitStages = {},
+                                 const std::vector<VkSemaphore>& signalSemaphores = {},
+                                 VkFence fence = VK_NULL_HANDLE);
+    
+    static VkResult allocateCommandBuffers(VkDevice device,
+                                         const VulkanFunctionLoader& loader,
+                                         VkCommandPool commandPool,
+                                         uint32_t commandBufferCount,
+                                         std::vector<VkCommandBuffer>& commandBuffers,
+                                         VkCommandBufferLevel level = VK_COMMAND_BUFFER_LEVEL_PRIMARY);
+    
+    // Structure creation helpers (cross-domain utility functions)
+    static VkSubmitInfo createSubmitInfo(const std::vector<VkCommandBuffer>& commandBuffers,
+                                       const std::vector<VkSemaphore>& waitSemaphores = {},
+                                       const std::vector<VkPipelineStageFlags>& waitStages = {},
+                                       const std::vector<VkSemaphore>& signalSemaphores = {});
+    
+    static VkPresentInfoKHR createPresentInfo(const std::vector<VkSwapchainKHR>& swapchains,
+                                            const std::vector<uint32_t>& imageIndices,
+                                            const std::vector<VkSemaphore>& waitSemaphores = {});
+    
+    // Error handling utilities
+    static bool checkVkResult(VkResult result, const char* operation);
+    
+    static void logVkResult(VkResult result, const char* operation);
 };

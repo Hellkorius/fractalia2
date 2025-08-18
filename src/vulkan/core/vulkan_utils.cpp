@@ -350,3 +350,196 @@ void VulkanUtils::writeDescriptorSets(VkDevice device,
     vk.vkUpdateDescriptorSets(device, static_cast<uint32_t>(descriptorWrites.size()), 
                             descriptorWrites.data(), 0, nullptr);
 }
+
+// Synchronization utilities implementation
+VkFence VulkanUtils::createFence(VkDevice device, const VulkanFunctionLoader& loader, bool signaled) {
+    const auto& vk = loader;
+    
+    VkFenceCreateInfo fenceInfo{};
+    fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+    fenceInfo.flags = signaled ? VK_FENCE_CREATE_SIGNALED_BIT : 0;
+    
+    VkFence fence;
+    if (vk.vkCreateFence(device, &fenceInfo, nullptr, &fence) != VK_SUCCESS) {
+        return VK_NULL_HANDLE;
+    }
+    
+    return fence;
+}
+
+VkSemaphore VulkanUtils::createSemaphore(VkDevice device, const VulkanFunctionLoader& loader) {
+    const auto& vk = loader;
+    
+    VkSemaphoreCreateInfo semaphoreInfo{};
+    semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+    
+    VkSemaphore semaphore;
+    if (vk.vkCreateSemaphore(device, &semaphoreInfo, nullptr, &semaphore) != VK_SUCCESS) {
+        return VK_NULL_HANDLE;
+    }
+    
+    return semaphore;
+}
+
+void VulkanUtils::destroyFences(VkDevice device, const VulkanFunctionLoader& loader, 
+                               const std::vector<VkFence>& fences) {
+    const auto& vk = loader;
+    
+    for (VkFence fence : fences) {
+        if (fence != VK_NULL_HANDLE) {
+            vk.vkDestroyFence(device, fence, nullptr);
+        }
+    }
+}
+
+void VulkanUtils::destroySemaphores(VkDevice device, const VulkanFunctionLoader& loader,
+                                  const std::vector<VkSemaphore>& semaphores) {
+    const auto& vk = loader;
+    
+    for (VkSemaphore semaphore : semaphores) {
+        if (semaphore != VK_NULL_HANDLE) {
+            vk.vkDestroySemaphore(device, semaphore, nullptr);
+        }
+    }
+}
+
+VkResult VulkanUtils::waitForFences(VkDevice device, const VulkanFunctionLoader& loader,
+                                  const std::vector<VkFence>& fences, bool waitAll, uint64_t timeout) {
+    if (fences.empty()) {
+        return VK_SUCCESS;
+    }
+    
+    const auto& vk = loader;
+    
+    return vk.vkWaitForFences(device, static_cast<uint32_t>(fences.size()), fences.data(), 
+                             waitAll ? VK_TRUE : VK_FALSE, timeout);
+}
+
+// Command buffer utilities implementation
+VkResult VulkanUtils::submitCommands(VkQueue queue, const VulkanFunctionLoader& loader,
+                                   const std::vector<VkCommandBuffer>& commandBuffers,
+                                   const std::vector<VkSemaphore>& waitSemaphores,
+                                   const std::vector<VkPipelineStageFlags>& waitStages,
+                                   const std::vector<VkSemaphore>& signalSemaphores,
+                                   VkFence fence) {
+    if (commandBuffers.empty()) {
+        return VK_SUCCESS;
+    }
+    
+    const auto& vk = loader;
+    
+    VkSubmitInfo submitInfo = createSubmitInfo(commandBuffers, waitSemaphores, waitStages, signalSemaphores);
+    
+    return vk.vkQueueSubmit(queue, 1, &submitInfo, fence);
+}
+
+VkResult VulkanUtils::allocateCommandBuffers(VkDevice device, const VulkanFunctionLoader& loader,
+                                           VkCommandPool commandPool, uint32_t commandBufferCount,
+                                           std::vector<VkCommandBuffer>& commandBuffers,
+                                           VkCommandBufferLevel level) {
+    const auto& vk = loader;
+    
+    commandBuffers.resize(commandBufferCount);
+    
+    VkCommandBufferAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    allocInfo.commandPool = commandPool;
+    allocInfo.level = level;
+    allocInfo.commandBufferCount = commandBufferCount;
+    
+    return vk.vkAllocateCommandBuffers(device, &allocInfo, commandBuffers.data());
+}
+
+// Structure creation helpers implementation
+VkSubmitInfo VulkanUtils::createSubmitInfo(const std::vector<VkCommandBuffer>& commandBuffers,
+                                         const std::vector<VkSemaphore>& waitSemaphores,
+                                         const std::vector<VkPipelineStageFlags>& waitStages,
+                                         const std::vector<VkSemaphore>& signalSemaphores) {
+    VkSubmitInfo submitInfo{};
+    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    
+    if (!waitSemaphores.empty()) {
+        submitInfo.waitSemaphoreCount = static_cast<uint32_t>(waitSemaphores.size());
+        submitInfo.pWaitSemaphores = waitSemaphores.data();
+        
+        if (!waitStages.empty()) {
+            submitInfo.pWaitDstStageMask = waitStages.data();
+        }
+    }
+    
+    if (!commandBuffers.empty()) {
+        submitInfo.commandBufferCount = static_cast<uint32_t>(commandBuffers.size());
+        submitInfo.pCommandBuffers = commandBuffers.data();
+    }
+    
+    if (!signalSemaphores.empty()) {
+        submitInfo.signalSemaphoreCount = static_cast<uint32_t>(signalSemaphores.size());
+        submitInfo.pSignalSemaphores = signalSemaphores.data();
+    }
+    
+    return submitInfo;
+}
+
+VkPresentInfoKHR VulkanUtils::createPresentInfo(const std::vector<VkSwapchainKHR>& swapchains,
+                                               const std::vector<uint32_t>& imageIndices,
+                                               const std::vector<VkSemaphore>& waitSemaphores) {
+    VkPresentInfoKHR presentInfo{};
+    presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+    
+    if (!waitSemaphores.empty()) {
+        presentInfo.waitSemaphoreCount = static_cast<uint32_t>(waitSemaphores.size());
+        presentInfo.pWaitSemaphores = waitSemaphores.data();
+    }
+    
+    if (!swapchains.empty()) {
+        presentInfo.swapchainCount = static_cast<uint32_t>(swapchains.size());
+        presentInfo.pSwapchains = swapchains.data();
+        presentInfo.pImageIndices = imageIndices.data();
+    }
+    
+    return presentInfo;
+}
+
+// Error handling utilities implementation
+bool VulkanUtils::checkVkResult(VkResult result, const char* operation) {
+    if (result == VK_SUCCESS) {
+        return true;
+    }
+    
+    logVkResult(result, operation);
+    return false;
+}
+
+void VulkanUtils::logVkResult(VkResult result, const char* operation) {
+    const char* resultString = "Unknown";
+    
+    switch (result) {
+        case VK_SUCCESS: resultString = "VK_SUCCESS"; break;
+        case VK_NOT_READY: resultString = "VK_NOT_READY"; break;
+        case VK_TIMEOUT: resultString = "VK_TIMEOUT"; break;
+        case VK_EVENT_SET: resultString = "VK_EVENT_SET"; break;
+        case VK_EVENT_RESET: resultString = "VK_EVENT_RESET"; break;
+        case VK_INCOMPLETE: resultString = "VK_INCOMPLETE"; break;
+        case VK_ERROR_OUT_OF_HOST_MEMORY: resultString = "VK_ERROR_OUT_OF_HOST_MEMORY"; break;
+        case VK_ERROR_OUT_OF_DEVICE_MEMORY: resultString = "VK_ERROR_OUT_OF_DEVICE_MEMORY"; break;
+        case VK_ERROR_INITIALIZATION_FAILED: resultString = "VK_ERROR_INITIALIZATION_FAILED"; break;
+        case VK_ERROR_DEVICE_LOST: resultString = "VK_ERROR_DEVICE_LOST"; break;
+        case VK_ERROR_MEMORY_MAP_FAILED: resultString = "VK_ERROR_MEMORY_MAP_FAILED"; break;
+        case VK_ERROR_LAYER_NOT_PRESENT: resultString = "VK_ERROR_LAYER_NOT_PRESENT"; break;
+        case VK_ERROR_EXTENSION_NOT_PRESENT: resultString = "VK_ERROR_EXTENSION_NOT_PRESENT"; break;
+        case VK_ERROR_FEATURE_NOT_PRESENT: resultString = "VK_ERROR_FEATURE_NOT_PRESENT"; break;
+        case VK_ERROR_INCOMPATIBLE_DRIVER: resultString = "VK_ERROR_INCOMPATIBLE_DRIVER"; break;
+        case VK_ERROR_TOO_MANY_OBJECTS: resultString = "VK_ERROR_TOO_MANY_OBJECTS"; break;
+        case VK_ERROR_FORMAT_NOT_SUPPORTED: resultString = "VK_ERROR_FORMAT_NOT_SUPPORTED"; break;
+        case VK_ERROR_SURFACE_LOST_KHR: resultString = "VK_ERROR_SURFACE_LOST_KHR"; break;
+        case VK_ERROR_NATIVE_WINDOW_IN_USE_KHR: resultString = "VK_ERROR_NATIVE_WINDOW_IN_USE_KHR"; break;
+        case VK_SUBOPTIMAL_KHR: resultString = "VK_SUBOPTIMAL_KHR"; break;
+        case VK_ERROR_OUT_OF_DATE_KHR: resultString = "VK_ERROR_OUT_OF_DATE_KHR"; break;
+        case VK_ERROR_INCOMPATIBLE_DISPLAY_KHR: resultString = "VK_ERROR_INCOMPATIBLE_DISPLAY_KHR"; break;
+        case VK_ERROR_VALIDATION_FAILED_EXT: resultString = "VK_ERROR_VALIDATION_FAILED_EXT"; break;
+        default: break;
+    }
+    
+    std::cerr << "VulkanUtils: " << operation << " failed with " << resultString 
+              << " (" << result << ")" << std::endl;
+}
