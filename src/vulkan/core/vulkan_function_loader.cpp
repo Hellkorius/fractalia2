@@ -2,6 +2,19 @@
 #include <SDL3/SDL_vulkan.h>
 #include <iostream>
 
+// Macros to eliminate repetitive function loading patterns
+#define LOAD_INSTANCE_FUNCTION(funcName) \
+    funcName = reinterpret_cast<PFN_##funcName>( \
+        vkGetInstanceProcAddr(instance, #funcName))
+
+#define LOAD_DEVICE_FUNCTION(funcName) \
+    funcName = reinterpret_cast<PFN_##funcName>( \
+        vkGetDeviceProcAddr(device, #funcName))
+
+#define LOAD_PRE_INSTANCE_FUNCTION(funcName) \
+    funcName = reinterpret_cast<PFN_##funcName>( \
+        vkGetInstanceProcAddr(VK_NULL_HANDLE, #funcName))
+
 VulkanFunctionLoader::VulkanFunctionLoader() {
 }
 
@@ -81,236 +94,147 @@ bool VulkanFunctionLoader::loadDeviceFunctions() {
 }
 
 void VulkanFunctionLoader::loadCoreInstanceFunctions() {
-    vkCreateInstance = reinterpret_cast<PFN_vkCreateInstance>(
-        vkGetInstanceProcAddr(VK_NULL_HANDLE, "vkCreateInstance"));
-    vkEnumerateInstanceExtensionProperties = reinterpret_cast<PFN_vkEnumerateInstanceExtensionProperties>(
-        vkGetInstanceProcAddr(VK_NULL_HANDLE, "vkEnumerateInstanceExtensionProperties"));
+    LOAD_PRE_INSTANCE_FUNCTION(vkCreateInstance);
+    LOAD_PRE_INSTANCE_FUNCTION(vkEnumerateInstanceExtensionProperties);
 }
 
 void VulkanFunctionLoader::loadPhysicalDeviceFunctions() {
-    vkEnumeratePhysicalDevices = reinterpret_cast<PFN_vkEnumeratePhysicalDevices>(
-        vkGetInstanceProcAddr(instance, "vkEnumeratePhysicalDevices"));
-    vkGetPhysicalDeviceProperties = reinterpret_cast<PFN_vkGetPhysicalDeviceProperties>(
-        vkGetInstanceProcAddr(instance, "vkGetPhysicalDeviceProperties"));
-    vkGetPhysicalDeviceQueueFamilyProperties = reinterpret_cast<PFN_vkGetPhysicalDeviceQueueFamilyProperties>(
-        vkGetInstanceProcAddr(instance, "vkGetPhysicalDeviceQueueFamilyProperties"));
-    vkGetPhysicalDeviceMemoryProperties = reinterpret_cast<PFN_vkGetPhysicalDeviceMemoryProperties>(
-        vkGetInstanceProcAddr(instance, "vkGetPhysicalDeviceMemoryProperties"));
-    vkGetPhysicalDeviceSurfaceSupportKHR = reinterpret_cast<PFN_vkGetPhysicalDeviceSurfaceSupportKHR>(
-        vkGetInstanceProcAddr(instance, "vkGetPhysicalDeviceSurfaceSupportKHR"));
-    vkGetPhysicalDeviceSurfaceCapabilitiesKHR = reinterpret_cast<PFN_vkGetPhysicalDeviceSurfaceCapabilitiesKHR>(
-        vkGetInstanceProcAddr(instance, "vkGetPhysicalDeviceSurfaceCapabilitiesKHR"));
-    vkGetPhysicalDeviceSurfaceFormatsKHR = reinterpret_cast<PFN_vkGetPhysicalDeviceSurfaceFormatsKHR>(
-        vkGetInstanceProcAddr(instance, "vkGetPhysicalDeviceSurfaceFormatsKHR"));
-    vkGetPhysicalDeviceSurfacePresentModesKHR = reinterpret_cast<PFN_vkGetPhysicalDeviceSurfacePresentModesKHR>(
-        vkGetInstanceProcAddr(instance, "vkGetPhysicalDeviceSurfacePresentModesKHR"));
-    vkEnumerateDeviceExtensionProperties = reinterpret_cast<PFN_vkEnumerateDeviceExtensionProperties>(
-        vkGetInstanceProcAddr(instance, "vkEnumerateDeviceExtensionProperties"));
+    LOAD_INSTANCE_FUNCTION(vkEnumeratePhysicalDevices);
+    LOAD_INSTANCE_FUNCTION(vkGetPhysicalDeviceProperties);
+    LOAD_INSTANCE_FUNCTION(vkGetPhysicalDeviceQueueFamilyProperties);
+    LOAD_INSTANCE_FUNCTION(vkGetPhysicalDeviceMemoryProperties);
+    LOAD_INSTANCE_FUNCTION(vkGetPhysicalDeviceSurfaceSupportKHR);
+    LOAD_INSTANCE_FUNCTION(vkGetPhysicalDeviceSurfaceCapabilitiesKHR);
+    LOAD_INSTANCE_FUNCTION(vkGetPhysicalDeviceSurfaceFormatsKHR);
+    LOAD_INSTANCE_FUNCTION(vkGetPhysicalDeviceSurfacePresentModesKHR);
+    LOAD_INSTANCE_FUNCTION(vkEnumerateDeviceExtensionProperties);
     // Load vkCreateDevice here since it's needed before device creation
-    vkCreateDevice = reinterpret_cast<PFN_vkCreateDevice>(
-        vkGetInstanceProcAddr(instance, "vkCreateDevice"));
+    LOAD_INSTANCE_FUNCTION(vkCreateDevice);
 }
 
 void VulkanFunctionLoader::loadSurfaceFunctions() {
-    vkDestroySurfaceKHR = reinterpret_cast<PFN_vkDestroySurfaceKHR>(
-        vkGetInstanceProcAddr(instance, "vkDestroySurfaceKHR"));
-    vkDestroyInstance = reinterpret_cast<PFN_vkDestroyInstance>(
-        vkGetInstanceProcAddr(instance, "vkDestroyInstance"));
+    LOAD_INSTANCE_FUNCTION(vkDestroySurfaceKHR);
+    LOAD_INSTANCE_FUNCTION(vkDestroyInstance);
     
     // Debug utils functions
-    vkCreateDebugUtilsMessengerEXT = reinterpret_cast<PFN_vkCreateDebugUtilsMessengerEXT>(
-        vkGetInstanceProcAddr(instance, "vkCreateDebugUtilsMessengerEXT"));
-    vkDestroyDebugUtilsMessengerEXT = reinterpret_cast<PFN_vkDestroyDebugUtilsMessengerEXT>(
-        vkGetInstanceProcAddr(instance, "vkDestroyDebugUtilsMessengerEXT"));
+    LOAD_INSTANCE_FUNCTION(vkCreateDebugUtilsMessengerEXT);
+    LOAD_INSTANCE_FUNCTION(vkDestroyDebugUtilsMessengerEXT);
 }
 
 void VulkanFunctionLoader::loadDeviceManagementFunctions() {
     // vkCreateDevice is now loaded in loadPhysicalDeviceFunctions() since it's needed before device creation
-    vkDestroyDevice = reinterpret_cast<PFN_vkDestroyDevice>(
-        vkGetDeviceProcAddr(device, "vkDestroyDevice"));
-    vkGetDeviceQueue = reinterpret_cast<PFN_vkGetDeviceQueue>(
-        vkGetDeviceProcAddr(device, "vkGetDeviceQueue"));
-    vkDeviceWaitIdle = reinterpret_cast<PFN_vkDeviceWaitIdle>(
-        vkGetDeviceProcAddr(device, "vkDeviceWaitIdle"));
+    LOAD_DEVICE_FUNCTION(vkDestroyDevice);
+    LOAD_DEVICE_FUNCTION(vkGetDeviceQueue);
+    LOAD_DEVICE_FUNCTION(vkDeviceWaitIdle);
 }
 
 void VulkanFunctionLoader::loadMemoryFunctions() {
-    vkAllocateMemory = reinterpret_cast<PFN_vkAllocateMemory>(
-        vkGetDeviceProcAddr(device, "vkAllocateMemory"));
-    vkFreeMemory = reinterpret_cast<PFN_vkFreeMemory>(
-        vkGetDeviceProcAddr(device, "vkFreeMemory"));
-    vkMapMemory = reinterpret_cast<PFN_vkMapMemory>(
-        vkGetDeviceProcAddr(device, "vkMapMemory"));
-    vkUnmapMemory = reinterpret_cast<PFN_vkUnmapMemory>(
-        vkGetDeviceProcAddr(device, "vkUnmapMemory"));
+    LOAD_DEVICE_FUNCTION(vkAllocateMemory);
+    LOAD_DEVICE_FUNCTION(vkFreeMemory);
+    LOAD_DEVICE_FUNCTION(vkMapMemory);
+    LOAD_DEVICE_FUNCTION(vkUnmapMemory);
 }
 
 void VulkanFunctionLoader::loadBufferFunctions() {
-    vkCreateBuffer = reinterpret_cast<PFN_vkCreateBuffer>(
-        vkGetDeviceProcAddr(device, "vkCreateBuffer"));
-    vkDestroyBuffer = reinterpret_cast<PFN_vkDestroyBuffer>(
-        vkGetDeviceProcAddr(device, "vkDestroyBuffer"));
-    vkGetBufferMemoryRequirements = reinterpret_cast<PFN_vkGetBufferMemoryRequirements>(
-        vkGetDeviceProcAddr(device, "vkGetBufferMemoryRequirements"));
-    vkBindBufferMemory = reinterpret_cast<PFN_vkBindBufferMemory>(
-        vkGetDeviceProcAddr(device, "vkBindBufferMemory"));
+    LOAD_DEVICE_FUNCTION(vkCreateBuffer);
+    LOAD_DEVICE_FUNCTION(vkDestroyBuffer);
+    LOAD_DEVICE_FUNCTION(vkGetBufferMemoryRequirements);
+    LOAD_DEVICE_FUNCTION(vkBindBufferMemory);
 }
 
 void VulkanFunctionLoader::loadImageFunctions() {
-    vkCreateImage = reinterpret_cast<PFN_vkCreateImage>(
-        vkGetDeviceProcAddr(device, "vkCreateImage"));
-    vkDestroyImage = reinterpret_cast<PFN_vkDestroyImage>(
-        vkGetDeviceProcAddr(device, "vkDestroyImage"));
-    vkGetImageMemoryRequirements = reinterpret_cast<PFN_vkGetImageMemoryRequirements>(
-        vkGetDeviceProcAddr(device, "vkGetImageMemoryRequirements"));
-    vkBindImageMemory = reinterpret_cast<PFN_vkBindImageMemory>(
-        vkGetDeviceProcAddr(device, "vkBindImageMemory"));
-    vkCreateImageView = reinterpret_cast<PFN_vkCreateImageView>(
-        vkGetDeviceProcAddr(device, "vkCreateImageView"));
-    vkDestroyImageView = reinterpret_cast<PFN_vkDestroyImageView>(
-        vkGetDeviceProcAddr(device, "vkDestroyImageView"));
+    LOAD_DEVICE_FUNCTION(vkCreateImage);
+    LOAD_DEVICE_FUNCTION(vkDestroyImage);
+    LOAD_DEVICE_FUNCTION(vkGetImageMemoryRequirements);
+    LOAD_DEVICE_FUNCTION(vkBindImageMemory);
+    LOAD_DEVICE_FUNCTION(vkCreateImageView);
+    LOAD_DEVICE_FUNCTION(vkDestroyImageView);
 }
 
 void VulkanFunctionLoader::loadSwapchainFunctions() {
-    vkCreateSwapchainKHR = reinterpret_cast<PFN_vkCreateSwapchainKHR>(
-        vkGetDeviceProcAddr(device, "vkCreateSwapchainKHR"));
-    vkDestroySwapchainKHR = reinterpret_cast<PFN_vkDestroySwapchainKHR>(
-        vkGetDeviceProcAddr(device, "vkDestroySwapchainKHR"));
-    vkGetSwapchainImagesKHR = reinterpret_cast<PFN_vkGetSwapchainImagesKHR>(
-        vkGetDeviceProcAddr(device, "vkGetSwapchainImagesKHR"));
-    vkAcquireNextImageKHR = reinterpret_cast<PFN_vkAcquireNextImageKHR>(
-        vkGetDeviceProcAddr(device, "vkAcquireNextImageKHR"));
-    vkQueuePresentKHR = reinterpret_cast<PFN_vkQueuePresentKHR>(
-        vkGetDeviceProcAddr(device, "vkQueuePresentKHR"));
+    LOAD_DEVICE_FUNCTION(vkCreateSwapchainKHR);
+    LOAD_DEVICE_FUNCTION(vkDestroySwapchainKHR);
+    LOAD_DEVICE_FUNCTION(vkGetSwapchainImagesKHR);
+    LOAD_DEVICE_FUNCTION(vkAcquireNextImageKHR);
+    LOAD_DEVICE_FUNCTION(vkQueuePresentKHR);
     
     // Load VK_EXT_swapchain_maintenance1 extension functions (optional)
-    vkReleaseSwapchainImagesEXT = reinterpret_cast<PFN_vkReleaseSwapchainImagesEXT>(
-        vkGetDeviceProcAddr(device, "vkReleaseSwapchainImagesEXT"));
-    
+    LOAD_DEVICE_FUNCTION(vkReleaseSwapchainImagesEXT);
 }
 
 void VulkanFunctionLoader::loadPipelineFunctions() {
-    vkCreateRenderPass = reinterpret_cast<PFN_vkCreateRenderPass>(
-        vkGetDeviceProcAddr(device, "vkCreateRenderPass"));
-    vkDestroyRenderPass = reinterpret_cast<PFN_vkDestroyRenderPass>(
-        vkGetDeviceProcAddr(device, "vkDestroyRenderPass"));
-    vkCreateFramebuffer = reinterpret_cast<PFN_vkCreateFramebuffer>(
-        vkGetDeviceProcAddr(device, "vkCreateFramebuffer"));
-    vkDestroyFramebuffer = reinterpret_cast<PFN_vkDestroyFramebuffer>(
-        vkGetDeviceProcAddr(device, "vkDestroyFramebuffer"));
-    vkCreateShaderModule = reinterpret_cast<PFN_vkCreateShaderModule>(
-        vkGetDeviceProcAddr(device, "vkCreateShaderModule"));
-    vkDestroyShaderModule = reinterpret_cast<PFN_vkDestroyShaderModule>(
-        vkGetDeviceProcAddr(device, "vkDestroyShaderModule"));
-    vkCreatePipelineLayout = reinterpret_cast<PFN_vkCreatePipelineLayout>(
-        vkGetDeviceProcAddr(device, "vkCreatePipelineLayout"));
-    vkDestroyPipelineLayout = reinterpret_cast<PFN_vkDestroyPipelineLayout>(
-        vkGetDeviceProcAddr(device, "vkDestroyPipelineLayout"));
-    vkCreatePipelineCache = reinterpret_cast<PFN_vkCreatePipelineCache>(
-        vkGetDeviceProcAddr(device, "vkCreatePipelineCache"));
-    vkDestroyPipelineCache = reinterpret_cast<PFN_vkDestroyPipelineCache>(
-        vkGetDeviceProcAddr(device, "vkDestroyPipelineCache"));
-    vkCreateGraphicsPipelines = reinterpret_cast<PFN_vkCreateGraphicsPipelines>(
-        vkGetDeviceProcAddr(device, "vkCreateGraphicsPipelines"));
-    vkCreateComputePipelines = reinterpret_cast<PFN_vkCreateComputePipelines>(
-        vkGetDeviceProcAddr(device, "vkCreateComputePipelines"));
-    vkDestroyPipeline = reinterpret_cast<PFN_vkDestroyPipeline>(
-        vkGetDeviceProcAddr(device, "vkDestroyPipeline"));
+    LOAD_DEVICE_FUNCTION(vkCreateRenderPass);
+    LOAD_DEVICE_FUNCTION(vkDestroyRenderPass);
+    LOAD_DEVICE_FUNCTION(vkCreateFramebuffer);
+    LOAD_DEVICE_FUNCTION(vkDestroyFramebuffer);
+    LOAD_DEVICE_FUNCTION(vkCreateShaderModule);
+    LOAD_DEVICE_FUNCTION(vkDestroyShaderModule);
+    LOAD_DEVICE_FUNCTION(vkCreatePipelineLayout);
+    LOAD_DEVICE_FUNCTION(vkDestroyPipelineLayout);
+    LOAD_DEVICE_FUNCTION(vkCreatePipelineCache);
+    LOAD_DEVICE_FUNCTION(vkDestroyPipelineCache);
+    LOAD_DEVICE_FUNCTION(vkCreateGraphicsPipelines);
+    LOAD_DEVICE_FUNCTION(vkCreateComputePipelines);
+    LOAD_DEVICE_FUNCTION(vkDestroyPipeline);
 }
 
 void VulkanFunctionLoader::loadDescriptorFunctions() {
-    vkCreateDescriptorSetLayout = reinterpret_cast<PFN_vkCreateDescriptorSetLayout>(
-        vkGetDeviceProcAddr(device, "vkCreateDescriptorSetLayout"));
-    vkDestroyDescriptorSetLayout = reinterpret_cast<PFN_vkDestroyDescriptorSetLayout>(
-        vkGetDeviceProcAddr(device, "vkDestroyDescriptorSetLayout"));
-    vkCreateDescriptorPool = reinterpret_cast<PFN_vkCreateDescriptorPool>(
-        vkGetDeviceProcAddr(device, "vkCreateDescriptorPool"));
-    vkDestroyDescriptorPool = reinterpret_cast<PFN_vkDestroyDescriptorPool>(
-        vkGetDeviceProcAddr(device, "vkDestroyDescriptorPool"));
-    vkResetDescriptorPool = reinterpret_cast<PFN_vkResetDescriptorPool>(
-        vkGetDeviceProcAddr(device, "vkResetDescriptorPool"));
-    vkAllocateDescriptorSets = reinterpret_cast<PFN_vkAllocateDescriptorSets>(
-        vkGetDeviceProcAddr(device, "vkAllocateDescriptorSets"));
-    vkUpdateDescriptorSets = reinterpret_cast<PFN_vkUpdateDescriptorSets>(
-        vkGetDeviceProcAddr(device, "vkUpdateDescriptorSets"));
+    LOAD_DEVICE_FUNCTION(vkCreateDescriptorSetLayout);
+    LOAD_DEVICE_FUNCTION(vkDestroyDescriptorSetLayout);
+    LOAD_DEVICE_FUNCTION(vkCreateDescriptorPool);
+    LOAD_DEVICE_FUNCTION(vkDestroyDescriptorPool);
+    LOAD_DEVICE_FUNCTION(vkResetDescriptorPool);
+    LOAD_DEVICE_FUNCTION(vkAllocateDescriptorSets);
+    LOAD_DEVICE_FUNCTION(vkUpdateDescriptorSets);
 }
 
 void VulkanFunctionLoader::loadSynchronizationFunctions() {
-    vkCreateSemaphore = reinterpret_cast<PFN_vkCreateSemaphore>(
-        vkGetDeviceProcAddr(device, "vkCreateSemaphore"));
-    vkDestroySemaphore = reinterpret_cast<PFN_vkDestroySemaphore>(
-        vkGetDeviceProcAddr(device, "vkDestroySemaphore"));
-    vkCreateFence = reinterpret_cast<PFN_vkCreateFence>(
-        vkGetDeviceProcAddr(device, "vkCreateFence"));
-    vkDestroyFence = reinterpret_cast<PFN_vkDestroyFence>(
-        vkGetDeviceProcAddr(device, "vkDestroyFence"));
-    vkWaitForFences = reinterpret_cast<PFN_vkWaitForFences>(
-        vkGetDeviceProcAddr(device, "vkWaitForFences"));
-    vkResetFences = reinterpret_cast<PFN_vkResetFences>(
-        vkGetDeviceProcAddr(device, "vkResetFences"));
-    vkGetFenceStatus = reinterpret_cast<PFN_vkGetFenceStatus>(
-        vkGetDeviceProcAddr(device, "vkGetFenceStatus"));
-    vkCreateQueryPool = reinterpret_cast<PFN_vkCreateQueryPool>(
-        vkGetDeviceProcAddr(device, "vkCreateQueryPool"));
-    vkDestroyQueryPool = reinterpret_cast<PFN_vkDestroyQueryPool>(
-        vkGetDeviceProcAddr(device, "vkDestroyQueryPool"));
+    LOAD_DEVICE_FUNCTION(vkCreateSemaphore);
+    LOAD_DEVICE_FUNCTION(vkDestroySemaphore);
+    LOAD_DEVICE_FUNCTION(vkCreateFence);
+    LOAD_DEVICE_FUNCTION(vkDestroyFence);
+    LOAD_DEVICE_FUNCTION(vkWaitForFences);
+    LOAD_DEVICE_FUNCTION(vkResetFences);
+    LOAD_DEVICE_FUNCTION(vkGetFenceStatus);
+    LOAD_DEVICE_FUNCTION(vkCreateQueryPool);
+    LOAD_DEVICE_FUNCTION(vkDestroyQueryPool);
 }
 
 void VulkanFunctionLoader::loadCommandFunctions() {
-    vkCreateCommandPool = reinterpret_cast<PFN_vkCreateCommandPool>(
-        vkGetDeviceProcAddr(device, "vkCreateCommandPool"));
-    vkDestroyCommandPool = reinterpret_cast<PFN_vkDestroyCommandPool>(
-        vkGetDeviceProcAddr(device, "vkDestroyCommandPool"));
-    vkAllocateCommandBuffers = reinterpret_cast<PFN_vkAllocateCommandBuffers>(
-        vkGetDeviceProcAddr(device, "vkAllocateCommandBuffers"));
-    vkFreeCommandBuffers = reinterpret_cast<PFN_vkFreeCommandBuffers>(
-        vkGetDeviceProcAddr(device, "vkFreeCommandBuffers"));
-    vkResetCommandBuffer = reinterpret_cast<PFN_vkResetCommandBuffer>(
-        vkGetDeviceProcAddr(device, "vkResetCommandBuffer"));
-    vkResetCommandPool = reinterpret_cast<PFN_vkResetCommandPool>(
-        vkGetDeviceProcAddr(device, "vkResetCommandPool"));
-    vkBeginCommandBuffer = reinterpret_cast<PFN_vkBeginCommandBuffer>(
-        vkGetDeviceProcAddr(device, "vkBeginCommandBuffer"));
-    vkEndCommandBuffer = reinterpret_cast<PFN_vkEndCommandBuffer>(
-        vkGetDeviceProcAddr(device, "vkEndCommandBuffer"));
+    LOAD_DEVICE_FUNCTION(vkCreateCommandPool);
+    LOAD_DEVICE_FUNCTION(vkDestroyCommandPool);
+    LOAD_DEVICE_FUNCTION(vkAllocateCommandBuffers);
+    LOAD_DEVICE_FUNCTION(vkFreeCommandBuffers);
+    LOAD_DEVICE_FUNCTION(vkResetCommandBuffer);
+    LOAD_DEVICE_FUNCTION(vkResetCommandPool);
+    LOAD_DEVICE_FUNCTION(vkBeginCommandBuffer);
+    LOAD_DEVICE_FUNCTION(vkEndCommandBuffer);
 }
 
 void VulkanFunctionLoader::loadRenderingFunctions() {
-    vkCmdBeginRenderPass = reinterpret_cast<PFN_vkCmdBeginRenderPass>(
-        vkGetDeviceProcAddr(device, "vkCmdBeginRenderPass"));
-    vkCmdEndRenderPass = reinterpret_cast<PFN_vkCmdEndRenderPass>(
-        vkGetDeviceProcAddr(device, "vkCmdEndRenderPass"));
-    vkCmdBindPipeline = reinterpret_cast<PFN_vkCmdBindPipeline>(
-        vkGetDeviceProcAddr(device, "vkCmdBindPipeline"));
-    vkCmdSetViewport = reinterpret_cast<PFN_vkCmdSetViewport>(
-        vkGetDeviceProcAddr(device, "vkCmdSetViewport"));
-    vkCmdSetScissor = reinterpret_cast<PFN_vkCmdSetScissor>(
-        vkGetDeviceProcAddr(device, "vkCmdSetScissor"));
-    vkCmdDraw = reinterpret_cast<PFN_vkCmdDraw>(
-        vkGetDeviceProcAddr(device, "vkCmdDraw"));
-    vkCmdDrawIndexed = reinterpret_cast<PFN_vkCmdDrawIndexed>(
-        vkGetDeviceProcAddr(device, "vkCmdDrawIndexed"));
-    vkCmdBindDescriptorSets = reinterpret_cast<PFN_vkCmdBindDescriptorSets>(
-        vkGetDeviceProcAddr(device, "vkCmdBindDescriptorSets"));
-    vkCmdBindVertexBuffers = reinterpret_cast<PFN_vkCmdBindVertexBuffers>(
-        vkGetDeviceProcAddr(device, "vkCmdBindVertexBuffers"));
-    vkCmdBindIndexBuffer = reinterpret_cast<PFN_vkCmdBindIndexBuffer>(
-        vkGetDeviceProcAddr(device, "vkCmdBindIndexBuffer"));
-    vkCmdDispatch = reinterpret_cast<PFN_vkCmdDispatch>(
-        vkGetDeviceProcAddr(device, "vkCmdDispatch"));
-    vkCmdPipelineBarrier = reinterpret_cast<PFN_vkCmdPipelineBarrier>(
-        vkGetDeviceProcAddr(device, "vkCmdPipelineBarrier"));
-    vkCmdPushConstants = reinterpret_cast<PFN_vkCmdPushConstants>(
-        vkGetDeviceProcAddr(device, "vkCmdPushConstants"));
-    vkCmdCopyBuffer = reinterpret_cast<PFN_vkCmdCopyBuffer>(
-        vkGetDeviceProcAddr(device, "vkCmdCopyBuffer"));
-    vkCmdCopyBufferToImage = reinterpret_cast<PFN_vkCmdCopyBufferToImage>(
-        vkGetDeviceProcAddr(device, "vkCmdCopyBufferToImage"));
+    LOAD_DEVICE_FUNCTION(vkCmdBeginRenderPass);
+    LOAD_DEVICE_FUNCTION(vkCmdEndRenderPass);
+    LOAD_DEVICE_FUNCTION(vkCmdBindPipeline);
+    LOAD_DEVICE_FUNCTION(vkCmdSetViewport);
+    LOAD_DEVICE_FUNCTION(vkCmdSetScissor);
+    LOAD_DEVICE_FUNCTION(vkCmdDraw);
+    LOAD_DEVICE_FUNCTION(vkCmdDrawIndexed);
+    LOAD_DEVICE_FUNCTION(vkCmdBindDescriptorSets);
+    LOAD_DEVICE_FUNCTION(vkCmdBindVertexBuffers);
+    LOAD_DEVICE_FUNCTION(vkCmdBindIndexBuffer);
+    LOAD_DEVICE_FUNCTION(vkCmdDispatch);
+    LOAD_DEVICE_FUNCTION(vkCmdPipelineBarrier);
+    LOAD_DEVICE_FUNCTION(vkCmdPushConstants);
+    LOAD_DEVICE_FUNCTION(vkCmdCopyBuffer);
+    LOAD_DEVICE_FUNCTION(vkCmdCopyBufferToImage);
 }
 
 void VulkanFunctionLoader::loadQueueFunctions() {
-    vkQueueSubmit = reinterpret_cast<PFN_vkQueueSubmit>(
-        vkGetDeviceProcAddr(device, "vkQueueSubmit"));
-    vkQueueWaitIdle = reinterpret_cast<PFN_vkQueueWaitIdle>(
-        vkGetDeviceProcAddr(device, "vkQueueWaitIdle"));
+    LOAD_DEVICE_FUNCTION(vkQueueSubmit);
+    LOAD_DEVICE_FUNCTION(vkQueueWaitIdle);
 }
+
+// Clean up macros to avoid namespace pollution
+#undef LOAD_INSTANCE_FUNCTION
+#undef LOAD_DEVICE_FUNCTION
+#undef LOAD_PRE_INSTANCE_FUNCTION
