@@ -50,15 +50,15 @@ bool PipelineSystemManager::initializeManagers() {
     }
     
     // Initialize graphics pipeline manager
-    graphicsManager = std::make_unique<GraphicsPipelineManager>();
-    if (!graphicsManager->initialize(*context, shaderManager.get(), layoutManager.get())) {
+    graphicsManager = std::make_unique<GraphicsPipelineManager>(const_cast<VulkanContext*>(context));
+    if (!graphicsManager->initialize(shaderManager.get(), layoutManager.get())) {
         std::cerr << "Failed to initialize GraphicsPipelineManager" << std::endl;
         return false;
     }
     
     // Initialize compute pipeline manager
-    computeManager = std::make_unique<ComputePipelineManager>();
-    if (!computeManager->initialize(*context, shaderManager.get(), layoutManager.get())) {
+    computeManager = std::make_unique<ComputePipelineManager>(const_cast<VulkanContext*>(context));
+    if (!computeManager->initialize(shaderManager.get(), layoutManager.get())) {
         std::cerr << "Failed to initialize ComputePipelineManager" << std::endl;
         return false;
     }

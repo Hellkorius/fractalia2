@@ -110,17 +110,15 @@ size_t GraphicsPipelineState::getHash() const {
 }
 
 // GraphicsPipelineManager implementation
-GraphicsPipelineManager::GraphicsPipelineManager() {
+GraphicsPipelineManager::GraphicsPipelineManager(VulkanContext* ctx) : VulkanManagerBase(ctx) {
 }
 
 GraphicsPipelineManager::~GraphicsPipelineManager() {
     cleanup();
 }
 
-bool GraphicsPipelineManager::initialize(const VulkanContext& context, 
-                                       ShaderManager* shaderManager,
+bool GraphicsPipelineManager::initialize(ShaderManager* shaderManager,
                                        DescriptorLayoutManager* layoutManager) {
-    this->context = &context;
     this->shaderManager = shaderManager;
     this->layoutManager = layoutManager;
     
@@ -130,8 +128,7 @@ bool GraphicsPipelineManager::initialize(const VulkanContext& context,
     cacheInfo.initialDataSize = 0;
     cacheInfo.pInitialData = nullptr;
     
-    VkResult result = context.getLoader().vkCreatePipelineCache(
-        context.getDevice(), &cacheInfo, nullptr, &pipelineCache);
+    VkResult result = createPipelineCache(&cacheInfo, &pipelineCache);
     
     if (result != VK_SUCCESS) {
         std::cerr << "Failed to create graphics pipeline cache: " << result << std::endl;
@@ -150,13 +147,13 @@ void GraphicsPipelineManager::cleanup() {
     
     // Destroy render passes
     for (auto& [hash, renderPass] : renderPassCache) {
-        context->getLoader().vkDestroyRenderPass(context->getDevice(), renderPass, nullptr);
+        destroyRenderPass(renderPass);
     }
     renderPassCache.clear();
     
     // Destroy pipeline cache
     if (pipelineCache != VK_NULL_HANDLE) {
-        context->getLoader().vkDestroyPipelineCache(context->getDevice(), pipelineCache, nullptr);
+        destroyPipelineCache(pipelineCache);
         pipelineCache = VK_NULL_HANDLE;
     }
     
@@ -320,10 +317,10 @@ std::unique_ptr<CachedGraphicsPipeline> GraphicsPipelineManager::createPipelineI
             std::cerr << "GraphicsPipelineManager: CRITICAL ERROR - Failed to load graphics shader: " << shaderPath << std::endl;
             // Cleanup previously loaded shaders
             for (VkShaderModule module : shaderModules) {
-                context->getLoader().vkDestroyShaderModule(context->getDevice(), module, nullptr);
+                destroyShaderModule(module);
             }
             if (cachedPipeline->layout != VK_NULL_HANDLE) {
-                context->getLoader().vkDestroyPipelineLayout(context->getDevice(), cachedPipeline->layout, nullptr);
+                destroyPipelineLayout(cachedPipeline->layout);
             }
             return nullptr;
         }
@@ -373,8 +370,7 @@ std::unique_ptr<CachedGraphicsPipeline> GraphicsPipelineManager::createPipelineI
     std::cout << "  Shader stages count: " << pipelineInfo.stageCount << std::endl;
     std::cout << "  About to call vkCreateGraphicsPipelines..." << std::endl;
     
-    VkResult result = context->getLoader().vkCreateGraphicsPipelines(
-        context->getDevice(), pipelineCache, 1, &pipelineInfo, nullptr, &cachedPipeline->pipeline);
+    VkResult result = createGraphicsPipelines(pipelineCache, 1, &pipelineInfo, &cachedPipeline->pipeline);
     
     if (result != VK_SUCCESS) {
         std::cerr << "GraphicsPipelineManager: CRITICAL ERROR - Failed to create graphics pipeline!" << std::endl;
@@ -385,7 +381,7 @@ std::unique_ptr<CachedGraphicsPipeline> GraphicsPipelineManager::createPipelineI
         std::cerr << "  Device valid: " << (context->getDevice() != VK_NULL_HANDLE ? "YES" : "NO") << std::endl;
         
         if (cachedPipeline->layout != VK_NULL_HANDLE) {
-            context->getLoader().vkDestroyPipelineLayout(context->getDevice(), cachedPipeline->layout, nullptr);
+            destroyPipelineLayout(cachedPipeline->layout);
         }
         return nullptr;
     } else {
@@ -418,8 +414,7 @@ VkPipelineLayout GraphicsPipelineManager::createPipelineLayout(const std::vector
     layoutInfo.pPushConstantRanges = pushConstants.data();
     
     VkPipelineLayout layout;
-    VkResult result = context->getLoader().vkCreatePipelineLayout(
-        context->getDevice(), &layoutInfo, nullptr, &layout);
+    VkResult result = loader->vkCreatePipelineLayout(device, &layoutInfo, nullptr, &layout);
     
     if (result != VK_SUCCESS) {
         std::cerr << "GraphicsPipelineManager: CRITICAL ERROR - Failed to create graphics pipeline layout!" << std::endl;
@@ -542,8 +537,7 @@ VkRenderPass GraphicsPipelineManager::createRenderPass(VkFormat colorFormat,
     renderPassInfo.pDependencies = &dependency;
     
     VkRenderPass renderPass;
-    VkResult result = context->getLoader().vkCreateRenderPass(
-        context->getDevice(), &renderPassInfo, nullptr, &renderPass);
+    VkResult result = loader->vkCreateRenderPass(device, &renderPassInfo, nullptr, &renderPass);
     
     if (result != VK_SUCCESS) {
         std::cerr << "Failed to create render pass: " << result << std::endl;
@@ -562,10 +556,10 @@ void GraphicsPipelineManager::clearCache() {
     // Destroy all cached pipelines
     for (auto& [state, pipeline] : pipelineCache_) {
         if (pipeline->pipeline != VK_NULL_HANDLE) {
-            context->getLoader().vkDestroyPipeline(context->getDevice(), pipeline->pipeline, nullptr);
+            destroyPipeline(pipeline->pipeline);
         }
         if (pipeline->layout != VK_NULL_HANDLE) {
-            context->getLoader().vkDestroyPipelineLayout(context->getDevice(), pipeline->layout, nullptr);
+            destroyPipelineLayout(pipeline->layout);
         }
     }
     
@@ -574,7 +568,7 @@ void GraphicsPipelineManager::clearCache() {
     std::cout << "GraphicsPipelineManager: Clearing render pass cache (" << renderPassCache.size() << " render passes)" << std::endl;
     for (auto& [hash, renderPass] : renderPassCache) {
         if (renderPass != VK_NULL_HANDLE) {
-            context->getLoader().vkDestroyRenderPass(context->getDevice(), renderPass, nullptr);
+            destroyRenderPass(renderPass);
         }
     }
     renderPassCache.clear();
@@ -605,7 +599,7 @@ bool GraphicsPipelineManager::recreatePipelineCache() {
     // Destroy and recreate the VkPipelineCache object itself
     if (pipelineCache != VK_NULL_HANDLE) {
         std::cout << "GraphicsPipelineManager: Destroying corrupted pipeline cache" << std::endl;
-        context->getLoader().vkDestroyPipelineCache(context->getDevice(), pipelineCache, nullptr);
+        destroyPipelineCache(pipelineCache);
         pipelineCache = VK_NULL_HANDLE;
     }
     
@@ -615,7 +609,7 @@ bool GraphicsPipelineManager::recreatePipelineCache() {
     cacheInfo.initialDataSize = 0;
     cacheInfo.pInitialData = nullptr;
     
-    if (context->getLoader().vkCreatePipelineCache(context->getDevice(), &cacheInfo, nullptr, &pipelineCache) != VK_SUCCESS) {
+    if (createPipelineCache(&cacheInfo, &pipelineCache) != VK_SUCCESS) {
         std::cerr << "GraphicsPipelineManager: CRITICAL FAILURE - Failed to recreate pipeline cache" << std::endl;
         return false;
     }
@@ -637,10 +631,10 @@ void GraphicsPipelineManager::evictLeastRecentlyUsed() {
     
     // Destroy the pipeline
     if (lruIt->second->pipeline != VK_NULL_HANDLE) {
-        context->getLoader().vkDestroyPipeline(context->getDevice(), lruIt->second->pipeline, nullptr);
+        destroyPipeline(lruIt->second->pipeline);
     }
     if (lruIt->second->layout != VK_NULL_HANDLE) {
-        context->getLoader().vkDestroyPipelineLayout(context->getDevice(), lruIt->second->layout, nullptr);
+        destroyPipelineLayout(lruIt->second->layout);
     }
     
     pipelineCache_.erase(lruIt);
@@ -764,10 +758,10 @@ void GraphicsPipelineManager::optimizeCache(uint64_t currentFrame) {
     for (auto it = pipelineCache_.begin(); it != pipelineCache_.end();) {
         if (currentFrame - it->second->lastUsedFrame > 1000) { // Evict after 1000 frames
             if (it->second->pipeline != VK_NULL_HANDLE) {
-                context->getLoader().vkDestroyPipeline(context->getDevice(), it->second->pipeline, nullptr);
+                destroyPipeline(it->second->pipeline);
             }
             if (it->second->layout != VK_NULL_HANDLE) {
-                context->getLoader().vkDestroyPipelineLayout(context->getDevice(), it->second->layout, nullptr);
+                destroyPipelineLayout(it->second->layout);
             }
             it = pipelineCache_.erase(it);
             stats.totalPipelines--;
@@ -779,7 +773,7 @@ void GraphicsPipelineManager::optimizeCache(uint64_t currentFrame) {
 
 void GraphicsPipelineManager::destroyRenderPass(VkRenderPass renderPass) {
     if (renderPass != VK_NULL_HANDLE && context) {
-        context->getLoader().vkDestroyRenderPass(context->getDevice(), renderPass, nullptr);
+        destroyRenderPass(renderPass);
     }
 }
 

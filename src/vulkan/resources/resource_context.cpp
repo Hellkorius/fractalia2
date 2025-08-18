@@ -31,6 +31,10 @@ bool StagingRingBuffer::initialize(const VulkanContext& context, VkDeviceSize si
     this->totalSize = size;
     this->currentOffset = 0;
     
+    // Cache frequently used loader and device references for performance
+    const auto& loader = context.getLoader();
+    const VkDevice device = context.getDevice();
+    
     // Create staging buffer - always host visible and coherent
     VkBufferCreateInfo bufferInfo{};
     bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
@@ -38,16 +42,16 @@ bool StagingRingBuffer::initialize(const VulkanContext& context, VkDeviceSize si
     bufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
     bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     
-    if (context.getLoader().vkCreateBuffer(context.getDevice(), &bufferInfo, nullptr, &ringBuffer.buffer) != VK_SUCCESS) {
+    if (loader.vkCreateBuffer(device, &bufferInfo, nullptr, &ringBuffer.buffer) != VK_SUCCESS) {
         std::cerr << "Failed to create staging ring buffer!" << std::endl;
         return false;
     }
     
     VkMemoryRequirements memRequirements;
-    context.getLoader().vkGetBufferMemoryRequirements(context.getDevice(), ringBuffer.buffer, &memRequirements);
+    loader.vkGetBufferMemoryRequirements(device, ringBuffer.buffer, &memRequirements);
     
     VkPhysicalDeviceMemoryProperties memProperties;
-    context.getLoader().vkGetPhysicalDeviceMemoryProperties(context.getPhysicalDevice(), &memProperties);
+    loader.vkGetPhysicalDeviceMemoryProperties(context.getPhysicalDevice(), &memProperties);
     
     uint32_t memoryType = UINT32_MAX;
     VkMemoryPropertyFlags properties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
@@ -62,7 +66,7 @@ bool StagingRingBuffer::initialize(const VulkanContext& context, VkDeviceSize si
     
     if (memoryType == UINT32_MAX) {
         std::cerr << "Failed to find suitable memory type for staging buffer!" << std::endl;
-        context.getLoader().vkDestroyBuffer(context.getDevice(), ringBuffer.buffer, nullptr);
+        loader.vkDestroyBuffer(device, ringBuffer.buffer, nullptr);
         return false;
     }
     
@@ -72,23 +76,23 @@ bool StagingRingBuffer::initialize(const VulkanContext& context, VkDeviceSize si
     allocInfo.allocationSize = memRequirements.size;
     allocInfo.memoryTypeIndex = memoryType;
     
-    if (context.getLoader().vkAllocateMemory(context.getDevice(), &allocInfo, nullptr, &memory) != VK_SUCCESS) {
+    if (loader.vkAllocateMemory(device, &allocInfo, nullptr, &memory) != VK_SUCCESS) {
         std::cerr << "Failed to allocate staging buffer memory!" << std::endl;
-        context.getLoader().vkDestroyBuffer(context.getDevice(), ringBuffer.buffer, nullptr);
+        loader.vkDestroyBuffer(device, ringBuffer.buffer, nullptr);
         return false;
     }
     
-    if (context.getLoader().vkBindBufferMemory(context.getDevice(), ringBuffer.buffer, memory, 0) != VK_SUCCESS) {
+    if (loader.vkBindBufferMemory(device, ringBuffer.buffer, memory, 0) != VK_SUCCESS) {
         std::cerr << "Failed to bind staging buffer memory!" << std::endl;
-        context.getLoader().vkFreeMemory(context.getDevice(), memory, nullptr);
-        context.getLoader().vkDestroyBuffer(context.getDevice(), ringBuffer.buffer, nullptr);
+        loader.vkFreeMemory(device, memory, nullptr);
+        loader.vkDestroyBuffer(device, ringBuffer.buffer, nullptr);
         return false;
     }
     
-    if (context.getLoader().vkMapMemory(context.getDevice(), memory, 0, size, 0, &ringBuffer.mappedData) != VK_SUCCESS) {
+    if (loader.vkMapMemory(device, memory, 0, size, 0, &ringBuffer.mappedData) != VK_SUCCESS) {
         std::cerr << "Failed to map staging buffer memory!" << std::endl;
-        context.getLoader().vkFreeMemory(context.getDevice(), memory, nullptr);
-        context.getLoader().vkDestroyBuffer(context.getDevice(), ringBuffer.buffer, nullptr);
+        loader.vkFreeMemory(device, memory, nullptr);
+        loader.vkDestroyBuffer(device, ringBuffer.buffer, nullptr);
         return false;
     }
     

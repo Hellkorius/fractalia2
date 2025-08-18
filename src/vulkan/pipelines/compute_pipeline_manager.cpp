@@ -89,17 +89,15 @@ void ComputeDispatch::calculateOptimalDispatch(uint32_t dataSize, const glm::uve
 }
 
 // ComputePipelineManager implementation
-ComputePipelineManager::ComputePipelineManager() {
+ComputePipelineManager::ComputePipelineManager(VulkanContext* ctx) : VulkanManagerBase(ctx) {
 }
 
 ComputePipelineManager::~ComputePipelineManager() {
     cleanup();
 }
 
-bool ComputePipelineManager::initialize(const VulkanContext& context,
-                                      ShaderManager* shaderManager,
+bool ComputePipelineManager::initialize(ShaderManager* shaderManager,
                                       DescriptorLayoutManager* layoutManager) {
-    this->context = &context;
     this->shaderManager = shaderManager;
     this->layoutManager = layoutManager;
     
@@ -109,8 +107,7 @@ bool ComputePipelineManager::initialize(const VulkanContext& context,
     cacheInfo.initialDataSize = 0;
     cacheInfo.pInitialData = nullptr;
     
-    VkResult result = context.getLoader().vkCreatePipelineCache(
-        context.getDevice(), &cacheInfo, nullptr, &pipelineCache);
+    VkResult result = createPipelineCache(&cacheInfo, &pipelineCache);
     
     if (result != VK_SUCCESS) {
         std::cerr << "Failed to create compute pipeline cache: " << result << std::endl;
@@ -118,7 +115,7 @@ bool ComputePipelineManager::initialize(const VulkanContext& context,
     }
     
     // Query and cache device properties
-    context.getLoader().vkGetPhysicalDeviceProperties(context.getPhysicalDevice(), &deviceProperties);
+    loader->vkGetPhysicalDeviceProperties(context->getPhysicalDevice(), &deviceProperties);
     
     // Note: Device features would require vkGetPhysicalDeviceFeatures to be loaded in VulkanFunctionLoader
     // For now, deviceFeatures remains zero-initialized which is safe
@@ -239,11 +236,11 @@ void ComputePipelineManager::dispatch(VkCommandBuffer commandBuffer, const Compu
     }
     
     // Bind pipeline
-    context->getLoader().vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, dispatch.pipeline);
+    cmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, dispatch.pipeline);
     
     // Bind descriptor sets
     if (!dispatch.descriptorSets.empty()) {
-        context->getLoader().vkCmdBindDescriptorSets(
+        cmdBindDescriptorSets(
             commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, dispatch.layout,
             0, static_cast<uint32_t>(dispatch.descriptorSets.size()),
             dispatch.descriptorSets.data(), 0, nullptr);
@@ -251,7 +248,7 @@ void ComputePipelineManager::dispatch(VkCommandBuffer commandBuffer, const Compu
     
     // Push constants
     if (dispatch.pushConstantData && dispatch.pushConstantSize > 0) {
-        context->getLoader().vkCmdPushConstants(
+        cmdPushConstants(
             commandBuffer, dispatch.layout, dispatch.pushConstantStages,
             0, dispatch.pushConstantSize, dispatch.pushConstantData);
     }
@@ -262,10 +259,10 @@ void ComputePipelineManager::dispatch(VkCommandBuffer commandBuffer, const Compu
     }
     
     // Dispatch compute work
-    context->getLoader().vkCmdDispatch(commandBuffer, 
-                                      dispatch.groupCountX, 
-                                      dispatch.groupCountY, 
-                                      dispatch.groupCountZ);
+    cmdDispatch(commandBuffer, 
+               dispatch.groupCountX, 
+               dispatch.groupCountY, 
+               dispatch.groupCountZ);
 }
 
 void ComputePipelineManager::dispatchBuffer(VkCommandBuffer commandBuffer, 
@@ -350,7 +347,7 @@ std::unique_ptr<CachedComputePipeline> ComputePipelineManager::createPipelineInt
     if (shaderModule == VK_NULL_HANDLE) {
         std::cerr << "Failed to load compute shader: " << state.shaderPath << std::endl;
         if (cachedPipeline->layout != VK_NULL_HANDLE) {
-            context->getLoader().vkDestroyPipelineLayout(context->getDevice(), cachedPipeline->layout, nullptr);
+            destroyPipelineLayout(cachedPipeline->layout);
         }
         return nullptr;
     }
@@ -395,8 +392,7 @@ std::unique_ptr<CachedComputePipeline> ComputePipelineManager::createPipelineInt
     std::cout << "  Pipeline cache: " << (void*)pipelineCache << std::endl;
     std::cout << "  Shader module: " << (void*)shaderModule << std::endl;
     
-    VkResult result = context->getLoader().vkCreateComputePipelines(
-        context->getDevice(), pipelineCache, 1, &pipelineInfo, nullptr, &cachedPipeline->pipeline);
+    VkResult result = createComputePipelines(pipelineCache, 1, &pipelineInfo, &cachedPipeline->pipeline);
     
     if (result != VK_SUCCESS) {
         std::cerr << "ComputePipelineManager: CRITICAL ERROR - Failed to create compute pipeline!" << std::endl;
@@ -408,7 +404,7 @@ std::unique_ptr<CachedComputePipeline> ComputePipelineManager::createPipelineInt
         std::cerr << "  Device valid: " << (context->getDevice() != VK_NULL_HANDLE ? "YES" : "NO") << std::endl;
         
         if (cachedPipeline->layout != VK_NULL_HANDLE) {
-            context->getLoader().vkDestroyPipelineLayout(context->getDevice(), cachedPipeline->layout, nullptr);
+            destroyPipelineLayout(cachedPipeline->layout);
         }
         return nullptr;
     } else {
@@ -446,8 +442,7 @@ VkPipelineLayout ComputePipelineManager::createPipelineLayout(const std::vector<
     layoutInfo.pPushConstantRanges = pushConstants.data();
     
     VkPipelineLayout layout;
-    VkResult result = context->getLoader().vkCreatePipelineLayout(
-        context->getDevice(), &layoutInfo, nullptr, &layout);
+    VkResult result = loader->vkCreatePipelineLayout(device, &layoutInfo, nullptr, &layout);
     
     if (result != VK_SUCCESS) {
         std::cerr << "ComputePipelineManager: CRITICAL ERROR - Failed to create pipeline layout!" << std::endl;
@@ -467,10 +462,10 @@ void ComputePipelineManager::clearCache() {
     // Destroy all cached pipelines
     for (auto& [state, pipeline] : pipelineCache_) {
         if (pipeline->pipeline != VK_NULL_HANDLE) {
-            context->getLoader().vkDestroyPipeline(context->getDevice(), pipeline->pipeline, nullptr);
+            destroyPipeline(pipeline->pipeline);
         }
         if (pipeline->layout != VK_NULL_HANDLE) {
-            context->getLoader().vkDestroyPipelineLayout(context->getDevice(), pipeline->layout, nullptr);
+            destroyPipelineLayout(pipeline->layout);
         }
     }
     
@@ -509,7 +504,7 @@ bool ComputePipelineManager::recreatePipelineCache() {
     cacheInfo.initialDataSize = 0;
     cacheInfo.pInitialData = nullptr;
     
-    if (context->getLoader().vkCreatePipelineCache(context->getDevice(), &cacheInfo, nullptr, &pipelineCache) != VK_SUCCESS) {
+    if (createPipelineCache(&cacheInfo, &pipelineCache) != VK_SUCCESS) {
         std::cerr << "ComputePipelineManager: CRITICAL FAILURE - Failed to recreate pipeline cache" << std::endl;
         return false;
     }
@@ -531,10 +526,10 @@ void ComputePipelineManager::evictLeastRecentlyUsed() {
     
     // Destroy the pipeline
     if (lruIt->second->pipeline != VK_NULL_HANDLE) {
-        context->getLoader().vkDestroyPipeline(context->getDevice(), lruIt->second->pipeline, nullptr);
+        destroyPipeline(lruIt->second->pipeline);
     }
     if (lruIt->second->layout != VK_NULL_HANDLE) {
-        context->getLoader().vkDestroyPipelineLayout(context->getDevice(), lruIt->second->layout, nullptr);
+        destroyPipelineLayout(lruIt->second->layout);
     }
     
     pipelineCache_.erase(lruIt);
@@ -574,7 +569,7 @@ void ComputePipelineManager::insertOptimalBarriers(VkCommandBuffer commandBuffer
     // Optimize buffer barriers by merging adjacent ranges
     auto optimizedBufferBarriers = optimizeBufferBarriers(bufferBarriers);
     
-    context->getLoader().vkCmdPipelineBarrier(
+    cmdPipelineBarrier(
         commandBuffer,
         srcStage, dstStage,
         0,  // No dependency flags for compute
@@ -687,10 +682,10 @@ void ComputePipelineManager::optimizeCache(uint64_t currentFrame) {
     for (auto it = pipelineCache_.begin(); it != pipelineCache_.end();) {
         if (currentFrame - it->second->lastUsedFrame > 1000) { // Evict after 1000 frames
             if (it->second->pipeline != VK_NULL_HANDLE) {
-                context->getLoader().vkDestroyPipeline(context->getDevice(), it->second->pipeline, nullptr);
+                destroyPipeline(it->second->pipeline);
             }
             if (it->second->layout != VK_NULL_HANDLE) {
-                context->getLoader().vkDestroyPipelineLayout(context->getDevice(), it->second->layout, nullptr);
+                destroyPipelineLayout(it->second->layout);
             }
             it = pipelineCache_.erase(it);
             stats.totalPipelines--;

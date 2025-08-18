@@ -9,6 +9,7 @@
 #include <functional>
 #include <chrono>
 #include "../core/vulkan_context.h"
+#include "../core/vulkan_manager_base.h"
 
 // Forward declarations
 class ShaderManager;
@@ -101,14 +102,13 @@ struct CachedGraphicsPipeline {
 };
 
 // AAA Graphics Pipeline Manager with advanced caching
-class GraphicsPipelineManager {
+class GraphicsPipelineManager : public VulkanManagerBase {
 public:
-    GraphicsPipelineManager();
+    explicit GraphicsPipelineManager(VulkanContext* ctx);
     ~GraphicsPipelineManager();
 
     // Initialization
-    bool initialize(const VulkanContext& context, 
-                   ShaderManager* shaderManager,
+    bool initialize(ShaderManager* shaderManager,
                    DescriptorLayoutManager* layoutManager);
     void cleanup();
 
@@ -164,7 +164,6 @@ public:
 
 private:
     // Core Vulkan objects
-    const VulkanContext* context = nullptr;
     VkPipelineCache pipelineCache = VK_NULL_HANDLE;
     
     // Dependencies
