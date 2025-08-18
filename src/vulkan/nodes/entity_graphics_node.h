@@ -39,6 +39,9 @@ public:
     // Update swapchain image index for current frame
     void setImageIndex(uint32_t imageIndex) { this->imageIndex = imageIndex; }
     
+    // Set current frame's swapchain image resource ID (called each frame)
+    void setCurrentSwapchainImageId(FrameGraphTypes::ResourceId currentImageId) { this->currentSwapchainImageId = currentImageId; }
+    
     // Update frame data for vertex shader push constants and uniform buffers
     void updateFrameData(float time, float deltaTime, uint32_t frameIndex) { 
         this->frameTime = time; 
@@ -69,7 +72,8 @@ private:
     // Resources
     FrameGraphTypes::ResourceId entityBufferId;
     FrameGraphTypes::ResourceId positionBufferId;
-    FrameGraphTypes::ResourceId colorTargetId;
+    FrameGraphTypes::ResourceId colorTargetId; // Static placeholder - not used
+    FrameGraphTypes::ResourceId currentSwapchainImageId = 0; // Dynamic per-frame ID
     
     // External dependencies (not owned)
     GraphicsPipelineManager* graphicsManager;

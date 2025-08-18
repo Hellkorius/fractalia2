@@ -153,10 +153,12 @@ void RenderFrameDirector::setupFrameGraph(uint32_t imageIndex) {
             gpuEntityManager
         );
         
+        // ELEGANT SOLUTION: Pass a dynamic swapchain image reference
+        // Nodes will resolve the actual resource ID at execution time
         graphicsNodeId = frameGraph->addNode<EntityGraphicsNode>(
             entityBufferId,
             positionBufferId,
-            swapchainImageId,
+            0, // Placeholder - will be resolved dynamically
             pipelineSystem->getGraphicsManager(),
             swapchain,
             resourceContext,
@@ -164,7 +166,7 @@ void RenderFrameDirector::setupFrameGraph(uint32_t imageIndex) {
         );
         
         presentNodeId = frameGraph->addNode<SwapchainPresentNode>(
-            swapchainImageId,
+            0, // Placeholder - will be resolved dynamically  
             swapchain
         );
         
@@ -178,26 +180,16 @@ void RenderFrameDirector::setupFrameGraph(uint32_t imageIndex) {
 }
 
 void RenderFrameDirector::configureFrameGraphNodes(uint32_t imageIndex, flecs::world* world) {
-    // Configure graphics node with proper node ID
+    // ELEGANT ORCHESTRATION: Configure nodes with current frame's swapchain image
     if (auto* graphicsNode = frameGraph->getNode<EntityGraphicsNode>(graphicsNodeId)) {
         graphicsNode->setImageIndex(imageIndex);
+        graphicsNode->setCurrentSwapchainImageId(swapchainImageId); // Dynamic resolution
         graphicsNode->setWorld(world);
-        
-        // Rate-limited debug output (once per second)
-        static int configCounter = 0;
-        if (configCounter++ % 60 == 0) {
-            std::cout << "RenderFrameDirector: Configured graphics node " << graphicsNodeId 
-                      << " with imageIndex=" << imageIndex << " and world=" << (world ? "valid" : "null") << std::endl;
-        }
-    } else {
-        std::cerr << "RenderFrameDirector: Failed to find graphics node with ID " << graphicsNodeId << std::endl;
     }
     
-    // Configure present node with proper node ID
     if (auto* presentNode = frameGraph->getNode<SwapchainPresentNode>(presentNodeId)) {
         presentNode->setImageIndex(imageIndex);
-    } else {
-        std::cerr << "RenderFrameDirector: Failed to find present node with ID " << presentNodeId << std::endl;
+        presentNode->setCurrentSwapchainImageId(swapchainImageId); // Dynamic resolution
     }
 }
 
@@ -215,6 +207,18 @@ void RenderFrameDirector::configureNodes(
     if (SwapchainPresentNode* presentNode = frameGraph->getNode<SwapchainPresentNode>(presentNodeId)) {
         presentNode->setImageIndex(imageIndex);
     }
+}
+
+void RenderFrameDirector::resetSwapchainCache() {
+    // ELEGANT SOLUTION: Swapchain recreation is now seamless
+    // 1. Remove old swapchain images from frame graph
+    frameGraph->removeSwapchainResources();
+    
+    // 2. Reset cache for new swapchain size  
+    swapchainImageIds.assign(swapchain->getImages().size(), 0);
+    
+    // 3. That's it! Next frame will naturally import new images
+    // No forced rebuilds, no stale references, no complexity
 }
 
 bool RenderFrameDirector::compileFrameGraph(uint32_t currentFrame, float totalTime, float deltaTime, uint32_t frameCounter) {

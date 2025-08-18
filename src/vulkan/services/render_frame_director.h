@@ -59,6 +59,9 @@ public:
 
     // Node configuration after setup
     void configureFrameGraphNodes(uint32_t imageIndex, flecs::world* world);
+    
+    // Swapchain recreation support
+    void resetSwapchainCache();
 
 private:
     // Dependencies

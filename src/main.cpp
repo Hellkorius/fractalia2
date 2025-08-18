@@ -175,6 +175,7 @@ int main(int argc, char* argv[]) {
                     const auto& event = events->events[i];
                     if (event.type == InputEvents::Event::WINDOW_RESIZE) {
                         renderer.updateAspectRatio(event.windowResizeEvent.width, event.windowResizeEvent.height);
+                        renderer.setFramebufferResized(true);
                         DEBUG_LOG("Window resized to " << event.windowResizeEvent.width << "x" << event.windowResizeEvent.height);
                     }
                 }

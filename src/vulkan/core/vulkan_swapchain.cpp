@@ -108,9 +108,8 @@ bool VulkanSwapchain::createSwapChain() {
     createInfo.imageArrayLayers = 1;
     createInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 
-    std::cout << "VulkanSwapchain: About to call findQueueFamilies..." << std::endl;
-    QueueFamilyIndices indices = context->findQueueFamilies(context->getPhysicalDevice());
-    std::cout << "VulkanSwapchain: findQueueFamilies returned" << std::endl;
+    // Use cached queue family indices instead of re-querying during swapchain recreation
+    const QueueFamilyIndices& indices = context->getQueueFamilyIndices();
     uint32_t queueFamilyIndices[] = {indices.graphicsFamily.value(), indices.presentFamily.value()};
 
     if (indices.graphicsFamily != indices.presentFamily) {

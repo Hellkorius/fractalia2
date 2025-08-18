@@ -46,6 +46,9 @@ bool VulkanContext::initialize(SDL_Window* window) {
     loader->setInstance(instance);
     loader->loadPostInstanceFunctions();
     
+    // Setup debug messenger for surface and swapchain monitoring
+    setupDebugMessenger();
+    
     if (!createSurface()) {
         std::cerr << "Failed to create surface" << std::endl;
         return false;
@@ -84,6 +87,8 @@ void VulkanContext::cleanup() {
         loader->vkDestroySurfaceKHR(instance, surface, nullptr);
         surface = VK_NULL_HANDLE;
     }
+    
+    cleanupDebugMessenger();
     
     if (instance != VK_NULL_HANDLE && loader) {
         loader->vkDestroyInstance(instance, nullptr);
@@ -367,6 +372,56 @@ std::vector<const char*> VulkanContext::getRequiredExtensions() {
     }
     
     std::vector<const char*> requiredExtensions(extensions, extensions + extensionCount);
+    
+    // Add debug utils extension for validation layer callbacks
+    requiredExtensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+    
     return requiredExtensions;
+}
+
+static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
+    VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
+    VkDebugUtilsMessageTypeFlagsEXT messageType,
+    const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
+    void* pUserData) {
+    
+    // Filter out less important messages but include surface-related warnings
+    if (messageSeverity >= VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT ||
+        (pCallbackData && pCallbackData->pMessage && 
+         (strstr(pCallbackData->pMessage, "surface") || 
+          strstr(pCallbackData->pMessage, "swapchain") ||
+          strstr(pCallbackData->pMessage, "queue family")))) {
+        std::cerr << "Validation layer: " << pCallbackData->pMessage << std::endl;
+    }
+    
+    return VK_FALSE;
+}
+
+bool VulkanContext::setupDebugMessenger() {
+    VkDebugUtilsMessengerCreateInfoEXT createInfo{};
+    createInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
+    createInfo.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | 
+                                VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | 
+                                VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
+    createInfo.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | 
+                            VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | 
+                            VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
+    createInfo.pfnUserCallback = debugCallback;
+    createInfo.pUserData = nullptr;
+
+    if (loader->vkCreateDebugUtilsMessengerEXT(instance, &createInfo, nullptr, &debugMessenger) != VK_SUCCESS) {
+        std::cerr << "Failed to set up debug messenger!" << std::endl;
+        return false;
+    }
+    
+    std::cout << "Debug messenger setup successfully" << std::endl;
+    return true;
+}
+
+void VulkanContext::cleanupDebugMessenger() {
+    if (debugMessenger != VK_NULL_HANDLE) {
+        loader->vkDestroyDebugUtilsMessengerEXT(instance, debugMessenger, nullptr);
+        debugMessenger = VK_NULL_HANDLE;
+    }
 }
 

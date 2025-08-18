@@ -297,8 +297,11 @@ void VulkanRenderer::drawFrameModular() {
     
     if (!frameResult.success) {
         // Check if swapchain recreation is needed
-        if (presentationSurface->isFramebufferResized()) {
+        if (presentationSurface->isFramebufferResized() && !recreationInProgress) {
+            recreationInProgress = true;
             presentationSurface->recreateSwapchain();
+            frameDirector->resetSwapchainCache();
+            recreationInProgress = false;
         }
         return;
     }
@@ -319,9 +322,12 @@ void VulkanRenderer::drawFrameModular() {
     }
     
     // Handle swapchain recreation if needed
-    if (submissionResult.swapchainRecreationNeeded || framebufferResized) {
+    if ((submissionResult.swapchainRecreationNeeded || framebufferResized) && !recreationInProgress) {
+        recreationInProgress = true;
         framebufferResized = false;
         presentationSurface->recreateSwapchain();
+        frameDirector->resetSwapchainCache();
+        recreationInProgress = false;
     }
     
     // Update frame state
@@ -365,5 +371,11 @@ bool VulkanRenderer::testBufferOverflowProtection() const {
 void VulkanRenderer::updateAspectRatio(int windowWidth, int windowHeight) {
     if (world) {
         CameraManager::updateAspectRatio(*world, windowWidth, windowHeight);
+    }
+}
+
+void VulkanRenderer::setFramebufferResized(bool resized) {
+    if (presentationSurface) {
+        presentationSurface->setFramebufferResized(resized);
     }
 }

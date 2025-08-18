@@ -39,8 +39,9 @@ std::vector<ResourceDependency> EntityGraphicsNode::getInputs() const {
 }
 
 std::vector<ResourceDependency> EntityGraphicsNode::getOutputs() const {
+    // ELEGANT SOLUTION: Use dynamic swapchain image ID resolved each frame
     return {
-        {colorTargetId, ResourceAccess::Write, PipelineStage::ColorAttachment},
+        {currentSwapchainImageId, ResourceAccess::Write, PipelineStage::ColorAttachment},
     };
 }
 
@@ -92,11 +93,19 @@ void EntityGraphicsNode::execute(VkCommandBuffer commandBuffer, const FrameGraph
         return;
     }
     
+    // Validate swapchain state before accessing framebuffers
+    const auto& framebuffers = swapchain->getFramebuffers();
+    if (imageIndex >= framebuffers.size()) {
+        std::cerr << "EntityGraphicsNode: Invalid imageIndex " << imageIndex 
+                  << " >= framebuffer count " << framebuffers.size() << std::endl;
+        return;
+    }
+    
     // Begin render pass
     VkRenderPassBeginInfo renderPassInfo{};
     renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
     renderPassInfo.renderPass = renderPass;
-    renderPassInfo.framebuffer = swapchain->getFramebuffers()[imageIndex];
+    renderPassInfo.framebuffer = framebuffers[imageIndex];
     renderPassInfo.renderArea.offset = {0, 0};
     renderPassInfo.renderArea.extent = swapchain->getExtent();
 

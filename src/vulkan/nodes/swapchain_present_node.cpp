@@ -39,8 +39,9 @@ SwapchainPresentNode::SwapchainPresentNode(
 }
 
 std::vector<ResourceDependency> SwapchainPresentNode::getInputs() const {
+    // ELEGANT SOLUTION: Use dynamic swapchain image ID resolved each frame
     return {
-        {colorTargetId, ResourceAccess::Read, PipelineStage::ColorAttachment},
+        {currentSwapchainImageId, ResourceAccess::Read, PipelineStage::ColorAttachment},
     };
 }
 

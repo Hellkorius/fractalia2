@@ -35,6 +35,8 @@ public:
     VkQueue getComputeQueue() const { return computeQueue; }
     uint32_t getGraphicsQueueFamily() const { return queueFamilyIndices.graphicsFamily.value(); }
     uint32_t getComputeQueueFamily() const { return queueFamilyIndices.computeFamily.value(); }
+    uint32_t getPresentQueueFamily() const { return queueFamilyIndices.presentFamily.value(); }
+    const QueueFamilyIndices& getQueueFamilyIndices() const { return queueFamilyIndices; }
     
     class VulkanFunctionLoader& getLoader() const { return *loader; }
     
@@ -54,12 +56,15 @@ private:
     QueueFamilyIndices queueFamilyIndices; // Store indices for queue retrieval after device creation
 
     std::unique_ptr<class VulkanFunctionLoader> loader;
+    VkDebugUtilsMessengerEXT debugMessenger = VK_NULL_HANDLE;
 
     bool createInstance();
     bool createSurface();
     bool pickPhysicalDevice();
     bool createLogicalDevice();
     bool isDeviceSuitable(VkPhysicalDevice device);
+    bool setupDebugMessenger();
+    void cleanupDebugMessenger();
     
     std::vector<const char*> getRequiredExtensions();
 };

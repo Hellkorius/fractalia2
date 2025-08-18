@@ -243,6 +243,13 @@ bool PipelineSystemManager::recreateRenderPass(VkFormat newFormat) {
         graphicsManager->destroyRenderPass(currentRenderPass);
     }
     
+    // OPTIMIZED FIX: Clear only graphics pipelines, preserve shaders and layouts
+    // Graphics pipelines are tied to specific render passes and become invalid
+    // Shaders and descriptor layouts can be reused, avoiding expensive recompilation
+    graphicsManager->clearCache();
+    
+    std::cout << "PipelineSystemManager: Cleared graphics pipeline cache for render pass recreation" << std::endl;
+    
     // Create new render pass
     currentRenderPass = graphicsManager->createRenderPass(newFormat, VK_FORMAT_UNDEFINED, VK_SAMPLE_COUNT_2_BIT, true);
     return currentRenderPass != VK_NULL_HANDLE;

@@ -374,6 +374,31 @@ void FrameGraph::reset() {
     }
 }
 
+void FrameGraph::removeSwapchainResources() {
+    // Remove all swapchain images from the frame graph to prevent "already exists" errors
+    auto it = resources.begin();
+    while (it != resources.end()) {
+        bool shouldRemove = false;
+        std::string debugName;
+        
+        std::visit([&shouldRemove, &debugName](const auto& resource) {
+            debugName = resource.debugName;
+            // Remove swapchain images (they have names like "SwapchainImage_0", "SwapchainImage_1", etc.)
+            if (debugName.find("SwapchainImage_") == 0) {
+                shouldRemove = true;
+            }
+        }, it->second);
+        
+        if (shouldRemove) {
+            std::cout << "FrameGraph: Removing old swapchain resource: " << debugName << std::endl;
+            resourceNameMap.erase(debugName);
+            it = resources.erase(it);
+        } else {
+            ++it;
+        }
+    }
+}
+
 VkBuffer FrameGraph::getBuffer(FrameGraphTypes::ResourceId id) const {
     const FrameGraphBuffer* buffer = getBufferResource(id);
     return buffer ? buffer->buffer : VK_NULL_HANDLE;

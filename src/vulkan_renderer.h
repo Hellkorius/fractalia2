@@ -58,6 +58,7 @@ public:
     // Camera integration
     void setWorld(flecs::world* world) { this->world = world; }
     void updateAspectRatio(int windowWidth, int windowHeight);
+    void setFramebufferResized(bool resized);
     
     // Movement command processing
     class MovementCommandProcessor* getMovementCommandProcessor() { return movementCommandProcessor.get(); }

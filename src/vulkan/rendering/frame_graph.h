@@ -145,6 +145,7 @@ public:
     };
     ExecutionResult execute(uint32_t frameIndex);
     void reset(); // Clear for next frame
+    void removeSwapchainResources(); // Remove swapchain images during recreation
     
     // Resource access
     VkBuffer getBuffer(FrameGraphTypes::ResourceId id) const;

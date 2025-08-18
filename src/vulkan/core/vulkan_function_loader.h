@@ -53,6 +53,10 @@ public:
     // Surface functions
     PFN_vkDestroySurfaceKHR vkDestroySurfaceKHR = nullptr;
     
+    // Debug utils functions
+    PFN_vkCreateDebugUtilsMessengerEXT vkCreateDebugUtilsMessengerEXT = nullptr;
+    PFN_vkDestroyDebugUtilsMessengerEXT vkDestroyDebugUtilsMessengerEXT = nullptr;
+    
     // === DEVICE FUNCTIONS ===
     // Device management
     PFN_vkCreateDevice vkCreateDevice = nullptr;

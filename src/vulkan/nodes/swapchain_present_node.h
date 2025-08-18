@@ -28,11 +28,15 @@ public:
     // Update swapchain image index for current frame
     void setImageIndex(uint32_t imageIndex) { this->imageIndex = imageIndex; }
     
+    // Set current frame's swapchain image resource ID (called each frame)
+    void setCurrentSwapchainImageId(FrameGraphTypes::ResourceId currentImageId) { this->currentSwapchainImageId = currentImageId; }
+    
     // Get current image index (for debugging/validation)
     uint32_t getImageIndex() const { return imageIndex; }
 
 private:
-    FrameGraphTypes::ResourceId colorTargetId;
+    FrameGraphTypes::ResourceId colorTargetId; // Static placeholder - not used  
+    FrameGraphTypes::ResourceId currentSwapchainImageId = 0; // Dynamic per-frame ID
     
     // External dependencies (not owned)
     VulkanSwapchain* swapchain;

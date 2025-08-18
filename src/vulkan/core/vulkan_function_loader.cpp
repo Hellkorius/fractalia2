@@ -116,6 +116,12 @@ void VulkanFunctionLoader::loadSurfaceFunctions() {
         vkGetInstanceProcAddr(instance, "vkDestroySurfaceKHR"));
     vkDestroyInstance = reinterpret_cast<PFN_vkDestroyInstance>(
         vkGetInstanceProcAddr(instance, "vkDestroyInstance"));
+    
+    // Debug utils functions
+    vkCreateDebugUtilsMessengerEXT = reinterpret_cast<PFN_vkCreateDebugUtilsMessengerEXT>(
+        vkGetInstanceProcAddr(instance, "vkCreateDebugUtilsMessengerEXT"));
+    vkDestroyDebugUtilsMessengerEXT = reinterpret_cast<PFN_vkDestroyDebugUtilsMessengerEXT>(
+        vkGetInstanceProcAddr(instance, "vkDestroyDebugUtilsMessengerEXT"));
 }
 
 void VulkanFunctionLoader::loadDeviceManagementFunctions() {
