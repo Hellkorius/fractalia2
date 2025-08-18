@@ -147,14 +147,18 @@ bool VulkanSwapchain::createSwapChain(VkSwapchainKHR oldSwapchainKHR) {
     createInfo.clipped = VK_TRUE;
     createInfo.oldSwapchain = oldSwapchainKHR;
 
-    if (context->getLoader().vkCreateSwapchainKHR(context->getDevice(), &createInfo, nullptr, &swapChain) != VK_SUCCESS) {
+    // Cache loader and device references for performance
+    const auto& vk = context->getLoader();
+    const VkDevice device = context->getDevice();
+
+    if (vk.vkCreateSwapchainKHR(device, &createInfo, nullptr, &swapChain) != VK_SUCCESS) {
         std::cerr << "Failed to create swap chain" << std::endl;
         return false;
     }
 
-    context->getLoader().vkGetSwapchainImagesKHR(context->getDevice(), swapChain, &imageCount, nullptr);
+    vk.vkGetSwapchainImagesKHR(device, swapChain, &imageCount, nullptr);
     swapChainImages.resize(imageCount);
-    context->getLoader().vkGetSwapchainImagesKHR(context->getDevice(), swapChain, &imageCount, swapChainImages.data());
+    vk.vkGetSwapchainImagesKHR(device, swapChain, &imageCount, swapChainImages.data());
 
     swapChainImageFormat = surfaceFormat.format;
     swapChainExtent = extent;
@@ -205,32 +209,36 @@ bool VulkanSwapchain::createMSAAColorResources() {
 }
 
 void VulkanSwapchain::cleanupSwapChain() {
+    // Cache loader and device references for performance
+    const auto& vk = context->getLoader();
+    const VkDevice device = context->getDevice();
+    
     for (auto framebuffer : swapChainFramebuffers) {
-        context->getLoader().vkDestroyFramebuffer(context->getDevice(), framebuffer, nullptr);
+        vk.vkDestroyFramebuffer(device, framebuffer, nullptr);
     }
     swapChainFramebuffers.clear();
     
     if (msaaColorImageView != VK_NULL_HANDLE) {
-        context->getLoader().vkDestroyImageView(context->getDevice(), msaaColorImageView, nullptr);
+        vk.vkDestroyImageView(device, msaaColorImageView, nullptr);
         msaaColorImageView = VK_NULL_HANDLE;
     }
     if (msaaColorImage != VK_NULL_HANDLE) {
-        context->getLoader().vkDestroyImage(context->getDevice(), msaaColorImage, nullptr);
+        vk.vkDestroyImage(device, msaaColorImage, nullptr);
         msaaColorImage = VK_NULL_HANDLE;
     }
     if (msaaColorImageMemory != VK_NULL_HANDLE) {
-        context->getLoader().vkFreeMemory(context->getDevice(), msaaColorImageMemory, nullptr);
+        vk.vkFreeMemory(device, msaaColorImageMemory, nullptr);
         msaaColorImageMemory = VK_NULL_HANDLE;
     }
     
     
     for (auto imageView : swapChainImageViews) {
-        context->getLoader().vkDestroyImageView(context->getDevice(), imageView, nullptr);
+        vk.vkDestroyImageView(device, imageView, nullptr);
     }
     swapChainImageViews.clear();
     
     if (swapChain != VK_NULL_HANDLE) {
-        context->getLoader().vkDestroySwapchainKHR(context->getDevice(), swapChain, nullptr);
+        vk.vkDestroySwapchainKHR(device, swapChain, nullptr);
         swapChain = VK_NULL_HANDLE;
     }
 }

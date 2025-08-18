@@ -462,29 +462,33 @@ bool FrameGraph::createVulkanBuffer(FrameGraphBuffer& buffer) {
     bufferInfo.usage = buffer.usage;
     bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     
-    if (context->getLoader().vkCreateBuffer(context->getDevice(), &bufferInfo, nullptr, &buffer.buffer) != VK_SUCCESS) {
+    // Cache loader and device references for performance
+    const auto& vk = context->getLoader();
+    const VkDevice device = context->getDevice();
+    
+    if (vk.vkCreateBuffer(device, &bufferInfo, nullptr, &buffer.buffer) != VK_SUCCESS) {
         std::cerr << "FrameGraph: Failed to create buffer" << std::endl;
         return false;
     }
     
     // Allocate memory
     VkMemoryRequirements memRequirements;
-    context->getLoader().vkGetBufferMemoryRequirements(context->getDevice(), buffer.buffer, &memRequirements);
+    vk.vkGetBufferMemoryRequirements(device, buffer.buffer, &memRequirements);
     
     VkMemoryAllocateInfo allocInfo{};
     allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
     allocInfo.allocationSize = memRequirements.size;
-    allocInfo.memoryTypeIndex = VulkanUtils::findMemoryType(context->getPhysicalDevice(), context->getLoader(), memRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    allocInfo.memoryTypeIndex = VulkanUtils::findMemoryType(context->getPhysicalDevice(), vk, memRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
     
-    if (context->getLoader().vkAllocateMemory(context->getDevice(), &allocInfo, nullptr, &buffer.memory) != VK_SUCCESS) {
+    if (vk.vkAllocateMemory(device, &allocInfo, nullptr, &buffer.memory) != VK_SUCCESS) {
         std::cerr << "FrameGraph: Failed to allocate buffer memory" << std::endl;
-        context->getLoader().vkDestroyBuffer(context->getDevice(), buffer.buffer, nullptr);
+        vk.vkDestroyBuffer(device, buffer.buffer, nullptr);
         buffer.buffer = VK_NULL_HANDLE;
         return false;
     }
     
     // Bind memory
-    context->getLoader().vkBindBufferMemory(context->getDevice(), buffer.buffer, buffer.memory, 0);
+    vk.vkBindBufferMemory(device, buffer.buffer, buffer.memory, 0);
     
     return true;
 }

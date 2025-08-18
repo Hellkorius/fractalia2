@@ -66,7 +66,11 @@ SubmissionResult CommandSubmissionService::submitComputeWorkAsync(uint32_t compu
 
     // Reset compute fence for this frame
     VkFence computeFence = sync->getComputeFences()[frameIndex];
-    VkResult resetResult = context->getLoader().vkResetFences(context->getDevice(), 1, &computeFence);
+    // Cache loader and device references for performance
+    const auto& vk = context->getLoader();
+    const VkDevice device = context->getDevice();
+    
+    VkResult resetResult = vk.vkResetFences(device, 1, &computeFence);
     if (resetResult != VK_SUCCESS) {
         std::cerr << "CommandSubmissionService: Failed to reset compute fence: " << resetResult << std::endl;
         result.lastResult = resetResult;
@@ -82,7 +86,7 @@ SubmissionResult CommandSubmissionService::submitComputeWorkAsync(uint32_t compu
     // ASYNC COMPUTE: No semaphore signaling needed since compute works on frame N+1
     // Graphics reads from frame N-1 buffer, so no synchronization required
 
-    VkResult computeSubmitResult = context->getLoader().vkQueueSubmit(
+    VkResult computeSubmitResult = vk.vkQueueSubmit(
         context->getComputeQueue(), 
         1, 
         &computeSubmitInfo, 
@@ -101,12 +105,16 @@ SubmissionResult CommandSubmissionService::submitComputeWorkAsync(uint32_t compu
 SubmissionResult CommandSubmissionService::submitGraphicsWork(uint32_t currentFrame) {
     SubmissionResult result;
 
+    // Cache loader and device references for performance
+    const auto& vk = context->getLoader();
+    const VkDevice device = context->getDevice();
+
     const auto& commandBuffers = sync->getCommandBuffers();
     VkCommandBuffer graphicsCommandBuffer = commandBuffers[currentFrame];
 
     // Reset graphics fence
     VkFence graphicsFence = sync->getInFlightFences()[currentFrame];
-    VkResult resetResult = context->getLoader().vkResetFences(context->getDevice(), 1, &graphicsFence);
+    VkResult resetResult = vk.vkResetFences(device, 1, &graphicsFence);
     if (resetResult != VK_SUCCESS) {
         std::cerr << "CommandSubmissionService: Failed to reset graphics fence: " << resetResult << std::endl;
         result.lastResult = resetResult;
@@ -130,7 +138,7 @@ SubmissionResult CommandSubmissionService::submitGraphicsWork(uint32_t currentFr
     graphicsSubmitInfo.signalSemaphoreCount = 1;
     graphicsSubmitInfo.pSignalSemaphores = signalSemaphores;
 
-    VkResult graphicsSubmitResult = context->getLoader().vkQueueSubmit(
+    VkResult graphicsSubmitResult = vk.vkQueueSubmit(
         context->getGraphicsQueue(), 
         1, 
         &graphicsSubmitInfo, 
@@ -149,6 +157,9 @@ SubmissionResult CommandSubmissionService::submitGraphicsWork(uint32_t currentFr
 SubmissionResult CommandSubmissionService::presentFrame(uint32_t currentFrame, uint32_t imageIndex, bool framebufferResized) {
     SubmissionResult result;
 
+    // Cache loader reference for performance
+    const auto& vk = context->getLoader();
+
     VkPresentInfoKHR presentInfo{};
     presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
     presentInfo.waitSemaphoreCount = 1;
@@ -161,7 +172,7 @@ SubmissionResult CommandSubmissionService::presentFrame(uint32_t currentFrame, u
     presentInfo.pSwapchains = swapChains;
     presentInfo.pImageIndices = &imageIndex;
 
-    VkResult presentResult = context->getLoader().vkQueuePresentKHR(context->getPresentQueue(), &presentInfo);
+    VkResult presentResult = vk.vkQueuePresentKHR(context->getPresentQueue(), &presentInfo);
     
     if (presentResult == VK_ERROR_OUT_OF_DATE_KHR || presentResult == VK_SUBOPTIMAL_KHR || framebufferResized) {
         result.swapchainRecreationNeeded = true;
