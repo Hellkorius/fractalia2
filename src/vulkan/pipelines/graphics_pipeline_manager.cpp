@@ -3,6 +3,7 @@
 #include "descriptor_layout_manager.h"
 #include "../core/vulkan_function_loader.h"
 #include "../core/vulkan_utils.h"
+#include "hash_utils.h"
 #include <iostream>
 #include <chrono>
 #include <algorithm>
@@ -75,38 +76,30 @@ bool GraphicsPipelineState::operator==(const GraphicsPipelineState& other) const
 }
 
 size_t GraphicsPipelineState::getHash() const {
-    size_t hash = 0;
+    VulkanHash::HashCombiner hasher;
     
-    // Hash shader stages
-    for (const auto& stage : shaderStages) {
-        hash ^= std::hash<std::string>{}(stage) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
-    }
+    hasher.combineContainer(shaderStages)
+          .combine(topology)
+          .combine(polygonMode)
+          .combine(cullMode)
+          .combine(rasterizationSamples)
+          .combine(renderPass)
+          .combine(subpass);
     
-    // Hash vertex input
     for (const auto& binding : vertexBindings) {
-        hash ^= std::hash<uint32_t>{}(binding.binding) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
-        hash ^= std::hash<uint32_t>{}(binding.stride) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
-        hash ^= std::hash<uint32_t>{}(binding.inputRate) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
+        hasher.combine(binding.binding)
+              .combine(binding.stride)
+              .combine(binding.inputRate);
     }
     
     for (const auto& attr : vertexAttributes) {
-        hash ^= std::hash<uint32_t>{}(attr.location) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
-        hash ^= std::hash<uint32_t>{}(attr.binding) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
-        hash ^= std::hash<uint32_t>{}(attr.format) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
-        hash ^= std::hash<uint32_t>{}(attr.offset) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
+        hasher.combine(attr.location)
+              .combine(attr.binding)
+              .combine(attr.format)
+              .combine(attr.offset);
     }
     
-    // Hash render state
-    hash ^= std::hash<uint32_t>{}(topology) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
-    hash ^= std::hash<uint32_t>{}(polygonMode) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
-    hash ^= std::hash<uint32_t>{}(cullMode) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
-    hash ^= std::hash<uint32_t>{}(rasterizationSamples) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
-    
-    // Hash render pass
-    hash ^= std::hash<VkRenderPass>{}(renderPass) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
-    hash ^= std::hash<uint32_t>{}(subpass) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
-    
-    return hash;
+    return hasher.get();
 }
 
 // GraphicsPipelineManager implementation
@@ -430,11 +423,7 @@ VkRenderPass GraphicsPipelineManager::createRenderPass(VkFormat colorFormat,
                                                       VkSampleCountFlagBits samples,
                                                       bool enableMSAA) {
     // Create hash for render pass configuration
-    size_t hash = 0;
-    hash ^= std::hash<uint32_t>{}(colorFormat) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
-    hash ^= std::hash<uint32_t>{}(depthFormat) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
-    hash ^= std::hash<uint32_t>{}(samples) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
-    hash ^= std::hash<bool>{}(enableMSAA) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
+    size_t hash = VulkanHash::hash_combine(colorFormat, depthFormat, samples, enableMSAA);
     
     // Check cache
     auto it = renderPassCache.find(hash);

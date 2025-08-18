@@ -3,6 +3,7 @@
 #include "descriptor_layout_manager.h"
 #include "../core/vulkan_function_loader.h"
 #include "../core/vulkan_utils.h"
+#include "hash_utils.h"
 #include <iostream>
 #include <chrono>
 #include <algorithm>
@@ -34,34 +35,22 @@ bool ComputePipelineState::operator==(const ComputePipelineState& other) const {
 }
 
 size_t ComputePipelineState::getHash() const {
-    size_t hash = 0;
+    VulkanHash::HashCombiner hasher;
     
-    // Hash shader path
-    hash ^= std::hash<std::string>{}(shaderPath) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
+    hasher.combine(shaderPath)
+          .combineContainer(specializationConstants)
+          .combineContainer(descriptorSetLayouts)
+          .combine(workgroupSizeX)
+          .combine(workgroupSizeY)
+          .combine(workgroupSizeZ);
     
-    // Hash specialization constants
-    for (const auto& constant : specializationConstants) {
-        hash ^= std::hash<uint32_t>{}(constant) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
-    }
-    
-    // Hash descriptor set layouts
-    for (const auto& layout : descriptorSetLayouts) {
-        hash ^= std::hash<VkDescriptorSetLayout>{}(layout) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
-    }
-    
-    // Hash push constant ranges
     for (const auto& range : pushConstantRanges) {
-        hash ^= std::hash<uint32_t>{}(range.stageFlags) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
-        hash ^= std::hash<uint32_t>{}(range.offset) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
-        hash ^= std::hash<uint32_t>{}(range.size) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
+        hasher.combine(range.stageFlags)
+              .combine(range.offset)
+              .combine(range.size);
     }
     
-    // Hash workgroup size
-    hash ^= std::hash<uint32_t>{}(workgroupSizeX) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
-    hash ^= std::hash<uint32_t>{}(workgroupSizeY) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
-    hash ^= std::hash<uint32_t>{}(workgroupSizeZ) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
-    
-    return hash;
+    return hasher.get();
 }
 
 // ComputeDispatch implementation

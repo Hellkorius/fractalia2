@@ -8,6 +8,7 @@
 #include <unordered_map>
 #include "../core/vulkan_context.h"
 #include "../core/vulkan_raii.h"
+#include "hash_utils.h"
 
 
 struct PipelineLayoutKey {
@@ -24,11 +25,12 @@ struct PipelineLayoutKey {
 
 struct PipelineLayoutKeyHash {
     std::size_t operator()(const PipelineLayoutKey& key) const {
-        std::size_t h1 = std::hash<VkDescriptorSetLayout>{}(key.descriptorSetLayout);
-        std::size_t h2 = std::hash<uint32_t>{}(key.pushConstantRange.stageFlags);
-        std::size_t h3 = std::hash<uint32_t>{}(key.pushConstantRange.offset);
-        std::size_t h4 = std::hash<uint32_t>{}(key.pushConstantRange.size);
-        return h1 ^ (h2 << 1) ^ (h3 << 2) ^ (h4 << 3);
+        return VulkanHash::hash_shift_combine(
+            std::hash<VkDescriptorSetLayout>{}(key.descriptorSetLayout),
+            std::hash<uint32_t>{}(key.pushConstantRange.stageFlags),
+            std::hash<uint32_t>{}(key.pushConstantRange.offset),
+            std::hash<uint32_t>{}(key.pushConstantRange.size)
+        );
     }
 };
 

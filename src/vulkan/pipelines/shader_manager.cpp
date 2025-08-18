@@ -1,6 +1,7 @@
 #include "shader_manager.h"
 #include "../core/vulkan_function_loader.h"
 #include "../core/vulkan_raii.h"
+#include "hash_utils.h"
 #include <iostream>
 #include <fstream>
 #include <sstream>
@@ -21,26 +22,20 @@ bool ShaderModuleSpec::operator==(const ShaderModuleSpec& other) const {
 }
 
 size_t ShaderModuleSpec::getHash() const {
-    size_t hash = 0;
+    VulkanHash::HashCombiner hasher;
     
-    hash ^= std::hash<std::string>{}(filePath) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
-    hash ^= std::hash<uint32_t>{}(static_cast<uint32_t>(sourceType)) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
-    hash ^= std::hash<uint32_t>{}(stageInfo.stage) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
-    hash ^= std::hash<std::string>{}(stageInfo.entryPoint) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
-    
-    for (const auto& includePath : includePaths) {
-        hash ^= std::hash<std::string>{}(includePath) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
-    }
+    hasher.combine(filePath)
+          .combine(static_cast<uint32_t>(sourceType))
+          .combine(stageInfo.stage)
+          .combine(stageInfo.entryPoint)
+          .combineContainer(includePaths)
+          .combineContainer(stageInfo.specializationData);
     
     for (const auto& [key, value] : defines) {
-        hash ^= std::hash<std::string>{}(key + value) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
+        hasher.combine(key + value);
     }
     
-    for (const auto& data : stageInfo.specializationData) {
-        hash ^= std::hash<uint32_t>{}(data) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
-    }
-    
-    return hash;
+    return hasher.get();
 }
 
 // ShaderManager implementation

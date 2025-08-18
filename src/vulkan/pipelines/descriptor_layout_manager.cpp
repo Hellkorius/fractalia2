@@ -1,5 +1,6 @@
 #include "descriptor_layout_manager.h"
 #include "../core/vulkan_function_loader.h"
+#include "hash_utils.h"
 #include <iostream>
 #include <algorithm>
 #include <cassert>
@@ -17,19 +18,17 @@ bool DescriptorBinding::operator==(const DescriptorBinding& other) const {
 }
 
 size_t DescriptorBinding::getHash() const {
-    size_t hash = 0;
-    hash ^= std::hash<uint32_t>{}(binding) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
-    hash ^= std::hash<uint32_t>{}(type) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
-    hash ^= std::hash<uint32_t>{}(descriptorCount) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
-    hash ^= std::hash<uint32_t>{}(stageFlags) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
-    hash ^= std::hash<bool>{}(isBindless) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
-    hash ^= std::hash<uint32_t>{}(maxBindlessDescriptors) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
+    VulkanHash::HashCombiner hasher;
     
-    for (const auto& sampler : immutableSamplers) {
-        hash ^= std::hash<VkSampler>{}(sampler) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
-    }
+    hasher.combine(binding)
+          .combine(type)
+          .combine(descriptorCount)
+          .combine(stageFlags)
+          .combine(isBindless)
+          .combine(maxBindlessDescriptors)
+          .combineContainer(immutableSamplers);
     
-    return hash;
+    return hasher.get();
 }
 
 // DescriptorLayoutSpec implementation
@@ -42,18 +41,18 @@ bool DescriptorLayoutSpec::operator==(const DescriptorLayoutSpec& other) const {
 }
 
 size_t DescriptorLayoutSpec::getHash() const {
-    size_t hash = 0;
+    VulkanHash::HashCombiner hasher;
     
     for (const auto& binding : bindings) {
-        hash ^= binding.getHash() + 0x9e3779b9 + (hash << 6) + (hash >> 2);
+        hasher.combine(binding.getHash());
     }
     
-    hash ^= std::hash<uint32_t>{}(flags) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
-    hash ^= std::hash<bool>{}(enableBindless) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
-    hash ^= std::hash<bool>{}(enableUpdateAfterBind) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
-    hash ^= std::hash<bool>{}(enablePartiallyBound) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
+    hasher.combine(flags)
+          .combine(enableBindless)
+          .combine(enableUpdateAfterBind)
+          .combine(enablePartiallyBound);
     
-    return hash;
+    return hasher.get();
 }
 
 // DescriptorLayoutManager implementation
