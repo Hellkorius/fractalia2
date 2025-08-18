@@ -128,14 +128,11 @@ bool GraphicsPipelineManager::initialize(ShaderManager* shaderManager,
     cacheInfo.initialDataSize = 0;
     cacheInfo.pInitialData = nullptr;
     
-    VkPipelineCache rawCache;
-    VkResult result = createPipelineCache(&cacheInfo, &rawCache);
-    
-    if (result != VK_SUCCESS) {
-        std::cerr << "Failed to create graphics pipeline cache: " << result << std::endl;
+    pipelineCache = vulkan_raii::create_pipeline_cache(context, &cacheInfo);
+    if (!pipelineCache) {
+        std::cerr << "Failed to create graphics pipeline cache" << std::endl;
         return false;
     }
-    pipelineCache = vulkan_raii::make_pipeline_cache(rawCache, context);
     
     std::cout << "GraphicsPipelineManager initialized successfully" << std::endl;
     return true;
@@ -596,12 +593,11 @@ bool GraphicsPipelineManager::recreatePipelineCache() {
     cacheInfo.initialDataSize = 0;
     cacheInfo.pInitialData = nullptr;
     
-    VkPipelineCache rawCache;
-    if (createPipelineCache(&cacheInfo, &rawCache) != VK_SUCCESS) {
+    pipelineCache = vulkan_raii::create_pipeline_cache(context, &cacheInfo);
+    if (!pipelineCache) {
         std::cerr << "GraphicsPipelineManager: CRITICAL FAILURE - Failed to recreate pipeline cache" << std::endl;
         return false;
     }
-    pipelineCache = vulkan_raii::make_pipeline_cache(rawCache, context);
     
     std::cout << "GraphicsPipelineManager: Pipeline cache successfully recreated" << std::endl;
     return true;

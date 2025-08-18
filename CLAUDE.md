@@ -78,7 +78,7 @@ Vulkan resources use RAII wrappers for automatic cleanup and exception safety:
 
 - **Implementation**: `vulkan_raii.h/cpp` - Template-based RAII wrappers with move semantics
 - **Wrappers**: ShaderModule, Semaphore, Fence, Pipeline, DescriptorSetLayout, etc.
-- **Usage**: `vulkan_raii::ShaderModule shader = vulkan_raii::make_shader_module(handle, context)`
+- **Usage**: `vulkan_raii::ShaderModule shader = vulkan_raii::make_shader_module(handle, context)` or `vulkan_raii::create_pipeline_cache(context, &info)`
 - **Destruction Order**: Explicit `cleanupBeforeContextDestruction()` methods prevent use-after-free
 - **Migrated Components**: ShaderManager, VulkanSync (semaphores/fences)
 - **Access Pattern**: `wrapper.get()` for raw handle, automatic cleanup on scope exit

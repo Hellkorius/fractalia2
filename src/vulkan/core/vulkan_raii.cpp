@@ -94,4 +94,118 @@ void PipelineCacheDeleter::operator()(VkPipelineCache handle) {
     }
 }
 
+// Direct creation factory functions
+
+PipelineCache create_pipeline_cache(const VulkanContext* context, const VkPipelineCacheCreateInfo* createInfo) {
+    if (!context || !createInfo) {
+        return PipelineCache();
+    }
+    
+    VkPipelineCache handle = VK_NULL_HANDLE;
+    VkResult result = context->getLoader().vkCreatePipelineCache(
+        context->getDevice(), createInfo, nullptr, &handle);
+    
+    if (result != VK_SUCCESS) {
+        return PipelineCache();
+    }
+    
+    return make_pipeline_cache(handle, context);
+}
+
+Pipeline create_graphics_pipeline(const VulkanContext* context, VkPipelineCache pipelineCache, const VkGraphicsPipelineCreateInfo* createInfo) {
+    if (!context || !createInfo) {
+        return Pipeline();
+    }
+    
+    VkPipeline handle = VK_NULL_HANDLE;
+    VkResult result = context->getLoader().vkCreateGraphicsPipelines(
+        context->getDevice(), pipelineCache, 1, createInfo, nullptr, &handle);
+    
+    if (result != VK_SUCCESS) {
+        return Pipeline();
+    }
+    
+    return make_pipeline(handle, context);
+}
+
+Pipeline create_compute_pipeline(const VulkanContext* context, VkPipelineCache pipelineCache, const VkComputePipelineCreateInfo* createInfo) {
+    if (!context || !createInfo) {
+        return Pipeline();
+    }
+    
+    VkPipeline handle = VK_NULL_HANDLE;
+    VkResult result = context->getLoader().vkCreateComputePipelines(
+        context->getDevice(), pipelineCache, 1, createInfo, nullptr, &handle);
+    
+    if (result != VK_SUCCESS) {
+        return Pipeline();
+    }
+    
+    return make_pipeline(handle, context);
+}
+
+PipelineLayout create_pipeline_layout(const VulkanContext* context, const VkPipelineLayoutCreateInfo* createInfo) {
+    if (!context || !createInfo) {
+        return PipelineLayout();
+    }
+    
+    VkPipelineLayout handle = VK_NULL_HANDLE;
+    VkResult result = context->getLoader().vkCreatePipelineLayout(
+        context->getDevice(), createInfo, nullptr, &handle);
+    
+    if (result != VK_SUCCESS) {
+        return PipelineLayout();
+    }
+    
+    return make_pipeline_layout(handle, context);
+}
+
+RenderPass create_render_pass(const VulkanContext* context, const VkRenderPassCreateInfo* createInfo) {
+    if (!context || !createInfo) {
+        return RenderPass();
+    }
+    
+    VkRenderPass handle = VK_NULL_HANDLE;
+    VkResult result = context->getLoader().vkCreateRenderPass(
+        context->getDevice(), createInfo, nullptr, &handle);
+    
+    if (result != VK_SUCCESS) {
+        return RenderPass();
+    }
+    
+    return make_render_pass(handle, context);
+}
+
+DescriptorSetLayout create_descriptor_set_layout(const VulkanContext* context, const VkDescriptorSetLayoutCreateInfo* createInfo) {
+    if (!context || !createInfo) {
+        return DescriptorSetLayout();
+    }
+    
+    VkDescriptorSetLayout handle = VK_NULL_HANDLE;
+    VkResult result = context->getLoader().vkCreateDescriptorSetLayout(
+        context->getDevice(), createInfo, nullptr, &handle);
+    
+    if (result != VK_SUCCESS) {
+        return DescriptorSetLayout();
+    }
+    
+    return make_descriptor_set_layout(handle, context);
+}
+
+DescriptorPool create_descriptor_pool(const VulkanContext* context, const VkDescriptorPoolCreateInfo* createInfo) {
+    if (!context || !createInfo) {
+        return DescriptorPool();
+    }
+    
+    VkDescriptorPool handle = VK_NULL_HANDLE;
+    VkResult result = context->getLoader().vkCreateDescriptorPool(
+        context->getDevice(), createInfo, nullptr, &handle);
+    
+    if (result != VK_SUCCESS) {
+        return DescriptorPool();
+    }
+    
+    return make_descriptor_pool(handle, context);
+}
+
 } // namespace vulkan_raii

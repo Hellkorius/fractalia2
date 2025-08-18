@@ -269,4 +269,13 @@ inline PipelineCache make_pipeline_cache(VkPipelineCache handle, const VulkanCon
     return make_handle<VkPipelineCache, PipelineCacheDeleter>(handle, context);
 }
 
+// Direct creation factory functions
+PipelineCache create_pipeline_cache(const VulkanContext* context, const VkPipelineCacheCreateInfo* createInfo);
+Pipeline create_graphics_pipeline(const VulkanContext* context, VkPipelineCache pipelineCache, const VkGraphicsPipelineCreateInfo* createInfo);
+Pipeline create_compute_pipeline(const VulkanContext* context, VkPipelineCache pipelineCache, const VkComputePipelineCreateInfo* createInfo);
+PipelineLayout create_pipeline_layout(const VulkanContext* context, const VkPipelineLayoutCreateInfo* createInfo);
+RenderPass create_render_pass(const VulkanContext* context, const VkRenderPassCreateInfo* createInfo);
+DescriptorSetLayout create_descriptor_set_layout(const VulkanContext* context, const VkDescriptorSetLayoutCreateInfo* createInfo);
+DescriptorPool create_descriptor_pool(const VulkanContext* context, const VkDescriptorPoolCreateInfo* createInfo);
+
 } // namespace vulkan_raii

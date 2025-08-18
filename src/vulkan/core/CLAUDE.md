@@ -45,7 +45,7 @@ vulkan_swapchain.*          # Swapchain, MSAA, framebuffers
 ### vulkan_raii.*
 **In:** VkHandle, VulkanContext*
 **Out:** RAII-wrapped Vulkan objects with automatic cleanup
-**API:** `vulkan_raii::ShaderModule`, `vulkan_raii::Semaphore`, `vulkan_raii::Fence`, `make_*()` factories
+**API:** `vulkan_raii::ShaderModule`, `vulkan_raii::Semaphore`, `vulkan_raii::Fence`, `make_*()` and `create_*()` factories
 **Pattern:** Template wrappers with move semantics, explicit `cleanupBeforeContextDestruction()`
 **Deleters:** Context-aware cleanup, null-safe destruction, proper Vulkan API calls
 

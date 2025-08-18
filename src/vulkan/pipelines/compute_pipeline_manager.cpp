@@ -107,14 +107,11 @@ bool ComputePipelineManager::initialize(ShaderManager* shaderManager,
     cacheInfo.initialDataSize = 0;
     cacheInfo.pInitialData = nullptr;
     
-    VkPipelineCache rawCache;
-    VkResult result = createPipelineCache(&cacheInfo, &rawCache);
-    
-    if (result != VK_SUCCESS) {
-        std::cerr << "Failed to create compute pipeline cache: " << result << std::endl;
+    pipelineCache = vulkan_raii::create_pipeline_cache(context, &cacheInfo);
+    if (!pipelineCache) {
+        std::cerr << "Failed to create compute pipeline cache" << std::endl;
         return false;
     }
-    pipelineCache = vulkan_raii::make_pipeline_cache(rawCache, context);
     
     // Query and cache device properties
     loader->vkGetPhysicalDeviceProperties(context->getPhysicalDevice(), &deviceProperties);
@@ -497,12 +494,11 @@ bool ComputePipelineManager::recreatePipelineCache() {
     cacheInfo.initialDataSize = 0;
     cacheInfo.pInitialData = nullptr;
     
-    VkPipelineCache rawCache;
-    if (createPipelineCache(&cacheInfo, &rawCache) != VK_SUCCESS) {
+    pipelineCache = vulkan_raii::create_pipeline_cache(context, &cacheInfo);
+    if (!pipelineCache) {
         std::cerr << "ComputePipelineManager: CRITICAL FAILURE - Failed to recreate pipeline cache" << std::endl;
         return false;
     }
-    pipelineCache = vulkan_raii::make_pipeline_cache(rawCache, context);
     
     std::cout << "ComputePipelineManager: Pipeline cache successfully recreated" << std::endl;
     return true;

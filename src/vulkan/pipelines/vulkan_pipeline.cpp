@@ -23,12 +23,11 @@ bool VulkanPipeline::initialize(const VulkanContext& context, VkFormat swapChain
     std::cout << "Creating pipeline cache..." << std::endl;
     VkPipelineCacheCreateInfo pipelineCacheInfo{};
     pipelineCacheInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
-    VkPipelineCache rawCache;
-    if (context.getLoader().vkCreatePipelineCache(context.getDevice(), &pipelineCacheInfo, nullptr, &rawCache) != VK_SUCCESS) {
+    pipelineCache = vulkan_raii::create_pipeline_cache(&context, &pipelineCacheInfo);
+    if (!pipelineCache) {
         std::cerr << "Failed to create pipeline cache" << std::endl;
         return false;
     }
-    pipelineCache = vulkan_raii::make_pipeline_cache(rawCache, &context);
     std::cout << "Pipeline cache created successfully" << std::endl;
     
     std::cout << "Creating descriptor set layout..." << std::endl;
@@ -109,12 +108,11 @@ bool VulkanPipeline::recreate(VkFormat swapChainImageFormat) {
     
     VkPipelineCacheCreateInfo pipelineCacheInfo{};
     pipelineCacheInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
-    VkPipelineCache rawCache;
-    if (context->getLoader().vkCreatePipelineCache(context->getDevice(), &pipelineCacheInfo, nullptr, &rawCache) != VK_SUCCESS) {
+    pipelineCache = vulkan_raii::create_pipeline_cache(context, &pipelineCacheInfo);
+    if (!pipelineCache) {
         std::cerr << "Failed to recreate pipeline cache" << std::endl;
         return false;
     }
-    pipelineCache = vulkan_raii::make_pipeline_cache(rawCache, context);
     
     if (!createDescriptorSetLayout()) {
         std::cerr << "Failed to recreate descriptor set layout!" << std::endl;
@@ -197,12 +195,11 @@ bool VulkanPipeline::createRenderPass(VkFormat swapChainImageFormat) {
     renderPassInfo.dependencyCount = 1;
     renderPassInfo.pDependencies = &dependency;
 
-    VkRenderPass rawRenderPass;
-    if (context->getLoader().vkCreateRenderPass(context->getDevice(), &renderPassInfo, nullptr, &rawRenderPass) != VK_SUCCESS) {
+    renderPass = vulkan_raii::create_render_pass(context, &renderPassInfo);
+    if (!renderPass) {
         std::cerr << "Failed to create render pass" << std::endl;
         return false;
     }
-    renderPass = vulkan_raii::make_render_pass(rawRenderPass, context);
 
     return true;
 }
@@ -227,12 +224,11 @@ bool VulkanPipeline::createDescriptorSetLayout() {
     layoutInfo.bindingCount = bindings.size();
     layoutInfo.pBindings = bindings.data();
     
-    VkDescriptorSetLayout rawLayout;
-    if (context->getLoader().vkCreateDescriptorSetLayout(context->getDevice(), &layoutInfo, nullptr, &rawLayout) != VK_SUCCESS) {
+    descriptorSetLayout = vulkan_raii::create_descriptor_set_layout(context, &layoutInfo);
+    if (!descriptorSetLayout) {
         std::cerr << "Failed to create descriptor set layout!" << std::endl;
         return false;
     }
-    descriptorSetLayout = vulkan_raii::make_descriptor_set_layout(rawLayout, context);
     
     return true;
 }
@@ -514,11 +510,10 @@ bool VulkanPipeline::createComputeDescriptorSetLayout() {
     layoutInfo.bindingCount = 4;
     layoutInfo.pBindings = bindings;
     
-    VkDescriptorSetLayout rawLayout;
-    if (context->getLoader().vkCreateDescriptorSetLayout(context->getDevice(), &layoutInfo, nullptr, &rawLayout) != VK_SUCCESS) {
+    computeDescriptorSetLayout = vulkan_raii::create_descriptor_set_layout(context, &layoutInfo);
+    if (!computeDescriptorSetLayout) {
         return false;
     }
-    computeDescriptorSetLayout = vulkan_raii::make_descriptor_set_layout(rawLayout, context);
     return true;
 }
 
