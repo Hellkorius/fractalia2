@@ -223,6 +223,7 @@ void VulkanFunctionLoader::loadRenderingFunctions() {
     LOAD_DEVICE_FUNCTION(vkCmdBindVertexBuffers);
     LOAD_DEVICE_FUNCTION(vkCmdBindIndexBuffer);
     LOAD_DEVICE_FUNCTION(vkCmdDispatch);
+    LOAD_DEVICE_FUNCTION(vkCmdDispatchIndirect);
     LOAD_DEVICE_FUNCTION(vkCmdPipelineBarrier);
     LOAD_DEVICE_FUNCTION(vkCmdPushConstants);
     LOAD_DEVICE_FUNCTION(vkCmdCopyBuffer);

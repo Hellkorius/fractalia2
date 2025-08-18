@@ -13,98 +13,17 @@
 #include "../core/vulkan_context.h"
 #include "../core/vulkan_manager_base.h"
 #include "../core/vulkan_raii.h"
+#include "compute_pipeline_types.h"
+#include "compute_pipeline_cache.h"
+#include "compute_pipeline_factory.h"
+#include "compute_dispatcher.h"
+#include "compute_device_info.h"
 
 // Forward declarations
 class ShaderManager;
 class DescriptorLayoutManager;
 
-// Compute Pipeline State Object for caching
-struct ComputePipelineState {
-    // Shader information
-    std::string shaderPath;
-    std::vector<uint32_t> specializationConstants;  // For shader specialization
-    
-    // Descriptor set layouts
-    std::vector<VkDescriptorSetLayout> descriptorSetLayouts;
-    
-    // Push constant ranges
-    std::vector<VkPushConstantRange> pushConstantRanges;
-    
-    // Workgroup size hints (for optimization)
-    uint32_t workgroupSizeX = 32;
-    uint32_t workgroupSizeY = 1;
-    uint32_t workgroupSizeZ = 1;
-    
-    // Performance hints
-    bool isFrequentlyUsed = false;  // Hot path optimization
-    bool allowAsyncCompilation = true;  // Background compilation
-    
-    // Comparison for caching
-    bool operator==(const ComputePipelineState& other) const;
-    size_t getHash() const;
-};
-
-// Hash specialization for compute PSO caching
-struct ComputePipelineStateHash {
-    std::size_t operator()(const ComputePipelineState& state) const {
-        return state.getHash();
-    }
-};
-
-// Cached compute pipeline with metadata
-struct CachedComputePipeline {
-    vulkan_raii::Pipeline pipeline;
-    vulkan_raii::PipelineLayout layout;
-    ComputePipelineState state;
-    
-    // Usage tracking
-    uint64_t lastUsedFrame = 0;
-    uint32_t useCount = 0;
-    
-    // Performance metrics
-    std::chrono::nanoseconds compilationTime{0};
-    bool isHotPath = false;
-    
-    // Dispatch optimization data
-    struct DispatchInfo {
-        glm::uvec3 optimalWorkgroupSize{32, 1, 1};
-        uint32_t maxInvocationsPerWorkgroup = 1024;
-        bool supportsSubgroupOperations = false;
-    } dispatchInfo;
-};
-
-// Compute dispatch parameters with optimization
-struct ComputeDispatch {
-    VkPipeline pipeline = VK_NULL_HANDLE;
-    VkPipelineLayout layout = VK_NULL_HANDLE;
-    
-    // Dispatch dimensions
-    uint32_t groupCountX = 1;
-    uint32_t groupCountY = 1;
-    uint32_t groupCountZ = 1;
-    
-    // Descriptor sets
-    std::vector<VkDescriptorSet> descriptorSets;
-    
-    // Push constants
-    const void* pushConstantData = nullptr;
-    uint32_t pushConstantSize = 0;
-    VkShaderStageFlags pushConstantStages = VK_SHADER_STAGE_COMPUTE_BIT;
-    
-    // Memory barriers (for compute-compute dependencies)
-    std::vector<VkMemoryBarrier> memoryBarriers;
-    std::vector<VkBufferMemoryBarrier> bufferBarriers;
-    std::vector<VkImageMemoryBarrier> imageBarriers;
-    
-    // Performance hints
-    bool isLastDispatchInFrame = false;
-    bool requiresMemoryBarrier = true;
-    
-    // Calculate optimal dispatch size based on data size
-    void calculateOptimalDispatch(uint32_t dataSize, const glm::uvec3& workgroupSize);
-};
-
-// AAA Compute Pipeline Manager with advanced optimization
+// Refactored Compute Pipeline Manager - coordinates focused components
 class ComputePipelineManager : public VulkanManagerBase {
 public:
     explicit ComputePipelineManager(VulkanContext* ctx);
@@ -179,7 +98,7 @@ public:
         float hitRatio = 0.0f;
     };
     
-    ComputeStats getStats() const { return stats; }
+    ComputeStats getStats() const;
     void resetFrameStats();
     void debugPrintCache() const;
     
@@ -187,6 +106,12 @@ public:
     glm::uvec3 calculateOptimalWorkgroupSize(uint32_t dataSize, 
                                             const glm::uvec3& maxWorkgroupSize = {1024, 1024, 64}) const;
     uint32_t calculateOptimalWorkgroupCount(uint32_t dataSize, uint32_t workgroupSize) const;
+    
+    // Component access
+    ComputePipelineCache* getCache() { return &cache_; }
+    ComputePipelineFactory* getFactory() { return &factory_; }
+    ComputeDispatcher* getDispatcher() { return &dispatcher_; }
+    ComputeDeviceInfo* getDeviceInfo() { return &deviceInfo_; }
     
     // Memory barrier optimization
     void insertOptimalBarriers(VkCommandBuffer commandBuffer, 
@@ -207,8 +132,11 @@ private:
     ShaderManager* shaderManager = nullptr;
     DescriptorLayoutManager* layoutManager = nullptr;
     
-    // Pipeline cache
-    std::unordered_map<ComputePipelineState, std::unique_ptr<CachedComputePipeline>, ComputePipelineStateHash> pipelineCache_;
+    // Focused components
+    ComputePipelineCache cache_;
+    ComputePipelineFactory factory_;
+    ComputeDispatcher dispatcher_;
+    ComputeDeviceInfo deviceInfo_;
     
     // Async compilation tracking
     std::unordered_map<ComputePipelineState, std::future<std::unique_ptr<CachedComputePipeline>>, ComputePipelineStateHash> asyncCompilations;
@@ -216,40 +144,15 @@ private:
     // Performance tracking
     std::unordered_map<ComputePipelineState, ComputeProfileData, ComputePipelineStateHash> profileData;
     
-    // Statistics
-    mutable ComputeStats stats;
-    
-    // Device capabilities (cached at initialization)
-    VkPhysicalDeviceProperties deviceProperties{};
-    VkPhysicalDeviceFeatures deviceFeatures{};
-    
     // Configuration
     uint32_t maxCacheSize = 512;
     uint64_t cacheCleanupInterval = 1000;  // frames
     bool enableProfiling = false;
     
-    // Internal pipeline creation
+    // Internal pipeline creation callback for cache
     std::unique_ptr<CachedComputePipeline> createPipelineInternal(const ComputePipelineState& state);
-    VkPipelineLayout createPipelineLayout(const std::vector<VkDescriptorSetLayout>& setLayouts,
-                                         const std::vector<VkPushConstantRange>& pushConstants);
     
-    // Cache management helpers
-    void evictLeastRecentlyUsed();
     bool shouldEvictPipeline(const CachedComputePipeline& pipeline, uint64_t currentFrame) const;
-    
-    // Validation and error handling
-    bool validatePipelineState(const ComputePipelineState& state) const;
-    void logPipelineCreation(const ComputePipelineState& state, 
-                           std::chrono::nanoseconds compilationTime) const;
-    
-    // Dispatch optimization helpers
-    glm::uvec3 getDeviceOptimalWorkgroupSize() const;
-    uint32_t getDeviceMaxComputeWorkgroupInvocations() const;
-    bool deviceSupportsSubgroupOperations() const;
-    
-    // Barrier optimization
-    bool canMergeBarriers(const VkBufferMemoryBarrier& a, const VkBufferMemoryBarrier& b) const;
-    std::vector<VkBufferMemoryBarrier> optimizeBufferBarriers(const std::vector<VkBufferMemoryBarrier>& barriers) const;
 };
 
 // Utility functions for common compute patterns

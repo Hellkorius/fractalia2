@@ -66,14 +66,14 @@ private:
     ShaderManager* shaderManager_ = nullptr;
     DescriptorLayoutManager* layoutManager_ = nullptr;
     
+    bool hotReloadEnabled_ = false;
+    uint32_t maxCacheSize_ = 1024;
+    uint64_t cacheCleanupInterval_ = 1000;
+    
     GraphicsPipelineCache cache_;
     GraphicsRenderPassManager renderPassManager_;
     GraphicsPipelineFactory factory_;
     GraphicsPipelineLayoutBuilder layoutBuilder_;
-    
-    bool hotReloadEnabled_ = false;
-    uint32_t maxCacheSize_ = 1024;
-    uint64_t cacheCleanupInterval_ = 1000;
 };
 
 namespace GraphicsPipelinePresets {

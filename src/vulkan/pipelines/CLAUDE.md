@@ -65,20 +65,27 @@ PipelineCreationInfo info{
 VkPipeline pipeline = manager.createGraphicsPipeline(info);
 ```
 
-### ComputePipelineManager
+### ComputePipelineManager (Refactored Architecture)
+
+**Architecture:** Refactored from monolithic 682-line class into focused components:
+- **ComputePipelineCache**: LRU caching with statistics (95 lines)
+- **ComputePipelineFactory**: Pipeline creation and compilation (118 lines)
+- **ComputeDispatcher**: Dispatch operations and barriers (104 lines)
+- **ComputeDeviceInfo**: Device capabilities and optimization (58 lines)
+- **ComputePipelineTypes**: Shared data structures and utilities
 
 **Input:** 
 - `ComputePipelineState` - Complete pipeline specification
 - `ComputeDispatch` - Dispatch parameters with optimization hints
 
 **Output:**
-- `VkPipeline` - Cached compute pipeline  
-- `VkPipelineLayout` - Associated pipeline layout
-- Performance metrics & statistics
+- `VkPipeline` - Cached compute pipeline via coordinated components
+- `VkPipelineLayout` - Associated pipeline layout via factory
+- Performance metrics & statistics via aggregated component data
 
 **Key APIs:**
 ```cpp
-// Pipeline creation with caching
+// Pipeline creation with caching (unchanged interface)
 ComputePipelineState state{
     .shaderPath = "shaders/movement.comp.spv",
     .descriptorSetLayouts = {entityLayout},
@@ -87,27 +94,21 @@ ComputePipelineState state{
 };
 VkPipeline pipeline = manager.getPipeline(state);
 
-// Optimized dispatch
-ComputeDispatch dispatch{
-    .pipeline = pipeline,
-    .layout = manager.getPipelineLayout(state),
-    .groupCountX = (entityCount + 31) / 32,
-    .descriptorSets = {entityDescriptorSet},
-    .pushConstantData = &pushConstants,
-    .pushConstantSize = sizeof(pushConstants)
-};
+// Optimized dispatch (delegated to ComputeDispatcher)
 manager.dispatch(commandBuffer, dispatch);
+manager.dispatchBuffer(commandBuffer, state, entityCount, descriptorSets);
+manager.dispatchIndirect(commandBuffer, buffer, offset);
 
-// High-level buffer processing
-manager.dispatchBuffer(commandBuffer, state, entityCount, 
-                      descriptorSets, &pushConstants, sizeof(pushConstants));
+// Component access for advanced usage
+auto* cache = manager.getCache();
+auto* deviceInfo = manager.getDeviceInfo();
 ```
 
 **Performance Features:**
-- LRU cache with configurable size (default: 512 pipelines)
+- Component-based LRU cache with configurable size (default: 512 pipelines)
 - Async compilation for hot-reload
-- Workgroup optimization based on hardware limits
-- Batch creation for reduced driver overhead
+- Hardware-aware workgroup optimization via ComputeDeviceInfo
+- Centralized dispatch operations with barrier optimization
 
 ### GraphicsPipelineManager (Refactored Modular Architecture)
 

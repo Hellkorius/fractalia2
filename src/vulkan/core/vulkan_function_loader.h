@@ -153,6 +153,7 @@ public:
     PFN_vkCmdBindVertexBuffers vkCmdBindVertexBuffers = nullptr;
     PFN_vkCmdBindIndexBuffer vkCmdBindIndexBuffer = nullptr;
     PFN_vkCmdDispatch vkCmdDispatch = nullptr;
+    PFN_vkCmdDispatchIndirect vkCmdDispatchIndirect = nullptr;
     PFN_vkCmdPipelineBarrier vkCmdPipelineBarrier = nullptr;
     PFN_vkCmdPushConstants vkCmdPushConstants = nullptr;
     PFN_vkCmdCopyBuffer vkCmdCopyBuffer = nullptr;

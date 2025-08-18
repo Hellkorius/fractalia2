@@ -89,6 +89,10 @@ protected:
         loader->vkCmdDispatch(commandBuffer, groupCountX, groupCountY, groupCountZ);
     }
     
+    void cmdDispatchIndirect(VkCommandBuffer commandBuffer, VkBuffer buffer, VkDeviceSize offset) {
+        loader->vkCmdDispatchIndirect(commandBuffer, buffer, offset);
+    }
+    
     void cmdPipelineBarrier(VkCommandBuffer commandBuffer, VkPipelineStageFlags srcStageMask, VkPipelineStageFlags dstStageMask,
                           VkDependencyFlags dependencyFlags, uint32_t memoryBarrierCount, const VkMemoryBarrier* pMemoryBarriers,
                           uint32_t bufferMemoryBarrierCount, const VkBufferMemoryBarrier* pBufferMemoryBarriers,

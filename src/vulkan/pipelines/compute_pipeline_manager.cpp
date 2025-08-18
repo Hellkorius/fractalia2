@@ -3,7 +3,6 @@
 #include "descriptor_layout_manager.h"
 #include "../core/vulkan_function_loader.h"
 #include "../core/vulkan_utils.h"
-#include "hash_utils.h"
 #include <iostream>
 #include <chrono>
 #include <algorithm>
@@ -12,73 +11,10 @@
 #include <cmath>
 #include <glm/glm.hpp>
 
-// ComputePipelineState implementation
-bool ComputePipelineState::operator==(const ComputePipelineState& other) const {
-    // Manual comparison for pushConstantRanges since VkPushConstantRange doesn't have operator==
-    if (pushConstantRanges.size() != other.pushConstantRanges.size()) {
-        return false;
-    }
-    for (size_t i = 0; i < pushConstantRanges.size(); ++i) {
-        const auto& a = pushConstantRanges[i];
-        const auto& b = other.pushConstantRanges[i];
-        if (a.stageFlags != b.stageFlags || a.offset != b.offset || a.size != b.size) {
-            return false;
-        }
-    }
-    
-    return shaderPath == other.shaderPath &&
-           specializationConstants == other.specializationConstants &&
-           descriptorSetLayouts == other.descriptorSetLayouts &&
-           workgroupSizeX == other.workgroupSizeX &&
-           workgroupSizeY == other.workgroupSizeY &&
-           workgroupSizeZ == other.workgroupSizeZ;
-}
-
-size_t ComputePipelineState::getHash() const {
-    VulkanHash::HashCombiner hasher;
-    
-    hasher.combine(shaderPath)
-          .combineContainer(specializationConstants)
-          .combineContainer(descriptorSetLayouts)
-          .combine(workgroupSizeX)
-          .combine(workgroupSizeY)
-          .combine(workgroupSizeZ);
-    
-    for (const auto& range : pushConstantRanges) {
-        hasher.combine(range.stageFlags)
-              .combine(range.offset)
-              .combine(range.size);
-    }
-    
-    return hasher.get();
-}
-
-// ComputeDispatch implementation
-void ComputeDispatch::calculateOptimalDispatch(uint32_t dataSize, const glm::uvec3& workgroupSize) {
-    // Calculate number of workgroups needed
-    uint32_t elementsPerWorkgroup = workgroupSize.x * workgroupSize.y * workgroupSize.z;
-    groupCountX = (dataSize + elementsPerWorkgroup - 1) / elementsPerWorkgroup;
-    groupCountY = 1;
-    groupCountZ = 1;
-    
-    // For very large dispatches, consider using 2D or 3D layout for better cache performance
-    if (groupCountX > 65535) {  // Vulkan limit
-        uint32_t sqrtGroups = static_cast<uint32_t>(std::sqrt(groupCountX));
-        groupCountX = sqrtGroups;
-        groupCountY = (dataSize + (sqrtGroups * elementsPerWorkgroup) - 1) / (sqrtGroups * elementsPerWorkgroup);
-        
-        if (groupCountY > 65535) {
-            uint32_t cbrtGroups = static_cast<uint32_t>(std::cbrt(dataSize / elementsPerWorkgroup));
-            groupCountX = cbrtGroups;
-            groupCountY = cbrtGroups;
-            groupCountZ = (dataSize + (cbrtGroups * cbrtGroups * elementsPerWorkgroup) - 1) / 
-                         (cbrtGroups * cbrtGroups * elementsPerWorkgroup);
-        }
-    }
-}
 
 // ComputePipelineManager implementation
-ComputePipelineManager::ComputePipelineManager(VulkanContext* ctx) : VulkanManagerBase(ctx) {
+ComputePipelineManager::ComputePipelineManager(VulkanContext* ctx) 
+    : VulkanManagerBase(ctx), cache_(512), factory_(ctx), dispatcher_(ctx), deviceInfo_(ctx) {
 }
 
 ComputePipelineManager::~ComputePipelineManager() {
@@ -102,11 +38,18 @@ bool ComputePipelineManager::initialize(ShaderManager* shaderManager,
         return false;
     }
     
-    // Query and cache device properties
-    loader->vkGetPhysicalDeviceProperties(context->getPhysicalDevice(), &deviceProperties);
+    // Initialize factory with pipeline cache
+    if (!factory_.initialize(shaderManager, pipelineCache)) {
+        std::cerr << "Failed to initialize compute pipeline factory" << std::endl;
+        return false;
+    }
     
-    // Note: Device features would require vkGetPhysicalDeviceFeatures to be loaded in VulkanFunctionLoader
-    // For now, deviceFeatures remains zero-initialized which is safe
+    // Set up cache callback to create pipelines
+    cache_.setCreatePipelineCallback([this](const ComputePipelineState& state) {
+        return createPipelineInternal(state);
+    });
+    
+    // Device properties are now handled by ComputeDeviceInfo component
     
     std::cout << "ComputePipelineManager initialized successfully" << std::endl;
     return true;
@@ -137,121 +80,30 @@ void ComputePipelineManager::cleanupBeforeContextDestruction() {
 }
 
 VkPipeline ComputePipelineManager::getPipeline(const ComputePipelineState& state) {
-    // Check cache first
-    auto it = pipelineCache_.find(state);
-    if (it != pipelineCache_.end()) {
-        // Cache hit
-        stats.cacheHits++;
-        it->second->lastUsedFrame = stats.cacheHits + stats.cacheMisses;  // Rough frame counter
-        it->second->useCount++;
-        return it->second->pipeline.get();
-    }
-    
-    // Check async compilation
+    // Check async compilation first
     auto asyncIt = asyncCompilations.find(state);
     if (asyncIt != asyncCompilations.end() && asyncIt->second.valid()) {
-        // Check if compilation is done
         if (asyncIt->second.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
             auto cachedPipeline = asyncIt->second.get();
             asyncCompilations.erase(asyncIt);
             
             if (cachedPipeline) {
                 VkPipeline pipeline = cachedPipeline->pipeline.get();
-                pipelineCache_[state] = std::move(cachedPipeline);
-                stats.totalPipelines++;
+                cache_.insert(state, std::move(cachedPipeline));
                 return pipeline;
             }
         }
     }
     
-    // Cache miss - create new pipeline synchronously
-    stats.cacheMisses++;
-    
-    auto cachedPipeline = createPipelineInternal(state);
-    if (!cachedPipeline) {
-        std::cerr << "Failed to create compute pipeline" << std::endl;
-        return VK_NULL_HANDLE;
-    }
-    
-    VkPipeline pipeline = cachedPipeline->pipeline.get();
-    
-    // Store in cache
-    pipelineCache_[state] = std::move(cachedPipeline);
-    stats.totalPipelines++;
-    
-    // Check if cache needs cleanup
-    if (pipelineCache_.size() > maxCacheSize) {
-        evictLeastRecentlyUsed();
-    }
-    
-    return pipeline;
+    return cache_.getPipeline(state);
 }
 
 VkPipelineLayout ComputePipelineManager::getPipelineLayout(const ComputePipelineState& state) {
-    auto it = pipelineCache_.find(state);
-    if (it != pipelineCache_.end()) {
-        return it->second->layout.get();
-    }
-    
-    // If pipeline doesn't exist, create it
-    VkPipeline pipeline = getPipeline(state);
-    if (pipeline == VK_NULL_HANDLE) {
-        return VK_NULL_HANDLE;
-    }
-    
-    // Should now be in cache
-    it = pipelineCache_.find(state);
-    assert(it != pipelineCache_.end());
-    return it->second->layout.get();
+    return cache_.getPipelineLayout(state);
 }
 
 void ComputePipelineManager::dispatch(VkCommandBuffer commandBuffer, const ComputeDispatch& dispatch) {
-    stats.dispatchesThisFrame++;
-    stats.totalDispatches++;
-    
-    // Validate dispatch parameters
-    if (dispatch.pipeline == VK_NULL_HANDLE) {
-        std::cerr << "ComputePipelineManager: Invalid pipeline handle" << std::endl;
-        return;
-    }
-    if (dispatch.layout == VK_NULL_HANDLE) {
-        std::cerr << "ComputePipelineManager: Invalid pipeline layout handle" << std::endl;
-        return;
-    }
-    if (dispatch.groupCountX == 0 || dispatch.groupCountY == 0 || dispatch.groupCountZ == 0) {
-        std::cerr << "ComputePipelineManager: Invalid dispatch size: " 
-                  << dispatch.groupCountX << "x" << dispatch.groupCountY << "x" << dispatch.groupCountZ << std::endl;
-        return;
-    }
-    
-    // Bind pipeline
-    cmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, dispatch.pipeline);
-    
-    // Bind descriptor sets
-    if (!dispatch.descriptorSets.empty()) {
-        cmdBindDescriptorSets(
-            commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, dispatch.layout,
-            0, static_cast<uint32_t>(dispatch.descriptorSets.size()),
-            dispatch.descriptorSets.data(), 0, nullptr);
-    }
-    
-    // Push constants
-    if (dispatch.pushConstantData && dispatch.pushConstantSize > 0) {
-        cmdPushConstants(
-            commandBuffer, dispatch.layout, dispatch.pushConstantStages,
-            0, dispatch.pushConstantSize, dispatch.pushConstantData);
-    }
-    
-    // Insert memory barriers if any are provided
-    if (!dispatch.memoryBarriers.empty() || !dispatch.bufferBarriers.empty() || !dispatch.imageBarriers.empty()) {
-        insertOptimalBarriers(commandBuffer, dispatch.bufferBarriers, dispatch.imageBarriers);
-    }
-    
-    // Dispatch compute work
-    cmdDispatch(commandBuffer, 
-               dispatch.groupCountX, 
-               dispatch.groupCountY, 
-               dispatch.groupCountZ);
+    dispatcher_.dispatch(commandBuffer, dispatch);
 }
 
 void ComputePipelineManager::dispatchBuffer(VkCommandBuffer commandBuffer, 
@@ -314,143 +166,20 @@ void ComputePipelineManager::dispatchImage(VkCommandBuffer commandBuffer,
 }
 
 std::unique_ptr<CachedComputePipeline> ComputePipelineManager::createPipelineInternal(const ComputePipelineState& state) {
-    auto startTime = std::chrono::high_resolution_clock::now();
-    
-    if (!validatePipelineState(state)) {
-        std::cerr << "Invalid compute pipeline state" << std::endl;
-        return nullptr;
+    auto cachedPipeline = factory_.createPipeline(state);
+    if (cachedPipeline) {
+        // Set up dispatch optimization info using device info
+        cachedPipeline->dispatchInfo.optimalWorkgroupSize = deviceInfo_.getOptimalWorkgroupSize();
+        cachedPipeline->dispatchInfo.maxInvocationsPerWorkgroup = deviceInfo_.getMaxComputeWorkgroupInvocations();
+        cachedPipeline->dispatchInfo.supportsSubgroupOperations = deviceInfo_.supportsSubgroupOperations();
     }
-    
-    auto cachedPipeline = std::make_unique<CachedComputePipeline>();
-    cachedPipeline->state = state;
-    
-    // Create pipeline layout
-    VkPipelineLayout rawLayout = createPipelineLayout(state.descriptorSetLayouts, state.pushConstantRanges);
-    if (rawLayout == VK_NULL_HANDLE) {
-        std::cerr << "Failed to create compute pipeline layout" << std::endl;
-        return nullptr;
-    }
-    cachedPipeline->layout = vulkan_raii::make_pipeline_layout(rawLayout, context);
-    
-    // Load shader through ShaderManager
-    VkShaderModule shaderModule = shaderManager->loadSPIRVFromFile(state.shaderPath);
-    if (shaderModule == VK_NULL_HANDLE) {
-        std::cerr << "Failed to load compute shader: " << state.shaderPath << std::endl;
-        // RAII layout will cleanup automatically
-        return nullptr;
-    }
-    
-    // Create shader stage
-    VkPipelineShaderStageCreateInfo shaderStageInfo{};
-    shaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-    shaderStageInfo.stage = VK_SHADER_STAGE_COMPUTE_BIT;
-    shaderStageInfo.module = shaderModule;
-    shaderStageInfo.pName = "main";
-    
-    // Specialization constants (if any)
-    VkSpecializationInfo specializationInfo{};
-    std::vector<VkSpecializationMapEntry> mapEntries;
-    if (!state.specializationConstants.empty()) {
-        for (uint32_t i = 0; i < state.specializationConstants.size(); ++i) {
-            VkSpecializationMapEntry entry{};
-            entry.constantID = i;
-            entry.offset = i * sizeof(uint32_t);
-            entry.size = sizeof(uint32_t);
-            mapEntries.push_back(entry);
-        }
-        
-        specializationInfo.mapEntryCount = static_cast<uint32_t>(mapEntries.size());
-        specializationInfo.pMapEntries = mapEntries.data();
-        specializationInfo.dataSize = state.specializationConstants.size() * sizeof(uint32_t);
-        specializationInfo.pData = state.specializationConstants.data();
-        
-        shaderStageInfo.pSpecializationInfo = &specializationInfo;
-    }
-    
-    // Create compute pipeline
-    VkComputePipelineCreateInfo pipelineInfo{};
-    pipelineInfo.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
-    pipelineInfo.stage = shaderStageInfo;
-    pipelineInfo.layout = cachedPipeline->layout.get();
-    pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
-    
-    // Create compute pipeline with detailed error logging
-    std::cout << "ComputePipelineManager: Creating compute pipeline for shader: " << state.shaderPath << std::endl;
-    std::cout << "  Pipeline layout: " << (void*)cachedPipeline->layout.get() << std::endl;
-    std::cout << "  Pipeline cache: " << (void*)pipelineCache.get() << std::endl;
-    std::cout << "  Shader module: " << (void*)shaderModule << std::endl;
-    
-    VkPipeline rawPipeline;
-    VkResult result = createComputePipelines(pipelineCache.get(), 1, &pipelineInfo, &rawPipeline);
-    
-    if (result != VK_SUCCESS) {
-        std::cerr << "ComputePipelineManager: CRITICAL ERROR - Failed to create compute pipeline!" << std::endl;
-        std::cerr << "  Shader path: " << state.shaderPath << std::endl;
-        std::cerr << "  VkResult: " << result << std::endl;
-        std::cerr << "  Pipeline layout valid: " << (cachedPipeline->layout ? "YES" : "NO") << std::endl;
-        std::cerr << "  Pipeline cache valid: " << (pipelineCache ? "YES" : "NO") << std::endl;
-        std::cerr << "  Shader module valid: " << (shaderModule != VK_NULL_HANDLE ? "YES" : "NO") << std::endl;
-        std::cerr << "  Device valid: " << (context->getDevice() != VK_NULL_HANDLE ? "YES" : "NO") << std::endl;
-        
-        // RAII layout will cleanup automatically
-        return nullptr;
-    } else {
-        std::cout << "ComputePipelineManager: Compute pipeline created successfully" << std::endl;
-    }
-    
-    cachedPipeline->pipeline = vulkan_raii::make_pipeline(rawPipeline, context);
-    
-    // Set up dispatch optimization info
-    cachedPipeline->dispatchInfo.optimalWorkgroupSize = getDeviceOptimalWorkgroupSize();
-    cachedPipeline->dispatchInfo.maxInvocationsPerWorkgroup = getDeviceMaxComputeWorkgroupInvocations();
-    cachedPipeline->dispatchInfo.supportsSubgroupOperations = deviceSupportsSubgroupOperations();
-    
-    auto endTime = std::chrono::high_resolution_clock::now();
-    cachedPipeline->compilationTime = std::chrono::duration_cast<std::chrono::nanoseconds>(endTime - startTime);
-    stats.totalCompilationTime += cachedPipeline->compilationTime;
-    
-    logPipelineCreation(state, cachedPipeline->compilationTime);
-    
     return cachedPipeline;
 }
 
-VkPipelineLayout ComputePipelineManager::createPipelineLayout(const std::vector<VkDescriptorSetLayout>& setLayouts,
-                                                             const std::vector<VkPushConstantRange>& pushConstants) {
-    std::cout << "ComputePipelineManager: Creating pipeline layout" << std::endl;
-    std::cout << "  Descriptor set layouts count: " << setLayouts.size() << std::endl;
-    for (size_t i = 0; i < setLayouts.size(); ++i) {
-        std::cout << "    Layout[" << i << "]: " << (void*)setLayouts[i] << (setLayouts[i] != VK_NULL_HANDLE ? " (valid)" : " (INVALID!)") << std::endl;
-    }
-    std::cout << "  Push constant ranges count: " << pushConstants.size() << std::endl;
-    
-    VkPipelineLayoutCreateInfo layoutInfo{};
-    layoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-    layoutInfo.setLayoutCount = static_cast<uint32_t>(setLayouts.size());
-    layoutInfo.pSetLayouts = setLayouts.data();
-    layoutInfo.pushConstantRangeCount = static_cast<uint32_t>(pushConstants.size());
-    layoutInfo.pPushConstantRanges = pushConstants.data();
-    
-    VkPipelineLayout layout;
-    VkResult result = loader->vkCreatePipelineLayout(device, &layoutInfo, nullptr, &layout);
-    
-    if (result != VK_SUCCESS) {
-        std::cerr << "ComputePipelineManager: CRITICAL ERROR - Failed to create pipeline layout!" << std::endl;
-        std::cerr << "  VkResult: " << result << std::endl;
-        std::cerr << "  Device valid: " << (context->getDevice() != VK_NULL_HANDLE ? "YES" : "NO") << std::endl;
-        return VK_NULL_HANDLE;
-    } else {
-        std::cout << "ComputePipelineManager: Pipeline layout created successfully: " << (void*)layout << std::endl;
-    }
-    
-    return layout;
-}
 
 void ComputePipelineManager::clearCache() {
     if (!context) return;
-    
-    // Clear all cached pipelines (RAII handles cleanup automatically)
-    pipelineCache_.clear();
-    stats.totalPipelines = 0;
+    cache_.clear();
 }
 
 bool ComputePipelineManager::recreatePipelineCache() {
@@ -461,23 +190,18 @@ bool ComputePipelineManager::recreatePipelineCache() {
     
     std::cout << "ComputePipelineManager: CRITICAL FIX - Recreating pipeline cache to prevent second resize corruption" << std::endl;
     
-    // Clear existing pipeline objects first
     clearCache();
     
-    // CRITICAL FIX: Also clear descriptor layout cache to prevent stale layout handles
-    // Descriptor layouts may become invalid after command pool recreation
     if (layoutManager) {
         std::cout << "ComputePipelineManager: Also clearing descriptor layout cache to prevent stale handles" << std::endl;
         layoutManager->clearCache();
     }
     
-    // Destroy and recreate the VkPipelineCache object itself
     if (pipelineCache) {
         std::cout << "ComputePipelineManager: Destroying corrupted pipeline cache" << std::endl;
         pipelineCache.reset();
     }
     
-    // Create fresh pipeline cache
     VkPipelineCacheCreateInfo cacheInfo{};
     cacheInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
     cacheInfo.initialDataSize = 0;
@@ -489,45 +213,30 @@ bool ComputePipelineManager::recreatePipelineCache() {
         return false;
     }
     
+    // Reinitialize factory with new cache
+    factory_.initialize(shaderManager, pipelineCache);
+    
     std::cout << "ComputePipelineManager: Pipeline cache successfully recreated" << std::endl;
     return true;
 }
 
-void ComputePipelineManager::evictLeastRecentlyUsed() {
-    if (pipelineCache_.empty()) return;
-    
-    // Find least recently used pipeline
-    auto lruIt = pipelineCache_.begin();
-    for (auto it = pipelineCache_.begin(); it != pipelineCache_.end(); ++it) {
-        if (it->second->lastUsedFrame < lruIt->second->lastUsedFrame) {
-            lruIt = it;
-        }
-    }
-    
-    // Erase the pipeline (RAII handles cleanup automatically)
-    pipelineCache_.erase(lruIt);
-    stats.totalPipelines--;
-}
 
 glm::uvec3 ComputePipelineManager::calculateOptimalWorkgroupSize(uint32_t dataSize,
                                                                 const glm::uvec3& maxWorkgroupSize) const {
-    // Start with device optimal size
-    glm::uvec3 optimal = getDeviceOptimalWorkgroupSize();
-    
-    // Clamp to device limits
-    optimal.x = std::min(optimal.x, maxWorkgroupSize.x);
-    optimal.y = std::min(optimal.y, maxWorkgroupSize.y);
-    optimal.z = std::min(optimal.z, maxWorkgroupSize.z);
-    
-    // For 1D data, use optimal X size and 1 for Y, Z
-    if (dataSize <= optimal.x * 4) {
-        // Small data - use smaller workgroup to avoid underutilization
-        optimal.x = std::min(optimal.x, (dataSize + 3) / 4);
-        optimal.y = 1;
-        optimal.z = 1;
-    }
-    
-    return optimal;
+    return deviceInfo_.calculateOptimalWorkgroupSize(dataSize, maxWorkgroupSize);
+}
+
+uint32_t ComputePipelineManager::calculateOptimalWorkgroupCount(uint32_t dataSize, uint32_t workgroupSize) const {
+    return deviceInfo_.calculateOptimalWorkgroupCount(dataSize, workgroupSize);
+}
+
+void ComputePipelineManager::debugPrintCache() const {
+    std::cout << "ComputePipelineManager Cache Stats:" << std::endl;
+    auto stats = getStats();
+    std::cout << "  Total pipelines: " << stats.totalPipelines << std::endl;
+    std::cout << "  Cache hits: " << stats.cacheHits << std::endl;
+    std::cout << "  Cache misses: " << stats.cacheMisses << std::endl;
+    std::cout << "  Hit ratio: " << stats.hitRatio << std::endl;
 }
 
 void ComputePipelineManager::insertOptimalBarriers(VkCommandBuffer commandBuffer,
@@ -535,85 +244,17 @@ void ComputePipelineManager::insertOptimalBarriers(VkCommandBuffer commandBuffer
                                                    const std::vector<VkImageMemoryBarrier>& imageBarriers,
                                                    VkPipelineStageFlags srcStage,
                                                    VkPipelineStageFlags dstStage) {
-    if (bufferBarriers.empty() && imageBarriers.empty()) {
-        return;
-    }
-    
-    // Optimize buffer barriers by merging adjacent ranges
-    auto optimizedBufferBarriers = optimizeBufferBarriers(bufferBarriers);
-    
-    cmdPipelineBarrier(
-        commandBuffer,
-        srcStage, dstStage,
-        0,  // No dependency flags for compute
-        0, nullptr,  // No memory barriers
-        static_cast<uint32_t>(optimizedBufferBarriers.size()), optimizedBufferBarriers.data(),
-        static_cast<uint32_t>(imageBarriers.size()), imageBarriers.data()
-    );
+    dispatcher_.insertOptimalBarriers(commandBuffer, bufferBarriers, imageBarriers, srcStage, dstStage);
 }
 
-bool ComputePipelineManager::validatePipelineState(const ComputePipelineState& state) const {
-    if (state.shaderPath.empty()) {
-        std::cerr << "Compute pipeline state validation failed: empty shader path" << std::endl;
-        return false;
-    }
-    
-    if (state.workgroupSizeX == 0 || state.workgroupSizeY == 0 || state.workgroupSizeZ == 0) {
-        std::cerr << "Compute pipeline state validation failed: invalid workgroup size" << std::endl;
-        return false;
-    }
-    
-    return true;
-}
 
-void ComputePipelineManager::logPipelineCreation(const ComputePipelineState& state,
-                                                std::chrono::nanoseconds compilationTime) const {
-    std::cout << "Created compute pipeline: " << state.shaderPath 
-              << " (compilation time: " << compilationTime.count() / 1000000.0f << "ms)" << std::endl;
-}
 
 void ComputePipelineManager::resetFrameStats() {
-    stats.dispatchesThisFrame = 0;
-    stats.hitRatio = static_cast<float>(stats.cacheHits) / static_cast<float>(stats.cacheHits + stats.cacheMisses);
+    cache_.resetFrameStats();
+    dispatcher_.resetFrameStats();
 }
 
-// Device capability queries (placeholders - need proper implementation)
-glm::uvec3 ComputePipelineManager::getDeviceOptimalWorkgroupSize() const {
-    // Use device limits to determine optimal workgroup size
-    // Most GPUs perform well with 32 or 64 threads per workgroup
-    uint32_t maxWorkgroupSize = std::min(deviceProperties.limits.maxComputeWorkGroupInvocations, 64u);
-    return glm::uvec3(maxWorkgroupSize, 1, 1);
-}
 
-uint32_t ComputePipelineManager::getDeviceMaxComputeWorkgroupInvocations() const {
-    return deviceProperties.limits.maxComputeWorkGroupInvocations;
-}
-
-bool ComputePipelineManager::deviceSupportsSubgroupOperations() const {
-    // Check for subgroup operations support
-    // Note: Basic subgroup support is part of Vulkan 1.1 core
-    // For more advanced subgroup features, we'd need to check VkPhysicalDeviceSubgroupProperties
-    return true;  // Assume Vulkan 1.1+ support
-}
-
-std::vector<VkBufferMemoryBarrier> ComputePipelineManager::optimizeBufferBarriers(
-    const std::vector<VkBufferMemoryBarrier>& barriers) const {
-    if (barriers.empty()) {
-        return {};
-    }
-    
-    if (barriers.size() == 1) {
-        return {barriers[0]};
-    }
-    
-    // For now, return as-is. Advanced optimization would merge adjacent ranges
-    std::vector<VkBufferMemoryBarrier> result;
-    result.reserve(barriers.size());
-    for (const auto& barrier : barriers) {
-        result.push_back(barrier);
-    }
-    return result;
-}
 
 ComputePipelineState ComputePipelineManager::createBufferProcessingState(const std::string& shaderPath,
                                                                        VkDescriptorSetLayout descriptorLayout) {
@@ -651,21 +292,27 @@ namespace ComputePipelinePresets {
 }
 
 void ComputePipelineManager::optimizeCache(uint64_t currentFrame) {
-    // Simple LRU eviction for compute pipeline cache
-    for (auto it = pipelineCache_.begin(); it != pipelineCache_.end();) {
-        if (currentFrame - it->second->lastUsedFrame > 1000) { // Evict after 1000 frames
-            // Erase pipeline (RAII handles cleanup automatically)
-            it = pipelineCache_.erase(it);
-            stats.totalPipelines--;
-        } else {
-            ++it;
-        }
-    }
+    cache_.optimizeCache(currentFrame);
 }
 
 void ComputePipelineManager::warmupCache(const std::vector<ComputePipelineState>& commonStates) {
-    // Pre-create commonly used compute pipeline states
     for (const auto& state : commonStates) {
-        getPipeline(state); // This will create and cache the pipeline
+        getPipeline(state);
     }
+}
+
+ComputePipelineManager::ComputeStats ComputePipelineManager::getStats() const {
+    auto cacheStats = cache_.getStats();
+    auto dispatchStats = dispatcher_.getStats();
+    
+    ComputeStats stats{};
+    stats.totalPipelines = cacheStats.totalPipelines;
+    stats.cacheHits = cacheStats.cacheHits;
+    stats.cacheMisses = cacheStats.cacheMisses;
+    stats.dispatchesThisFrame = dispatchStats.dispatchesThisFrame;
+    stats.totalDispatches = dispatchStats.totalDispatches;
+    stats.totalCompilationTime = cacheStats.totalCompilationTime;
+    stats.hitRatio = cacheStats.hitRatio;
+    
+    return stats;
 }
