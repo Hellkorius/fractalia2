@@ -114,7 +114,7 @@ GraphicsPipelineManager::GraphicsPipelineManager(VulkanContext* ctx) : VulkanMan
 }
 
 GraphicsPipelineManager::~GraphicsPipelineManager() {
-    cleanup();
+    cleanupBeforeContextDestruction();
 }
 
 bool GraphicsPipelineManager::initialize(ShaderManager* shaderManager,
@@ -128,34 +128,34 @@ bool GraphicsPipelineManager::initialize(ShaderManager* shaderManager,
     cacheInfo.initialDataSize = 0;
     cacheInfo.pInitialData = nullptr;
     
-    VkResult result = createPipelineCache(&cacheInfo, &pipelineCache);
+    VkPipelineCache rawCache;
+    VkResult result = createPipelineCache(&cacheInfo, &rawCache);
     
     if (result != VK_SUCCESS) {
         std::cerr << "Failed to create graphics pipeline cache: " << result << std::endl;
         return false;
     }
+    pipelineCache = vulkan_raii::make_pipeline_cache(rawCache, context);
     
     std::cout << "GraphicsPipelineManager initialized successfully" << std::endl;
     return true;
 }
 
 void GraphicsPipelineManager::cleanup() {
+    cleanupBeforeContextDestruction();
+}
+
+void GraphicsPipelineManager::cleanupBeforeContextDestruction() {
     if (!context) return;
     
-    // Clear pipeline cache
+    // Clear pipeline cache (RAII handles cleanup automatically)
     clearCache();
     
-    // Destroy render passes
-    for (auto& [hash, renderPass] : renderPassCache) {
-        destroyRenderPass(renderPass);
-    }
+    // Clear render pass cache (RAII handles cleanup automatically)
     renderPassCache.clear();
     
-    // Destroy pipeline cache
-    if (pipelineCache != VK_NULL_HANDLE) {
-        destroyPipelineCache(pipelineCache);
-        pipelineCache = VK_NULL_HANDLE;
-    }
+    // Reset pipeline cache (RAII handles cleanup automatically)
+    pipelineCache.reset();
     
     context = nullptr;
 }
@@ -168,7 +168,7 @@ VkPipeline GraphicsPipelineManager::getPipeline(const GraphicsPipelineState& sta
         stats.cacheHits++;
         it->second->lastUsedFrame = stats.cacheHits + stats.cacheMisses;  // Rough frame counter
         it->second->useCount++;
-        return it->second->pipeline;
+        return it->second->pipeline.get();
     }
     
     // Cache miss - create new pipeline
@@ -181,7 +181,7 @@ VkPipeline GraphicsPipelineManager::getPipeline(const GraphicsPipelineState& sta
         return VK_NULL_HANDLE;
     }
     
-    VkPipeline pipeline = cachedPipeline->pipeline;
+    VkPipeline pipeline = cachedPipeline->pipeline.get();
     
     // Store in cache
     pipelineCache_[state] = std::move(cachedPipeline);
@@ -198,7 +198,7 @@ VkPipeline GraphicsPipelineManager::getPipeline(const GraphicsPipelineState& sta
 VkPipelineLayout GraphicsPipelineManager::getPipelineLayout(const GraphicsPipelineState& state) {
     auto it = pipelineCache_.find(state);
     if (it != pipelineCache_.end()) {
-        return it->second->layout;
+        return it->second->layout.get();
     }
     
     // If pipeline doesn't exist, create it
@@ -210,7 +210,7 @@ VkPipelineLayout GraphicsPipelineManager::getPipelineLayout(const GraphicsPipeli
     // Should now be in cache
     it = pipelineCache_.find(state);
     assert(it != pipelineCache_.end());
-    return it->second->layout;
+    return it->second->layout.get();
 }
 
 std::unique_ptr<CachedGraphicsPipeline> GraphicsPipelineManager::createPipelineInternal(const GraphicsPipelineState& state) {
@@ -228,12 +228,13 @@ std::unique_ptr<CachedGraphicsPipeline> GraphicsPipelineManager::createPipelineI
     
     // Create pipeline layout
     std::cout << "GraphicsPipelineManager: Creating pipeline layout..." << std::endl;
-    cachedPipeline->layout = createPipelineLayout(state.descriptorSetLayouts, state.pushConstantRanges);
-    if (cachedPipeline->layout == VK_NULL_HANDLE) {
+    VkPipelineLayout rawLayout = createPipelineLayout(state.descriptorSetLayouts, state.pushConstantRanges);
+    if (rawLayout == VK_NULL_HANDLE) {
         std::cerr << "GraphicsPipelineManager: CRITICAL ERROR - Failed to create pipeline layout" << std::endl;
         return nullptr;
     }
-    std::cout << "GraphicsPipelineManager: Pipeline layout created successfully: " << (void*)cachedPipeline->layout << std::endl;
+    cachedPipeline->layout = vulkan_raii::make_pipeline_layout(rawLayout, context);
+    std::cout << "GraphicsPipelineManager: Pipeline layout created successfully: " << (void*)rawLayout << std::endl;
     
     // Shader loading is implemented later in this function using ShaderManager
     
@@ -319,9 +320,7 @@ std::unique_ptr<CachedGraphicsPipeline> GraphicsPipelineManager::createPipelineI
             for (VkShaderModule module : shaderModules) {
                 destroyShaderModule(module);
             }
-            if (cachedPipeline->layout != VK_NULL_HANDLE) {
-                destroyPipelineLayout(cachedPipeline->layout);
-            }
+            // RAII layout will cleanup automatically
             return nullptr;
         }
         
@@ -356,7 +355,7 @@ std::unique_ptr<CachedGraphicsPipeline> GraphicsPipelineManager::createPipelineI
     pipelineInfo.pColorBlendState = &colorBlendInfo;
     pipelineInfo.pDynamicState = &dynamicStateInfo;
     pipelineInfo.pDepthStencilState = state.depthTestEnable ? &depthStencilInfo : nullptr;
-    pipelineInfo.layout = cachedPipeline->layout;
+    pipelineInfo.layout = cachedPipeline->layout.get();
     pipelineInfo.renderPass = state.renderPass;
     pipelineInfo.subpass = state.subpass;
     pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
@@ -370,23 +369,24 @@ std::unique_ptr<CachedGraphicsPipeline> GraphicsPipelineManager::createPipelineI
     std::cout << "  Shader stages count: " << pipelineInfo.stageCount << std::endl;
     std::cout << "  About to call vkCreateGraphicsPipelines..." << std::endl;
     
-    VkResult result = createGraphicsPipelines(pipelineCache, 1, &pipelineInfo, &cachedPipeline->pipeline);
+    VkPipeline rawPipeline;
+    VkResult result = createGraphicsPipelines(pipelineCache.get(), 1, &pipelineInfo, &rawPipeline);
     
     if (result != VK_SUCCESS) {
         std::cerr << "GraphicsPipelineManager: CRITICAL ERROR - Failed to create graphics pipeline!" << std::endl;
         std::cerr << "  VkResult: " << result << std::endl;
-        std::cerr << "  Pipeline layout valid: " << (cachedPipeline->layout != VK_NULL_HANDLE ? "YES" : "NO") << std::endl;
-        std::cerr << "  Pipeline cache valid: " << (pipelineCache != VK_NULL_HANDLE ? "YES" : "NO") << std::endl;
+        std::cerr << "  Pipeline layout valid: " << (cachedPipeline->layout ? "YES" : "NO") << std::endl;
+        std::cerr << "  Pipeline cache valid: " << (pipelineCache ? "YES" : "NO") << std::endl;
         std::cerr << "  Render pass valid: " << (state.renderPass != VK_NULL_HANDLE ? "YES" : "NO") << std::endl;
         std::cerr << "  Device valid: " << (context->getDevice() != VK_NULL_HANDLE ? "YES" : "NO") << std::endl;
         
-        if (cachedPipeline->layout != VK_NULL_HANDLE) {
-            destroyPipelineLayout(cachedPipeline->layout);
-        }
+        // RAII layout will cleanup automatically
         return nullptr;
     } else {
         std::cout << "GraphicsPipelineManager: Graphics pipeline created successfully!" << std::endl;
     }
+    
+    cachedPipeline->pipeline = vulkan_raii::make_pipeline(rawPipeline, context);
     
     auto endTime = std::chrono::high_resolution_clock::now();
     cachedPipeline->compilationTime = std::chrono::duration_cast<std::chrono::nanoseconds>(endTime - startTime);
@@ -442,7 +442,7 @@ VkRenderPass GraphicsPipelineManager::createRenderPass(VkFormat colorFormat,
     // Check cache
     auto it = renderPassCache.find(hash);
     if (it != renderPassCache.end()) {
-        return it->second;
+        return it->second.get();
     }
     
     // Create new render pass
@@ -545,37 +545,25 @@ VkRenderPass GraphicsPipelineManager::createRenderPass(VkFormat colorFormat,
     }
     
     // Cache the render pass
-    renderPassCache[hash] = renderPass;
+    vulkan_raii::RenderPass raiiRenderPass = vulkan_raii::make_render_pass(renderPass, context);
+    VkRenderPass handle = raiiRenderPass.get();
+    renderPassCache[hash] = std::move(raiiRenderPass);
     
-    return renderPass;
+    return handle;
 }
 
 void GraphicsPipelineManager::clearCache() {
     if (!context) return;
     
-    // Destroy all cached pipelines
-    for (auto& [state, pipeline] : pipelineCache_) {
-        if (pipeline->pipeline != VK_NULL_HANDLE) {
-            destroyPipeline(pipeline->pipeline);
-        }
-        if (pipeline->layout != VK_NULL_HANDLE) {
-            destroyPipelineLayout(pipeline->layout);
-        }
-    }
+    // Clear all cached pipelines (RAII handles cleanup automatically)
+    pipelineCache_.clear();
+    stats.totalPipelines = 0;
     
     // CRITICAL FIX FOR SECOND RESIZE CRASH: Clear render pass cache to prevent stale render passes
     // Render passes become invalid after swapchain recreation and must be recreated
     std::cout << "GraphicsPipelineManager: Clearing render pass cache (" << renderPassCache.size() << " render passes)" << std::endl;
-    for (auto& [hash, renderPass] : renderPassCache) {
-        if (renderPass != VK_NULL_HANDLE) {
-            destroyRenderPass(renderPass);
-        }
-    }
     renderPassCache.clear();
     std::cout << "GraphicsPipelineManager: Render pass cache cleared successfully" << std::endl;
-    
-    pipelineCache_.clear();
-    stats.totalPipelines = 0;
 }
 
 bool GraphicsPipelineManager::recreatePipelineCache() {
@@ -597,10 +585,9 @@ bool GraphicsPipelineManager::recreatePipelineCache() {
     }
     
     // Destroy and recreate the VkPipelineCache object itself
-    if (pipelineCache != VK_NULL_HANDLE) {
+    if (pipelineCache) {
         std::cout << "GraphicsPipelineManager: Destroying corrupted pipeline cache" << std::endl;
-        destroyPipelineCache(pipelineCache);
-        pipelineCache = VK_NULL_HANDLE;
+        pipelineCache.reset();
     }
     
     // Create fresh pipeline cache
@@ -609,10 +596,12 @@ bool GraphicsPipelineManager::recreatePipelineCache() {
     cacheInfo.initialDataSize = 0;
     cacheInfo.pInitialData = nullptr;
     
-    if (createPipelineCache(&cacheInfo, &pipelineCache) != VK_SUCCESS) {
+    VkPipelineCache rawCache;
+    if (createPipelineCache(&cacheInfo, &rawCache) != VK_SUCCESS) {
         std::cerr << "GraphicsPipelineManager: CRITICAL FAILURE - Failed to recreate pipeline cache" << std::endl;
         return false;
     }
+    pipelineCache = vulkan_raii::make_pipeline_cache(rawCache, context);
     
     std::cout << "GraphicsPipelineManager: Pipeline cache successfully recreated" << std::endl;
     return true;
@@ -629,14 +618,7 @@ void GraphicsPipelineManager::evictLeastRecentlyUsed() {
         }
     }
     
-    // Destroy the pipeline
-    if (lruIt->second->pipeline != VK_NULL_HANDLE) {
-        destroyPipeline(lruIt->second->pipeline);
-    }
-    if (lruIt->second->layout != VK_NULL_HANDLE) {
-        destroyPipelineLayout(lruIt->second->layout);
-    }
-    
+    // Erase the pipeline (RAII handles cleanup automatically)
     pipelineCache_.erase(lruIt);
     stats.totalPipelines--;
 }
@@ -757,23 +739,12 @@ void GraphicsPipelineManager::optimizeCache(uint64_t currentFrame) {
     // Simple LRU eviction for graphics pipeline cache
     for (auto it = pipelineCache_.begin(); it != pipelineCache_.end();) {
         if (currentFrame - it->second->lastUsedFrame > 1000) { // Evict after 1000 frames
-            if (it->second->pipeline != VK_NULL_HANDLE) {
-                destroyPipeline(it->second->pipeline);
-            }
-            if (it->second->layout != VK_NULL_HANDLE) {
-                destroyPipelineLayout(it->second->layout);
-            }
+            // Erase pipeline (RAII handles cleanup automatically)
             it = pipelineCache_.erase(it);
             stats.totalPipelines--;
         } else {
             ++it;
         }
-    }
-}
-
-void GraphicsPipelineManager::destroyRenderPass(VkRenderPass renderPass) {
-    if (renderPass != VK_NULL_HANDLE && context) {
-        destroyRenderPass(renderPass);
     }
 }
 

@@ -10,6 +10,7 @@
 #include <chrono>
 #include "../core/vulkan_context.h"
 #include "../core/vulkan_manager_base.h"
+#include "../core/vulkan_raii.h"
 
 // Forward declarations
 class ShaderManager;
@@ -90,8 +91,8 @@ struct GraphicsPipelineStateHash {
 
 // Cached pipeline object with metadata
 struct CachedGraphicsPipeline {
-    VkPipeline pipeline = VK_NULL_HANDLE;
-    VkPipelineLayout layout = VK_NULL_HANDLE;
+    vulkan_raii::Pipeline pipeline;
+    vulkan_raii::PipelineLayout layout;
     GraphicsPipelineState state;
     uint64_t lastUsedFrame = 0;
     uint32_t useCount = 0;
@@ -111,6 +112,7 @@ public:
     bool initialize(ShaderManager* shaderManager,
                    DescriptorLayoutManager* layoutManager);
     void cleanup();
+    void cleanupBeforeContextDestruction();
 
     // Pipeline creation and caching
     VkPipeline getPipeline(const GraphicsPipelineState& state);
@@ -124,7 +126,6 @@ public:
                                  VkFormat depthFormat = VK_FORMAT_UNDEFINED,
                                  VkSampleCountFlagBits samples = VK_SAMPLE_COUNT_1_BIT,
                                  bool enableMSAA = false);
-    void destroyRenderPass(VkRenderPass renderPass);
     
     // Default PSO presets for common use cases
     GraphicsPipelineState createDefaultState();
@@ -164,7 +165,7 @@ public:
 
 private:
     // Core Vulkan objects
-    VkPipelineCache pipelineCache = VK_NULL_HANDLE;
+    vulkan_raii::PipelineCache pipelineCache;
     
     // Dependencies
     ShaderManager* shaderManager = nullptr;
@@ -174,7 +175,7 @@ private:
     std::unordered_map<GraphicsPipelineState, std::unique_ptr<CachedGraphicsPipeline>, GraphicsPipelineStateHash> pipelineCache_;
     
     // Render pass cache
-    std::unordered_map<size_t, VkRenderPass> renderPassCache;
+    std::unordered_map<size_t, vulkan_raii::RenderPass> renderPassCache;
     
     // Statistics
     mutable PipelineStats stats;
