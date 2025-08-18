@@ -101,7 +101,7 @@ VkRenderPass GraphicsRenderPassManager::createRenderPass(VkFormat colorFormat,
     renderPassInfo.pDependencies = &dependency;
     
     VkRenderPass renderPass;
-    VkResult result = loader->vkCreateRenderPass(device, &renderPassInfo, nullptr, &renderPass);
+    VkResult result = vkCreateRenderPassWrapper(&renderPassInfo, &renderPass);
     
     if (result != VK_SUCCESS) {
         std::cerr << "Failed to create render pass: " << result << std::endl;

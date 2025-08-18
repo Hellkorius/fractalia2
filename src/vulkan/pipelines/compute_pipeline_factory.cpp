@@ -91,7 +91,7 @@ VkPipelineLayout ComputePipelineFactory::createPipelineLayout(const std::vector<
     layoutInfo.pPushConstantRanges = pushConstants.data();
     
     VkPipelineLayout layout;
-    VkResult result = loader->vkCreatePipelineLayout(device, &layoutInfo, nullptr, &layout);
+    VkResult result = vkCreatePipelineLayoutWrapper(&layoutInfo, &layout);
     
     if (result != VK_SUCCESS) {
         std::cerr << "ComputePipelineFactory: Failed to create pipeline layout!" << std::endl;

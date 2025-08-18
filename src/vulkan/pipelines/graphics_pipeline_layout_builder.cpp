@@ -21,7 +21,7 @@ VkPipelineLayout GraphicsPipelineLayoutBuilder::createPipelineLayout(const std::
     layoutInfo.pPushConstantRanges = pushConstants.data();
     
     VkPipelineLayout layout;
-    VkResult result = loader->vkCreatePipelineLayout(device, &layoutInfo, nullptr, &layout);
+    VkResult result = vkCreatePipelineLayoutWrapper(&layoutInfo, &layout);
     
     if (result != VK_SUCCESS) {
         std::cerr << "GraphicsPipelineLayoutBuilder: CRITICAL ERROR - Failed to create graphics pipeline layout!" << std::endl;

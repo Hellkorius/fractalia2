@@ -39,7 +39,7 @@ protected:
         loader->vkDestroyPipeline(device, pipeline, nullptr);
     }
     
-    VkResult createPipelineLayout(const VkPipelineLayoutCreateInfo* pCreateInfo, VkPipelineLayout* pPipelineLayout) {
+    VkResult vkCreatePipelineLayoutWrapper(const VkPipelineLayoutCreateInfo* pCreateInfo, VkPipelineLayout* pPipelineLayout) {
         return loader->vkCreatePipelineLayout(device, pCreateInfo, nullptr, pPipelineLayout);
     }
     
@@ -55,7 +55,7 @@ protected:
         loader->vkDestroyPipelineCache(device, pipelineCache, nullptr);
     }
     
-    VkResult createRenderPass(const VkRenderPassCreateInfo* pCreateInfo, VkRenderPass* pRenderPass) {
+    VkResult vkCreateRenderPassWrapper(const VkRenderPassCreateInfo* pCreateInfo, VkRenderPass* pRenderPass) {
         return loader->vkCreateRenderPass(device, pCreateInfo, nullptr, pRenderPass);
     }
     
