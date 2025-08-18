@@ -32,33 +32,40 @@ src/
 ├── main.cpp                    # Application entry
 ├── vulkan_renderer.*           # Master renderer, frame loop
 ├── vulkan/                     # Vulkan subsystems
-│   ├── frame_graph.*           # Render graph coordinator
+│   ├── core/                   # Core Vulkan infrastructure
+│   │   ├── vulkan_context.*    # Instance, device, queue management
+│   │   ├── vulkan_function_loader.* # Vulkan function loading
+│   │   ├── vulkan_swapchain.*  # Swapchain, MSAA, framebuffers
+│   │   ├── vulkan_sync.*       # Fences, semaphores
+│   │   ├── vulkan_utils.*      # Vulkan utilities
+│   │   └── vulkan_constants.h  # Vulkan constants
+│   ├── pipelines/              # Pipeline management systems
+│   │   ├── compute_pipeline_manager.* # Compute pipeline caching & dispatch
+│   │   ├── graphics_pipeline_manager.* # Graphics pipeline state objects
+│   │   ├── pipeline_system_manager.* # AAA pipeline system coordinator
+│   │   ├── pipeline_system_simple.h # Simple pipeline system
+│   │   ├── shader_manager.*    # SPIR-V loading & hot-reload
+│   │   ├── descriptor_layout_manager.* # Descriptor set layout caching
+│   │   └── vulkan_pipeline.*   # Pipeline utilities
+│   ├── resources/              # Memory and resource management
+│   │   ├── resource_context.*  # Buffer/memory manager
+│   │   └── command_executor.*  # Command buffer execution
+│   ├── rendering/              # Frame graph and rendering coordination
+│   │   ├── frame_graph.*       # Render graph coordinator
+│   │   └── frame_graph_resource_registry.* # Resource registration with frame graph
+│   ├── services/               # High-level services
+│   │   ├── render_frame_director.* # Frame execution orchestration
+│   │   ├── command_submission_service.* # GPU queue submission management
+│   │   ├── gpu_synchronization_service.* # GPU synchronization primitives
+│   │   └── presentation_surface.* # Swapchain and presentation management
 │   ├── nodes/                  # Render graph nodes
-│   │   ├── entity_compute_node.*    # Compute movement
-│   │   ├── entity_graphics_node.*   # Graphics rendering
+│   │   ├── entity_compute_node.* # Compute movement
+│   │   ├── entity_graphics_node.* # Graphics rendering
 │   │   └── swapchain_present_node.* # Presentation
-│   ├── vulkan_context.*        # Instance, device, queue
-│   ├── vulkan_swapchain.*      # Swapchain, MSAA, framebuffers
-│   ├── vulkan_sync.*           # Fences, semaphores
-│   ├── vulkan_function_loader.* # Vulkan function loading
-│   ├── vulkan_utils.*          # Vulkan utilities
-│   ├── vulkan_pipeline.*       # Pipeline utilities
-│   ├── resource_context.*      # Buffer/memory manager
-│   ├── command_executor.*      # Command buffer execution
-│   ├── pipeline_system_manager.*    # AAA pipeline system coordinator
-│   ├── compute_pipeline_manager.*   # Compute pipeline caching & dispatch
-│   ├── graphics_pipeline_manager.*  # Graphics pipeline state objects
-│   ├── shader_manager.*            # SPIR-V loading & hot-reload
-│   ├── descriptor_layout_manager.* # Descriptor set layout caching
-│   ├── render_frame_director.* # Frame execution orchestration
-│   ├── command_submission_service.* # GPU queue submission management
-│   ├── frame_graph_resource_registry.* # Resource registration with frame graph
-│   ├── gpu_synchronization_service.* # GPU synchronization primitives
-│   ├── presentation_surface.*  # Swapchain and presentation management
-│   ├── gpu_memory_monitor.*    # GPU memory usage monitoring
-│   ├── gpu_timeout_detector.*  # GPU timeout detection
-│   ├── compute_stress_tester.* # Compute stress testing
-│   └── pipeline_system_simple.* # Simple pipeline system
+│   └── monitoring/             # Performance monitoring and debugging
+│       ├── gpu_memory_monitor.* # GPU memory usage monitoring
+│       ├── gpu_timeout_detector.* # GPU timeout detection
+│       └── compute_stress_tester.* # Compute stress testing
 ├── ecs/                        # ECS components and systems
 │   ├── gpu_entity_manager.*    # CPU→GPU bridge
 │   ├── systems/                # ECS systems

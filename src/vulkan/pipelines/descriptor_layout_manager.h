@@ -7,7 +7,7 @@
 #include <unordered_map>
 #include <memory>
 #include <functional>
-#include "vulkan_context.h"
+#include "../core/vulkan_context.h"
 
 // Descriptor binding specification for flexible layout creation
 struct DescriptorBinding {

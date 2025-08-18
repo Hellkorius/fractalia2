@@ -1,8 +1,8 @@
 #include "presentation_surface.h"
-#include "vulkan_context.h"
-#include "vulkan_swapchain.h"
-#include "pipeline_system_manager.h"
-#include "vulkan_function_loader.h"
+#include "../core/vulkan_context.h"
+#include "../core/vulkan_swapchain.h"
+#include "../pipelines/pipeline_system_manager.h"
+#include "../core/vulkan_function_loader.h"
 #include "gpu_synchronization_service.h"
 #include <iostream>
 

@@ -2,7 +2,7 @@
 
 #include <vulkan/vulkan.h>
 #include <array>
-#include "vulkan_constants.h"
+#include "../core/vulkan_constants.h"
 
 // Forward declarations
 class VulkanContext;

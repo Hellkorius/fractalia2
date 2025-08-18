@@ -1,8 +1,8 @@
 #pragma once
 
 #include <vulkan/vulkan.h>
-#include "vulkan_constants.h"
-#include "frame_graph.h"
+#include "../core/vulkan_constants.h"
+#include "../rendering/frame_graph.h"
 
 // Forward declarations
 class VulkanContext;

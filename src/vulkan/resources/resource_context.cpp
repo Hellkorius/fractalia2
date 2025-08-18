@@ -1,8 +1,8 @@
 #include "resource_context.h"
-#include "vulkan_context.h"
-#include "vulkan_function_loader.h"
-#include "vulkan_utils.h"
-#include "../PolygonFactory.h"
+#include "../core/vulkan_context.h"
+#include "../core/vulkan_function_loader.h"
+#include "../core/vulkan_utils.h"
+#include "../../PolygonFactory.h"
 #include <iostream>
 #include <stdexcept>
 #include <cstring>

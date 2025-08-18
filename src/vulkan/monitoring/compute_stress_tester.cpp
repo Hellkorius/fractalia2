@@ -1,10 +1,10 @@
 #include "compute_stress_tester.h"
-#include "vulkan_context.h"
-#include "vulkan_function_loader.h"
-#include "compute_pipeline_manager.h"
+#include "../core/vulkan_context.h"
+#include "../core/vulkan_function_loader.h"
+#include "../pipelines/compute_pipeline_manager.h"
 #include "gpu_timeout_detector.h"
 #include "gpu_memory_monitor.h"
-#include "descriptor_layout_manager.h"
+#include "../pipelines/descriptor_layout_manager.h"
 #include <iostream>
 #include <chrono>
 #include <random>

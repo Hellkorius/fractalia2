@@ -2,7 +2,7 @@
 
 #define VK_NO_PROTOTYPES
 #include <vulkan/vulkan.h>
-#include "../frame_graph.h"
+#include "../rendering/frame_graph.h"
 
 // Forward declarations
 class VulkanSwapchain;

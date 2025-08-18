@@ -6,7 +6,7 @@
 #include <vector>
 #include <functional>
 #include <glm/glm.hpp>
-#include "vulkan_constants.h"
+#include "../core/vulkan_constants.h"
 
 class VulkanContext;
 class VulkanFunctionLoader;

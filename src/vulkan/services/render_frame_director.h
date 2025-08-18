@@ -4,8 +4,8 @@
 #include <vector>
 #include <glm/glm.hpp>
 #include <flecs.h>
-#include "vulkan_constants.h"
-#include "frame_graph.h"
+#include "../core/vulkan_constants.h"
+#include "../rendering/frame_graph.h"
 
 // Forward declarations
 class VulkanContext;

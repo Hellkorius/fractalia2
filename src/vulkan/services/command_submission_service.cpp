@@ -1,8 +1,8 @@
 #include "command_submission_service.h"
-#include "vulkan_context.h"
-#include "vulkan_sync.h"
-#include "vulkan_swapchain.h"
-#include "vulkan_function_loader.h"
+#include "../core/vulkan_context.h"
+#include "../core/vulkan_sync.h"
+#include "../core/vulkan_swapchain.h"
+#include "../core/vulkan_function_loader.h"
 #include <iostream>
 
 CommandSubmissionService::CommandSubmissionService() {

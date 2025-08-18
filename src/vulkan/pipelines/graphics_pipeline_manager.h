@@ -8,7 +8,7 @@
 #include <memory>
 #include <functional>
 #include <chrono>
-#include "vulkan_context.h"
+#include "../core/vulkan_context.h"
 
 // Forward declarations
 class ShaderManager;

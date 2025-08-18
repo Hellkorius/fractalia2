@@ -1,9 +1,9 @@
 #include "frame_graph.h"
-#include "vulkan_context.h"
-#include "vulkan_sync.h"
-#include "vulkan_utils.h"
-#include "nodes/entity_compute_node.h"
-#include "nodes/entity_graphics_node.h"
+#include "../core/vulkan_context.h"
+#include "../core/vulkan_sync.h"
+#include "../core/vulkan_utils.h"
+#include "../nodes/entity_compute_node.h"
+#include "../nodes/entity_graphics_node.h"
 #include <iostream>
 #include <queue>
 #include <algorithm>

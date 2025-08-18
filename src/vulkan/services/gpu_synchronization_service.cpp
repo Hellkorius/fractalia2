@@ -1,6 +1,6 @@
 #include "gpu_synchronization_service.h"
-#include "vulkan_context.h"
-#include "vulkan_function_loader.h"
+#include "../core/vulkan_context.h"
+#include "../core/vulkan_function_loader.h"
 #include <iostream>
 
 GPUSynchronizationService::GPUSynchronizationService() {

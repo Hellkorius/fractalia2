@@ -8,9 +8,9 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <flecs.h>
-#include "vulkan/vulkan_constants.h"
-#include "vulkan/frame_graph.h"
-#include "vulkan/pipeline_system_manager.h"
+#include "vulkan/core/vulkan_constants.h"
+#include "vulkan/rendering/frame_graph.h"
+#include "vulkan/pipelines/pipeline_system_manager.h"
 
 // Forward declarations for modules
 class VulkanContext;

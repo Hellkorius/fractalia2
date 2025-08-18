@@ -1,10 +1,10 @@
 #include "entity_compute_node.h"
-#include "../compute_pipeline_manager.h"
+#include "../pipelines/compute_pipeline_manager.h"
 #include "../../ecs/gpu_entity_manager.h"
-#include "../vulkan_context.h"
-#include "../vulkan_function_loader.h"
-#include "../descriptor_layout_manager.h"
-#include "../gpu_timeout_detector.h"
+#include "../core/vulkan_context.h"
+#include "../core/vulkan_function_loader.h"
+#include "../pipelines/descriptor_layout_manager.h"
+#include "../monitoring/gpu_timeout_detector.h"
 #include <iostream>
 #include <array>
 #include <glm/glm.hpp>

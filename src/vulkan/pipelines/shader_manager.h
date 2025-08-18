@@ -10,7 +10,7 @@
 #include <functional>
 #include <fstream>
 #include <filesystem>
-#include "vulkan_context.h"
+#include "../core/vulkan_context.h"
 
 // Shader compilation types
 enum class ShaderSourceType {

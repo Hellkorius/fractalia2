@@ -10,7 +10,7 @@
 #include <functional>
 #include <future>
 #include <glm/glm.hpp>
-#include "vulkan_context.h"
+#include "../core/vulkan_context.h"
 
 // Forward declarations
 class ShaderManager;

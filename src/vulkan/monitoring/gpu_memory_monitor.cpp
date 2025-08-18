@@ -1,6 +1,6 @@
 #include "gpu_memory_monitor.h"
-#include "vulkan_context.h"
-#include "vulkan_function_loader.h"
+#include "../core/vulkan_context.h"
+#include "../core/vulkan_function_loader.h"
 #include <iostream>
 #include <algorithm>
 #include <numeric>

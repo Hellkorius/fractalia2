@@ -1,7 +1,7 @@
 #include "command_executor.h"
-#include "vulkan_context.h"
-#include "vulkan_function_loader.h"
-#include "vulkan_utils.h"
+#include "../core/vulkan_context.h"
+#include "../core/vulkan_function_loader.h"
+#include "../core/vulkan_utils.h"
 #include <iostream>
 
 CommandExecutor::CommandExecutor() {

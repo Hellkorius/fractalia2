@@ -1,7 +1,7 @@
 #include "vulkan_pipeline.h"
-#include "vulkan_function_loader.h"
-#include "vulkan_utils.h"
-#include "../ecs/gpu_entity_manager.h"
+#include "../core/vulkan_function_loader.h"
+#include "../core/vulkan_utils.h"
+#include "../../ecs/gpu_entity_manager.h"
 #include <iostream>
 #include <fstream>
 #include <array>

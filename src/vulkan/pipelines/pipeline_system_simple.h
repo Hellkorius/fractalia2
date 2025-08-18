@@ -1,6 +1,6 @@
 #pragma once
 
-#include "vulkan_context.h"
+#include "../core/vulkan_context.h"
 #include <memory>
 
 // Simplified pipeline system that can replace VulkanPipeline gradually

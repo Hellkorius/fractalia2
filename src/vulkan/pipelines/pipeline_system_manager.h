@@ -4,7 +4,7 @@
 #include "compute_pipeline_manager.h"
 #include "descriptor_layout_manager.h"
 #include "shader_manager.h"
-#include "vulkan_context.h"
+#include "../core/vulkan_context.h"
 #include <memory>
 
 // AAA Pipeline System Manager - Unified interface for all pipeline operations

@@ -1,7 +1,7 @@
 #include "graphics_pipeline_manager.h"
 #include "shader_manager.h"
-#include "vulkan_function_loader.h"
-#include "vulkan_utils.h"
+#include "../core/vulkan_function_loader.h"
+#include "../core/vulkan_utils.h"
 #include <iostream>
 #include <chrono>
 #include <algorithm>

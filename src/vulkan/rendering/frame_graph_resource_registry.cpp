@@ -1,6 +1,6 @@
 #include "frame_graph_resource_registry.h"
 #include "frame_graph.h"
-#include "../ecs/gpu_entity_manager.h"
+#include "../../ecs/gpu_entity_manager.h"
 #include <iostream>
 
 FrameGraphResourceRegistry::FrameGraphResourceRegistry() {
