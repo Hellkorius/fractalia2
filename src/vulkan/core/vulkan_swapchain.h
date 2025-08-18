@@ -5,6 +5,7 @@
 #include <SDL3/SDL.h>
 #include <vector>
 #include "vulkan_context.h"
+#include "vulkan_raii.h"
 
 
 struct SwapChainSupportDetails {
@@ -21,16 +22,19 @@ public:
     bool initialize(const VulkanContext& context, SDL_Window* window);
     void cleanup();
     bool recreate(VkRenderPass renderPass);
+    
+    // Explicit cleanup before context destruction
+    void cleanupBeforeContextDestruction();
 
     VkSwapchainKHR getSwapchain() const { return swapChain; }
     const std::vector<VkImage>& getImages() const { return swapChainImages; }
     VkFormat getImageFormat() const { return swapChainImageFormat; }
     VkExtent2D getExtent() const { return swapChainExtent; }
-    const std::vector<VkImageView>& getImageViews() const { return swapChainImageViews; }
+    std::vector<VkImageView> getImageViews() const;
     
-    VkImage getMSAAColorImage() const { return msaaColorImage; }
-    VkImageView getMSAAColorImageView() const { return msaaColorImageView; }
-    const std::vector<VkFramebuffer>& getFramebuffers() const { return swapChainFramebuffers; }
+    VkImage getMSAAColorImage() const { return msaaColorImage.get(); }
+    VkImageView getMSAAColorImageView() const { return msaaColorImageView.get(); }
+    std::vector<VkFramebuffer> getFramebuffers() const;
     
     bool createFramebuffers(VkRenderPass renderPass);
 
@@ -42,14 +46,14 @@ private:
     std::vector<VkImage> swapChainImages;
     VkFormat swapChainImageFormat;
     VkExtent2D swapChainExtent;
-    std::vector<VkImageView> swapChainImageViews;
+    std::vector<vulkan_raii::ImageView> swapChainImageViews;
     
     
-    VkImage msaaColorImage = VK_NULL_HANDLE;
-    VkDeviceMemory msaaColorImageMemory = VK_NULL_HANDLE;
-    VkImageView msaaColorImageView = VK_NULL_HANDLE;
+    vulkan_raii::Image msaaColorImage;
+    vulkan_raii::DeviceMemory msaaColorImageMemory;
+    vulkan_raii::ImageView msaaColorImageView;
     
-    std::vector<VkFramebuffer> swapChainFramebuffers;
+    std::vector<vulkan_raii::Framebuffer> swapChainFramebuffers;
 
 
     bool createSwapChain(VkSwapchainKHR oldSwapchainKHR = VK_NULL_HANDLE);

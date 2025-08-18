@@ -2,6 +2,7 @@
 
 #define VK_NO_PROTOTYPES
 #include <vulkan/vulkan.h>
+#include "../core/vulkan_raii.h"
 #include <chrono>
 #include <memory>
 
@@ -59,6 +60,9 @@ public:
     // GPU health monitoring
     bool isGPUHealthy() const;
     VkResult getLastDeviceStatus() const { return lastDeviceStatus; }
+    
+    // RAII cleanup - call before VulkanContext destruction
+    void cleanupBeforeContextDestruction();
 
 private:
     const VulkanContext* context;
@@ -70,7 +74,7 @@ private:
     bool dispatchInProgress = false;
     
     // GPU timestamp queries for precise measurement
-    VkQueryPool timestampQueryPool = VK_NULL_HANDLE;
+    vulkan_raii::QueryPool timestampQueryPool;
     static constexpr uint32_t MAX_TIMESTAMP_QUERIES = 64;
     uint32_t currentQueryIndex = 0;
     

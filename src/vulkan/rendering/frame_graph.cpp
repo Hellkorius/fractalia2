@@ -35,7 +35,7 @@ bool FrameGraph::initialize(const VulkanContext& context, VulkanSync* sync) {
 void FrameGraph::cleanup() {
     if (!initialized) return;
     
-    cleanupResources();
+    cleanupBeforeContextDestruction();
     
     nodes.clear();
     resources.clear();
@@ -48,6 +48,24 @@ void FrameGraph::cleanup() {
     nextNodeId = 1;
     compiled = false;
     initialized = false;
+}
+
+void FrameGraph::cleanupBeforeContextDestruction() {
+    // Clear all RAII resources before context destruction
+    for (auto& [id, resource] : resources) {
+        std::visit([](auto& res) {
+            if (!res.isExternal) {
+                if constexpr (std::is_same_v<std::decay_t<decltype(res)>, FrameGraphBuffer>) {
+                    res.buffer.reset();
+                    res.memory.reset();
+                } else {
+                    res.view.reset();
+                    res.image.reset();
+                    res.memory.reset();
+                }
+            }
+        }, resource);
+    }
 }
 
 FrameGraphTypes::ResourceId FrameGraph::createBuffer(const std::string& name, VkDeviceSize size, VkBufferUsageFlags usage) {
@@ -76,7 +94,7 @@ FrameGraphTypes::ResourceId FrameGraph::createBuffer(const std::string& name, Vk
         return FrameGraphTypes::INVALID_RESOURCE;
     }
     
-    resources[id] = buffer;
+    resources[id] = std::move(buffer);
     resourceNameMap[name] = id;
     
     std::cout << "FrameGraph: Created buffer '" << name << "' (ID: " << id << ", Size: " << size << ")" << std::endl;
@@ -110,7 +128,7 @@ FrameGraphTypes::ResourceId FrameGraph::createImage(const std::string& name, VkF
         return FrameGraphTypes::INVALID_RESOURCE;
     }
     
-    resources[id] = image;
+    resources[id] = std::move(image);
     resourceNameMap[name] = id;
     
     std::cout << "FrameGraph: Created image '" << name << "' (ID: " << id << ")" << std::endl;
@@ -132,13 +150,14 @@ FrameGraphTypes::ResourceId FrameGraph::importExternalBuffer(const std::string& 
     FrameGraphTypes::ResourceId id = nextResourceId++;
     
     FrameGraphBuffer frameGraphBuffer;
-    frameGraphBuffer.buffer = buffer;
+    frameGraphBuffer.buffer = vulkan_raii::Buffer(buffer, context);
+    frameGraphBuffer.buffer.detach(); // Don't manage lifecycle for external buffers
     frameGraphBuffer.size = size;
     frameGraphBuffer.usage = usage;
     frameGraphBuffer.isExternal = true; // Don't manage lifecycle
     frameGraphBuffer.debugName = name;
     
-    resources[id] = frameGraphBuffer;
+    resources[id] = std::move(frameGraphBuffer);
     resourceNameMap[name] = id;
     
     std::cout << "FrameGraph: Imported external buffer '" << name << "' (ID: " << id << ")" << std::endl;
@@ -160,14 +179,16 @@ FrameGraphTypes::ResourceId FrameGraph::importExternalImage(const std::string& n
     FrameGraphTypes::ResourceId id = nextResourceId++;
     
     FrameGraphImage frameGraphImage;
-    frameGraphImage.image = image;
-    frameGraphImage.view = view;
+    frameGraphImage.image = vulkan_raii::Image(image, context);
+    frameGraphImage.image.detach(); // Don't manage lifecycle for external images
+    frameGraphImage.view = vulkan_raii::ImageView(view, context);
+    frameGraphImage.view.detach(); // Don't manage lifecycle for external image views
     frameGraphImage.format = format;
     frameGraphImage.extent = extent;
     frameGraphImage.isExternal = true; // Don't manage lifecycle
     frameGraphImage.debugName = name;
     
-    resources[id] = frameGraphImage;
+    resources[id] = std::move(frameGraphImage);
     resourceNameMap[name] = id;
     
     // Imported external image
@@ -404,17 +425,17 @@ void FrameGraph::removeSwapchainResources() {
 
 VkBuffer FrameGraph::getBuffer(FrameGraphTypes::ResourceId id) const {
     const FrameGraphBuffer* buffer = getBufferResource(id);
-    return buffer ? buffer->buffer : VK_NULL_HANDLE;
+    return buffer ? buffer->buffer.get() : VK_NULL_HANDLE;
 }
 
 VkImage FrameGraph::getImage(FrameGraphTypes::ResourceId id) const {
     const FrameGraphImage* image = getImageResource(id);
-    return image ? image->image : VK_NULL_HANDLE;
+    return image ? image->image.get() : VK_NULL_HANDLE;
 }
 
 VkImageView FrameGraph::getImageView(FrameGraphTypes::ResourceId id) const {
     const FrameGraphImage* image = getImageResource(id);
-    return image ? image->view : VK_NULL_HANDLE;
+    return image ? image->view.get() : VK_NULL_HANDLE;
 }
 
 void FrameGraph::debugPrint() const {
@@ -466,29 +487,32 @@ bool FrameGraph::createVulkanBuffer(FrameGraphBuffer& buffer) {
     const auto& vk = context->getLoader();
     const VkDevice device = context->getDevice();
     
-    if (vk.vkCreateBuffer(device, &bufferInfo, nullptr, &buffer.buffer) != VK_SUCCESS) {
+    VkBuffer vkBuffer;
+    if (vk.vkCreateBuffer(device, &bufferInfo, nullptr, &vkBuffer) != VK_SUCCESS) {
         std::cerr << "FrameGraph: Failed to create buffer" << std::endl;
         return false;
     }
+    buffer.buffer = vulkan_raii::Buffer(vkBuffer, context);
     
     // Allocate memory
     VkMemoryRequirements memRequirements;
-    vk.vkGetBufferMemoryRequirements(device, buffer.buffer, &memRequirements);
+    vk.vkGetBufferMemoryRequirements(device, buffer.buffer.get(), &memRequirements);
     
     VkMemoryAllocateInfo allocInfo{};
     allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
     allocInfo.allocationSize = memRequirements.size;
     allocInfo.memoryTypeIndex = VulkanUtils::findMemoryType(context->getPhysicalDevice(), vk, memRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
     
-    if (vk.vkAllocateMemory(device, &allocInfo, nullptr, &buffer.memory) != VK_SUCCESS) {
+    VkDeviceMemory vkMemory;
+    if (vk.vkAllocateMemory(device, &allocInfo, nullptr, &vkMemory) != VK_SUCCESS) {
         std::cerr << "FrameGraph: Failed to allocate buffer memory" << std::endl;
-        vk.vkDestroyBuffer(device, buffer.buffer, nullptr);
-        buffer.buffer = VK_NULL_HANDLE;
+        buffer.buffer.reset();
         return false;
     }
+    buffer.memory = vulkan_raii::DeviceMemory(vkMemory, context);
     
     // Bind memory
-    vk.vkBindBufferMemory(device, buffer.buffer, buffer.memory, 0);
+    vk.vkBindBufferMemory(device, buffer.buffer.get(), buffer.memory.get(), 0);
     
     return true;
 }
@@ -510,35 +534,38 @@ bool FrameGraph::createVulkanImage(FrameGraphImage& image) {
     imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
     imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     
-    if (context->getLoader().vkCreateImage(context->getDevice(), &imageInfo, nullptr, &image.image) != VK_SUCCESS) {
+    VkImage vkImage;
+    if (context->getLoader().vkCreateImage(context->getDevice(), &imageInfo, nullptr, &vkImage) != VK_SUCCESS) {
         std::cerr << "FrameGraph: Failed to create image" << std::endl;
         return false;
     }
+    image.image = vulkan_raii::Image(vkImage, context);
     
     // Allocate memory
     VkMemoryRequirements memRequirements;
-    context->getLoader().vkGetImageMemoryRequirements(context->getDevice(), image.image, &memRequirements);
+    context->getLoader().vkGetImageMemoryRequirements(context->getDevice(), image.image.get(), &memRequirements);
     
     VkMemoryAllocateInfo allocInfo{};
     allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
     allocInfo.allocationSize = memRequirements.size;
     allocInfo.memoryTypeIndex = VulkanUtils::findMemoryType(context->getPhysicalDevice(), context->getLoader(), memRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
     
-    if (context->getLoader().vkAllocateMemory(context->getDevice(), &allocInfo, nullptr, &image.memory) != VK_SUCCESS) {
+    VkDeviceMemory vkMemory;
+    if (context->getLoader().vkAllocateMemory(context->getDevice(), &allocInfo, nullptr, &vkMemory) != VK_SUCCESS) {
         std::cerr << "FrameGraph: Failed to allocate image memory" << std::endl;
-        context->getLoader().vkDestroyImage(context->getDevice(), image.image, nullptr);
-        image.image = VK_NULL_HANDLE;
+        image.image.reset();
         return false;
     }
+    image.memory = vulkan_raii::DeviceMemory(vkMemory, context);
     
     // Bind memory
-    context->getLoader().vkBindImageMemory(context->getDevice(), image.image, image.memory, 0);
+    context->getLoader().vkBindImageMemory(context->getDevice(), image.image.get(), image.memory.get(), 0);
     
     // Create image view if it's going to be used as texture/render target
     if (image.usage & (VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT)) {
         VkImageViewCreateInfo viewInfo{};
         viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-        viewInfo.image = image.image;
+        viewInfo.image = image.image.get();
         viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
         viewInfo.format = image.format;
         viewInfo.subresourceRange.aspectMask = (image.format == VK_FORMAT_D32_SFLOAT) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
@@ -547,14 +574,14 @@ bool FrameGraph::createVulkanImage(FrameGraphImage& image) {
         viewInfo.subresourceRange.baseArrayLayer = 0;
         viewInfo.subresourceRange.layerCount = 1;
         
-        if (context->getLoader().vkCreateImageView(context->getDevice(), &viewInfo, nullptr, &image.view) != VK_SUCCESS) {
+        VkImageView vkImageView;
+        if (context->getLoader().vkCreateImageView(context->getDevice(), &viewInfo, nullptr, &vkImageView) != VK_SUCCESS) {
             std::cerr << "FrameGraph: Failed to create image view" << std::endl;
-            context->getLoader().vkFreeMemory(context->getDevice(), image.memory, nullptr);
-            context->getLoader().vkDestroyImage(context->getDevice(), image.image, nullptr);
-            image.image = VK_NULL_HANDLE;
-            image.memory = VK_NULL_HANDLE;
+            image.memory.reset();
+            image.image.reset();
             return false;
         }
+        image.view = vulkan_raii::ImageView(vkImageView, context);
     }
     
     return true;
@@ -704,7 +731,7 @@ void FrameGraph::insertBarrierForResource(FrameGraphTypes::ResourceId resourceId
         
         // Check for duplicate barriers on same buffer
         for (const auto& existingBarrier : computeToGraphicsBarriers.bufferBarriers) {
-            if (existingBarrier.buffer == buffer->buffer && 
+            if (existingBarrier.buffer == buffer->buffer.get() && 
                 existingBarrier.srcAccessMask == srcMask && 
                 existingBarrier.dstAccessMask == dstMask) {
                 return; // Duplicate barrier - skip
@@ -717,7 +744,7 @@ void FrameGraph::insertBarrierForResource(FrameGraphTypes::ResourceId resourceId
         barrier.dstAccessMask = dstMask;
         barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        barrier.buffer = buffer->buffer;
+        barrier.buffer = buffer->buffer.get();
         barrier.offset = 0;
         barrier.size = VK_WHOLE_SIZE;
         
@@ -732,7 +759,7 @@ void FrameGraph::insertBarrierForResource(FrameGraphTypes::ResourceId resourceId
         
         // Check for duplicate barriers on same image
         for (const auto& existingBarrier : computeToGraphicsBarriers.imageBarriers) {
-            if (existingBarrier.image == image->image && 
+            if (existingBarrier.image == image->image.get() && 
                 existingBarrier.srcAccessMask == srcMask && 
                 existingBarrier.dstAccessMask == dstMask) {
                 return; // Duplicate barrier - skip
@@ -747,7 +774,7 @@ void FrameGraph::insertBarrierForResource(FrameGraphTypes::ResourceId resourceId
         barrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
         barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        barrier.image = image->image;
+        barrier.image = image->image.get();
         barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
         barrier.subresourceRange.baseMipLevel = 0;
         barrier.subresourceRange.levelCount = 1;
@@ -774,39 +801,7 @@ void FrameGraph::insertBarriersIntoCommandBuffer(VkCommandBuffer commandBuffer) 
     );
 }
 
-void FrameGraph::cleanupResources() {
-    if (!context || context->getDevice() == VK_NULL_HANDLE) return;
-    
-    for (auto& [id, resource] : resources) {
-        std::visit([this](auto& res) {
-            if (!res.isExternal) {
-                if constexpr (std::is_same_v<std::decay_t<decltype(res)>, FrameGraphBuffer>) {
-                    if (res.buffer != VK_NULL_HANDLE) {
-                        context->getLoader().vkDestroyBuffer(context->getDevice(), res.buffer, nullptr);
-                        res.buffer = VK_NULL_HANDLE;
-                    }
-                    if (res.memory != VK_NULL_HANDLE) {
-                        context->getLoader().vkFreeMemory(context->getDevice(), res.memory, nullptr);
-                        res.memory = VK_NULL_HANDLE;
-                    }
-                } else {
-                    if (res.view != VK_NULL_HANDLE) {
-                        context->getLoader().vkDestroyImageView(context->getDevice(), res.view, nullptr);
-                        res.view = VK_NULL_HANDLE;
-                    }
-                    if (res.image != VK_NULL_HANDLE) {
-                        context->getLoader().vkDestroyImage(context->getDevice(), res.image, nullptr);
-                        res.image = VK_NULL_HANDLE;
-                    }
-                    if (res.memory != VK_NULL_HANDLE) {
-                        context->getLoader().vkFreeMemory(context->getDevice(), res.memory, nullptr);
-                        res.memory = VK_NULL_HANDLE;
-                    }
-                }
-            }
-        }, resource);
-    }
-}
+// No longer needed - RAII handles automatic cleanup
 
 FrameGraphBuffer* FrameGraph::getBufferResource(FrameGraphTypes::ResourceId id) {
     auto it = resources.find(id);

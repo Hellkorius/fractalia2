@@ -2,6 +2,7 @@
 
 #define VK_NO_PROTOTYPES
 #include <vulkan/vulkan.h>
+#include "../core/vulkan_raii.h"
 
 class VulkanContext;
 
@@ -20,7 +21,7 @@ public:
     // Async transfer with transfer queue (new)
     struct AsyncTransfer {
         VkCommandBuffer commandBuffer = VK_NULL_HANDLE;
-        VkFence fence = VK_NULL_HANDLE;
+        vulkan_raii::Fence fence;
         bool completed = false;
     };
     
@@ -31,10 +32,13 @@ public:
     void waitForTransfer(const AsyncTransfer& transfer);
     void freeAsyncTransfer(AsyncTransfer& transfer);
     
+    // Cleanup method for proper destruction order
+    void cleanupBeforeContextDestruction();
+    
 private:
     const VulkanContext* context = nullptr;
     VkCommandPool commandPool = VK_NULL_HANDLE;
-    VkCommandPool transferCommandPool = VK_NULL_HANDLE;
+    vulkan_raii::CommandPool transferCommandPool;
     
     bool createTransferCommandPool();
     void cleanupTransferCommandPool();

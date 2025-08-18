@@ -7,6 +7,7 @@
 #include <functional>
 #include <glm/glm.hpp>
 #include "../core/vulkan_constants.h"
+#include "../core/vulkan_raii.h"
 
 class VulkanContext;
 class VulkanFunctionLoader;
@@ -21,14 +22,14 @@ using VmaAllocation = void*;
 
 // Resource handle combining buffer/image with allocation
 struct ResourceHandle {
-    VkBuffer buffer = VK_NULL_HANDLE;
-    VkImage image = VK_NULL_HANDLE;
-    VkImageView imageView = VK_NULL_HANDLE;
-    VmaAllocation allocation = nullptr;
+    vulkan_raii::Buffer buffer;
+    vulkan_raii::Image image;
+    vulkan_raii::ImageView imageView;
+    vulkan_raii::DeviceMemory memory;
     void* mappedData = nullptr;
     VkDeviceSize size = 0;
     
-    bool isValid() const { return buffer != VK_NULL_HANDLE || image != VK_NULL_HANDLE; }
+    bool isValid() const { return buffer || image; }
 };
 
 // Staging ring buffer for efficient CPU->GPU transfers
@@ -39,7 +40,7 @@ public:
     
     struct StagingRegion {
         void* mappedData;
-        VkBuffer buffer;
+        VkBuffer buffer;  // Keep raw handle for compatibility
         VkDeviceSize offset;
         VkDeviceSize size;
     };
@@ -48,7 +49,7 @@ public:
     void reset(); // Reset to beginning of ring buffer
     
     // Getter for buffer handle
-    VkBuffer getBuffer() const { return ringBuffer.buffer; }
+    VkBuffer getBuffer() const { return ringBuffer.buffer.get(); }
     
 private:
     const VulkanContext* context = nullptr;
@@ -68,7 +69,7 @@ public:
     void cleanup();
     
     // Buffer access
-    VkBuffer getBuffer() const { return storageHandle ? storageHandle->buffer : VK_NULL_HANDLE; }
+    VkBuffer getBuffer() const { return storageHandle ? storageHandle->buffer.get() : VK_NULL_HANDLE; }
     void* getMappedData() const { return storageHandle ? storageHandle->mappedData : nullptr; }
     VkDeviceSize getSize() const { return bufferSize; }
     bool isValid() const { return storageHandle && storageHandle->isValid(); }
@@ -103,6 +104,12 @@ public:
     
     bool initialize(const VulkanContext& context, VkCommandPool commandPool = VK_NULL_HANDLE);
     void cleanup();
+    
+    // Cleanup method for proper destruction order
+    void cleanupBeforeContextDestruction();
+    
+    // Context access
+    const VulkanContext* getContext() const { return context; }
     
     // Buffer creation helpers
     ResourceHandle createBuffer(VkDeviceSize size, 
@@ -147,8 +154,8 @@ public:
         bool bindlessReady = false; // Future-proof for bindless
     };
     
-    VkDescriptorPool createDescriptorPool(const DescriptorPoolConfig& config);
-    VkDescriptorPool createDescriptorPool(); // Overload with default config
+    vulkan_raii::DescriptorPool createDescriptorPool(const DescriptorPoolConfig& config);
+    vulkan_raii::DescriptorPool createDescriptorPool(); // Overload with default config
     void destroyDescriptorPool(VkDescriptorPool pool);
     
     // Graphics pipeline resources (moved from VulkanResources)
@@ -163,10 +170,10 @@ public:
     // Getters for graphics resources
     const std::vector<VkBuffer>& getUniformBuffers() const { return uniformBuffers; }
     const std::vector<void*>& getUniformBuffersMapped() const { return uniformBuffersMapped; }
-    VkBuffer getVertexBuffer() const { return vertexBufferHandle.buffer; }
-    VkBuffer getIndexBuffer() const { return indexBufferHandle.buffer; }
+    VkBuffer getVertexBuffer() const { return vertexBufferHandle.buffer.get(); }
+    VkBuffer getIndexBuffer() const { return indexBufferHandle.buffer.get(); }
     uint32_t getIndexCount() const { return indexCount; }
-    VkDescriptorPool getGraphicsDescriptorPool() const { return graphicsDescriptorPool; }
+    VkDescriptorPool getGraphicsDescriptorPool() const { return graphicsDescriptorPool.get(); }
     const std::vector<VkDescriptorSet>& getGraphicsDescriptorSets() const { return graphicsDescriptorSets; }
     
     // Statistics and debugging
@@ -202,6 +209,6 @@ private:
     ResourceHandle indexBufferHandle;
     uint32_t indexCount = 0;
     
-    VkDescriptorPool graphicsDescriptorPool = VK_NULL_HANDLE;
+    vulkan_raii::DescriptorPool graphicsDescriptorPool;
     std::vector<VkDescriptorSet> graphicsDescriptorSets;
 };

@@ -4,6 +4,7 @@
 #include <vulkan/vulkan.h>
 #include <vector>
 #include <string>
+#include "../core/vulkan_raii.h"
 
 class VulkanFunctionLoader;
 

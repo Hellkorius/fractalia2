@@ -18,21 +18,23 @@ bool GPUSynchronizationService::initialize(const VulkanContext& context) {
     const auto& vk = context.getLoader();
     const VkDevice device = context.getDevice();
     
-    // Create compute fences using VulkanUtils
+    // Create compute fences using RAII wrappers
     for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
-        computeFences[i] = VulkanUtils::createFence(device, vk, true);
-        if (computeFences[i] == VK_NULL_HANDLE) {
+        VkFence computeFenceHandle = VulkanUtils::createFence(device, vk, true);
+        if (computeFenceHandle == VK_NULL_HANDLE) {
             std::cerr << "GPUSynchronizationService: Failed to create compute fence for frame " << i << std::endl;
             cleanup();
             return false;
         }
+        computeFences[i] = vulkan_raii::make_fence(computeFenceHandle, &context);
         
-        graphicsFences[i] = VulkanUtils::createFence(device, vk, true);
-        if (graphicsFences[i] == VK_NULL_HANDLE) {
+        VkFence graphicsFenceHandle = VulkanUtils::createFence(device, vk, true);
+        if (graphicsFenceHandle == VK_NULL_HANDLE) {
             std::cerr << "GPUSynchronizationService: Failed to create graphics fence for frame " << i << std::endl;
             cleanup();
             return false;
         }
+        graphicsFences[i] = vulkan_raii::make_fence(graphicsFenceHandle, &context);
         
         computeInUse[i] = false;
         graphicsInUse[i] = false;
@@ -45,27 +47,21 @@ bool GPUSynchronizationService::initialize(const VulkanContext& context) {
 void GPUSynchronizationService::cleanup() {
     if (!context || !initialized) return;
     
-    // Cache loader and device references for performance
-    const auto& vk = context->getLoader();
-    const VkDevice device = context->getDevice();
-    
-    // Collect fences for batch destruction
-    std::vector<VkFence> fencesToDestroy;
+    // RAII wrappers handle automatic cleanup
     for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
-        if (computeFences[i] != VK_NULL_HANDLE) {
-            fencesToDestroy.push_back(computeFences[i]);
-            computeFences[i] = VK_NULL_HANDLE;
-        }
-        if (graphicsFences[i] != VK_NULL_HANDLE) {
-            fencesToDestroy.push_back(graphicsFences[i]);
-            graphicsFences[i] = VK_NULL_HANDLE;
-        }
+        computeFences[i].reset();
+        graphicsFences[i].reset();
     }
     
-    // Destroy fences using VulkanUtils
-    VulkanUtils::destroyFences(device, vk, fencesToDestroy);
-    
     initialized = false;
+}
+
+void GPUSynchronizationService::cleanupBeforeContextDestruction() {
+    // Explicit cleanup before context destruction to ensure proper destruction order
+    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
+        computeFences[i].reset();
+        graphicsFences[i].reset();
+    }
 }
 
 VkResult GPUSynchronizationService::waitForComputeFence(uint32_t frameIndex, const char* fenceName) {
@@ -73,7 +69,7 @@ VkResult GPUSynchronizationService::waitForComputeFence(uint32_t frameIndex, con
         return VK_SUCCESS;
     }
     
-    VkResult result = waitForFenceRobust(computeFences[frameIndex], fenceName);
+    VkResult result = waitForFenceRobust(computeFences[frameIndex].get(), fenceName);
     if (result == VK_SUCCESS) {
         computeInUse[frameIndex] = false;
     }
@@ -85,7 +81,7 @@ VkResult GPUSynchronizationService::waitForGraphicsFence(uint32_t frameIndex, co
         return VK_SUCCESS;
     }
     
-    VkResult result = waitForFenceRobust(graphicsFences[frameIndex], fenceName);
+    VkResult result = waitForFenceRobust(graphicsFences[frameIndex].get(), fenceName);
     if (result == VK_SUCCESS) {
         graphicsInUse[frameIndex] = false;
     }
@@ -98,7 +94,7 @@ bool GPUSynchronizationService::waitForAllFrames() {
     for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
         if (computeInUse[i]) {
             std::cout << "GPUSynchronizationService: Waiting for compute fence " << i << std::endl;
-            VkResult result = waitForFenceRobust(computeFences[i], "compute");
+            VkResult result = waitForFenceRobust(computeFences[i].get(), "compute");
             if (result == VK_ERROR_DEVICE_LOST) {
                 return false;
             }
@@ -107,7 +103,7 @@ bool GPUSynchronizationService::waitForAllFrames() {
         }
         if (graphicsInUse[i]) {
             std::cout << "GPUSynchronizationService: Waiting for graphics fence " << i << std::endl;
-            VkResult result = waitForFenceRobust(graphicsFences[i], "graphics");
+            VkResult result = waitForFenceRobust(graphicsFences[i].get(), "graphics");
             if (result == VK_ERROR_DEVICE_LOST) {
                 return false;
             }
@@ -121,8 +117,8 @@ bool GPUSynchronizationService::waitForAllFrames() {
     std::cout << "GPUSynchronizationService: CRITICAL FIX - Resetting all fences after swapchain recreation wait" << std::endl;
     std::vector<VkFence> allFences;
     for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
-        allFences.push_back(computeFences[i]);
-        allFences.push_back(graphicsFences[i]);
+        allFences.push_back(computeFences[i].get());
+        allFences.push_back(graphicsFences[i].get());
     }
     
     // Cache loader and device references for performance

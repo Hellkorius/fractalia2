@@ -94,6 +94,38 @@ void PipelineCacheDeleter::operator()(VkPipelineCache handle) {
     }
 }
 
+void QueryPoolDeleter::operator()(VkQueryPool handle) {
+    if (context && handle != VK_NULL_HANDLE) {
+        context->getLoader().vkDestroyQueryPool(context->getDevice(), handle, nullptr);
+    }
+}
+
+// Core context object deleters
+void InstanceDeleter::operator()(VkInstance handle) {
+    if (context && handle != VK_NULL_HANDLE) {
+        context->getLoader().vkDestroyInstance(handle, nullptr);
+    }
+}
+
+void DeviceDeleter::operator()(VkDevice handle) {
+    if (context && handle != VK_NULL_HANDLE) {
+        context->getLoader().vkDestroyDevice(handle, nullptr);
+    }
+}
+
+void SurfaceKHRDeleter::operator()(VkSurfaceKHR handle) {
+    if (context && handle != VK_NULL_HANDLE && context->getInstance() != VK_NULL_HANDLE) {
+        context->getLoader().vkDestroySurfaceKHR(context->getInstance(), handle, nullptr);
+    }
+}
+
+void DebugUtilsMessengerEXTDeleter::operator()(VkDebugUtilsMessengerEXT handle) {
+    if (context && handle != VK_NULL_HANDLE && context->getInstance() != VK_NULL_HANDLE) {
+        context->getLoader().vkDestroyDebugUtilsMessengerEXT(context->getInstance(), handle, nullptr);
+    }
+}
+
+
 // Direct creation factory functions
 
 PipelineCache create_pipeline_cache(const VulkanContext* context, const VkPipelineCacheCreateInfo* createInfo) {
@@ -206,6 +238,38 @@ DescriptorPool create_descriptor_pool(const VulkanContext* context, const VkDesc
     }
     
     return make_descriptor_pool(handle, context);
+}
+
+CommandPool create_command_pool(const VulkanContext* context, const VkCommandPoolCreateInfo* createInfo) {
+    if (!context || !createInfo) {
+        return CommandPool();
+    }
+    
+    VkCommandPool handle = VK_NULL_HANDLE;
+    VkResult result = context->getLoader().vkCreateCommandPool(
+        context->getDevice(), createInfo, nullptr, &handle);
+    
+    if (result != VK_SUCCESS) {
+        return CommandPool();
+    }
+    
+    return make_command_pool(handle, context);
+}
+
+Fence create_fence(const VulkanContext* context, const VkFenceCreateInfo* createInfo) {
+    if (!context || !createInfo) {
+        return Fence();
+    }
+    
+    VkFence handle = VK_NULL_HANDLE;
+    VkResult result = context->getLoader().vkCreateFence(
+        context->getDevice(), createInfo, nullptr, &handle);
+    
+    if (result != VK_SUCCESS) {
+        return Fence();
+    }
+    
+    return make_fence(handle, context);
 }
 
 } // namespace vulkan_raii

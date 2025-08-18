@@ -43,7 +43,7 @@ bool VulkanContext::initialize(SDL_Window* window) {
     }
     
     // Update shared function loader with instance handle
-    loader->setInstance(instance);
+    loader->setInstance(instance.get());
     loader->loadPostInstanceFunctions();
     
     // Setup debug messenger for surface and swapchain monitoring
@@ -65,7 +65,7 @@ bool VulkanContext::initialize(SDL_Window* window) {
     }
     
     // Update shared function loader with device handles
-    loader->setDevice(device, physicalDevice);
+    loader->setDevice(device.get(), physicalDevice);
     if (!loader->loadPostDeviceFunctions()) {
         std::cerr << "Failed to load device functions in shared loader" << std::endl;
         return false;
@@ -78,27 +78,20 @@ bool VulkanContext::initialize(SDL_Window* window) {
 }
 
 void VulkanContext::cleanup() {
-    if (device != VK_NULL_HANDLE && loader) {
-        loader->vkDestroyDevice(device, nullptr);
-        device = VK_NULL_HANDLE;
-    }
-    
-    if (surface != VK_NULL_HANDLE && instance != VK_NULL_HANDLE && loader) {
-        loader->vkDestroySurfaceKHR(instance, surface, nullptr);
-        surface = VK_NULL_HANDLE;
-    }
-    
-    cleanupDebugMessenger();
-    
-    if (instance != VK_NULL_HANDLE && loader) {
-        loader->vkDestroyInstance(instance, nullptr);
-        instance = VK_NULL_HANDLE;
-    }
+    cleanupBeforeContextDestruction();
     
     if (loader) {
         loader->cleanup();
         loader.reset();
     }
+}
+
+void VulkanContext::cleanupBeforeContextDestruction() {
+    // RAII wrappers handle automatic cleanup
+    debugMessenger.reset();
+    device.reset();
+    surface.reset();
+    instance.reset();
 }
 
 bool VulkanContext::createInstance() {
@@ -133,19 +126,25 @@ bool VulkanContext::createInstance() {
         std::cerr << "vkCreateInstance is null!" << std::endl;
         return false;
     }
-    if (loader->vkCreateInstance(&createInfo, nullptr, &instance) != VK_SUCCESS) {
+    VkInstance rawInstance;
+    if (loader->vkCreateInstance(&createInfo, nullptr, &rawInstance) != VK_SUCCESS) {
         std::cerr << "Failed to create Vulkan instance" << std::endl;
         return false;
     }
+    
+    instance = vulkan_raii::make_instance(rawInstance, this);
 
     return true;
 }
 
 bool VulkanContext::createSurface() {
-    if (!SDL_Vulkan_CreateSurface(window, instance, nullptr, &surface)) {
+    VkSurfaceKHR rawSurface;
+    if (!SDL_Vulkan_CreateSurface(window, instance.get(), nullptr, &rawSurface)) {
         std::cerr << "Failed to create Vulkan surface: " << SDL_GetError() << std::endl;
         return false;
     }
+    
+    surface = vulkan_raii::make_surface_khr(rawSurface, this);
     return true;
 }
 
@@ -226,11 +225,14 @@ bool VulkanContext::createLogicalDevice() {
     createInfo.enabledLayerCount = 0;
     createInfo.ppEnabledLayerNames = nullptr;
 
-    VkResult result = loader->vkCreateDevice(physicalDevice, &createInfo, nullptr, &device);
+    VkDevice rawDevice;
+    VkResult result = loader->vkCreateDevice(physicalDevice, &createInfo, nullptr, &rawDevice);
     if (result != VK_SUCCESS) {
         std::cerr << "Failed to create logical device (VkResult: " << result << ")" << std::endl;
         return false;
     }
+    
+    device = vulkan_raii::make_device(rawDevice, this);
     
 
     // Store queue family indices for later use after device functions are loaded
@@ -240,7 +242,7 @@ bool VulkanContext::createLogicalDevice() {
 }
 
 void VulkanContext::getDeviceQueues() {
-    if (device == VK_NULL_HANDLE) {
+    if (!device) {
         std::cerr << "Cannot get device queues: device not created" << std::endl;
         return;
     }
@@ -250,9 +252,9 @@ void VulkanContext::getDeviceQueues() {
         return;
     }
     
-    loader->vkGetDeviceQueue(device, queueFamilyIndices.graphicsFamily.value(), 0, &graphicsQueue);
-    loader->vkGetDeviceQueue(device, queueFamilyIndices.presentFamily.value(), 0, &presentQueue);
-    loader->vkGetDeviceQueue(device, queueFamilyIndices.computeFamily.value(), 0, &computeQueue);
+    loader->vkGetDeviceQueue(device.get(), queueFamilyIndices.graphicsFamily.value(), 0, &graphicsQueue);
+    loader->vkGetDeviceQueue(device.get(), queueFamilyIndices.presentFamily.value(), 0, &presentQueue);
+    loader->vkGetDeviceQueue(device.get(), queueFamilyIndices.computeFamily.value(), 0, &computeQueue);
     
     std::cout << "VulkanContext: Queue families - Graphics: " << queueFamilyIndices.graphicsFamily.value() 
               << ", Present: " << queueFamilyIndices.presentFamily.value()
@@ -290,11 +292,11 @@ QueueFamilyIndices VulkanContext::findQueueFamilies(VkPhysicalDevice device) con
             std::cerr << "vkGetPhysicalDeviceSurfaceSupportKHR is null!" << std::endl;
             return indices;
         }
-        if (surface == VK_NULL_HANDLE) {
+        if (!surface) {
             std::cerr << "surface is VK_NULL_HANDLE!" << std::endl;
             return indices;
         }
-        loader->vkGetPhysicalDeviceSurfaceSupportKHR(device, i, surface, &presentSupport);
+        loader->vkGetPhysicalDeviceSurfaceSupportKHR(device, i, surface.get(), &presentSupport);
 
         if (presentSupport) {
             indices.presentFamily = i;
@@ -438,19 +440,20 @@ bool VulkanContext::setupDebugMessenger() {
     createInfo.pfnUserCallback = debugCallback;
     createInfo.pUserData = nullptr;
 
-    if (loader->vkCreateDebugUtilsMessengerEXT(instance, &createInfo, nullptr, &debugMessenger) != VK_SUCCESS) {
+    VkDebugUtilsMessengerEXT rawDebugMessenger;
+    if (loader->vkCreateDebugUtilsMessengerEXT(instance.get(), &createInfo, nullptr, &rawDebugMessenger) != VK_SUCCESS) {
         std::cerr << "Failed to set up debug messenger!" << std::endl;
         return false;
     }
+    
+    debugMessenger = vulkan_raii::make_debug_utils_messenger_ext(rawDebugMessenger, this);
     
     std::cout << "Debug messenger setup successfully" << std::endl;
     return true;
 }
 
 void VulkanContext::cleanupDebugMessenger() {
-    if (debugMessenger != VK_NULL_HANDLE) {
-        loader->vkDestroyDebugUtilsMessengerEXT(instance, debugMessenger, nullptr);
-        debugMessenger = VK_NULL_HANDLE;
-    }
+    // RAII wrapper handles cleanup automatically
+    debugMessenger.reset();
 }
 

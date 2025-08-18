@@ -19,7 +19,7 @@ public:
     // Explicit cleanup before context destruction
     void cleanupBeforeContextDestruction();
 
-    VkCommandPool getCommandPool() const { return commandPool; }
+    VkCommandPool getCommandPool() const { return commandPool.get(); }
     const std::vector<VkCommandBuffer>& getCommandBuffers() const { return commandBuffers; }
     // Get individual handles by index
     VkSemaphore getImageAvailableSemaphore(size_t index) const;
@@ -46,7 +46,7 @@ public:
 private:
     const VulkanContext* context = nullptr;
     
-    VkCommandPool commandPool = VK_NULL_HANDLE;
+    vulkan_raii::CommandPool commandPool;
     std::vector<VkCommandBuffer> commandBuffers;        // Graphics command buffers
     std::vector<VkCommandBuffer> computeCommandBuffers; // Compute command buffers
     std::vector<vulkan_raii::Semaphore> imageAvailableSemaphores;

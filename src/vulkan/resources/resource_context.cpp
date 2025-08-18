@@ -42,13 +42,14 @@ bool StagingRingBuffer::initialize(const VulkanContext& context, VkDeviceSize si
     bufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
     bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     
-    if (loader.vkCreateBuffer(device, &bufferInfo, nullptr, &ringBuffer.buffer) != VK_SUCCESS) {
+    VkBuffer bufferHandle = VK_NULL_HANDLE;
+    if (loader.vkCreateBuffer(device, &bufferInfo, nullptr, &bufferHandle) != VK_SUCCESS) {
         std::cerr << "Failed to create staging ring buffer!" << std::endl;
         return false;
     }
     
     VkMemoryRequirements memRequirements;
-    loader.vkGetBufferMemoryRequirements(device, ringBuffer.buffer, &memRequirements);
+    loader.vkGetBufferMemoryRequirements(device, bufferHandle, &memRequirements);
     
     VkPhysicalDeviceMemoryProperties memProperties;
     loader.vkGetPhysicalDeviceMemoryProperties(context.getPhysicalDevice(), &memProperties);
@@ -66,7 +67,7 @@ bool StagingRingBuffer::initialize(const VulkanContext& context, VkDeviceSize si
     
     if (memoryType == UINT32_MAX) {
         std::cerr << "Failed to find suitable memory type for staging buffer!" << std::endl;
-        loader.vkDestroyBuffer(device, ringBuffer.buffer, nullptr);
+        loader.vkDestroyBuffer(device, bufferHandle, nullptr);
         return false;
     }
     
@@ -78,25 +79,27 @@ bool StagingRingBuffer::initialize(const VulkanContext& context, VkDeviceSize si
     
     if (loader.vkAllocateMemory(device, &allocInfo, nullptr, &memory) != VK_SUCCESS) {
         std::cerr << "Failed to allocate staging buffer memory!" << std::endl;
-        loader.vkDestroyBuffer(device, ringBuffer.buffer, nullptr);
+        loader.vkDestroyBuffer(device, bufferHandle, nullptr);
         return false;
     }
     
-    if (loader.vkBindBufferMemory(device, ringBuffer.buffer, memory, 0) != VK_SUCCESS) {
+    if (loader.vkBindBufferMemory(device, bufferHandle, memory, 0) != VK_SUCCESS) {
         std::cerr << "Failed to bind staging buffer memory!" << std::endl;
         loader.vkFreeMemory(device, memory, nullptr);
-        loader.vkDestroyBuffer(device, ringBuffer.buffer, nullptr);
+        loader.vkDestroyBuffer(device, bufferHandle, nullptr);
         return false;
     }
     
     if (loader.vkMapMemory(device, memory, 0, size, 0, &ringBuffer.mappedData) != VK_SUCCESS) {
         std::cerr << "Failed to map staging buffer memory!" << std::endl;
         loader.vkFreeMemory(device, memory, nullptr);
-        loader.vkDestroyBuffer(device, ringBuffer.buffer, nullptr);
+        loader.vkDestroyBuffer(device, bufferHandle, nullptr);
         return false;
     }
     
-    ringBuffer.allocation = reinterpret_cast<VmaAllocation>(memory);
+    // Wrap handles in RAII wrappers
+    ringBuffer.buffer = vulkan_raii::make_buffer(bufferHandle, &context);
+    ringBuffer.memory = vulkan_raii::make_device_memory(memory, &context);
     ringBuffer.size = size;
     
     return true;
@@ -104,21 +107,16 @@ bool StagingRingBuffer::initialize(const VulkanContext& context, VkDeviceSize si
 
 void StagingRingBuffer::cleanup() {
     if (context && ringBuffer.isValid()) {
-        if (ringBuffer.mappedData) {
-            VkDeviceMemory memory = reinterpret_cast<VkDeviceMemory>(ringBuffer.allocation);
-            context->getLoader().vkUnmapMemory(context->getDevice(), memory);
+        if (ringBuffer.mappedData && ringBuffer.memory) {
+            context->getLoader().vkUnmapMemory(context->getDevice(), ringBuffer.memory.get());
         }
         
-        if (ringBuffer.allocation) {
-            VkDeviceMemory memory = reinterpret_cast<VkDeviceMemory>(ringBuffer.allocation);
-            context->getLoader().vkFreeMemory(context->getDevice(), memory, nullptr);
-        }
+        // RAII wrappers will handle cleanup automatically
+        ringBuffer.buffer.reset();
+        ringBuffer.memory.reset();
         
-        if (ringBuffer.buffer != VK_NULL_HANDLE) {
-            context->getLoader().vkDestroyBuffer(context->getDevice(), ringBuffer.buffer, nullptr);
-        }
-        
-        ringBuffer = {};
+        ringBuffer.mappedData = nullptr;
+        ringBuffer.size = 0;
         currentOffset = 0;
         totalSize = 0;
     }
@@ -140,7 +138,7 @@ StagingRingBuffer::StagingRegion StagingRingBuffer::allocate(VkDeviceSize size, 
     }
     
     StagingRegion region;
-    region.buffer = ringBuffer.buffer;
+    region.buffer = ringBuffer.buffer.get();
     region.offset = alignedOffset;
     region.size = size;
     region.mappedData = static_cast<char*>(ringBuffer.mappedData) + alignedOffset;
@@ -246,8 +244,11 @@ void GPUBufferRing::flushToGPU(VkDeviceSize dstOffset) {
     }
     
     auto& stagingBuffer = resourceContext->getStagingBuffer();
+    
+    // Create a temporary ResourceHandle that doesn't own the buffer
     ResourceHandle stagingHandle;
-    stagingHandle.buffer = stagingBuffer.getBuffer();
+    stagingHandle.buffer = vulkan_raii::make_buffer(stagingBuffer.getBuffer(), resourceContext->getContext());
+    stagingHandle.buffer.detach(); // Release ownership - staging buffer manages its own lifecycle
     
     // Copy from staging buffer to device-local buffer
     resourceContext->copyBufferToBuffer(
@@ -304,6 +305,21 @@ bool ResourceContext::initialize(const VulkanContext& context, VkCommandPool com
 }
 
 void ResourceContext::cleanup() {
+    cleanupBeforeContextDestruction();
+    
+    // Run cleanup callbacks in reverse order
+    for (auto it = cleanupCallbacks.rbegin(); it != cleanupCallbacks.rend(); ++it) {
+        (*it)();
+    }
+    cleanupCallbacks.clear();
+    
+    executor.cleanup();
+    stagingBuffer.cleanup();
+    cleanupVMA();
+    context = nullptr;
+}
+
+void ResourceContext::cleanupBeforeContextDestruction() {
     // Clean up graphics resources first
     for (auto& handle : uniformBufferHandles) {
         if (handle.isValid()) {
@@ -321,21 +337,8 @@ void ResourceContext::cleanup() {
         destroyResource(indexBufferHandle);
     }
     
-    if (graphicsDescriptorPool != VK_NULL_HANDLE) {
-        destroyDescriptorPool(graphicsDescriptorPool);
-        graphicsDescriptorPool = VK_NULL_HANDLE;
-    }
-    
-    // Run cleanup callbacks in reverse order
-    for (auto it = cleanupCallbacks.rbegin(); it != cleanupCallbacks.rend(); ++it) {
-        (*it)();
-    }
-    cleanupCallbacks.clear();
-    
-    executor.cleanup();
-    stagingBuffer.cleanup();
-    cleanupVMA();
-    context = nullptr;
+    // RAII wrapper will handle cleanup automatically
+    graphicsDescriptorPool.reset();
 }
 
 ResourceHandle ResourceContext::createBuffer(VkDeviceSize size, 
@@ -350,14 +353,15 @@ ResourceHandle ResourceContext::createBuffer(VkDeviceSize size,
     bufferInfo.usage = usage;
     bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     
-    if (context->getLoader().vkCreateBuffer(context->getDevice(), &bufferInfo, nullptr, &handle.buffer) != VK_SUCCESS) {
+    VkBuffer bufferHandle = VK_NULL_HANDLE;
+    if (context->getLoader().vkCreateBuffer(context->getDevice(), &bufferInfo, nullptr, &bufferHandle) != VK_SUCCESS) {
         std::cerr << "Failed to create buffer!" << std::endl;
         return {};
     }
     
     // Allocate memory
     VkMemoryRequirements memRequirements;
-    context->getLoader().vkGetBufferMemoryRequirements(context->getDevice(), handle.buffer, &memRequirements);
+    context->getLoader().vkGetBufferMemoryRequirements(context->getDevice(), bufferHandle, &memRequirements);
     
     uint32_t memoryType = findMemoryType(memRequirements.memoryTypeBits, properties);
     
@@ -369,18 +373,20 @@ ResourceHandle ResourceContext::createBuffer(VkDeviceSize size,
     VkDeviceMemory memory;
     if (context->getLoader().vkAllocateMemory(context->getDevice(), &allocInfo, nullptr, &memory) != VK_SUCCESS) {
         std::cerr << "Failed to allocate buffer memory!" << std::endl;
-        context->getLoader().vkDestroyBuffer(context->getDevice(), handle.buffer, nullptr);
+        context->getLoader().vkDestroyBuffer(context->getDevice(), bufferHandle, nullptr);
         return {};
     }
     
-    if (context->getLoader().vkBindBufferMemory(context->getDevice(), handle.buffer, memory, 0) != VK_SUCCESS) {
+    if (context->getLoader().vkBindBufferMemory(context->getDevice(), bufferHandle, memory, 0) != VK_SUCCESS) {
         std::cerr << "Failed to bind buffer memory!" << std::endl;
         context->getLoader().vkFreeMemory(context->getDevice(), memory, nullptr);
-        context->getLoader().vkDestroyBuffer(context->getDevice(), handle.buffer, nullptr);
+        context->getLoader().vkDestroyBuffer(context->getDevice(), bufferHandle, nullptr);
         return {};
     }
     
-    handle.allocation = reinterpret_cast<VmaAllocation>(memory);
+    // Wrap handles in RAII wrappers
+    handle.buffer = vulkan_raii::make_buffer(bufferHandle, context);
+    handle.memory = vulkan_raii::make_device_memory(memory, context);
     handle.size = size;
     
     // Update stats
@@ -396,8 +402,7 @@ ResourceHandle ResourceContext::createMappedBuffer(VkDeviceSize size,
     ResourceHandle handle = createBuffer(size, usage, properties);
     
     if (handle.isValid() && (properties & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)) {
-        VkDeviceMemory memory = reinterpret_cast<VkDeviceMemory>(handle.allocation);
-        if (context->getLoader().vkMapMemory(context->getDevice(), memory, 0, size, 0, &handle.mappedData) != VK_SUCCESS) {
+        if (context->getLoader().vkMapMemory(context->getDevice(), handle.memory.get(), 0, size, 0, &handle.mappedData) != VK_SUCCESS) {
             std::cerr << "Failed to map buffer memory!" << std::endl;
             destroyResource(handle);
             return {};
@@ -429,14 +434,15 @@ ResourceHandle ResourceContext::createImage(uint32_t width, uint32_t height,
     imageInfo.samples = samples;
     imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     
-    if (context->getLoader().vkCreateImage(context->getDevice(), &imageInfo, nullptr, &handle.image) != VK_SUCCESS) {
+    VkImage imageHandle = VK_NULL_HANDLE;
+    if (context->getLoader().vkCreateImage(context->getDevice(), &imageInfo, nullptr, &imageHandle) != VK_SUCCESS) {
         std::cerr << "Failed to create image!" << std::endl;
         return {};
     }
     
     // Allocate memory for image
     VkMemoryRequirements memRequirements;
-    context->getLoader().vkGetImageMemoryRequirements(context->getDevice(), handle.image, &memRequirements);
+    context->getLoader().vkGetImageMemoryRequirements(context->getDevice(), imageHandle, &memRequirements);
     
     uint32_t memoryType = findMemoryType(memRequirements.memoryTypeBits, properties);
     
@@ -448,18 +454,20 @@ ResourceHandle ResourceContext::createImage(uint32_t width, uint32_t height,
     VkDeviceMemory memory;
     if (context->getLoader().vkAllocateMemory(context->getDevice(), &allocInfo, nullptr, &memory) != VK_SUCCESS) {
         std::cerr << "Failed to allocate image memory!" << std::endl;
-        context->getLoader().vkDestroyImage(context->getDevice(), handle.image, nullptr);
+        context->getLoader().vkDestroyImage(context->getDevice(), imageHandle, nullptr);
         return {};
     }
     
-    if (context->getLoader().vkBindImageMemory(context->getDevice(), handle.image, memory, 0) != VK_SUCCESS) {
+    if (context->getLoader().vkBindImageMemory(context->getDevice(), imageHandle, memory, 0) != VK_SUCCESS) {
         std::cerr << "Failed to bind image memory!" << std::endl;
         context->getLoader().vkFreeMemory(context->getDevice(), memory, nullptr);
-        context->getLoader().vkDestroyImage(context->getDevice(), handle.image, nullptr);
+        context->getLoader().vkDestroyImage(context->getDevice(), imageHandle, nullptr);
         return {};
     }
     
-    handle.allocation = reinterpret_cast<VmaAllocation>(memory);
+    // Wrap handles in RAII wrappers
+    handle.image = vulkan_raii::make_image(imageHandle, context);
+    handle.memory = vulkan_raii::make_device_memory(memory, context);
     handle.size = memRequirements.size;
     
     // Update stats
@@ -472,11 +480,18 @@ ResourceHandle ResourceContext::createImage(uint32_t width, uint32_t height,
 ResourceHandle ResourceContext::createImageView(const ResourceHandle& imageHandle,
                                                VkFormat format,
                                                VkImageAspectFlags aspectFlags) {
-    ResourceHandle handle = imageHandle; // Copy the image handle
+    ResourceHandle handle; // Create new handle
+    
+    // Copy the image by wrapping the existing handle (without claiming ownership)
+    handle.image = vulkan_raii::make_image(imageHandle.image.get(), context);
+    handle.image.detach(); // Don't own the image - it's owned by imageHandle
+    handle.memory = vulkan_raii::make_device_memory(imageHandle.memory.get(), context);
+    handle.memory.detach(); // Don't own the memory - it's owned by imageHandle
+    handle.size = imageHandle.size;
     
     VkImageViewCreateInfo viewInfo{};
     viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-    viewInfo.image = imageHandle.image;
+    viewInfo.image = imageHandle.image.get();
     viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
     viewInfo.format = format;
     viewInfo.subresourceRange.aspectMask = aspectFlags;
@@ -485,10 +500,13 @@ ResourceHandle ResourceContext::createImageView(const ResourceHandle& imageHandl
     viewInfo.subresourceRange.baseArrayLayer = 0;
     viewInfo.subresourceRange.layerCount = 1;
     
-    if (context->getLoader().vkCreateImageView(context->getDevice(), &viewInfo, nullptr, &handle.imageView) != VK_SUCCESS) {
+    VkImageView imageViewHandle = VK_NULL_HANDLE;
+    if (context->getLoader().vkCreateImageView(context->getDevice(), &viewInfo, nullptr, &imageViewHandle) != VK_SUCCESS) {
         std::cerr << "Failed to create image view!" << std::endl;
         return {};
     }
+    
+    handle.imageView = vulkan_raii::make_image_view(imageViewHandle, context);
     
     return handle;
 }
@@ -496,33 +514,24 @@ ResourceHandle ResourceContext::createImageView(const ResourceHandle& imageHandl
 void ResourceContext::destroyResource(ResourceHandle& handle) {
     if (!context || !handle.isValid()) return;
     
-    if (handle.mappedData && handle.allocation) {
-        VkDeviceMemory memory = reinterpret_cast<VkDeviceMemory>(handle.allocation);
-        context->getLoader().vkUnmapMemory(context->getDevice(), memory);
+    if (handle.mappedData && handle.memory) {
+        context->getLoader().vkUnmapMemory(context->getDevice(), handle.memory.get());
     }
     
-    if (handle.imageView != VK_NULL_HANDLE) {
-        context->getLoader().vkDestroyImageView(context->getDevice(), handle.imageView, nullptr);
-    }
-    
-    if (handle.buffer != VK_NULL_HANDLE) {
-        context->getLoader().vkDestroyBuffer(context->getDevice(), handle.buffer, nullptr);
-    }
-    
-    if (handle.image != VK_NULL_HANDLE) {
-        context->getLoader().vkDestroyImage(context->getDevice(), handle.image, nullptr);
-    }
-    
-    if (handle.allocation) {
-        VkDeviceMemory memory = reinterpret_cast<VkDeviceMemory>(handle.allocation);
-        context->getLoader().vkFreeMemory(context->getDevice(), memory, nullptr);
-        
-        // Update stats
+    // Update stats if we have memory to free
+    if (handle.memory) {
         memoryStats.totalFreed += handle.size;
         memoryStats.activeAllocations--;
     }
     
-    handle = {};
+    // RAII wrappers will handle cleanup automatically
+    handle.imageView.reset();
+    handle.buffer.reset();
+    handle.image.reset();
+    handle.memory.reset();
+    
+    handle.mappedData = nullptr;
+    handle.size = 0;
 }
 
 void ResourceContext::copyToBuffer(const ResourceHandle& dst, const void* data, VkDeviceSize size, VkDeviceSize offset) {
@@ -549,8 +558,13 @@ void ResourceContext::copyToBuffer(const ResourceHandle& dst, const void* data, 
             if (stagingRegion.mappedData) {
                 memcpy(stagingRegion.mappedData, static_cast<const char*>(data) + currentOffset, chunkSize);
                 // Use synchronous transfer to ensure data is available before returning
-                copyBufferToBuffer({stagingRegion.buffer, VK_NULL_HANDLE, VK_NULL_HANDLE, nullptr, stagingRegion.mappedData, chunkSize}, 
-                                  dst, chunkSize, stagingRegion.offset, offset + currentOffset);
+                ResourceHandle stagingHandle;
+                stagingHandle.buffer = vulkan_raii::make_buffer(stagingRegion.buffer, context);
+                stagingHandle.buffer.detach(); // Don't own the buffer - staging buffer manages it
+                stagingHandle.mappedData = stagingRegion.mappedData;
+                stagingHandle.size = chunkSize;
+                
+                copyBufferToBuffer(stagingHandle, dst, chunkSize, stagingRegion.offset, offset + currentOffset);
                 
                 remaining -= chunkSize;
                 currentOffset += chunkSize;
@@ -568,12 +582,12 @@ void ResourceContext::copyBufferToBuffer(const ResourceHandle& src, const Resour
         return;
     }
     
-    if (src.buffer == VK_NULL_HANDLE || dst.buffer == VK_NULL_HANDLE) {
+    if (!src.buffer || !dst.buffer) {
         std::cerr << "ResourceContext::copyBufferToBuffer: Invalid buffer handles!" << std::endl;
         return;
     }
     
-    executor.copyBufferToBuffer(src.buffer, dst.buffer, size, srcOffset, dstOffset);
+    executor.copyBufferToBuffer(src.buffer.get(), dst.buffer.get(), size, srcOffset, dstOffset);
 }
 
 CommandExecutor::AsyncTransfer ResourceContext::copyToBufferAsync(const ResourceHandle& dst, const void* data, VkDeviceSize size, VkDeviceSize offset) {
@@ -587,7 +601,7 @@ CommandExecutor::AsyncTransfer ResourceContext::copyToBufferAsync(const Resource
         if (stagingRegion.mappedData) {
             memcpy(stagingRegion.mappedData, data, size);
             return executor.copyBufferToBufferAsync(
-                stagingRegion.buffer, dst.buffer, size, 
+                stagingRegion.buffer, dst.buffer.get(), size, 
                 stagingRegion.offset, offset
             );
         }
@@ -596,11 +610,11 @@ CommandExecutor::AsyncTransfer ResourceContext::copyToBufferAsync(const Resource
     return {}; // Failed allocation
 }
 
-VkDescriptorPool ResourceContext::createDescriptorPool() {
+vulkan_raii::DescriptorPool ResourceContext::createDescriptorPool() {
     return createDescriptorPool(DescriptorPoolConfig{});
 }
 
-VkDescriptorPool ResourceContext::createDescriptorPool(const DescriptorPoolConfig& config) {
+vulkan_raii::DescriptorPool ResourceContext::createDescriptorPool(const DescriptorPoolConfig& config) {
     std::vector<VkDescriptorPoolSize> poolSizes;
     
     if (config.uniformBuffers > 0) {
@@ -626,13 +640,7 @@ VkDescriptorPool ResourceContext::createDescriptorPool(const DescriptorPoolConfi
     poolInfo.pPoolSizes = poolSizes.data();
     poolInfo.maxSets = config.maxSets;
     
-    VkDescriptorPool pool;
-    if (context->getLoader().vkCreateDescriptorPool(context->getDevice(), &poolInfo, nullptr, &pool) != VK_SUCCESS) {
-        std::cerr << "Failed to create descriptor pool!" << std::endl;
-        return VK_NULL_HANDLE;
-    }
-    
-    return pool;
+    return vulkan_raii::create_descriptor_pool(context, &poolInfo);
 }
 
 void ResourceContext::destroyDescriptorPool(VkDescriptorPool pool) {
@@ -701,7 +709,7 @@ bool ResourceContext::createUniformBuffers() {
         }
         
         // Maintain compatibility with existing API
-        uniformBuffers[i] = uniformBufferHandles[i].buffer;
+        uniformBuffers[i] = uniformBufferHandles[i].buffer.get();
         uniformBuffersMapped[i] = uniformBufferHandles[i].mappedData;
     }
     
@@ -799,7 +807,7 @@ bool ResourceContext::createGraphicsDescriptorPool(VkDescriptorSetLayout descrip
     
     graphicsDescriptorPool = createDescriptorPool(config);
     
-    if (graphicsDescriptorPool == VK_NULL_HANDLE) {
+    if (!graphicsDescriptorPool) {
         std::cerr << "Failed to create graphics descriptor pool!" << std::endl;
         return false;
     }
@@ -811,7 +819,7 @@ bool ResourceContext::createGraphicsDescriptorSets(VkDescriptorSetLayout descrip
     std::vector<VkDescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, descriptorSetLayout);
     VkDescriptorSetAllocateInfo allocInfo{};
     allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-    allocInfo.descriptorPool = graphicsDescriptorPool;
+    allocInfo.descriptorPool = graphicsDescriptorPool.get();
     allocInfo.descriptorSetCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
     allocInfo.pSetLayouts = layouts.data();
     

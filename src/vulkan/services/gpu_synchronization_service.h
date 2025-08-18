@@ -3,6 +3,7 @@
 #include <vulkan/vulkan.h>
 #include <array>
 #include "../core/vulkan_constants.h"
+#include "../core/vulkan_raii.h"
 
 // Forward declarations
 class VulkanContext;
@@ -19,8 +20,8 @@ public:
     VkResult waitForComputeFence(uint32_t frameIndex, const char* fenceName = "compute");
     VkResult waitForGraphicsFence(uint32_t frameIndex, const char* fenceName = "graphics");
     
-    VkFence getComputeFence(uint32_t frameIndex) const { return computeFences[frameIndex]; }
-    VkFence getGraphicsFence(uint32_t frameIndex) const { return graphicsFences[frameIndex]; }
+    VkFence getComputeFence(uint32_t frameIndex) const { return computeFences[frameIndex].get(); }
+    VkFence getGraphicsFence(uint32_t frameIndex) const { return graphicsFences[frameIndex].get(); }
     
     bool isComputeInUse(uint32_t frameIndex) const { return computeInUse[frameIndex]; }
     bool isGraphicsInUse(uint32_t frameIndex) const { return graphicsInUse[frameIndex]; }
@@ -34,11 +35,14 @@ private:
     const VulkanContext* context = nullptr;
     bool initialized = false;
 
-    std::array<VkFence, MAX_FRAMES_IN_FLIGHT> computeFences{};
-    std::array<VkFence, MAX_FRAMES_IN_FLIGHT> graphicsFences{};
+    std::array<vulkan_raii::Fence, MAX_FRAMES_IN_FLIGHT> computeFences{};
+    std::array<vulkan_raii::Fence, MAX_FRAMES_IN_FLIGHT> graphicsFences{};
     std::array<bool, MAX_FRAMES_IN_FLIGHT> computeInUse{};
     std::array<bool, MAX_FRAMES_IN_FLIGHT> graphicsInUse{};
 
     // Helper method for robust fence waiting
     VkResult waitForFenceRobust(VkFence fence, const char* fenceName);
+    
+    // Cleanup before context destruction
+    void cleanupBeforeContextDestruction();
 };

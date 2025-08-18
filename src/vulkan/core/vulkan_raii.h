@@ -209,6 +209,38 @@ struct PipelineCacheDeleter : VulkanDeleter {
     void operator()(VkPipelineCache handle);
 };
 
+struct QueryPoolDeleter : VulkanDeleter {
+    explicit QueryPoolDeleter(const VulkanContext* ctx) : VulkanDeleter(ctx) {}
+    
+    void operator()(VkQueryPool handle);
+};
+
+// Core context object deleters
+struct InstanceDeleter : VulkanDeleter {
+    explicit InstanceDeleter(const VulkanContext* ctx) : VulkanDeleter(ctx) {}
+    
+    void operator()(VkInstance handle);
+};
+
+struct DeviceDeleter : VulkanDeleter {
+    explicit DeviceDeleter(const VulkanContext* ctx) : VulkanDeleter(ctx) {}
+    
+    void operator()(VkDevice handle);
+};
+
+struct SurfaceKHRDeleter : VulkanDeleter {
+    explicit SurfaceKHRDeleter(const VulkanContext* ctx) : VulkanDeleter(ctx) {}
+    
+    void operator()(VkSurfaceKHR handle);
+};
+
+struct DebugUtilsMessengerEXTDeleter : VulkanDeleter {
+    explicit DebugUtilsMessengerEXTDeleter(const VulkanContext* ctx) : VulkanDeleter(ctx) {}
+    
+    void operator()(VkDebugUtilsMessengerEXT handle);
+};
+
+
 // Type aliases for convenience
 using ShaderModule = VulkanHandle<VkShaderModule, ShaderModuleDeleter>;
 using Pipeline = VulkanHandle<VkPipeline, PipelineDeleter>;
@@ -225,6 +257,13 @@ using ImageView = VulkanHandle<VkImageView, ImageViewDeleter>;
 using DeviceMemory = VulkanHandle<VkDeviceMemory, DeviceMemoryDeleter>;
 using Framebuffer = VulkanHandle<VkFramebuffer, FramebufferDeleter>;
 using PipelineCache = VulkanHandle<VkPipelineCache, PipelineCacheDeleter>;
+using QueryPool = VulkanHandle<VkQueryPool, QueryPoolDeleter>;
+
+// Core context object types
+using Instance = VulkanHandle<VkInstance, InstanceDeleter>;
+using Device = VulkanHandle<VkDevice, DeviceDeleter>;
+using SurfaceKHR = VulkanHandle<VkSurfaceKHR, SurfaceKHRDeleter>;
+using DebugUtilsMessengerEXT = VulkanHandle<VkDebugUtilsMessengerEXT, DebugUtilsMessengerEXTDeleter>;
 
 // Factory functions for creating RAII wrappers
 template<typename VkType, typename Deleter>
@@ -269,6 +308,52 @@ inline PipelineCache make_pipeline_cache(VkPipelineCache handle, const VulkanCon
     return make_handle<VkPipelineCache, PipelineCacheDeleter>(handle, context);
 }
 
+inline QueryPool make_query_pool(VkQueryPool handle, const VulkanContext* context) {
+    return make_handle<VkQueryPool, QueryPoolDeleter>(handle, context);
+}
+
+
+inline CommandPool make_command_pool(VkCommandPool handle, const VulkanContext* context) {
+    return make_handle<VkCommandPool, CommandPoolDeleter>(handle, context);
+}
+
+inline Buffer make_buffer(VkBuffer handle, const VulkanContext* context) {
+    return make_handle<VkBuffer, BufferDeleter>(handle, context);
+}
+
+inline Image make_image(VkImage handle, const VulkanContext* context) {
+    return make_handle<VkImage, ImageDeleter>(handle, context);
+}
+
+inline ImageView make_image_view(VkImageView handle, const VulkanContext* context) {
+    return make_handle<VkImageView, ImageViewDeleter>(handle, context);
+}
+
+inline DeviceMemory make_device_memory(VkDeviceMemory handle, const VulkanContext* context) {
+    return make_handle<VkDeviceMemory, DeviceMemoryDeleter>(handle, context);
+}
+
+inline Framebuffer make_framebuffer(VkFramebuffer handle, const VulkanContext* context) {
+    return make_handle<VkFramebuffer, FramebufferDeleter>(handle, context);
+}
+
+// Core context object factory functions
+inline Instance make_instance(VkInstance handle, const VulkanContext* context) {
+    return make_handle<VkInstance, InstanceDeleter>(handle, context);
+}
+
+inline Device make_device(VkDevice handle, const VulkanContext* context) {
+    return make_handle<VkDevice, DeviceDeleter>(handle, context);
+}
+
+inline SurfaceKHR make_surface_khr(VkSurfaceKHR handle, const VulkanContext* context) {
+    return make_handle<VkSurfaceKHR, SurfaceKHRDeleter>(handle, context);
+}
+
+inline DebugUtilsMessengerEXT make_debug_utils_messenger_ext(VkDebugUtilsMessengerEXT handle, const VulkanContext* context) {
+    return make_handle<VkDebugUtilsMessengerEXT, DebugUtilsMessengerEXTDeleter>(handle, context);
+}
+
 // Direct creation factory functions
 PipelineCache create_pipeline_cache(const VulkanContext* context, const VkPipelineCacheCreateInfo* createInfo);
 Pipeline create_graphics_pipeline(const VulkanContext* context, VkPipelineCache pipelineCache, const VkGraphicsPipelineCreateInfo* createInfo);
@@ -277,5 +362,7 @@ PipelineLayout create_pipeline_layout(const VulkanContext* context, const VkPipe
 RenderPass create_render_pass(const VulkanContext* context, const VkRenderPassCreateInfo* createInfo);
 DescriptorSetLayout create_descriptor_set_layout(const VulkanContext* context, const VkDescriptorSetLayoutCreateInfo* createInfo);
 DescriptorPool create_descriptor_pool(const VulkanContext* context, const VkDescriptorPoolCreateInfo* createInfo);
+CommandPool create_command_pool(const VulkanContext* context, const VkCommandPoolCreateInfo* createInfo);
+Fence create_fence(const VulkanContext* context, const VkFenceCreateInfo* createInfo);
 
 } // namespace vulkan_raii

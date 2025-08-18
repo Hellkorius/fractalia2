@@ -9,6 +9,7 @@
 #include <unordered_set>
 #include <functional>
 #include <variant>
+#include "../core/vulkan_raii.h"
 
 // Forward declarations
 class VulkanContext;
@@ -24,8 +25,8 @@ namespace FrameGraphTypes {
 
 // Resource types that can be managed by the frame graph
 struct FrameGraphBuffer {
-    VkBuffer buffer = VK_NULL_HANDLE;
-    VkDeviceMemory memory = VK_NULL_HANDLE;
+    vulkan_raii::Buffer buffer;
+    vulkan_raii::DeviceMemory memory;
     VkDeviceSize size = 0;
     VkBufferUsageFlags usage = 0;
     bool isExternal = false; // Managed outside frame graph
@@ -33,9 +34,9 @@ struct FrameGraphBuffer {
 };
 
 struct FrameGraphImage {
-    VkImage image = VK_NULL_HANDLE;
-    VkImageView view = VK_NULL_HANDLE;
-    VkDeviceMemory memory = VK_NULL_HANDLE;
+    vulkan_raii::Image image;
+    vulkan_raii::ImageView view;
+    vulkan_raii::DeviceMemory memory;
     VkFormat format = VK_FORMAT_UNDEFINED;
     VkExtent2D extent = {0, 0};
     VkImageUsageFlags usage = 0;
@@ -106,6 +107,7 @@ public:
     // Initialization
     bool initialize(const VulkanContext& context, VulkanSync* sync);
     void cleanup();
+    void cleanupBeforeContextDestruction();
     
     // Resource management
     FrameGraphTypes::ResourceId createBuffer(const std::string& name, VkDeviceSize size, VkBufferUsageFlags usage);
@@ -197,7 +199,6 @@ private:
                                   PipelineStage srcStage, PipelineStage dstStage,
                                   ResourceAccess srcAccess, ResourceAccess dstAccess);
     void insertBarriersIntoCommandBuffer(VkCommandBuffer commandBuffer);
-    void cleanupResources();
     
     // Resource helpers
     FrameGraphBuffer* getBufferResource(FrameGraphTypes::ResourceId id);

@@ -40,6 +40,41 @@ void VulkanSwapchain::cleanup() {
     cleanupSwapChain();
 }
 
+void VulkanSwapchain::cleanupBeforeContextDestruction() {
+    // Clear RAII wrappers before context destruction
+    swapChainFramebuffers.clear();
+    swapChainImageViews.clear();
+    msaaColorImageView.reset();
+    msaaColorImage.reset();
+    msaaColorImageMemory.reset();
+    
+    // Manual cleanup for non-RAII managed resources
+    if (context && swapChain != VK_NULL_HANDLE) {
+        context->getLoader().vkDestroySwapchainKHR(context->getDevice(), swapChain, nullptr);
+        swapChain = VK_NULL_HANDLE;
+    }
+    
+    context = nullptr;
+}
+
+std::vector<VkImageView> VulkanSwapchain::getImageViews() const {
+    std::vector<VkImageView> views;
+    views.reserve(swapChainImageViews.size());
+    for (const auto& view : swapChainImageViews) {
+        views.push_back(view.get());
+    }
+    return views;
+}
+
+std::vector<VkFramebuffer> VulkanSwapchain::getFramebuffers() const {
+    std::vector<VkFramebuffer> framebuffers;
+    framebuffers.reserve(swapChainFramebuffers.size());
+    for (const auto& fb : swapChainFramebuffers) {
+        framebuffers.push_back(fb.get());
+    }
+    return framebuffers;
+}
+
 bool VulkanSwapchain::recreate(VkRenderPass renderPass) {
     int width = 0, height = 0;
     SDL_GetWindowSizeInPixels(window, &width, &height);
@@ -167,7 +202,8 @@ bool VulkanSwapchain::createSwapChain(VkSwapchainKHR oldSwapchainKHR) {
 }
 
 bool VulkanSwapchain::createImageViews() {
-    swapChainImageViews.resize(swapChainImages.size());
+    swapChainImageViews.clear();
+    swapChainImageViews.reserve(swapChainImages.size());
 
     for (size_t i = 0; i < swapChainImages.size(); i++) {
         VkImageViewCreateInfo createInfo{};
@@ -185,10 +221,13 @@ bool VulkanSwapchain::createImageViews() {
         createInfo.subresourceRange.baseArrayLayer = 0;
         createInfo.subresourceRange.layerCount = 1;
 
-        if (context->getLoader().vkCreateImageView(context->getDevice(), &createInfo, nullptr, &swapChainImageViews[i]) != VK_SUCCESS) {
+        VkImageView imageView;
+        if (context->getLoader().vkCreateImageView(context->getDevice(), &createInfo, nullptr, &imageView) != VK_SUCCESS) {
             std::cerr << "Failed to create image views" << std::endl;
             return false;
         }
+        
+        swapChainImageViews.emplace_back(vulkan_raii::make_image_view(imageView, context));
     }
 
     return true;
@@ -198,12 +237,24 @@ bool VulkanSwapchain::createImageViews() {
 bool VulkanSwapchain::createMSAAColorResources() {
     VkFormat colorFormat = swapChainImageFormat;
     
-    VulkanUtils::createImage(context->getDevice(), context->getPhysicalDevice(), context->getLoader(),
+    VkImage image;
+    VkDeviceMemory memory;
+    if (!VulkanUtils::createImage(context->getDevice(), context->getPhysicalDevice(), context->getLoader(),
                             swapChainExtent.width, swapChainExtent.height, colorFormat, VK_IMAGE_TILING_OPTIMAL,
                             VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
-                            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, msaaColorImage, msaaColorImageMemory, VK_SAMPLE_COUNT_2_BIT);
+                            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, image, memory, VK_SAMPLE_COUNT_2_BIT)) {
+        return false;
+    }
     
-    msaaColorImageView = VulkanUtils::createImageView(context->getDevice(), context->getLoader(), msaaColorImage, colorFormat, VK_IMAGE_ASPECT_COLOR_BIT);
+    msaaColorImage = vulkan_raii::make_image(image, context);
+    msaaColorImageMemory = vulkan_raii::make_device_memory(memory, context);
+    
+    VkImageView imageView = VulkanUtils::createImageView(context->getDevice(), context->getLoader(), msaaColorImage.get(), colorFormat, VK_IMAGE_ASPECT_COLOR_BIT);
+    if (imageView == VK_NULL_HANDLE) {
+        return false;
+    }
+    
+    msaaColorImageView = vulkan_raii::make_image_view(imageView, context);
     
     return true;
 }
@@ -213,28 +264,13 @@ void VulkanSwapchain::cleanupSwapChain() {
     const auto& vk = context->getLoader();
     const VkDevice device = context->getDevice();
     
-    for (auto framebuffer : swapChainFramebuffers) {
-        vk.vkDestroyFramebuffer(device, framebuffer, nullptr);
-    }
+    // RAII wrappers handle automatic cleanup
     swapChainFramebuffers.clear();
     
-    if (msaaColorImageView != VK_NULL_HANDLE) {
-        vk.vkDestroyImageView(device, msaaColorImageView, nullptr);
-        msaaColorImageView = VK_NULL_HANDLE;
-    }
-    if (msaaColorImage != VK_NULL_HANDLE) {
-        vk.vkDestroyImage(device, msaaColorImage, nullptr);
-        msaaColorImage = VK_NULL_HANDLE;
-    }
-    if (msaaColorImageMemory != VK_NULL_HANDLE) {
-        vk.vkFreeMemory(device, msaaColorImageMemory, nullptr);
-        msaaColorImageMemory = VK_NULL_HANDLE;
-    }
+    msaaColorImageView.reset();
+    msaaColorImage.reset();
+    msaaColorImageMemory.reset();
     
-    
-    for (auto imageView : swapChainImageViews) {
-        vk.vkDestroyImageView(device, imageView, nullptr);
-    }
     swapChainImageViews.clear();
     
     if (swapChain != VK_NULL_HANDLE) {
@@ -246,36 +282,27 @@ void VulkanSwapchain::cleanupSwapChain() {
 void VulkanSwapchain::cleanupSwapChainExceptSwapchain() {
     std::cout << "VulkanSwapchain: Starting cleanup of swapchain resources (except swapchain handle)" << std::endl;
     
-    // Cleanup framebuffers
+    // Cleanup framebuffers - RAII handles destruction
     std::cout << "VulkanSwapchain: Destroying " << swapChainFramebuffers.size() << " framebuffers" << std::endl;
-    for (auto framebuffer : swapChainFramebuffers) {
-        context->getLoader().vkDestroyFramebuffer(context->getDevice(), framebuffer, nullptr);
-    }
     swapChainFramebuffers.clear();
     
-    // Cleanup MSAA resources - CRITICAL for memory leak detection
-    if (msaaColorImageView != VK_NULL_HANDLE) {
+    // Cleanup MSAA resources - CRITICAL for memory leak detection - RAII handles destruction
+    if (msaaColorImageView) {
         std::cout << "VulkanSwapchain: Destroying MSAA color image view" << std::endl;
-        context->getLoader().vkDestroyImageView(context->getDevice(), msaaColorImageView, nullptr);
-        msaaColorImageView = VK_NULL_HANDLE;
+        msaaColorImageView.reset();
     }
-    if (msaaColorImage != VK_NULL_HANDLE) {
+    if (msaaColorImage) {
         std::cout << "VulkanSwapchain: Destroying MSAA color image" << std::endl;
-        context->getLoader().vkDestroyImage(context->getDevice(), msaaColorImage, nullptr);
-        msaaColorImage = VK_NULL_HANDLE;
+        msaaColorImage.reset();
     }
-    if (msaaColorImageMemory != VK_NULL_HANDLE) {
+    if (msaaColorImageMemory) {
         std::cout << "VulkanSwapchain: CRITICAL - Freeing MSAA color image memory" << std::endl;
-        context->getLoader().vkFreeMemory(context->getDevice(), msaaColorImageMemory, nullptr);
-        msaaColorImageMemory = VK_NULL_HANDLE;
+        msaaColorImageMemory.reset();
         std::cout << "VulkanSwapchain: MSAA memory successfully freed" << std::endl;
     }
     
-    // Cleanup swapchain image views
+    // Cleanup swapchain image views - RAII handles destruction
     std::cout << "VulkanSwapchain: Destroying " << swapChainImageViews.size() << " image views" << std::endl;
-    for (auto imageView : swapChainImageViews) {
-        context->getLoader().vkDestroyImageView(context->getDevice(), imageView, nullptr);
-    }
     swapChainImageViews.clear();
     
     std::cout << "VulkanSwapchain: Cleanup completed successfully" << std::endl;
@@ -363,12 +390,13 @@ VkExtent2D VulkanSwapchain::chooseSwapExtent(const VkSurfaceCapabilitiesKHR& cap
 
 
 bool VulkanSwapchain::createFramebuffers(VkRenderPass renderPass) {
-    swapChainFramebuffers.resize(swapChainImageViews.size());
+    swapChainFramebuffers.clear();
+    swapChainFramebuffers.reserve(swapChainImageViews.size());
     
     for (size_t i = 0; i < swapChainImageViews.size(); i++) {
         std::array<VkImageView, 2> attachments = {
-            msaaColorImageView,      
-            swapChainImageViews[i]
+            msaaColorImageView.get(),      
+            swapChainImageViews[i].get()
         };
         
         VkFramebufferCreateInfo framebufferInfo{};
@@ -380,10 +408,13 @@ bool VulkanSwapchain::createFramebuffers(VkRenderPass renderPass) {
         framebufferInfo.height = swapChainExtent.height;
         framebufferInfo.layers = 1;
 
-        if (context->getLoader().vkCreateFramebuffer(context->getDevice(), &framebufferInfo, nullptr, &swapChainFramebuffers[i]) != VK_SUCCESS) {
+        VkFramebuffer framebuffer;
+        if (context->getLoader().vkCreateFramebuffer(context->getDevice(), &framebufferInfo, nullptr, &framebuffer) != VK_SUCCESS) {
             std::cerr << "Failed to create framebuffer" << std::endl;
             return false;
         }
+        
+        swapChainFramebuffers.emplace_back(vulkan_raii::make_framebuffer(framebuffer, context));
     }
 
     return true;

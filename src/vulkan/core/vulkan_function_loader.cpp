@@ -250,6 +250,10 @@ void VulkanFunctionLoader::loadSynchronizationFunctions() {
         vkGetDeviceProcAddr(device, "vkResetFences"));
     vkGetFenceStatus = reinterpret_cast<PFN_vkGetFenceStatus>(
         vkGetDeviceProcAddr(device, "vkGetFenceStatus"));
+    vkCreateQueryPool = reinterpret_cast<PFN_vkCreateQueryPool>(
+        vkGetDeviceProcAddr(device, "vkCreateQueryPool"));
+    vkDestroyQueryPool = reinterpret_cast<PFN_vkDestroyQueryPool>(
+        vkGetDeviceProcAddr(device, "vkDestroyQueryPool"));
 }
 
 void VulkanFunctionLoader::loadCommandFunctions() {

@@ -2,6 +2,7 @@
 
 #define VK_NO_PROTOTYPES
 #include <vulkan/vulkan.h>
+#include "../core/vulkan_raii.h"
 #include <memory>
 #include <vector>
 #include <functional>
@@ -90,6 +91,9 @@ public:
     // GPU health monitoring
     bool isGPUStable() const;
     void resetGPUState();
+    
+    // RAII cleanup - call before VulkanContext destruction
+    void cleanupBeforeContextDestruction();
 
 private:
     const VulkanContext* context;
@@ -98,22 +102,22 @@ private:
     std::shared_ptr<GPUMemoryMonitor> memoryMonitor;
     
     // Test infrastructure
-    VkCommandPool testCommandPool = VK_NULL_HANDLE;
-    VkCommandBuffer testCommandBuffer = VK_NULL_HANDLE;
-    VkFence testFence = VK_NULL_HANDLE;
+    vulkan_raii::CommandPool testCommandPool;
+    VkCommandBuffer testCommandBuffer = VK_NULL_HANDLE;  // Command buffers are owned by pool, no RAII wrapper needed
+    vulkan_raii::Fence testFence;
     
     // Test buffers
-    VkBuffer testEntityBuffer = VK_NULL_HANDLE;
-    VkDeviceMemory testEntityMemory = VK_NULL_HANDLE;
-    VkBuffer testPositionBuffer = VK_NULL_HANDLE;
-    VkDeviceMemory testPositionMemory = VK_NULL_HANDLE;
-    VkBuffer testCurrentPosBuffer = VK_NULL_HANDLE;
-    VkDeviceMemory testCurrentPosMemory = VK_NULL_HANDLE;
-    VkBuffer testTargetPosBuffer = VK_NULL_HANDLE;
-    VkDeviceMemory testTargetPosMemory = VK_NULL_HANDLE;
+    vulkan_raii::Buffer testEntityBuffer;
+    vulkan_raii::DeviceMemory testEntityMemory;
+    vulkan_raii::Buffer testPositionBuffer;
+    vulkan_raii::DeviceMemory testPositionMemory;
+    vulkan_raii::Buffer testCurrentPosBuffer;
+    vulkan_raii::DeviceMemory testCurrentPosMemory;
+    vulkan_raii::Buffer testTargetPosBuffer;
+    vulkan_raii::DeviceMemory testTargetPosMemory;
     
-    VkDescriptorPool testDescriptorPool = VK_NULL_HANDLE;
-    VkDescriptorSet testDescriptorSet = VK_NULL_HANDLE;
+    vulkan_raii::DescriptorPool testDescriptorPool;
+    VkDescriptorSet testDescriptorSet = VK_NULL_HANDLE;  // Descriptor sets are owned by pool, no RAII wrapper needed
     
     static constexpr uint32_t MAX_TEST_ENTITIES = 200000; // 200k entities for stress testing
     

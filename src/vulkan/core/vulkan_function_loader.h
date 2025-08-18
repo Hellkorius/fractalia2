@@ -127,6 +127,10 @@ public:
     PFN_vkResetFences vkResetFences = nullptr;
     PFN_vkGetFenceStatus vkGetFenceStatus = nullptr;
     
+    // Query pool functions
+    PFN_vkCreateQueryPool vkCreateQueryPool = nullptr;
+    PFN_vkDestroyQueryPool vkDestroyQueryPool = nullptr;
+    
     // Command buffer functions
     PFN_vkCreateCommandPool vkCreateCommandPool = nullptr;
     PFN_vkDestroyCommandPool vkDestroyCommandPool = nullptr;

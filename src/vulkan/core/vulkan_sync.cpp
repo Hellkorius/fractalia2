@@ -42,10 +42,8 @@ void VulkanSync::cleanupBeforeContextDestruction() {
         inFlightFences.clear();
         computeFences.clear();
         
-        if (commandPool != VK_NULL_HANDLE) {
-            context->getLoader().vkDestroyCommandPool(context->getDevice(), commandPool, nullptr);
-            commandPool = VK_NULL_HANDLE;
-        }
+        // CommandPool RAII wrapper handles automatic cleanup
+        commandPool.reset();
         
         context = nullptr;
     }
@@ -61,10 +59,13 @@ bool VulkanSync::createCommandPool() {
     poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
     poolInfo.queueFamilyIndex = queueFamilyIndices.graphicsFamily.value();
 
-    if (context->getLoader().vkCreateCommandPool(context->getDevice(), &poolInfo, nullptr, &commandPool) != VK_SUCCESS) {
+    VkCommandPool pool;
+    if (context->getLoader().vkCreateCommandPool(context->getDevice(), &poolInfo, nullptr, &pool) != VK_SUCCESS) {
         std::cerr << "Failed to create command pool" << std::endl;
         return false;
     }
+    
+    commandPool = vulkan_raii::make_command_pool(pool, context);
 
     return true;
 }
@@ -75,7 +76,7 @@ bool VulkanSync::createCommandBuffers() {
     
     VkCommandBufferAllocateInfo allocInfo{};
     allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    allocInfo.commandPool = commandPool;
+    allocInfo.commandPool = commandPool.get();
     allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
     allocInfo.commandBufferCount = static_cast<uint32_t>(commandBuffers.size());
 
@@ -193,10 +194,9 @@ bool VulkanSync::recreateCommandPool() {
     context->getLoader().vkDeviceWaitIdle(context->getDevice());
     
     // Destroy old command pool (this automatically frees all command buffers)
-    if (commandPool != VK_NULL_HANDLE) {
+    if (commandPool) {
         std::cout << "VulkanSync: Destroying corrupted command pool" << std::endl;
-        context->getLoader().vkDestroyCommandPool(context->getDevice(), commandPool, nullptr);
-        commandPool = VK_NULL_HANDLE;
+        commandPool.reset();
     }
     
     // Clear command buffer vectors (handles are now invalid)

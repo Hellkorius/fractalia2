@@ -26,7 +26,7 @@ ComputeStressTester::ComputeStressTester(
 }
 
 ComputeStressTester::~ComputeStressTester() {
-    destroyTestResources();
+    // RAII handles cleanup automatically, but we may need explicit cleanup order
 }
 
 ComputeStressTester::StressTestResult ComputeStressTester::runQuickValidation(uint32_t targetWorkgroups) {
@@ -128,9 +128,8 @@ bool ComputeStressTester::executeComputeDispatch(uint32_t workgroupCount, float&
         return false;
     }
     
-    // Cache loader and device references for performance
+    // Cache loader reference for performance
     const auto& vk = context->getLoader();
-    const VkDevice device = context->getDevice();
     
     // Reset command buffer
     vk.vkResetCommandBuffer(testCommandBuffer, 0);
@@ -166,7 +165,7 @@ bool ComputeStressTester::executeComputeDispatch(uint32_t workgroupCount, float&
     submitInfo.commandBufferCount = 1;
     submitInfo.pCommandBuffers = &testCommandBuffer;
     
-    result = vk.vkQueueSubmit(context->getGraphicsQueue(), 1, &submitInfo, testFence);
+    result = vk.vkQueueSubmit(context->getGraphicsQueue(), 1, &submitInfo, testFence.get());
     if (result != VK_SUCCESS) {
         handleTestFailure("vkQueueSubmit", result);
         return false;
@@ -201,7 +200,7 @@ void ComputeStressTester::recordTestDispatch(VkCommandBuffer cmd, uint32_t workg
 }
 
 bool ComputeStressTester::waitForCompletion(float timeoutMs) {
-    if (testFence == VK_NULL_HANDLE) return false;
+    if (!testFence) return false;
     
     uint64_t timeoutNs = static_cast<uint64_t>(timeoutMs * 1000000.0f); // Convert to nanoseconds
     
@@ -209,8 +208,9 @@ bool ComputeStressTester::waitForCompletion(float timeoutMs) {
     const auto& vk = context->getLoader();
     const VkDevice device = context->getDevice();
     
+    VkFence fence = testFence.get();
     VkResult result = vk.vkWaitForFences(
-        device, 1, &testFence, VK_TRUE, timeoutNs);
+        device, 1, &fence, VK_TRUE, timeoutNs);
     
     if (result == VK_TIMEOUT) {
         std::cerr << "ComputeStressTester: Fence wait timed out after " << timeoutMs << "ms" << std::endl;
@@ -221,7 +221,7 @@ bool ComputeStressTester::waitForCompletion(float timeoutMs) {
     }
     
     // Reset fence for next use
-        vk.vkResetFences(device, 1, &testFence);
+    vk.vkResetFences(device, 1, &fence);
     
     return true;
 }
@@ -263,27 +263,33 @@ void ComputeStressTester::handleTestFailure(const std::string& operation, VkResu
 bool ComputeStressTester::createTestResources() {
     if (!context) return false;
     
+    // Cache loader and device references for performance
+    const auto& vk = context->getLoader();
+    const VkDevice device = context->getDevice();
+    
     // Create command pool
     VkCommandPoolCreateInfo poolInfo{};
     poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
     poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
     poolInfo.queueFamilyIndex = context->getGraphicsQueueFamily();
     
-    VkResult result = context->getLoader().vkCreateCommandPool(
-        context->getDevice(), &poolInfo, nullptr, &testCommandPool);
+    VkCommandPool poolHandle = VK_NULL_HANDLE;
+    VkResult result = vk.vkCreateCommandPool(device, &poolInfo, nullptr, &poolHandle);
     if (result != VK_SUCCESS) {
         std::cerr << "ComputeStressTester: Failed to create command pool" << std::endl;
         return false;
     }
     
+    testCommandPool = vulkan_raii::make_command_pool(poolHandle, context);
+    
     // Allocate command buffer
     VkCommandBufferAllocateInfo allocInfo{};
     allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    allocInfo.commandPool = testCommandPool;
+    allocInfo.commandPool = testCommandPool.get();
     allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
     allocInfo.commandBufferCount = 1;
     
-    result = context->getLoader().vkAllocateCommandBuffers(context->getDevice(), &allocInfo, &testCommandBuffer);
+    result = vk.vkAllocateCommandBuffers(device, &allocInfo, &testCommandBuffer);
     if (result != VK_SUCCESS) {
         std::cerr << "ComputeStressTester: Failed to allocate command buffer" << std::endl;
         return false;
@@ -293,11 +299,14 @@ bool ComputeStressTester::createTestResources() {
     VkFenceCreateInfo fenceInfo{};
     fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
     
-    result = context->getLoader().vkCreateFence(context->getDevice(), &fenceInfo, nullptr, &testFence);
+    VkFence fenceHandle = VK_NULL_HANDLE;
+    result = vk.vkCreateFence(device, &fenceInfo, nullptr, &fenceHandle);
     if (result != VK_SUCCESS) {
         std::cerr << "ComputeStressTester: Failed to create fence" << std::endl;
         return false;
     }
+    
+    testFence = vulkan_raii::make_fence(fenceHandle, context);
     
     return createTestBuffers() && createTestDescriptors();
 }
@@ -315,20 +324,27 @@ bool ComputeStressTester::createTestDescriptors() {
 }
 
 void ComputeStressTester::destroyTestResources() {
-    if (!context) return;
+    // This method is now obsolete - RAII handles cleanup automatically
+    // Kept for compatibility but no longer needed
+}
+
+void ComputeStressTester::cleanupBeforeContextDestruction() {
+    // Reset RAII wrappers in proper order to prevent use-after-free
+    // Command buffer is freed with pool, so reset command pool last
+    testCommandBuffer = VK_NULL_HANDLE;
+    testDescriptorSet = VK_NULL_HANDLE;
     
-    if (testFence != VK_NULL_HANDLE) {
-        context->getLoader().vkDestroyFence(context->getDevice(), testFence, nullptr);
-        testFence = VK_NULL_HANDLE;
-    }
-    
-    if (testCommandPool != VK_NULL_HANDLE) {
-        context->getLoader().vkDestroyCommandPool(context->getDevice(), testCommandPool, nullptr);
-        testCommandPool = VK_NULL_HANDLE;
-        testCommandBuffer = VK_NULL_HANDLE; // Destroyed with pool
-    }
-    
-    // TODO: Destroy test buffers and descriptors
+    testFence.reset();
+    testDescriptorPool.reset();
+    testEntityBuffer.reset();
+    testEntityMemory.reset();
+    testPositionBuffer.reset();
+    testPositionMemory.reset();
+    testCurrentPosBuffer.reset();
+    testCurrentPosMemory.reset();
+    testTargetPosBuffer.reset();
+    testTargetPosMemory.reset();
+    testCommandPool.reset();
 }
 
 uint32_t ComputeStressTester::findSafeMaxWorkgroups(float targetTimeMs) {

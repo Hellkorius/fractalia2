@@ -9,18 +9,51 @@
 GPUTimeoutDetector::GPUTimeoutDetector(const VulkanContext* context, VulkanSync* sync)
     : context(context), sync(sync) {
     
-    // Skip timestamp query pool creation for now - use CPU timing instead
-    std::cout << "GPUTimeoutDetector: Using CPU-based timing (GPU timestamp queries not available)" << std::endl;
+    // Try to create timestamp query pool, fall back to CPU timing if not supported
+    if (!createTimestampQueryPool()) {
+        std::cout << "GPUTimeoutDetector: Using CPU-based timing (GPU timestamp queries not available)" << std::endl;
+    } else {
+        std::cout << "GPUTimeoutDetector: Using GPU timestamp queries for precise timing" << std::endl;
+    }
     
     recentDispatchTimes.reserve(ROLLING_WINDOW_SIZE);
 }
 
 GPUTimeoutDetector::~GPUTimeoutDetector() {
-    // No timestamp query pool to destroy - using CPU timing
+    // RAII handles cleanup automatically
 }
 
 bool GPUTimeoutDetector::createTimestampQueryPool() {
-    // Not implemented - using CPU timing instead
+    if (!context) return false;
+    
+    // Check if timestamp queries are supported
+    VkPhysicalDeviceProperties props;
+    context->getLoader().vkGetPhysicalDeviceProperties(context->getPhysicalDevice(), &props);
+    
+    if (props.limits.timestampComputeAndGraphics == VK_FALSE) {
+        // Timestamp queries not supported
+        return false;
+    }
+    
+    // Cache loader and device references for performance
+    const auto& vk = context->getLoader();
+    const VkDevice device = context->getDevice();
+    
+    // Create timestamp query pool
+    VkQueryPoolCreateInfo queryPoolInfo{};
+    queryPoolInfo.sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO;
+    queryPoolInfo.queryType = VK_QUERY_TYPE_TIMESTAMP;
+    queryPoolInfo.queryCount = MAX_TIMESTAMP_QUERIES;
+    
+    VkQueryPool queryPoolHandle = VK_NULL_HANDLE;
+    VkResult result = vk.vkCreateQueryPool(device, &queryPoolInfo, nullptr, &queryPoolHandle);
+    
+    if (result != VK_SUCCESS) {
+        std::cerr << "GPUTimeoutDetector: Failed to create timestamp query pool: " << result << std::endl;
+        return false;
+    }
+    
+    timestampQueryPool = vulkan_raii::make_query_pool(queryPoolHandle, context);
     return true;
 }
 
@@ -167,4 +200,9 @@ void GPUTimeoutDetector::resetStats() {
     recentDispatchTimes.clear();
     consecutiveWarnings = 0;
     recommendedMaxWorkgroups = UINT32_MAX;
+}
+
+void GPUTimeoutDetector::cleanupBeforeContextDestruction() {
+    // Reset RAII wrappers to prevent use-after-free
+    timestampQueryPool.reset();
 }
