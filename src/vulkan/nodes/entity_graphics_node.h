@@ -8,7 +8,7 @@
 #include <glm/glm.hpp>
 
 // Forward declarations
-class VulkanPipeline;
+class GraphicsPipelineManager;
 class VulkanSwapchain;
 class ResourceContext;
 class GPUEntityManager;
@@ -21,7 +21,7 @@ public:
         FrameGraphTypes::ResourceId entityBuffer, 
         FrameGraphTypes::ResourceId positionBuffer,
         FrameGraphTypes::ResourceId colorTarget,
-        VulkanPipeline* pipeline,
+        GraphicsPipelineManager* graphicsManager,
         VulkanSwapchain* swapchain,
         ResourceContext* resourceContext,
         GPUEntityManager* gpuEntityManager
@@ -62,7 +62,7 @@ private:
     FrameGraphTypes::ResourceId colorTargetId;
     
     // External dependencies (not owned)
-    VulkanPipeline* pipeline;
+    GraphicsPipelineManager* graphicsManager;
     VulkanSwapchain* swapchain;
     ResourceContext* resourceContext;
     GPUEntityManager* gpuEntityManager;

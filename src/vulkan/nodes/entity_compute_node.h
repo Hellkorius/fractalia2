@@ -5,7 +5,7 @@
 #include "../frame_graph.h"
 
 // Forward declarations
-class VulkanPipeline;
+class ComputePipelineManager;
 class GPUEntityManager;
 
 class EntityComputeNode : public FrameGraphNode {
@@ -17,7 +17,7 @@ public:
         FrameGraphTypes::ResourceId positionBuffer,
         FrameGraphTypes::ResourceId currentPositionBuffer,
         FrameGraphTypes::ResourceId targetPositionBuffer,
-        VulkanPipeline* pipeline,
+        ComputePipelineManager* computeManager,
         GPUEntityManager* gpuEntityManager
     );
     
@@ -40,7 +40,7 @@ private:
     FrameGraphTypes::ResourceId targetPositionBufferId;
     
     // External dependencies (not owned)
-    VulkanPipeline* pipeline;
+    ComputePipelineManager* computeManager;
     GPUEntityManager* gpuEntityManager;
     
     // Frame data for compute shader

@@ -126,8 +126,8 @@ namespace CameraManager {
         // Set initial camera properties
         auto* cam = camera.get_mut<Camera>();
         if (cam) {
-            cam->setPosition(glm::vec3(0.0f, 0.0f, 0.0f));
-            cam->setZoom(1.0f);
+            cam->setPosition(glm::vec3(10.0f, 10.0f, 0.0f));  // Position camera at entity center
+            cam->setZoom(0.3f);  // Zoom out to see all entities (spread over 8.0f radius)
             cam->setRotation(0.0f);
             cam->moveSpeed = 5.0f;
             cam->zoomSpeed = 2.0f;

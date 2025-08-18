@@ -5,7 +5,7 @@
 // Forward declarations
 class VulkanContext;
 class VulkanSwapchain;
-class VulkanPipeline;
+class PipelineSystemManager;
 class GPUSynchronizationService;
 
 struct SurfaceAcquisitionResult {
@@ -23,7 +23,7 @@ public:
     bool initialize(
         VulkanContext* context,
         VulkanSwapchain* swapchain,
-        VulkanPipeline* pipeline,
+        PipelineSystemManager* pipelineSystem,
         GPUSynchronizationService* syncManager
     );
     
@@ -41,7 +41,7 @@ private:
     // Dependencies
     VulkanContext* context = nullptr;
     VulkanSwapchain* swapchain = nullptr;
-    VulkanPipeline* pipeline = nullptr;
+    PipelineSystemManager* pipelineSystem = nullptr;
     GPUSynchronizationService* syncManager = nullptr;
 
     // State tracking

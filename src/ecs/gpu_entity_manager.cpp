@@ -92,7 +92,13 @@ bool GPUEntityManager::initialize(const VulkanContext& context, VulkanSync* sync
         return false;
     }
     
-    std::cout << "GPUEntityManager: Initialized successfully" << std::endl;
+    // Create descriptor set layouts for pipeline system integration
+    if (!createDescriptorSetLayouts()) {
+        std::cerr << "GPUEntityManager: Failed to create descriptor set layouts" << std::endl;
+        return false;
+    }
+    
+    std::cout << "GPUEntityManager: Initialized successfully with descriptor layouts" << std::endl;
     return true;
 }
 
@@ -102,11 +108,28 @@ void GPUEntityManager::cleanup() {
     const auto& loader = context->getLoader();
     VkDevice device = context->getDevice();
     
-    // Cleanup compute descriptor resources
+    // Cleanup descriptor resources
     if (computeDescriptorPool != VK_NULL_HANDLE) {
         loader.vkDestroyDescriptorPool(device, computeDescriptorPool, nullptr);
         computeDescriptorPool = VK_NULL_HANDLE;
         computeDescriptorSet = VK_NULL_HANDLE; // Automatically freed with pool
+    }
+    
+    if (graphicsDescriptorPool != VK_NULL_HANDLE) {
+        loader.vkDestroyDescriptorPool(device, graphicsDescriptorPool, nullptr);
+        graphicsDescriptorPool = VK_NULL_HANDLE;
+        graphicsDescriptorSet = VK_NULL_HANDLE; // Automatically freed with pool
+    }
+    
+    // Cleanup descriptor set layouts
+    if (computeDescriptorSetLayout != VK_NULL_HANDLE) {
+        loader.vkDestroyDescriptorSetLayout(device, computeDescriptorSetLayout, nullptr);
+        computeDescriptorSetLayout = VK_NULL_HANDLE;
+    }
+    
+    if (graphicsDescriptorSetLayout != VK_NULL_HANDLE) {
+        loader.vkDestroyDescriptorSetLayout(device, graphicsDescriptorSetLayout, nullptr);
+        graphicsDescriptorSetLayout = VK_NULL_HANDLE;
     }
     
     if (entityBuffer != VK_NULL_HANDLE) {
@@ -340,5 +363,153 @@ bool GPUEntityManager::createComputeDescriptorSets(VkDescriptorSetLayout layout)
     context->getLoader().vkUpdateDescriptorSets(context->getDevice(), static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
 
     std::cout << "GPUEntityManager: Compute descriptor sets created and updated" << std::endl;
+    return true;
+}
+
+bool GPUEntityManager::createGraphicsDescriptorSets(VkDescriptorSetLayout layout) {
+    // Create graphics descriptor pool
+    VkDescriptorPoolSize poolSizes[] = {
+        {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1},       // Camera matrices
+        {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 2}        // Entity buffer + position buffer
+    };
+
+    VkDescriptorPoolCreateInfo poolInfo{};
+    poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    poolInfo.poolSizeCount = 2;
+    poolInfo.pPoolSizes = poolSizes;
+    poolInfo.maxSets = 1;
+
+    if (context->getLoader().vkCreateDescriptorPool(context->getDevice(), &poolInfo, nullptr, &graphicsDescriptorPool) != VK_SUCCESS) {
+        std::cerr << "GPUEntityManager: Failed to create graphics descriptor pool" << std::endl;
+        return false;
+    }
+
+    // Allocate descriptor set
+    VkDescriptorSetAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    allocInfo.descriptorPool = graphicsDescriptorPool;
+    allocInfo.descriptorSetCount = 1;
+    allocInfo.pSetLayouts = &layout;
+
+    if (context->getLoader().vkAllocateDescriptorSets(context->getDevice(), &allocInfo, &graphicsDescriptorSet) != VK_SUCCESS) {
+        std::cerr << "GPUEntityManager: Failed to allocate graphics descriptor sets" << std::endl;
+        return false;
+    }
+
+    // Update descriptor set with buffer bindings
+    std::array<VkWriteDescriptorSet, 3> descriptorWrites{};
+
+    // Binding 0: Uniform buffer (camera matrices - handled by resource context)
+    // This will be updated externally
+
+    // Binding 1: Entity buffer
+    VkDescriptorBufferInfo entityBufferInfo{};
+    entityBufferInfo.buffer = entityBuffer;
+    entityBufferInfo.offset = 0;
+    entityBufferInfo.range = VK_WHOLE_SIZE;
+
+    descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    descriptorWrites[0].dstSet = graphicsDescriptorSet;
+    descriptorWrites[0].dstBinding = 1;
+    descriptorWrites[0].dstArrayElement = 0;
+    descriptorWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    descriptorWrites[0].descriptorCount = 1;
+    descriptorWrites[0].pBufferInfo = &entityBufferInfo;
+
+    // Binding 2: Position buffer
+    VkDescriptorBufferInfo positionBufferInfo{};
+    positionBufferInfo.buffer = positionBuffer;
+    positionBufferInfo.offset = 0;
+    positionBufferInfo.range = VK_WHOLE_SIZE;
+
+    descriptorWrites[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    descriptorWrites[1].dstSet = graphicsDescriptorSet;
+    descriptorWrites[1].dstBinding = 2;
+    descriptorWrites[1].dstArrayElement = 0;
+    descriptorWrites[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    descriptorWrites[1].descriptorCount = 1;
+    descriptorWrites[1].pBufferInfo = &positionBufferInfo;
+
+    context->getLoader().vkUpdateDescriptorSets(context->getDevice(), 2, descriptorWrites.data(), 0, nullptr);
+
+    std::cout << "GPUEntityManager: Graphics descriptor sets created and updated" << std::endl;
+    return true;
+}
+
+bool GPUEntityManager::createDescriptorSetLayouts() {
+    if (!context) {
+        std::cerr << "GPUEntityManager: Context not initialized" << std::endl;
+        return false;
+    }
+
+    // Create compute descriptor set layout
+    VkDescriptorSetLayoutBinding computeBindings[4] = {};
+    
+    // Binding 0: Entity buffer
+    computeBindings[0].binding = 0;
+    computeBindings[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    computeBindings[0].descriptorCount = 1;
+    computeBindings[0].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+
+    // Binding 1: Position output buffer
+    computeBindings[1].binding = 1;
+    computeBindings[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    computeBindings[1].descriptorCount = 1;
+    computeBindings[1].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+
+    // Binding 2: Current position buffer
+    computeBindings[2].binding = 2;
+    computeBindings[2].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    computeBindings[2].descriptorCount = 1;
+    computeBindings[2].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+
+    // Binding 3: Target position buffer
+    computeBindings[3].binding = 3;
+    computeBindings[3].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    computeBindings[3].descriptorCount = 1;
+    computeBindings[3].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+
+    VkDescriptorSetLayoutCreateInfo computeLayoutInfo{};
+    computeLayoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    computeLayoutInfo.bindingCount = 4;
+    computeLayoutInfo.pBindings = computeBindings;
+
+    if (context->getLoader().vkCreateDescriptorSetLayout(context->getDevice(), &computeLayoutInfo, nullptr, &computeDescriptorSetLayout) != VK_SUCCESS) {
+        std::cerr << "GPUEntityManager: Failed to create compute descriptor set layout" << std::endl;
+        return false;
+    }
+
+    // Create graphics descriptor set layout
+    VkDescriptorSetLayoutBinding graphicsBindings[3] = {};
+    
+    // Binding 0: Uniform buffer (camera matrices)
+    graphicsBindings[0].binding = 0;
+    graphicsBindings[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    graphicsBindings[0].descriptorCount = 1;
+    graphicsBindings[0].stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+
+    // Binding 1: Entity buffer
+    graphicsBindings[1].binding = 1;
+    graphicsBindings[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    graphicsBindings[1].descriptorCount = 1;
+    graphicsBindings[1].stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+
+    // Binding 2: Position buffer
+    graphicsBindings[2].binding = 2;
+    graphicsBindings[2].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    graphicsBindings[2].descriptorCount = 1;
+    graphicsBindings[2].stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+
+    VkDescriptorSetLayoutCreateInfo graphicsLayoutInfo{};
+    graphicsLayoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    graphicsLayoutInfo.bindingCount = 3;
+    graphicsLayoutInfo.pBindings = graphicsBindings;
+
+    if (context->getLoader().vkCreateDescriptorSetLayout(context->getDevice(), &graphicsLayoutInfo, nullptr, &graphicsDescriptorSetLayout) != VK_SUCCESS) {
+        std::cerr << "GPUEntityManager: Failed to create graphics descriptor set layout" << std::endl;
+        return false;
+    }
+
+    std::cout << "GPUEntityManager: Descriptor set layouts created successfully" << std::endl;
     return true;
 }

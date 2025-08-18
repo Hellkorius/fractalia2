@@ -22,6 +22,10 @@ public:
     const std::vector<VkFence>& getInFlightFences() const { return inFlightFences; }
     const std::vector<VkFence>& getComputeFences() const { return computeFences; }
     const std::vector<VkCommandBuffer>& getComputeCommandBuffers() const { return computeCommandBuffers; }
+    
+    // Optimized command buffer management
+    void resetCommandBuffersForFrame(uint32_t frameIndex);
+    void resetAllCommandBuffers();
 
 private:
     const VulkanContext* context = nullptr;

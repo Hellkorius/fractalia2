@@ -1,23 +1,25 @@
 #include "entity_compute_node.h"
-#include "../vulkan_pipeline.h"
+#include "../compute_pipeline_manager.h"
 #include "../../ecs/gpu_entity_manager.h"
 #include "../vulkan_context.h"
 #include "../vulkan_function_loader.h"
+#include "../descriptor_layout_manager.h"
 #include <iostream>
 #include <array>
+#include <glm/glm.hpp>
 
 EntityComputeNode::EntityComputeNode(
     FrameGraphTypes::ResourceId entityBuffer, 
     FrameGraphTypes::ResourceId positionBuffer,
     FrameGraphTypes::ResourceId currentPositionBuffer,
     FrameGraphTypes::ResourceId targetPositionBuffer,
-    VulkanPipeline* pipeline,
+    ComputePipelineManager* computeManager,
     GPUEntityManager* gpuEntityManager
 ) : entityBufferId(entityBuffer)
   , positionBufferId(positionBuffer)
   , currentPositionBufferId(currentPositionBuffer)
   , targetPositionBufferId(targetPositionBuffer)
-  , pipeline(pipeline)
+  , computeManager(computeManager)
   , gpuEntityManager(gpuEntityManager) {
 }
 
@@ -40,7 +42,14 @@ std::vector<ResourceDependency> EntityComputeNode::getOutputs() const {
 }
 
 void EntityComputeNode::execute(VkCommandBuffer commandBuffer, const FrameGraph& frameGraph) {
-    if (!pipeline || !gpuEntityManager) {
+    // TEMPORARY: Disable compute to test if graphics work without it
+    static int frameCount = 0;
+    if (frameCount++ % 60 == 0) {
+        std::cout << "EntityComputeNode: DISABLED for testing (frame " << frameCount << ")" << std::endl;
+    }
+    return;
+    
+    if (!computeManager || !gpuEntityManager) {
         std::cerr << "EntityComputeNode: Missing dependencies" << std::endl;
         return;
     }
@@ -54,50 +63,47 @@ void EntityComputeNode::execute(VkCommandBuffer commandBuffer, const FrameGraph&
         return;
     }
     
-    // Get Vulkan context from frame graph
-    const VulkanContext* context = frameGraph.getContext();
-    if (!context) {
-        std::cerr << "EntityComputeNode: Missing Vulkan context" << std::endl;
+    // Create compute pipeline state for entity movement
+    // Use the pipeline system's compute layout (matches compute shader bindings)
+    auto layoutSpec = DescriptorLayoutPresets::createEntityComputeLayout();
+    VkDescriptorSetLayout descriptorLayout = computeManager->getLayoutManager()->getLayout(layoutSpec);
+    ComputePipelineState pipelineState = ComputePipelinePresets::createEntityMovementState(descriptorLayout);
+    
+    // Create compute dispatch
+    ComputeDispatch dispatch{};
+    dispatch.pipeline = computeManager->getPipeline(pipelineState);
+    dispatch.layout = computeManager->getPipelineLayout(pipelineState);
+    
+    if (dispatch.pipeline == VK_NULL_HANDLE || dispatch.layout == VK_NULL_HANDLE) {
+        std::cerr << "EntityComputeNode: Failed to get compute pipeline" << std::endl;
         return;
     }
     
-    // Bind compute pipeline
-    context->getLoader().vkCmdBindPipeline(
-        commandBuffer, 
-        VK_PIPELINE_BIND_POINT_COMPUTE, 
-        pipeline->getComputePipeline()
-    );
-    
-    // Bind compute descriptor set
+    // Set up descriptor sets
     VkDescriptorSet computeDescriptorSet = gpuEntityManager->getComputeDescriptorSet();
-    context->getLoader().vkCmdBindDescriptorSets(
-        commandBuffer, 
-        VK_PIPELINE_BIND_POINT_COMPUTE, 
-        pipeline->getComputePipelineLayout(), 
-        0, 1, &computeDescriptorSet, 0, nullptr
-    );
+    if (computeDescriptorSet != VK_NULL_HANDLE) {
+        dispatch.descriptorSets.push_back(computeDescriptorSet);
+    }
     
     // Update push constants with current frame data
     pushConstants.entityCount = gpuEntityManager->getEntityCount();
+    dispatch.pushConstantData = &pushConstants;
+    dispatch.pushConstantSize = sizeof(ComputePushConstants);
+    dispatch.pushConstantStages = VK_SHADER_STAGE_COMPUTE_BIT;
     
-    context->getLoader().vkCmdPushConstants(
-        commandBuffer,
-        pipeline->getComputePipelineLayout(),
-        VK_SHADER_STAGE_COMPUTE_BIT,
-        0, sizeof(ComputePushConstants),
-        &pushConstants
-    );
+    // Calculate optimal dispatch size
+    uint32_t entityCount = gpuEntityManager->getEntityCount();
+    dispatch.calculateOptimalDispatch(entityCount, glm::uvec3(32, 1, 1));
     
-    // Dispatch compute shader (32 threads per workgroup for optimal performance)
-    uint32_t numWorkgroups = (pushConstants.entityCount + 31) / 32;
-    context->getLoader().vkCmdDispatch(commandBuffer, numWorkgroups, 1, 1);
+    // Execute compute dispatch using new pipeline manager
+    computeManager->dispatch(commandBuffer, dispatch);
     
     // Debug compute dispatch (once per second)
     static int dispatchCounter = 0;
     if (dispatchCounter++ % 60 == 0) {
-        std::cout << "EntityComputeNode: Dispatched " << numWorkgroups << " workgroups for " 
+        std::cout << "EntityComputeNode: Dispatched " << dispatch.groupCountX << " workgroups for " 
                   << pushConstants.entityCount << " entities (frame=" << pushConstants.frame 
-                  << ", time=" << pushConstants.time << ")" << std::endl;
+                  << ", time=" << pushConstants.time << ") [AAA pipeline]" << std::endl;
     }
 }
 

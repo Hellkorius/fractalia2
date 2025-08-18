@@ -10,7 +10,12 @@ VulkanRenderer (Orchestrator)
 ├── CommandSubmissionService (Queue Management)
 ├── FrameGraphResourceRegistry (Resource Tracking)
 ├── GPUSynchronizationService (Sync Primitives)
-└── PresentationSurface (Swapchain Management)
+├── PresentationSurface (Swapchain Management)
+└── PipelineSystemManager (AAA Pipeline System)
+    ├── ComputePipelineManager (Compute PSO Caching)
+    ├── GraphicsPipelineManager (Graphics PSO Caching)
+    ├── ShaderManager (SPIR-V Loading & Hot-Reload)
+    └── DescriptorLayoutManager (Layout Caching & Pools)
 ```
 
 ### Performance Metrics
@@ -19,7 +24,7 @@ VulkanRenderer (Orchestrator)
 - **Memory**: Cache-optimized 128-byte entity layout
 - **Movement**: 600-frame interpolated random walk with staggered processing
 - **Camera**: WASD + mouse controls with viewport transforms
-- **Stability**: Zero crashes, single frame graph compilation
+- **Stability**: Zero crashes, optimized barriers, cached uniforms
 
 ### Technical Implementation
 - **Frame Graph**: Single compilation with preserved state
@@ -887,7 +892,11 @@ private:
 | `vulkan_renderer.h/.cpp` | `Engine/Renderer/Backend/Vulkan/VulkanRenderer.h/.cpp` | Split monolithic class |
 | `vulkan/vulkan_context.*` | `Engine/Renderer/Backend/Vulkan/VulkanDevice.*` | Rename and focus on device management |
 | `vulkan/vulkan_swapchain.*` | `Engine/Renderer/Backend/Vulkan/VulkanSwapchain.*` | Move under backend |
-| `vulkan/vulkan_pipeline.*` | `Engine/Renderer/Backend/Vulkan/VulkanPipeline.*` | Add material system integration |
+| `vulkan/pipeline_system_manager.*` | `Engine/Renderer/Backend/Vulkan/PipelineSystemManager.*` | AAA pipeline system coordinator |
+| `vulkan/compute_pipeline_manager.*` | `Engine/Renderer/Backend/Vulkan/ComputePipelineManager.*` | Compute PSO caching & dispatch optimization |
+| `vulkan/graphics_pipeline_manager.*` | `Engine/Renderer/Backend/Vulkan/GraphicsPipelineManager.*` | Graphics PSO caching with state objects |
+| `vulkan/shader_manager.*` | `Engine/Renderer/Backend/Vulkan/ShaderManager.*` | SPIR-V loading & hot-reload system |
+| `vulkan/descriptor_layout_manager.*` | `Engine/Renderer/Backend/Vulkan/DescriptorLayoutManager.*` | Layout caching & pool management |
 | `vulkan/resource_context.*` | `Engine/Renderer/Backend/Vulkan/VulkanResourceManager.*` | Rename for clarity |
 | `vulkan/frame_graph.*` | `Engine/Renderer/FrameGraph/FrameGraph.*` | Add interface abstraction |
 | `vulkan/nodes/*` | `Engine/Renderer/FrameGraph/Passes/*` | Preserve existing functionality |

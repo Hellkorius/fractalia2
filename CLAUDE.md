@@ -33,7 +33,11 @@ src/
 │   │   └── swapchain_present_node.* # ✅ Presentation
 │   ├── vulkan_context.*        # Instance, device, queue
 │   ├── vulkan_swapchain.*      # Swapchain, MSAA, framebuffers
-│   ├── vulkan_pipeline.*       # Graphics/compute pipelines
+│   ├── pipeline_system_manager.*    # ✅ AAA pipeline system coordinator
+│   ├── compute_pipeline_manager.*   # ✅ Compute pipeline caching & dispatch
+│   ├── graphics_pipeline_manager.*  # ✅ Graphics pipeline state objects
+│   ├── shader_manager.*            # ✅ SPIR-V loading & hot-reload
+│   ├── descriptor_layout_manager.* # ✅ Descriptor set layout caching
 │   ├── resource_context.*      # Buffer/memory manager
 │   └── vulkan_sync.*           # Fences, semaphores
 ├── ecs/                        # ECS components and systems
@@ -45,7 +49,6 @@ src/
     ├── vertex.vert            # Vertex shader
     └── fragment.frag          # Fragment shader
 ```
-
 
 ## GPUEntity Structure
 ```cpp
@@ -73,31 +76,23 @@ Random walk algorithm with interpolated movement:
 - **GPUSynchronizationService**: GPU synchronization primitives
 - **PresentationSurface**: Swapchain and presentation management
 
-## Architecture Fixes - January 2025
-
-### Frame Graph Compilation Loop
-- **Issue**: `FrameGraph::reset()` clearing `compiled` flag every frame
-- **Fix**: Preserve `compiled` state in `reset()` method
-- **File**: `src/vulkan/frame_graph.cpp:349`
-
-### Frame Synchronization  
-- **Issue**: `frameCounter` stuck at 0, preventing movement cycles
-- **Fix**: Pass `frameCounter` to compute nodes, `currentFrame` to graphics nodes
-- **Files**: `src/vulkan/frame_graph.cpp:222`, `src/vulkan/render_frame_director.cpp:221`
-
-### Camera Viewport Integration
-- **Issue**: World reference not reaching graphics nodes
-- **Fix**: Call `configureFrameGraphNodes()` between acquisition and execution
-- **File**: `src/vulkan/render_frame_director.cpp:75`
-
-### Node Configuration Architecture
-- **Issue**: Hard-coded node IDs causing configuration failures
-- **Fix**: Store node IDs from `addNode()` return values, use for configuration
-- **Files**: `src/vulkan/render_frame_director.h:86-88`, `src/vulkan/render_frame_director.cpp:147-174`
+### Pipeline System
+- **PipelineSystemManager**: Unified interface for all pipeline operations
+- **ComputePipelineManager**: Compute pipeline caching with dispatch optimization
+- **GraphicsPipelineManager**: Graphics pipeline state objects with LRU caching
+- **ShaderManager**: SPIR-V loading, compilation, and hot-reload support
+- **DescriptorLayoutManager**: Descriptor set layout caching and pool management
 
 ## Current Status
 - **Entities**: 80,000 at 60 FPS
 - **Movement**: 600-frame interpolated random walk cycles
 - **Camera**: WASD + mouse wheel + rotation controls
-- **Stability**: Zero crashes, single frame graph compilation
-- **Features**: Entity spawning, compute-driven movement, camera integration
+- **Stability**: Zero crashes, optimized barrier insertion, uniform buffer caching
+- **Performance**: Linear frame graph barriers, dirty tracking, batch command resets
+
+## Planned Extensions
+- **Multi-queue async compute**: Overlapped compute/graphics execution
+- **GPU memory monitoring**: Dynamic quality scaling based on usage
+- **Device lost recovery**: Robust error handling for driver issues
+- **Frame timing metrics**: Performance visibility and bottleneck identification
+- **Command buffer pooling**: Enhanced driver optimization beyond current batch resets

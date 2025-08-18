@@ -10,11 +10,11 @@
 // Forward declarations
 class VulkanContext;
 class VulkanSwapchain;
-class VulkanPipeline;
 class VulkanSync;
 class ResourceContext;
 class GPUEntityManager;
 class MovementCommandProcessor;
+class PipelineSystemManager;
 
 struct RenderFrameResult {
     bool success = false;
@@ -30,7 +30,7 @@ public:
     bool initialize(
         VulkanContext* context,
         VulkanSwapchain* swapchain,
-        VulkanPipeline* pipeline,
+        PipelineSystemManager* pipelineSystem,
         VulkanSync* sync,
         ResourceContext* resourceContext,
         GPUEntityManager* gpuEntityManager,
@@ -64,7 +64,7 @@ private:
     // Dependencies
     VulkanContext* context = nullptr;
     VulkanSwapchain* swapchain = nullptr;
-    VulkanPipeline* pipeline = nullptr;
+    PipelineSystemManager* pipelineSystem = nullptr;
     VulkanSync* sync = nullptr;
     ResourceContext* resourceContext = nullptr;
     GPUEntityManager* gpuEntityManager = nullptr;

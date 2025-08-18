@@ -14,12 +14,11 @@ layout(push_constant) uniform ComputePushConstants {
 // Input: GPUEntity buffer (read/write for state updates)
 layout(std430, binding = 0) buffer GPUEntityBuffer {
     // Cache-optimized GPUEntity structure (128 bytes each):
-    // Cache Line 1 (positions 0-3): HOT DATA - All frequently accessed in compute shaders
+    // C++ struct layout matches this comment:
     //   vec4 movementParams0 (16 bytes) - position 0: amplitude, frequency, phase, timeOffset
     //   vec4 movementParams1 (16 bytes) - position 1: center.xyz, movementType  
     //   vec4 runtimeState (16 bytes) - position 2: totalTime, initialized, stateTimer, entityState
     //   vec4 color (16 bytes) - position 3: RGBA color
-    // Cache Line 2 (positions 4-7): COLD DATA - Rarely accessed
     //   mat4 modelMatrix (64 bytes) - positions 4-7: transform matrix (graphics only)
     vec4 entityData[];
 } entities;
@@ -107,15 +106,16 @@ void main() {
     // Calculate base offset for this entity (8 vec4s per entity = 128 bytes)
     uint baseOffset = entityIndex * 8;
     
-    // Extract movement parameters from cache-optimized GPUEntity structure
-    // Hot data access - movementParams0: amplitude, frequency, phase, timeOffset
+    // Extract movement parameters from GPUEntity structure
+    // Actual C++ layout: movementParams0 + movementParams1 + runtimeState + color + modelMatrix(4 vec4s)
+    // movementParams0: amplitude, frequency, phase, timeOffset
     vec4 movementParams0 = entities.entityData[baseOffset + 0];
     float amplitude = movementParams0.x;
     float frequency = movementParams0.y;
     float phase = movementParams0.z;
     float timeOffset = movementParams0.w;
     
-    // Hot data access - movementParams1: center.xyz, movementType
+    // movementParams1: center.xyz, movementType
     vec4 movementParams1 = entities.entityData[baseOffset + 1];
     vec3 center = movementParams1.xyz;
     // movementType is always 0.0 for random walk - no need to extract

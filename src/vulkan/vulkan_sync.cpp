@@ -119,3 +119,34 @@ bool VulkanSync::createSyncObjects() {
     return true;
 }
 
+void VulkanSync::resetCommandBuffersForFrame(uint32_t frameIndex) {
+    if (frameIndex >= MAX_FRAMES_IN_FLIGHT || !context) return;
+    
+    // Reset both graphics and compute command buffers for this frame
+    if (frameIndex < commandBuffers.size()) {
+        context->getLoader().vkResetCommandBuffer(commandBuffers[frameIndex], 0);
+    }
+    if (frameIndex < computeCommandBuffers.size()) {
+        context->getLoader().vkResetCommandBuffer(computeCommandBuffers[frameIndex], 0);
+    }
+}
+
+void VulkanSync::resetAllCommandBuffers() {
+    if (!context) return;
+    
+    // Optimized: Use vkResetCommandPool for batch reset of all buffers
+    // This is more efficient than individual resets when resetting many buffers
+    VkResult result = context->getLoader().vkResetCommandPool(context->getDevice(), commandPool, 0);
+    if (result != VK_SUCCESS) {
+        std::cerr << "VulkanSync: Failed to reset command pool, falling back to individual resets" << std::endl;
+        
+        // Fallback to individual resets if pool reset fails
+        for (size_t i = 0; i < commandBuffers.size(); ++i) {
+            context->getLoader().vkResetCommandBuffer(commandBuffers[i], 0);
+        }
+        for (size_t i = 0; i < computeCommandBuffers.size(); ++i) {
+            context->getLoader().vkResetCommandBuffer(computeCommandBuffers[i], 0);
+        }
+    }
+}
+

@@ -613,8 +613,9 @@ void FrameGraph::insertSynchronizationBarriers() {
         if (nodeIt == nodes.end()) continue;
         
         auto& node = nodeIt->second;
-        bool isComputeNode = node->needsComputeQueue();
         bool isGraphicsNode = node->needsGraphicsQueue();
+        // Note: isComputeNode could be used for future compute-specific barrier optimizations
+        (void)node->needsComputeQueue(); // Suppress unused variable warning
         
         // Process node inputs - check for barriers needed
         auto inputs = node->getInputs();

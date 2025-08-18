@@ -105,8 +105,8 @@ int main(int argc, char* argv[]) {
     InputManager::createInputEntity(world);
     InputManager::setWindow(window);
     
-    // Create simple camera entity
-    world.entity("MainCamera").set<Camera>({});
+    // Create camera entity with proper initialization
+    CameraManager::createMainCamera(world);
     DEBUG_LOG("Camera entities: " << world.count<Camera>());
     
     // Set world reference in renderer for camera integration

@@ -1,5 +1,5 @@
 #include "entity_graphics_node.h"
-#include "../vulkan_pipeline.h"
+#include "../graphics_pipeline_manager.h"
 #include "../vulkan_swapchain.h"
 #include "../resource_context.h"
 #include "../../ecs/gpu_entity_manager.h"
@@ -7,6 +7,7 @@
 #include "../vulkan_function_loader.h"
 #include "../../ecs/systems/camera_system.h"
 #include "../../ecs/camera_component.h"
+#include "../descriptor_layout_manager.h"
 #include <iostream>
 #include <array>
 #include <glm/glm.hpp>
@@ -17,14 +18,14 @@ EntityGraphicsNode::EntityGraphicsNode(
     FrameGraphTypes::ResourceId entityBuffer, 
     FrameGraphTypes::ResourceId positionBuffer,
     FrameGraphTypes::ResourceId colorTarget,
-    VulkanPipeline* pipeline,
+    GraphicsPipelineManager* graphicsManager,
     VulkanSwapchain* swapchain,
     ResourceContext* resourceContext,
     GPUEntityManager* gpuEntityManager
 ) : entityBufferId(entityBuffer)
   , positionBufferId(positionBuffer)
   , colorTargetId(colorTarget)
-  , pipeline(pipeline)
+  , graphicsManager(graphicsManager)
   , swapchain(swapchain)
   , resourceContext(resourceContext)
   , gpuEntityManager(gpuEntityManager) {
@@ -44,8 +45,17 @@ std::vector<ResourceDependency> EntityGraphicsNode::getOutputs() const {
 }
 
 void EntityGraphicsNode::execute(VkCommandBuffer commandBuffer, const FrameGraph& frameGraph) {
-    if (!pipeline || !swapchain || !resourceContext || !gpuEntityManager) {
+    if (!graphicsManager || !swapchain || !resourceContext || !gpuEntityManager) {
         std::cerr << "EntityGraphicsNode: Missing dependencies" << std::endl;
+        return;
+    }
+    
+    // Only render if we have entities to draw
+    if (gpuEntityManager->getEntityCount() == 0) {
+        static int noEntitiesCounter = 0;
+        if (noEntitiesCounter++ % 60 == 0) {
+            std::cout << "EntityGraphicsNode: No entities to render" << std::endl;
+        }
         return;
     }
     
@@ -59,23 +69,60 @@ void EntityGraphicsNode::execute(VkCommandBuffer commandBuffer, const FrameGraph
     // Update uniform buffer with camera matrices
     updateUniformBuffer();
     
+    // Create graphics pipeline state for entity rendering - use same layout as ResourceContext
+    auto layoutSpec = DescriptorLayoutPresets::createEntityGraphicsLayout();
+    VkDescriptorSetLayout descriptorLayout = graphicsManager->getLayoutManager()->getLayout(layoutSpec);
+    // Get the render pass that was used to create the framebuffers
+    VkRenderPass renderPass = graphicsManager->createRenderPass(
+        swapchain->getImageFormat(), 
+        VK_FORMAT_UNDEFINED,  // No depth (match VulkanRenderer setup)
+        VK_SAMPLE_COUNT_2_BIT, // MSAA samples
+        true  // Enable MSAA
+    );
+    
+    GraphicsPipelineState pipelineState = GraphicsPipelinePresets::createEntityRenderingState(
+        renderPass, descriptorLayout);
+    
+    // Get pipeline and layout
+    VkPipeline pipeline = graphicsManager->getPipeline(pipelineState);
+    VkPipelineLayout pipelineLayout = graphicsManager->getPipelineLayout(pipelineState);
+    
+    if (pipeline == VK_NULL_HANDLE || pipelineLayout == VK_NULL_HANDLE) {
+        std::cerr << "EntityGraphicsNode: Failed to get graphics pipeline" << std::endl;
+        return;
+    }
+    
     // Begin render pass
     VkRenderPassBeginInfo renderPassInfo{};
     renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-    renderPassInfo.renderPass = pipeline->getRenderPass();
+    renderPassInfo.renderPass = renderPass;
     renderPassInfo.framebuffer = swapchain->getFramebuffers()[imageIndex];
     renderPassInfo.renderArea.offset = {0, 0};
     renderPassInfo.renderArea.extent = swapchain->getExtent();
 
-    // Clear values: MSAA color, resolve color, depth
-    std::array<VkClearValue, 3> clearValues{};
+    // Clear values: MSAA color, resolve color (no depth)
+    std::array<VkClearValue, 2> clearValues{};
     clearValues[0].color = {{0.1f, 0.1f, 0.2f, 1.0f}};  // MSAA color attachment
     clearValues[1].color = {{0.1f, 0.1f, 0.2f, 1.0f}};  // Resolve attachment
-    clearValues[2].depthStencil = {1.0f, 0};             // Depth attachment
     renderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
     renderPassInfo.pClearValues = clearValues.data();
 
     context->getLoader().vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
+
+    // Set dynamic viewport and scissor
+    VkViewport viewport{};
+    viewport.x = 0.0f;
+    viewport.y = 0.0f;
+    viewport.width = static_cast<float>(swapchain->getExtent().width);
+    viewport.height = static_cast<float>(swapchain->getExtent().height);
+    viewport.minDepth = 0.0f;
+    viewport.maxDepth = 1.0f;
+    context->getLoader().vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
+
+    VkRect2D scissor{};
+    scissor.offset = {0, 0};
+    scissor.extent = swapchain->getExtent();
+    context->getLoader().vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
     // Get entity count for rendering
     uint32_t gpuEntityCount = gpuEntityManager->getEntityCount();
@@ -84,18 +131,21 @@ void EntityGraphicsNode::execute(VkCommandBuffer commandBuffer, const FrameGraph
     context->getLoader().vkCmdBindPipeline(
         commandBuffer, 
         VK_PIPELINE_BIND_POINT_GRAPHICS, 
-        pipeline->getGraphicsPipeline()
+        pipeline
     );
     
-    // Bind descriptor sets (uniform buffers, etc.)
-    const auto& descriptorSets = resourceContext->getGraphicsDescriptorSets();
-    // Note: Using currentFrameIndex for descriptor set selection
-    context->getLoader().vkCmdBindDescriptorSets(
-        commandBuffer, 
-        VK_PIPELINE_BIND_POINT_GRAPHICS, 
-        pipeline->getPipelineLayout(), 
-        0, 1, &descriptorSets[currentFrameIndex], 0, nullptr
-    );
+    // Bind descriptor sets from ResourceContext (includes uniform buffer + position buffer)
+    const auto& resourceDescriptorSets = resourceContext->getGraphicsDescriptorSets();
+    if (!resourceDescriptorSets.empty() && currentFrameIndex < resourceDescriptorSets.size()) {
+        VkDescriptorSet descriptorSet = resourceDescriptorSets[currentFrameIndex];
+        context->getLoader().vkCmdBindDescriptorSets(
+            commandBuffer,
+            VK_PIPELINE_BIND_POINT_GRAPHICS,
+            pipelineLayout,
+            0, 1, &descriptorSet,
+            0, nullptr
+        );
+    }
 
     // Push constants for vertex shader
     struct VertexPushConstants {
@@ -110,27 +160,11 @@ void EntityGraphicsNode::execute(VkCommandBuffer commandBuffer, const FrameGraph
     
     context->getLoader().vkCmdPushConstants(
         commandBuffer, 
-        pipeline->getPipelineLayout(),
+        pipelineLayout,
         VK_SHADER_STAGE_VERTEX_BIT, 
         0, sizeof(VertexPushConstants), 
         &vertexPushConstants
     );
-
-    // Set viewport
-    VkViewport viewport{};
-    viewport.x = 0.0f;
-    viewport.y = 0.0f;
-    viewport.width = static_cast<float>(swapchain->getExtent().width);
-    viewport.height = static_cast<float>(swapchain->getExtent().height);
-    viewport.minDepth = 0.0f;
-    viewport.maxDepth = 1.0f;
-    context->getLoader().vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
-
-    // Set scissor
-    VkRect2D scissor{};
-    scissor.offset = {0, 0};
-    scissor.extent = swapchain->getExtent();
-    context->getLoader().vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
     // Draw entities if we have any
     if (gpuEntityCount > 0) {
@@ -158,7 +192,13 @@ void EntityGraphicsNode::execute(VkCommandBuffer commandBuffer, const FrameGraph
             0, 0, 0                          // Index/vertex/instance offsets
         );
         
-        // Drew entities
+        // Debug: confirm draw call (once per second)
+        static int drawCounter = 0;
+        if (drawCounter++ % 60 == 0) {
+            std::cout << "EntityGraphicsNode: Drew " << gpuEntityCount 
+                      << " entities with " << resourceContext->getIndexCount() 
+                      << " indices per triangle" << std::endl;
+        }
     }
 
     // End render pass
@@ -187,6 +227,8 @@ void EntityGraphicsNode::updateUniformBuffer() {
             static int debugCounter = 0;
             if (debugCounter++ % 60 == 0) {
                 std::cout << "EntityGraphicsNode: Using camera matrices from ECS" << std::endl;
+                std::cout << "  View matrix[3]: " << newUBO.view[3][0] << ", " << newUBO.view[3][1] << ", " << newUBO.view[3][2] << std::endl;
+                std::cout << "  Proj matrix[0][0]: " << newUBO.proj[0][0] << ", [1][1]: " << newUBO.proj[1][1] << std::endl;
             }
         } else {
             // Fallback to default matrices if no camera found

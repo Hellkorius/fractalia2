@@ -59,9 +59,16 @@ public:
     uint32_t getMaxEntities() const { return MAX_ENTITIES; }
     bool hasPendingUploads() const { return !stagingEntities.empty(); }
     
-    // Compute descriptor set support for frame graph
+    // Descriptor set support for frame graph
     bool createComputeDescriptorSets(VkDescriptorSetLayout layout);
+    bool createGraphicsDescriptorSets(VkDescriptorSetLayout layout);
     VkDescriptorSet getComputeDescriptorSet() const { return computeDescriptorSet; }
+    VkDescriptorSet getGraphicsDescriptorSet() const { return graphicsDescriptorSet; }
+    
+    // Descriptor set layout creation for pipeline system integration
+    VkDescriptorSetLayout getComputeDescriptorSetLayout() const { return computeDescriptorSetLayout; }
+    VkDescriptorSetLayout getGraphicsDescriptorSetLayout() const { return graphicsDescriptorSetLayout; }
+    bool createDescriptorSetLayouts();
 
 private:
     static constexpr uint32_t MAX_ENTITIES = 131072; // 128k entities max
@@ -90,9 +97,13 @@ private:
     std::vector<GPUEntity> stagingEntities;
     uint32_t activeEntityCount = 0;
     
-    // Compute descriptor sets
+    // Descriptor sets and layouts
     VkDescriptorPool computeDescriptorPool = VK_NULL_HANDLE;
+    VkDescriptorPool graphicsDescriptorPool = VK_NULL_HANDLE;
     VkDescriptorSet computeDescriptorSet = VK_NULL_HANDLE;
+    VkDescriptorSet graphicsDescriptorSet = VK_NULL_HANDLE;
+    VkDescriptorSetLayout computeDescriptorSetLayout = VK_NULL_HANDLE;
+    VkDescriptorSetLayout graphicsDescriptorSetLayout = VK_NULL_HANDLE;
     
     // Helper methods
     bool createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkBuffer& buffer, VkDeviceMemory& bufferMemory);

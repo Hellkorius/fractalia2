@@ -10,11 +10,11 @@
 #include <flecs.h>
 #include "vulkan/vulkan_constants.h"
 #include "vulkan/frame_graph.h"
+#include "vulkan/pipeline_system_manager.h"
 
 // Forward declarations for modules
 class VulkanContext;
 class VulkanSwapchain;
-class VulkanPipeline;
 class VulkanSync;
 class ResourceContext;
 class GPUEntityManager;
@@ -80,11 +80,13 @@ private:
     // Core Vulkan modules
     std::unique_ptr<VulkanContext> context;
     std::unique_ptr<VulkanSwapchain> swapchain;
-    std::unique_ptr<VulkanPipeline> pipeline;
     std::unique_ptr<VulkanSync> sync;
     std::unique_ptr<ResourceContext> resourceContext;
     std::unique_ptr<GPUEntityManager> gpuEntityManager;
     std::unique_ptr<MovementCommandProcessor> movementCommandProcessor;
+    
+    // AAA Pipeline System
+    std::unique_ptr<class PipelineSystemManager> pipelineSystem;
     
     // Render graph system
     std::unique_ptr<FrameGraph> frameGraph;

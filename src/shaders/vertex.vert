@@ -18,7 +18,7 @@ layout(location = 0) in vec3 inPos;
 layout(location = 7) in vec4 ampFreqPhaseOff;  // amplitude, frequency, phase, timeOffset
 layout(location = 8) in vec4 centerType;       // center.xyz, movementType (always 0 for random walk)
 
-// Pre-computed positions from compute shader
+// Pre-computed positions from compute shader (binding = 2 matches graphics descriptor binding)
 layout(std430, binding = 2) readonly buffer ComputedPositions {
     vec4 computedPos[];
 };

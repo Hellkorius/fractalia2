@@ -129,6 +129,7 @@ public:
     PFN_vkAllocateCommandBuffers vkAllocateCommandBuffers = nullptr;
     PFN_vkFreeCommandBuffers vkFreeCommandBuffers = nullptr;
     PFN_vkResetCommandBuffer vkResetCommandBuffer = nullptr;
+    PFN_vkResetCommandPool vkResetCommandPool = nullptr;
     PFN_vkBeginCommandBuffer vkBeginCommandBuffer = nullptr;
     PFN_vkEndCommandBuffer vkEndCommandBuffer = nullptr;
     

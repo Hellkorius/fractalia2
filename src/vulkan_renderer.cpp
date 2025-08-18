@@ -2,7 +2,6 @@
 #include "vulkan/vulkan_function_loader.h"
 #include "vulkan/vulkan_context.h"
 #include "vulkan/vulkan_swapchain.h"
-#include "vulkan/vulkan_pipeline.h"
 #include "vulkan/vulkan_sync.h"
 #include "vulkan/resource_context.h"
 #include "vulkan/frame_graph.h"
@@ -14,6 +13,7 @@
 #include "vulkan/frame_graph_resource_registry.h"
 #include "vulkan/gpu_synchronization_service.h"
 #include "vulkan/presentation_surface.h"
+#include "vulkan/pipeline_system_manager.h"
 #include "ecs/gpu_entity_manager.h"
 #include "ecs/component.h"
 #include "ecs/systems/camera_system.h"
@@ -55,13 +55,22 @@ bool VulkanRenderer::initialize(SDL_Window* window) {
         return false;
     }
     
-    pipeline = std::make_unique<VulkanPipeline>();
-    if (!pipeline->initialize(*context, swapchain->getImageFormat())) {
-        std::cerr << "Failed to initialize Vulkan pipeline" << std::endl;
+    // Initialize AAA Pipeline System
+    pipelineSystem = std::make_unique<PipelineSystemManager>();
+    if (!pipelineSystem->initialize(*context)) {
+        std::cerr << "Failed to initialize AAA Pipeline System" << std::endl;
         return false;
     }
     
-    if (!swapchain->createFramebuffers(pipeline->getRenderPass())) {
+    // Create render pass using new pipeline system
+    VkRenderPass renderPass = pipelineSystem->getGraphicsManager()->createRenderPass(
+        swapchain->getImageFormat(), VK_FORMAT_UNDEFINED, VK_SAMPLE_COUNT_2_BIT, true);
+    if (renderPass == VK_NULL_HANDLE) {
+        std::cerr << "Failed to create render pass" << std::endl;
+        return false;
+    }
+    
+    if (!swapchain->createFramebuffers(renderPass)) {
         std::cerr << "Failed to create framebuffers" << std::endl;
         return false;
     }
@@ -88,12 +97,20 @@ bool VulkanRenderer::initialize(SDL_Window* window) {
         return false;
     }
     
-    if (!resourceContext->createGraphicsDescriptorPool(pipeline->getDescriptorSetLayout())) {
+    // Create descriptor layout using new pipeline system
+    auto layoutSpec = DescriptorLayoutPresets::createEntityGraphicsLayout();
+    VkDescriptorSetLayout descriptorLayout = pipelineSystem->getLayoutManager()->getLayout(layoutSpec);
+    if (descriptorLayout == VK_NULL_HANDLE) {
+        std::cerr << "Failed to create descriptor layout" << std::endl;
+        return false;
+    }
+    
+    if (!resourceContext->createGraphicsDescriptorPool(descriptorLayout)) {
         std::cerr << "Failed to create descriptor pool" << std::endl;
         return false;
     }
     
-    if (!resourceContext->createGraphicsDescriptorSets(pipeline->getDescriptorSetLayout())) {
+    if (!resourceContext->createGraphicsDescriptorSets(descriptorLayout)) {
         std::cerr << "Failed to create descriptor sets" << std::endl;
         return false;
     }
@@ -112,8 +129,16 @@ bool VulkanRenderer::initialize(SDL_Window* window) {
     }
     std::cout << "Graphics descriptor sets updated with position buffer" << std::endl;
     
+    // Create compute descriptor layout using new pipeline system
+    auto computeLayoutSpec = DescriptorLayoutPresets::createEntityComputeLayout();
+    VkDescriptorSetLayout computeDescriptorLayout = pipelineSystem->getLayoutManager()->getLayout(computeLayoutSpec);
+    if (computeDescriptorLayout == VK_NULL_HANDLE) {
+        std::cerr << "Failed to create compute descriptor layout" << std::endl;
+        return false;
+    }
+    
     // Create compute descriptor sets for GPU entity manager
-    if (!gpuEntityManager->createComputeDescriptorSets(pipeline->getComputeDescriptorSetLayout())) {
+    if (!gpuEntityManager->createComputeDescriptorSets(computeDescriptorLayout)) {
         std::cerr << "Failed to create compute descriptor sets" << std::endl;
         return false;
     }
@@ -128,6 +153,10 @@ bool VulkanRenderer::initialize(SDL_Window* window) {
         return false;
     }
     
+    // Warmup common pipelines for better performance
+    pipelineSystem->warmupCommonPipelines();
+    
+    std::cout << "VulkanRenderer: AAA Pipeline System initialization complete" << std::endl;
     
     initialized = true;
     return true;
@@ -145,7 +174,7 @@ void VulkanRenderer::cleanup() {
     gpuEntityManager.reset();
     resourceContext.reset();
     sync.reset();
-    pipeline.reset();
+    pipelineSystem.reset();
     swapchain.reset();
     context.reset();
     
@@ -189,7 +218,7 @@ bool VulkanRenderer::initializeModularArchitecture() {
     
     // Initialize swapchain coordinator
     presentationSurface = std::make_unique<PresentationSurface>();
-    if (!presentationSurface->initialize(context.get(), swapchain.get(), pipeline.get(), syncService.get())) {
+    if (!presentationSurface->initialize(context.get(), swapchain.get(), pipelineSystem.get(), syncService.get())) {
         std::cerr << "Failed to initialize swapchain coordinator" << std::endl;
         return false;
     }
@@ -199,7 +228,7 @@ bool VulkanRenderer::initializeModularArchitecture() {
     if (!frameDirector->initialize(
         context.get(),
         swapchain.get(), 
-        pipeline.get(),
+        pipelineSystem.get(),
         sync.get(),
         resourceContext.get(),
         gpuEntityManager.get(),

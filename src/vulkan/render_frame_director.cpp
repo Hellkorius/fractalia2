@@ -1,7 +1,7 @@
 #include "render_frame_director.h"
 #include "vulkan_context.h"
 #include "vulkan_swapchain.h"
-#include "vulkan_pipeline.h"
+#include "pipeline_system_manager.h"
 #include "vulkan_sync.h"
 #include "resource_context.h"
 #include "nodes/entity_compute_node.h"
@@ -21,7 +21,7 @@ RenderFrameDirector::~RenderFrameDirector() {
 bool RenderFrameDirector::initialize(
     VulkanContext* context,
     VulkanSwapchain* swapchain,
-    VulkanPipeline* pipeline,
+    PipelineSystemManager* pipelineSystem,
     VulkanSync* sync,
     ResourceContext* resourceContext,
     GPUEntityManager* gpuEntityManager,
@@ -30,7 +30,7 @@ bool RenderFrameDirector::initialize(
 ) {
     this->context = context;
     this->swapchain = swapchain;
-    this->pipeline = pipeline;
+    this->pipelineSystem = pipelineSystem;
     this->sync = sync;
     this->resourceContext = resourceContext;
     this->gpuEntityManager = gpuEntityManager;
@@ -149,7 +149,7 @@ void RenderFrameDirector::setupFrameGraph(uint32_t imageIndex) {
             positionBufferId,
             currentPositionBufferId,
             targetPositionBufferId,
-            pipeline,
+            pipelineSystem->getComputeManager(),
             gpuEntityManager
         );
         
@@ -157,7 +157,7 @@ void RenderFrameDirector::setupFrameGraph(uint32_t imageIndex) {
             entityBufferId,
             positionBufferId,
             swapchainImageId,
-            pipeline,
+            pipelineSystem->getGraphicsManager(),
             swapchain,
             resourceContext,
             gpuEntityManager
@@ -224,11 +224,8 @@ bool RenderFrameDirector::compileFrameGraph(uint32_t currentFrame, float totalTi
         return false;
     }
     
-    // Reset command buffers
-    const auto& computeCommandBuffers = sync->getComputeCommandBuffers();
-    const auto& commandBuffers = sync->getCommandBuffers();
-    context->getLoader().vkResetCommandBuffer(computeCommandBuffers[currentFrame], 0);
-    context->getLoader().vkResetCommandBuffer(commandBuffers[currentFrame], 0);
+    // Optimized command buffer reset - batch reset for this frame
+    sync->resetCommandBuffersForFrame(currentFrame);
     
     // Update frame data in nodes (AAA pattern: frame graph manages per-frame data)
     frameGraph->updateFrameData(totalTime, deltaTime, frameCounter, currentFrame);

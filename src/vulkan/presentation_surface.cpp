@@ -1,7 +1,7 @@
 #include "presentation_surface.h"
 #include "vulkan_context.h"
 #include "vulkan_swapchain.h"
-#include "vulkan_pipeline.h"
+#include "pipeline_system_manager.h"
 #include "vulkan_function_loader.h"
 #include "gpu_synchronization_service.h"
 #include <iostream>
@@ -16,12 +16,12 @@ PresentationSurface::~PresentationSurface() {
 bool PresentationSurface::initialize(
     VulkanContext* context,
     VulkanSwapchain* swapchain,
-    VulkanPipeline* pipeline,
+    PipelineSystemManager* pipelineSystem,
     GPUSynchronizationService* syncManager
 ) {
     this->context = context;
     this->swapchain = swapchain;
-    this->pipeline = pipeline;
+    this->pipelineSystem = pipelineSystem;
     this->syncManager = syncManager;
     return true;
 }
@@ -77,20 +77,20 @@ bool PresentationSurface::recreateSwapchain() {
         return false;
     }
 
-    // Recreate swapchain
-    if (!swapchain->recreate(pipeline->getRenderPass())) {
+    // Recreate render pass for new swapchain format
+    if (!pipelineSystem->recreateRenderPass(swapchain->getImageFormat())) {
         recreationInProgress = false;
         return false;
     }
 
-    // Recreate pipeline for new swapchain format
-    if (!pipeline->recreate(swapchain->getImageFormat())) {
+    // Recreate swapchain
+    if (!swapchain->recreate(pipelineSystem->getCurrentRenderPass())) {
         recreationInProgress = false;
         return false;
     }
 
     // Recreate framebuffers
-    if (!swapchain->createFramebuffers(pipeline->getRenderPass())) {
+    if (!swapchain->createFramebuffers(pipelineSystem->getCurrentRenderPass())) {
         recreationInProgress = false;
         return false;
     }
