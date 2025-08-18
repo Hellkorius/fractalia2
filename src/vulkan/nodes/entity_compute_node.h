@@ -37,6 +37,22 @@ public:
     void updateFrameData(float time, float deltaTime, uint32_t frameCounter);
 
 private:
+    // Dispatch parameters struct
+    struct DispatchParams {
+        uint32_t totalWorkgroups;
+        uint32_t maxWorkgroupsPerChunk;
+        bool useChunking;
+    };
+    
+    // Helper method for chunked dispatch execution
+    void executeChunkedDispatch(
+        VkCommandBuffer commandBuffer, 
+        const VulkanContext* context, 
+        const class ComputeDispatch& dispatch,
+        uint32_t totalWorkgroups,
+        uint32_t maxWorkgroupsPerChunk,
+        uint32_t entityCount);
+    
     FrameGraphTypes::ResourceId entityBufferId;
     FrameGraphTypes::ResourceId positionBufferId;
     FrameGraphTypes::ResourceId currentPositionBufferId;

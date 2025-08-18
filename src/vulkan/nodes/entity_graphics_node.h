@@ -56,6 +56,16 @@ private:
     // Internal uniform buffer update
     void updateUniformBuffer();
     
+    // Uniform buffer optimization - cache and dirty tracking
+    struct CachedUBO {
+        glm::mat4 view;
+        glm::mat4 proj;
+    } cachedUBO{};
+    
+    // Helper methods for camera matrix management
+    CachedUBO getCameraMatrices();
+    bool updateUniformBufferData(const CachedUBO& ubo);
+    
     // Resources
     FrameGraphTypes::ResourceId entityBufferId;
     FrameGraphTypes::ResourceId positionBufferId;
@@ -75,12 +85,6 @@ private:
     
     // ECS world reference for camera matrices
     flecs::world* world = nullptr;
-    
-    // Uniform buffer optimization - cache and dirty tracking
-    struct CachedUBO {
-        glm::mat4 view;
-        glm::mat4 proj;
-    } cachedUBO{};
     
     bool uniformBufferDirty = true;  // Force update on first frame
     uint32_t lastUpdatedFrameIndex = UINT32_MAX; // Track which frame index was last updated

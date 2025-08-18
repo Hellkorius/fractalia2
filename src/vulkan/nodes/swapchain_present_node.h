@@ -27,6 +27,9 @@ public:
     
     // Update swapchain image index for current frame
     void setImageIndex(uint32_t imageIndex) { this->imageIndex = imageIndex; }
+    
+    // Get current image index (for debugging/validation)
+    uint32_t getImageIndex() const { return imageIndex; }
 
 private:
     FrameGraphTypes::ResourceId colorTargetId;

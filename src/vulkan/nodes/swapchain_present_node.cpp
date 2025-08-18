@@ -4,11 +4,38 @@
 #include "../core/vulkan_function_loader.h"
 #include <iostream>
 
+namespace {
+    // Validation helper for presentation node
+    class PresentationValidator {
+    public:
+        static bool validateDependencies(VulkanSwapchain* swapchain, const char* context) {
+            if (!swapchain) {
+                std::cerr << context << ": Missing swapchain dependency" << std::endl;
+                return false;
+            }
+            return true;
+        }
+        
+        static bool validateContext(const VulkanContext* context, const char* nodeContext) {
+            if (!context) {
+                std::cerr << nodeContext << ": Missing Vulkan context from frame graph" << std::endl;
+                return false;
+            }
+            return true;
+        }
+    };
+}
+
 SwapchainPresentNode::SwapchainPresentNode(
     FrameGraphTypes::ResourceId colorTarget,
     VulkanSwapchain* swapchain
 ) : colorTargetId(colorTarget)
   , swapchain(swapchain) {
+    
+    // Validate constructor parameters
+    if (!PresentationValidator::validateDependencies(swapchain, "SwapchainPresentNode::constructor")) {
+        // Constructor validation failed - log but continue (error will be caught in execute)
+    }
 }
 
 std::vector<ResourceDependency> SwapchainPresentNode::getInputs() const {
@@ -23,24 +50,27 @@ std::vector<ResourceDependency> SwapchainPresentNode::getOutputs() const {
 }
 
 void SwapchainPresentNode::execute(VkCommandBuffer commandBuffer, const FrameGraph& frameGraph) {
-    if (!swapchain) {
-        std::cerr << "SwapchainPresentNode: Missing swapchain" << std::endl;
+    // Validate runtime dependencies
+    if (!PresentationValidator::validateDependencies(swapchain, "SwapchainPresentNode::execute")) {
         return;
     }
     
-    // Get Vulkan context from frame graph
     const VulkanContext* context = frameGraph.getContext();
-    if (!context) {
-        std::cerr << "SwapchainPresentNode: Missing Vulkan context" << std::endl;
+    if (!PresentationValidator::validateContext(context, "SwapchainPresentNode::execute")) {
         return;
     }
     
-    // Note: This node doesn't need to do anything in execute() for the command buffer
-    // because the actual presentation happens on the queue level, not in command buffers.
-    // The presentation logic will be handled by the frame graph execution system.
-    // 
-    // The important work of this node is declaring the dependency on the color target,
-    // which ensures proper synchronization before presentation.
+    // Validate image index bounds
+    uint32_t imageCount = swapchain->getImages().size();
+    if (imageIndex >= imageCount) {
+        std::cerr << "SwapchainPresentNode: Invalid image index " << imageIndex 
+                  << " (max: " << imageCount << ")" << std::endl;
+        return;
+    }
     
-    // Ready for presentation
+    // Note: This node doesn't perform command buffer operations.
+    // Presentation occurs at queue submission level, handled by frame graph execution.
+    // This node's primary function is dependency declaration for proper synchronization.
+    
+    // Presentation dependency successfully established
 }

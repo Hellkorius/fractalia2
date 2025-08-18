@@ -1,124 +1,88 @@
 # Vulkan Render Graph Nodes
 
-## Overview
-This directory contains frame graph node implementations that represent discrete GPU operations in the rendering pipeline. Each node declares its resource dependencies and executes Vulkan commands within the frame graph system.
+Frame graph nodes for discrete GPU operations. Each declares resource dependencies and executes Vulkan commands.
 
-## Architecture
+## Files
+- `entity_compute_node.{h,cpp}` - GPU movement computation
+- `entity_graphics_node.{h,cpp}` - Instanced entity rendering  
+- `swapchain_present_node.{h,cpp}` - Display presentation
+- `claude.md` - Technical documentation and API reference
+- `changelog.md` - Development history and improvements
 
-### Node Hierarchy
+## Node Hierarchy
 ```
-FrameGraphNode (base class)
-├── EntityComputeNode     # GPU compute movement calculation
-├── EntityGraphicsNode    # Instanced entity rendering
-└── SwapchainPresentNode  # Final presentation to screen
-```
-
-## Node Implementations
-
-### EntityComputeNode
-**Purpose**: GPU-accelerated entity movement computation using compute shaders
-
-**Input Resources**:
-- `entityBuffer` (ReadWrite, ComputeShader) - GPUEntity structs with movement parameters
-- `currentPositionBuffer` (ReadWrite, ComputeShader) - Current entity positions for interpolation
-- `targetPositionBuffer` (ReadWrite, ComputeShader) - Target positions for smooth movement
-
-**Output Resources**:
-- `positionBuffer` (Write, ComputeShader) - Final computed positions for graphics pipeline
-
-**Key APIs**:
-- `updateFrameData(float time, float deltaTime, uint32_t frameCounter)` - Updates compute shader push constants
-- `needsComputeQueue() -> true` - Requires compute queue execution
-- Push constants: `ComputePushConstants` (32 bytes) - time, deltaTime, entityCount, frame, entityOffset
-
-**Technical Function**:
-- Dispatches compute shader with 64 threads per workgroup
-- Implements adaptive workload chunking (max 512 workgroups per dispatch)
-- Includes GPU timeout monitoring integration
-- Applies memory barriers for compute→graphics synchronization
-- Handles 80k+ entities with interpolated random walk movement
-
-### EntityGraphicsNode
-**Purpose**: Instanced rendering of entities using GPU-computed positions
-
-**Input Resources**:
-- `entityBuffer` (Read, VertexShader) - Entity data for instanced rendering
-- `positionBuffer` (Read, VertexShader) - Computed positions from compute node
-
-**Output Resources**:
-- `colorTarget` (Write, ColorAttachment) - MSAA framebuffer output
-
-**Key APIs**:
-- `setImageIndex(uint32_t imageIndex)` - Sets current swapchain image
-- `updateFrameData(float time, float deltaTime, uint32_t frameIndex)` - Updates frame timing
-- `setWorld(flecs::world* world)` - Connects to ECS for camera matrices
-- `markUniformBufferDirty()` - Forces uniform buffer update
-- Push constants: `VertexPushConstants` (12 bytes) - time, deltaTime, entityCount
-
-**Technical Function**:
-- Binds vertex buffers: geometry + per-instance entity data
-- Updates uniform buffer with view/projection matrices from ECS camera
-- Performs instanced indexed drawing with MSAA (2x samples)
-- Optimized uniform buffer caching with dirty tracking
-- Renders 80k+ entities in single draw call
-
-### SwapchainPresentNode
-**Purpose**: Final presentation of rendered frame to display surface
-
-**Input Resources**:
-- `colorTarget` (Read, ColorAttachment) - Rendered frame from graphics node
-
-**Output Resources**: None (presents to swapchain)
-
-**Key APIs**:
-- `setImageIndex(uint32_t imageIndex)` - Sets target swapchain image
-- `needsGraphicsQueue() -> true` - Requires graphics queue execution
-
-**Technical Function**:
-- Declares dependency on final color target
-- Ensures proper synchronization before presentation
-- Presentation logic handled by frame graph execution system
-- No command buffer operations (queue-level presentation)
-
-## Data Flow Pipeline
-
-```
-EntityComputeNode:
-  IN:  entityBuffer (GPUEntity[80k]), currentPos[], targetPos[]
-  OUT: positionBuffer (computed positions)
-  
-EntityGraphicsNode:
-  IN:  entityBuffer, positionBuffer, camera matrices
-  OUT: colorTarget (MSAA framebuffer)
-  
-SwapchainPresentNode:
-  IN:  colorTarget
-  OUT: display presentation
+EntityComputeNode     # GPU compute movement (80k entities)
+EntityGraphicsNode    # Instanced rendering with MSAA
+SwapchainPresentNode  # Display presentation
 ```
 
-## Memory Layout & Performance
+## EntityComputeNode (`entity_compute_node.{h,cpp}`)
+**Function**: GPU movement computation with interpolated random walk
 
-### GPUEntity Structure (128 bytes, 2 cache lines)
-- **Hot data** (64 bytes): movementParams, runtimeState, color
-- **Cold data** (64 bytes): modelMatrix (rarely accessed)
+**Key Methods**:
+- `EntityComputeNode(entityBuffer, positionBuffer, currentPos, targetPos, computeManager, gpuEntityManager, timeoutDetector)`
+- `updateFrameData(time, deltaTime, frameCounter)` - Updates push constants
+- `execute(commandBuffer, frameGraph)` - Dispatches compute shader
+- `executeChunkedDispatch()` - Internal method for large workload chunking
 
-### Execution Characteristics
-- **Compute**: 64 threads/workgroup, chunked dispatch for large entity counts
-- **Graphics**: Single instanced draw call with vertex + instance buffers
-- **Memory barriers**: Compute→Graphics synchronization points
-- **MSAA**: 2x multisampling with resolve to swapchain
+**I/O**:
+- IN: `entityBuffer` (R/W), `currentPositionBuffer` (R/W), `targetPositionBuffer` (R/W)
+- OUT: `positionBuffer` (Write)
+- Push constants: `ComputePushConstants` (32 bytes: time, deltaTime, entityCount, frame, entityOffset)
 
-## Integration Points
+**Implementation**: 64 threads/workgroup, adaptive chunking (max 512), GPU timeout monitoring, compute→graphics barriers
 
-### External Dependencies
-- `ComputePipelineManager` - Compute pipeline caching and dispatch
-- `GraphicsPipelineManager` - Graphics pipeline state management
-- `GPUEntityManager` - CPU↔GPU entity data bridge
-- `ResourceContext` - Buffer management and descriptor sets
-- `VulkanSwapchain` - Presentation surface management
-- `GPUTimeoutDetector` - Performance monitoring and safety
+## EntityGraphicsNode (`entity_graphics_node.{h,cpp}`)
+**Function**: Instanced entity rendering from computed positions
 
-### ECS Integration
-- Camera matrices from Flecs world via `CameraManager`
-- Entity lifecycle managed by CPU ECS systems
-- Frame timing and state propagated through push constants
+**Key Methods**:
+- `EntityGraphicsNode(entityBuffer, positionBuffer, colorTarget, graphicsManager, swapchain, resourceContext, gpuEntityManager)`
+- `setImageIndex(imageIndex)` - Sets swapchain target
+- `updateFrameData(time, deltaTime, frameIndex)` - Updates timing
+- `setWorld(world)` - Links to ECS for camera
+- `markUniformBufferDirty()` - Forces uniform update
+- `execute(commandBuffer, frameGraph)` - Renders entities
+- `getCameraMatrices()` - Internal camera matrix retrieval
+- `updateUniformBufferData()` - Internal uniform buffer management
+
+**I/O**:
+- IN: `entityBuffer` (Read), `positionBuffer` (Read), camera matrices from ECS
+- OUT: `colorTarget` (Write, MSAA 2x)  
+- Push constants: `VertexPushConstants` (12 bytes: time, deltaTime, entityCount)
+
+**Implementation**: Single instanced draw call, uniform buffer caching with dirty tracking, vertex+instance buffers
+
+## SwapchainPresentNode (`swapchain_present_node.{h,cpp}`)
+**Function**: Present rendered frame to display
+
+**Key Methods**:
+- `SwapchainPresentNode(colorTarget, swapchain)`
+- `setImageIndex(imageIndex)` - Sets presentation target
+- `getImageIndex()` - Gets current image index for debugging
+- `execute(commandBuffer, frameGraph)` - Declares dependencies only
+
+**I/O**:
+- IN: `colorTarget` (Read)
+- OUT: swapchain presentation
+
+**Implementation**: Dependency declaration only, actual presentation handled at queue level
+
+## Data Flow
+```
+Compute: entityBuffer[80k] + positions → positionBuffer
+Graphics: entityBuffer + positionBuffer + camera → colorTarget  
+Present: colorTarget → display
+```
+
+## Dependencies
+- `ComputePipelineManager` - Compute pipeline caching
+- `GraphicsPipelineManager` - Graphics pipeline states
+- `GPUEntityManager` - CPU↔GPU entity bridge  
+- `ResourceContext` - Buffer/descriptor management
+- `VulkanSwapchain` - Presentation surface
+- `GPUTimeoutDetector` - Performance monitoring
+- `FrameGraph` - Resource scheduling system
+
+## Performance Notes
+- **GPUEntity**: 128 bytes (hot: 64B movement/color, cold: 64B matrix)
+- **Execution**: Compute chunked dispatch, graphics single draw call, 2x MSAA

@@ -50,8 +50,8 @@ void EntityGraphicsNode::execute(VkCommandBuffer commandBuffer, const FrameGraph
         return;
     }
     
-    // Only render if we have entities to draw
-    if (gpuEntityManager->getEntityCount() == 0) {
+    const uint32_t entityCount = gpuEntityManager->getEntityCount();
+    if (entityCount == 0) {
         static int noEntitiesCounter = 0;
         if (noEntitiesCounter++ % 60 == 0) {
             std::cout << "EntityGraphicsNode: No entities to render" << std::endl;
@@ -124,8 +124,7 @@ void EntityGraphicsNode::execute(VkCommandBuffer commandBuffer, const FrameGraph
     scissor.extent = swapchain->getExtent();
     context->getLoader().vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
-    // Get entity count for rendering
-    uint32_t gpuEntityCount = gpuEntityManager->getEntityCount();
+    // Entity count already retrieved above
     
     // Bind graphics pipeline
     context->getLoader().vkCmdBindPipeline(
@@ -155,7 +154,7 @@ void EntityGraphicsNode::execute(VkCommandBuffer commandBuffer, const FrameGraph
     } vertexPushConstants = { 
         frameTime,
         frameDeltaTime,
-        gpuEntityCount
+        entityCount
     };
     
     context->getLoader().vkCmdPushConstants(
@@ -166,36 +165,32 @@ void EntityGraphicsNode::execute(VkCommandBuffer commandBuffer, const FrameGraph
         &vertexPushConstants
     );
 
-    // Draw entities if we have any
-    if (gpuEntityCount > 0) {
+    // Draw entities
+    if (entityCount > 0) {
         // Bind vertex buffers: geometry vertices + entity instance data
         VkBuffer vertexBuffers[] = {
-            resourceContext->getVertexBuffer(),           // Vertex positions for triangle geometry
-            gpuEntityManager->getEntityBuffer()    // Per-instance entity data
+            resourceContext->getVertexBuffer(),     // Vertex positions for triangle geometry
+            gpuEntityManager->getEntityBuffer()     // Per-instance entity data
         };
         VkDeviceSize offsets[] = {0, 0};
         context->getLoader().vkCmdBindVertexBuffers(commandBuffer, 0, 2, vertexBuffers, offsets);
         
         // Bind index buffer for triangle geometry
         context->getLoader().vkCmdBindIndexBuffer(
-            commandBuffer, 
-            resourceContext->getIndexBuffer(), 
-            0, 
-            VK_INDEX_TYPE_UINT16
-        );
+            commandBuffer, resourceContext->getIndexBuffer(), 0, VK_INDEX_TYPE_UINT16);
         
         // Draw indexed instances: all entities with triangle geometry
         context->getLoader().vkCmdDrawIndexed(
             commandBuffer, 
             resourceContext->getIndexCount(),  // Number of indices per triangle
-            gpuEntityCount,                   // Number of instances (entities)
+            entityCount,                      // Number of instances (entities)
             0, 0, 0                          // Index/vertex/instance offsets
         );
         
-        // Debug: confirm draw call (once per second)
+        // Debug: confirm draw call
         static int drawCounter = 0;
         if (drawCounter++ % 60 == 0) {
-            std::cout << "EntityGraphicsNode: Drew " << gpuEntityCount 
+            std::cout << "EntityGraphicsNode: Drew " << entityCount 
                       << " entities with " << resourceContext->getIndexCount() 
                       << " indices per triangle" << std::endl;
         }

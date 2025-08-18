@@ -9,6 +9,40 @@
 #include <array>
 #include <glm/glm.hpp>
 
+namespace {
+    // Centralized debug logging with configurable intervals
+    class DebugLogger {
+    public:
+        static void logPeriodic(const std::string& message, int& counter, int interval = 300) {
+            if (counter++ % interval == 0) {
+                std::cout << message << std::endl;
+            }
+        }
+        
+        static void logOnce(const std::string& message, int& counter, int interval = 60) {
+            if (counter++ % interval == 0) {
+                std::cout << message << std::endl;
+            }
+        }
+    };
+    
+    // Helper function for dispatch calculation
+    struct DispatchParams {
+        uint32_t totalWorkgroups;
+        uint32_t maxWorkgroupsPerChunk;
+        bool useChunking;
+    };
+    
+    DispatchParams calculateDispatchParams(uint32_t entityCount, uint32_t maxWorkgroups, bool forceChunking) {
+        const uint32_t totalWorkgroups = (entityCount + 63) / 64; // 64 threads per workgroup
+        return {
+            totalWorkgroups,
+            maxWorkgroups,
+            totalWorkgroups > maxWorkgroups || forceChunking
+        };
+    }
+}
+
 EntityComputeNode::EntityComputeNode(
     FrameGraphTypes::ResourceId entityBuffer, 
     FrameGraphTypes::ResourceId positionBuffer,
@@ -45,8 +79,8 @@ std::vector<ResourceDependency> EntityComputeNode::getOutputs() const {
 }
 
 void EntityComputeNode::execute(VkCommandBuffer commandBuffer, const FrameGraph& frameGraph) {
-    // FULL COMPUTE SYSTEM - but with better error handling
     static int frameCount = 0;
+    static int noEntitiesCounter = 0;
     frameCount++;
     
     if (!computeManager || !gpuEntityManager) {
@@ -54,12 +88,9 @@ void EntityComputeNode::execute(VkCommandBuffer commandBuffer, const FrameGraph&
         return;
     }
     
-    // Only dispatch if we have entities to process
-    if (gpuEntityManager->getEntityCount() == 0) {
-        static int noEntitiesCounter = 0;
-        if (noEntitiesCounter++ % 60 == 0) {
-            std::cout << "EntityComputeNode: No entities to process" << std::endl;
-        }
+    const uint32_t entityCount = gpuEntityManager->getEntityCount();
+    if (entityCount == 0) {
+        DebugLogger::logOnce("EntityComputeNode: No entities to process", noEntitiesCounter);
         return;
     }
     
@@ -87,55 +118,47 @@ void EntityComputeNode::execute(VkCommandBuffer commandBuffer, const FrameGraph&
         return;
     }
     
-    // Use actual entity count - buffers are sized for MAX_ENTITIES (131k)
-    uint32_t actualEntityCount = gpuEntityManager->getEntityCount();
-    
-    // Use full entity count with proper chunking
-    uint32_t entityCount = actualEntityCount;
-    
-    // Update push constants with current frame data
+    // Configure push constants and dispatch
     pushConstants.entityCount = entityCount;
     dispatch.pushConstantData = &pushConstants;
     dispatch.pushConstantSize = sizeof(ComputePushConstants);
     dispatch.pushConstantStages = VK_SHADER_STAGE_COMPUTE_BIT;
-    
-    // Calculate optimal dispatch size with new workgroup size (64 threads)
     dispatch.calculateOptimalDispatch(entityCount, glm::uvec3(64, 1, 1));
     
-    // Adaptive workload distribution based on GPU performance monitoring
+    // Apply adaptive workload management
     uint32_t maxWorkgroupsPerDispatch = adaptiveMaxWorkgroups;
+    bool shouldForceChunking = forceChunkedDispatch;
     
-    // Apply timeout detector recommendations if available
     if (timeoutDetector) {
         auto recommendation = timeoutDetector->getRecoveryRecommendation();
         if (recommendation.shouldReduceWorkload) {
             maxWorkgroupsPerDispatch = std::min(maxWorkgroupsPerDispatch, recommendation.recommendedMaxWorkgroups);
         }
         if (recommendation.shouldSplitDispatches) {
-            forceChunkedDispatch = true;
+            shouldForceChunking = true;
         }
-        
-        // Check GPU health before proceeding
         if (!timeoutDetector->isGPUHealthy()) {
-            std::cerr << "EntityComputeNode: GPU not healthy, reducing workload significantly" << std::endl;
+            std::cerr << "EntityComputeNode: GPU not healthy, reducing workload" << std::endl;
             maxWorkgroupsPerDispatch = std::min(maxWorkgroupsPerDispatch, 512u);
         }
     }
     
-    const uint32_t totalWorkgroups = dispatch.groupCountX;
+    // Calculate dispatch parameters
+    auto dispatchParams = calculateDispatchParams(entityCount, maxWorkgroupsPerDispatch, shouldForceChunking);
     
-    // Debug info (every 5 seconds)
-    static int debugCounter = 0;
-    if (debugCounter++ % 300 == 0) {
-        std::cout << "EntityComputeNode: " << entityCount << " entities → " 
-                  << totalWorkgroups << " workgroups (frame " << frameCount << ")" << std::endl;
-    }
-    
-    // Check if we're exceeding device limits
-    if (totalWorkgroups > 65535) {
-        std::cerr << "ERROR: Workgroup count " << totalWorkgroups << " exceeds Vulkan limit of 65535!" << std::endl;
+    // Validate dispatch limits
+    if (dispatchParams.totalWorkgroups > 65535) {
+        std::cerr << "ERROR: Workgroup count " << dispatchParams.totalWorkgroups << " exceeds Vulkan limit!" << std::endl;
         return;
     }
+    
+    // Debug logging
+    static int debugCounter = 0;
+    DebugLogger::logPeriodic(
+        "EntityComputeNode: " + std::to_string(entityCount) + " entities → " + 
+        std::to_string(dispatchParams.totalWorkgroups) + " workgroups (frame " + std::to_string(frameCount) + ")",
+        debugCounter
+    );
     
     const VulkanContext* context = frameGraph.getContext();
     if (!context) {
@@ -149,28 +172,22 @@ void EntityComputeNode::execute(VkCommandBuffer commandBuffer, const FrameGraph&
         commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, dispatch.layout,
         0, 1, &dispatch.descriptorSets[0], 0, nullptr);
     
-    // Debug: Show chunking decision
-    std::cout << "EntityComputeNode: totalWorkgroups=" << totalWorkgroups 
-              << " maxWorkgroupsPerDispatch=" << maxWorkgroupsPerDispatch 
-              << " forceChunkedDispatch=" << forceChunkedDispatch << std::endl;
-    
-    if (totalWorkgroups <= maxWorkgroupsPerDispatch && !forceChunkedDispatch) {
-        // Small dispatch - execute with timeout monitoring
-        std::cout << "EntityComputeNode: Using SINGLE dispatch" << std::endl;
+    if (!dispatchParams.useChunking) {
+        // Single dispatch execution
         if (timeoutDetector) {
-            timeoutDetector->beginComputeDispatch("EntityMovement", totalWorkgroups);
+            timeoutDetector->beginComputeDispatch("EntityMovement", dispatchParams.totalWorkgroups);
         }
         
         context->getLoader().vkCmdPushConstants(
             commandBuffer, dispatch.layout, VK_SHADER_STAGE_COMPUTE_BIT,
             0, sizeof(ComputePushConstants), &pushConstants);
-        context->getLoader().vkCmdDispatch(commandBuffer, totalWorkgroups, 1, 1);
+        context->getLoader().vkCmdDispatch(commandBuffer, dispatchParams.totalWorkgroups, 1, 1);
         
         if (timeoutDetector) {
             timeoutDetector->endComputeDispatch();
         }
         
-        // CRITICAL: Add memory barrier to ensure compute writes are visible to graphics
+        // Memory barrier for compute→graphics synchronization
         VkMemoryBarrier memoryBarrier{};
         memoryBarrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
         memoryBarrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
@@ -181,93 +198,89 @@ void EntityComputeNode::execute(VkCommandBuffer commandBuffer, const FrameGraph&
             VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
             VK_PIPELINE_STAGE_VERTEX_INPUT_BIT,
             0, 1, &memoryBarrier, 0, nullptr, 0, nullptr);
-        
-        if (debugCounter % 300 == 0) {
-            std::cout << "EntityComputeNode: Single dispatch " << totalWorkgroups 
-                      << " workgroups for " << entityCount << " entities" << std::endl;
-        }
     } else {
-        // Large dispatch - split into chunks with memory barriers
-        std::cout << "EntityComputeNode: Using CHUNKED dispatch" << std::endl;
-        uint32_t processedWorkgroups = 0;
-        uint32_t chunkCount = 0;
+        executeChunkedDispatch(commandBuffer, context, dispatch, 
+                              dispatchParams.totalWorkgroups, dispatchParams.maxWorkgroupsPerChunk, entityCount);
+    }
+}
+
+void EntityComputeNode::executeChunkedDispatch(
+    VkCommandBuffer commandBuffer, 
+    const VulkanContext* context, 
+    const ComputeDispatch& dispatch,
+    uint32_t totalWorkgroups,
+    uint32_t maxWorkgroupsPerChunk,
+    uint32_t entityCount) {
+    
+    uint32_t processedWorkgroups = 0;
+    uint32_t chunkCount = 0;
+    
+    while (processedWorkgroups < totalWorkgroups) {
+        uint32_t currentChunkSize = std::min(maxWorkgroupsPerChunk, totalWorkgroups - processedWorkgroups);
+        uint32_t baseEntityOffset = processedWorkgroups * 64;
         
-        while (processedWorkgroups < totalWorkgroups) {
-            uint32_t currentChunkSize = std::min(maxWorkgroupsPerDispatch, totalWorkgroups - processedWorkgroups);
-            uint32_t baseEntityOffset = processedWorkgroups * 64;
-            uint32_t remainingEntities = entityCount - baseEntityOffset;
-            
-            // Skip if no entities left to process
-            if (remainingEntities == 0) break;
-            
-            // Monitor each chunk dispatch
-            if (timeoutDetector) {
-                std::string chunkName = "EntityMovement_Chunk" + std::to_string(chunkCount);
-                timeoutDetector->beginComputeDispatch(chunkName.c_str(), currentChunkSize);
-            }
-            
-            // Update push constants for this chunk
-            ComputePushConstants chunkPushConstants = pushConstants;
-            chunkPushConstants.entityOffset = baseEntityOffset; // Shader adds this to gl_GlobalInvocationID.x
-            
-            std::cout << "  Chunk " << chunkCount << ": " << currentChunkSize 
-                      << " workgroups, entityOffset=" << baseEntityOffset << std::endl;
-            
-            // Push constants for this chunk
-            context->getLoader().vkCmdPushConstants(
-                commandBuffer, dispatch.layout, VK_SHADER_STAGE_COMPUTE_BIT,
-                0, sizeof(ComputePushConstants), &chunkPushConstants);
-            
-            // Dispatch this chunk
-            context->getLoader().vkCmdDispatch(commandBuffer, currentChunkSize, 1, 1);
-            
-            if (timeoutDetector) {
-                timeoutDetector->endComputeDispatch();
-            }
-            
-            // Memory barrier between chunks to ensure data consistency
-            if (processedWorkgroups + currentChunkSize < totalWorkgroups) {
-                VkMemoryBarrier memoryBarrier{};
-                memoryBarrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
-                memoryBarrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-                memoryBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
-                
-                context->getLoader().vkCmdPipelineBarrier(
-                    commandBuffer,
-                    VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                    VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                    0, 1, &memoryBarrier, 0, nullptr, 0, nullptr);
-            }
-            
-            processedWorkgroups += currentChunkSize;
-            chunkCount++;
+        if (entityCount <= baseEntityOffset) break; // No more entities to process
+        
+        // Monitor chunk execution
+        if (timeoutDetector) {
+            std::string chunkName = "EntityMovement_Chunk" + std::to_string(chunkCount);
+            timeoutDetector->beginComputeDispatch(chunkName.c_str(), currentChunkSize);
         }
         
-        // CRITICAL: Add memory barrier after all chunks to ensure compute writes are visible to graphics
-        VkMemoryBarrier finalMemoryBarrier{};
-        finalMemoryBarrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
-        finalMemoryBarrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-        finalMemoryBarrier.dstAccessMask = VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT;
+        // Update push constants for this chunk
+        ComputePushConstants chunkPushConstants = pushConstants;
+        chunkPushConstants.entityOffset = baseEntityOffset;
         
-        context->getLoader().vkCmdPipelineBarrier(
-            commandBuffer,
-            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-            VK_PIPELINE_STAGE_VERTEX_INPUT_BIT,
-            0, 1, &finalMemoryBarrier, 0, nullptr, 0, nullptr);
+        context->getLoader().vkCmdPushConstants(
+            commandBuffer, dispatch.layout, VK_SHADER_STAGE_COMPUTE_BIT,
+            0, sizeof(ComputePushConstants), &chunkPushConstants);
         
-        if (debugCounter % 300 == 0) {
-            std::cout << "EntityComputeNode: Split dispatch into " << chunkCount 
-                      << " chunks (" << maxWorkgroupsPerDispatch << " workgroups each) for " 
-                      << entityCount << " entities" << std::endl;
+        context->getLoader().vkCmdDispatch(commandBuffer, currentChunkSize, 1, 1);
+        
+        if (timeoutDetector) {
+            timeoutDetector->endComputeDispatch();
+        }
+        
+        // Inter-chunk memory barrier
+        if (processedWorkgroups + currentChunkSize < totalWorkgroups) {
+            VkMemoryBarrier memoryBarrier{};
+            memoryBarrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+            memoryBarrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+            memoryBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
             
-            // Display timeout detector stats if available
-            if (timeoutDetector) {
-                auto stats = timeoutDetector->getStats();
-                std::cout << "  GPU Stats: avg=" << stats.averageDispatchTimeMs 
-                          << "ms, peak=" << stats.peakDispatchTimeMs << "ms"
-                          << ", warnings=" << stats.warningCount 
-                          << ", critical=" << stats.criticalCount << std::endl;
-            }
+            context->getLoader().vkCmdPipelineBarrier(
+                commandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &memoryBarrier, 0, nullptr, 0, nullptr);
+        }
+        
+        processedWorkgroups += currentChunkSize;
+        chunkCount++;
+    }
+    
+    // Final memory barrier for compute→graphics synchronization
+    VkMemoryBarrier finalMemoryBarrier{};
+    finalMemoryBarrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+    finalMemoryBarrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+    finalMemoryBarrier.dstAccessMask = VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT;
+    
+    context->getLoader().vkCmdPipelineBarrier(
+        commandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+        VK_PIPELINE_STAGE_VERTEX_INPUT_BIT, 0, 1, &finalMemoryBarrier, 0, nullptr, 0, nullptr);
+    
+    // Debug statistics logging
+    static int chunkDebugCounter = 0;
+    if (chunkDebugCounter++ % 300 == 0) {
+        std::string message = "EntityComputeNode: Split dispatch into " + std::to_string(chunkCount) + 
+                             " chunks (" + std::to_string(maxWorkgroupsPerChunk) + " max) for " + 
+                             std::to_string(entityCount) + " entities";
+        std::cout << message << std::endl;
+        
+        if (timeoutDetector) {
+            auto stats = timeoutDetector->getStats();
+            std::cout << "  GPU Stats: avg=" << stats.averageDispatchTimeMs 
+                      << "ms, peak=" << stats.peakDispatchTimeMs << "ms"
+                      << ", warnings=" << stats.warningCount 
+                      << ", critical=" << stats.criticalCount << std::endl;
         }
     }
 }
