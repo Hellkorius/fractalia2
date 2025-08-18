@@ -22,24 +22,32 @@ Cross-compiled (Linux→Windows) engine for 80,000+ entities at 60 FPS using GPU
 
 ## Structure
 ```
+docs/                           # Project documentation
+├── architecture.md             # System architecture
+└── hierarchy.md                # Component hierarchy
 src/
 ├── main.cpp                    # Application entry
 ├── vulkan_renderer.*           # Master renderer, frame loop
 ├── vulkan/                     # Vulkan subsystems
-│   ├── frame_graph.*           # ✅ Render graph coordinator
-│   ├── nodes/                  # ✅ Render graph nodes
-│   │   ├── entity_compute_node.*    # ✅ Compute movement
-│   │   ├── entity_graphics_node.*   # ✅ Graphics rendering
-│   │   └── swapchain_present_node.* # ✅ Presentation
+│   ├── frame_graph.*           # Render graph coordinator
+│   ├── nodes/                  # Render graph nodes
+│   │   ├── entity_compute_node.*    # Compute movement
+│   │   ├── entity_graphics_node.*   # Graphics rendering
+│   │   └── swapchain_present_node.* # Presentation
 │   ├── vulkan_context.*        # Instance, device, queue
 │   ├── vulkan_swapchain.*      # Swapchain, MSAA, framebuffers
-│   ├── pipeline_system_manager.*    # ✅ AAA pipeline system coordinator
-│   ├── compute_pipeline_manager.*   # ✅ Compute pipeline caching & dispatch
-│   ├── graphics_pipeline_manager.*  # ✅ Graphics pipeline state objects
-│   ├── shader_manager.*            # ✅ SPIR-V loading & hot-reload
-│   ├── descriptor_layout_manager.* # ✅ Descriptor set layout caching
+│   ├── pipeline_system_manager.*    # AAA pipeline system coordinator
+│   ├── compute_pipeline_manager.*   # Compute pipeline caching & dispatch
+│   ├── graphics_pipeline_manager.*  # Graphics pipeline state objects
+│   ├── shader_manager.*            # SPIR-V loading & hot-reload
+│   ├── descriptor_layout_manager.* # Descriptor set layout caching
 │   ├── resource_context.*      # Buffer/memory manager
-│   └── vulkan_sync.*           # Fences, semaphores
+│   ├── vulkan_sync.*           # Fences, semaphores
+│   ├── render_frame_director.* # Frame execution orchestration
+│   ├── command_submission_service.* # GPU queue submission management
+│   ├── frame_graph_resource_registry.* # Resource registration with frame graph
+│   ├── gpu_synchronization_service.* # GPU synchronization primitives
+│   └── presentation_surface.*  # Swapchain and presentation management
 ├── ecs/                        # ECS components and systems
 │   ├── gpu_entity_manager.*    # CPU→GPU bridge
 │   ├── systems/                # ECS systems
@@ -53,12 +61,15 @@ src/
 ## GPUEntity Structure
 ```cpp
 struct GPUEntity {
-    glm::mat4 modelMatrix;        // 64 bytes - world transform
-    glm::vec4 movementParams0;    // 16 bytes - amplitude, frequency, phase, timeOffset  
+    // Cache Line 1 (bytes 0-63) - HOT DATA: All frequently accessed in compute shaders
+    glm::vec4 movementParams0;    // 16 bytes - amplitude, frequency, phase, timeOffset
     glm::vec4 movementParams1;    // 16 bytes - center.xyz, movementType
-    glm::vec4 color;              // 16 bytes - RGBA color
     glm::vec4 runtimeState;       // 16 bytes - totalTime, initialized, stateTimer, entityState
-}; // 128 bytes total
+    glm::vec4 color;              // 16 bytes - RGBA color
+    
+    // Cache Line 2 (bytes 64-127) - COLD DATA: Rarely accessed
+    glm::mat4 modelMatrix;        // 64 bytes - transform matrix
+}; // 128 bytes total (2 cache lines optimized)
 ```
 
 ## Movement System

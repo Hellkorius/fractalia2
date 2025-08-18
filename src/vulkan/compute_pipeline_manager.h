@@ -215,6 +215,10 @@ private:
     // Statistics
     mutable ComputeStats stats;
     
+    // Device capabilities (cached at initialization)
+    VkPhysicalDeviceProperties deviceProperties{};
+    VkPhysicalDeviceFeatures deviceFeatures{};
+    
     // Configuration
     uint32_t maxCacheSize = 512;
     uint64_t cacheCleanupInterval = 1000;  // frames

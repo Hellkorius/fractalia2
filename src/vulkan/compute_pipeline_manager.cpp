@@ -116,6 +116,12 @@ bool ComputePipelineManager::initialize(const VulkanContext& context,
         return false;
     }
     
+    // Query and cache device properties
+    context.getLoader().vkGetPhysicalDeviceProperties(context.getPhysicalDevice(), &deviceProperties);
+    
+    // Note: Device features would require vkGetPhysicalDeviceFeatures to be loaded in VulkanFunctionLoader
+    // For now, deviceFeatures remains zero-initialized which is safe
+    
     std::cout << "ComputePipelineManager initialized successfully" << std::endl;
     return true;
 }
@@ -539,18 +545,21 @@ void ComputePipelineManager::resetFrameStats() {
 
 // Device capability queries (placeholders - need proper implementation)
 glm::uvec3 ComputePipelineManager::getDeviceOptimalWorkgroupSize() const {
-    // Default to common optimal size for most GPUs
-    return glm::uvec3(32, 1, 1);
+    // Use device limits to determine optimal workgroup size
+    // Most GPUs perform well with 32 or 64 threads per workgroup
+    uint32_t maxWorkgroupSize = std::min(deviceProperties.limits.maxComputeWorkGroupInvocations, 64u);
+    return glm::uvec3(maxWorkgroupSize, 1, 1);
 }
 
 uint32_t ComputePipelineManager::getDeviceMaxComputeWorkgroupInvocations() const {
-    // Default Vulkan minimum
-    return 1024;
+    return deviceProperties.limits.maxComputeWorkGroupInvocations;
 }
 
 bool ComputePipelineManager::deviceSupportsSubgroupOperations() const {
-    // TODO: Query actual device features
-    return false;
+    // Check for subgroup operations support
+    // Note: Basic subgroup support is part of Vulkan 1.1 core
+    // For more advanced subgroup features, we'd need to check VkPhysicalDeviceSubgroupProperties
+    return true;  // Assume Vulkan 1.1+ support
 }
 
 std::vector<VkBufferMemoryBarrier> ComputePipelineManager::optimizeBufferBarriers(

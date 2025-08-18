@@ -233,8 +233,7 @@ std::unique_ptr<CachedGraphicsPipeline> GraphicsPipelineManager::createPipelineI
         return nullptr;
     }
     
-    // TODO: Load shaders through ShaderManager when implemented
-    // For now, we'll create a simplified version
+    // Shader loading is implemented later in this function using ShaderManager
     
     // Vertex input state
     VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
