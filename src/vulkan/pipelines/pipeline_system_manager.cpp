@@ -23,7 +23,16 @@ bool PipelineSystemManager::initialize(const VulkanContext& context) {
 }
 
 void PipelineSystemManager::cleanup() {
+    cleanupBeforeContextDestruction();
+}
+
+void PipelineSystemManager::cleanupBeforeContextDestruction() {
     if (!context) return;
+    
+    // Explicit cleanup before context destruction
+    if (shaderManager) {
+        shaderManager->cleanupBeforeContextDestruction();
+    }
     
     // Cleanup in reverse order of initialization
     computeManager.reset();

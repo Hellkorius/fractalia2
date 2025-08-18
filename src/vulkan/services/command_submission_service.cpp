@@ -66,7 +66,7 @@ SubmissionResult CommandSubmissionService::submitComputeWorkAsync(uint32_t compu
     VkCommandBuffer computeCommandBuffer = computeCommandBuffers[frameIndex];
 
     // Reset compute fence for this frame
-    VkFence computeFence = sync->getComputeFences()[frameIndex];
+    VkFence computeFence = sync->getComputeFence(frameIndex);
     // Cache loader and device references for performance
     const auto& vk = context->getLoader();
     const VkDevice device = context->getDevice();
@@ -112,7 +112,7 @@ SubmissionResult CommandSubmissionService::submitGraphicsWork(uint32_t currentFr
     VkCommandBuffer graphicsCommandBuffer = commandBuffers[currentFrame];
 
     // Reset graphics fence
-    VkFence graphicsFence = sync->getInFlightFences()[currentFrame];
+    VkFence graphicsFence = sync->getInFlightFence(currentFrame);
     VkResult resetResult = vk.vkResetFences(device, 1, &graphicsFence);
     if (resetResult != VK_SUCCESS) {
         std::cerr << "CommandSubmissionService: Failed to reset graphics fence: " << resetResult << std::endl;
@@ -125,7 +125,7 @@ SubmissionResult CommandSubmissionService::submitGraphicsWork(uint32_t currentFr
     graphicsSubmitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 
     // Only wait for swapchain image availability (async compute works on different buffer)
-    VkSemaphore waitSemaphores[] = {sync->getImageAvailableSemaphores()[currentFrame]};
+    VkSemaphore waitSemaphores[] = {sync->getImageAvailableSemaphore(currentFrame)};
     VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
     graphicsSubmitInfo.waitSemaphoreCount = 1;
     graphicsSubmitInfo.pWaitSemaphores = waitSemaphores;

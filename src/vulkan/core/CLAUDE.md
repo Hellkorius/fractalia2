@@ -8,8 +8,9 @@ vulkan_constants.h          # Constants: MAX_FRAMES_IN_FLIGHT=2, timeouts, sizes
 vulkan_function_loader.*    # Vulkan function pointer loading  
 vulkan_context.*            # Instance, device, queue, surface management
 vulkan_manager_base.h       # Base class: cached loader/device refs, wrapper methods
+vulkan_raii.*               # RAII wrappers for automatic Vulkan resource cleanup
 vulkan_utils.*              # Buffer/image creation, memory utils, command helpers
-vulkan_sync.*               # Command pools, semaphores, fences
+vulkan_sync.*               # Command pools, semaphores, fences (RAII-managed)
 vulkan_swapchain.*          # Swapchain, MSAA, framebuffers
 ```
 
@@ -41,11 +42,19 @@ vulkan_swapchain.*          # Swapchain, MSAA, framebuffers
 **Out:** VkBuffer, VkImage, VkImageView, VkShaderModule, memory operations
 **API:** `findMemoryType()`, `createBuffer()`, `createImage()`, `createImageView()`, `createShaderModule()`, `beginSingleTimeCommands()`, `transitionImageLayout()`, `copyBuffer()`, `writeDescriptorSets()`
 
+### vulkan_raii.*
+**In:** VkHandle, VulkanContext*
+**Out:** RAII-wrapped Vulkan objects with automatic cleanup
+**API:** `vulkan_raii::ShaderModule`, `vulkan_raii::Semaphore`, `vulkan_raii::Fence`, `make_*()` factories
+**Pattern:** Template wrappers with move semantics, explicit `cleanupBeforeContextDestruction()`
+**Deleters:** Context-aware cleanup, null-safe destruction, proper Vulkan API calls
+
 ### vulkan_sync.*
 **In:** VulkanContext, MAX_FRAMES_IN_FLIGHT
-**Out:** VkCommandPool, VkCommandBuffer arrays, semaphores, fences
-**API:** `initialize()`, `getCommandPool()`, `getCommandBuffers()`, `get*Semaphores()`, `get*Fences()`, `resetCommandBuffersForFrame()`, `resetAllCommandBuffers()`
-**Sync:** `imageAvailableSemaphores`, `renderFinishedSemaphores`, `computeFinishedSemaphores`, `inFlightFences`, `computeFences`
+**Out:** VkCommandPool, VkCommandBuffer arrays, RAII semaphores/fences
+**API:** `initialize()`, `getCommandPool()`, `getCommandBuffers()`, `get*Semaphore(index)`, `get*Fence(index)`, `resetCommandBuffersForFrame()`, `resetAllCommandBuffers()`
+**Sync:** RAII-managed `imageAvailableSemaphores`, `renderFinishedSemaphores`, `computeFinishedSemaphores`, `inFlightFences`, `computeFences`
+**Access:** Individual element getters prevent temporary vector indexing issues
 
 ### vulkan_swapchain.*
 **In:** VulkanContext, SDL_Window*, VkRenderPass
@@ -67,6 +76,7 @@ vulkan_swapchain.*          # Swapchain, MSAA, framebuffers
 
 **Init Order:** VulkanFunctionLoader → VulkanContext → VulkanSync/VulkanSwapchain
 **Function Loading:** Three-phase (pre-instance → post-instance → post-device), VulkanManagerBase caches refs
-**Memory:** VulkanUtils finds memory types, no auto-cleanup, caller responsible
+**Memory:** VulkanUtils finds memory types, RAII wrappers provide auto-cleanup for sync objects
+**RAII:** ShaderManager + VulkanSync use RAII wrappers, explicit cleanup before context destruction
 **Performance:** VulkanManagerBase eliminates 270+ calls (-40% code), command buffer reset optimizations, pre-allocated MSAA
 **Errors:** bool returns, validation layers in debug, clean failure states

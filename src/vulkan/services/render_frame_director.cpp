@@ -98,7 +98,7 @@ bool RenderFrameDirector::acquireSwapchainImage(uint32_t currentFrame, uint32_t&
         context->getDevice(), 
         swapchain->getSwapchain(), 
         UINT64_MAX, 
-        sync->getImageAvailableSemaphores()[currentFrame], 
+        sync->getImageAvailableSemaphore(currentFrame), 
         VK_NULL_HANDLE, 
         &imageIndex
     );

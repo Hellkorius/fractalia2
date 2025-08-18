@@ -72,3 +72,13 @@ Vulkan subsystem uses local caching pattern for VulkanFunctionLoader calls:
 - **Usage**: Apply in functions with multiple Vulkan API calls to avoid repeated `context->getLoader().vkFunction()` 
 - **Files Using Pattern**: vulkan_utils.cpp, entity_compute_node.cpp, entity_graphics_node.cpp, gpu_synchronization_service.cpp, vulkan_swapchain.cpp, command_executor.cpp, vulkan_sync.cpp, descriptor_layout_manager.cpp, frame_graph.cpp, vulkan_pipeline.cpp, compute_stress_tester.cpp
 - **Alternative**: VulkanManagerBase provides wrapper methods for pipeline managers
+
+### RAII Vulkan Resource Management
+Vulkan resources use RAII wrappers for automatic cleanup and exception safety:
+
+- **Implementation**: `vulkan_raii.h/cpp` - Template-based RAII wrappers with move semantics
+- **Wrappers**: ShaderModule, Semaphore, Fence, Pipeline, DescriptorSetLayout, etc.
+- **Usage**: `vulkan_raii::ShaderModule shader = vulkan_raii::make_shader_module(handle, context)`
+- **Destruction Order**: Explicit `cleanupBeforeContextDestruction()` methods prevent use-after-free
+- **Migrated Components**: ShaderManager, VulkanSync (semaphores/fences)
+- **Access Pattern**: `wrapper.get()` for raw handle, automatic cleanup on scope exit

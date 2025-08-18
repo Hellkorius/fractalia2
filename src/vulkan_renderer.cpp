@@ -173,6 +173,15 @@ void VulkanRenderer::cleanup() {
     // Clean up modular architecture
     cleanupModularArchitecture();
     
+    // Explicit RAII cleanup before context destruction
+    if (sync) {
+        sync->cleanupBeforeContextDestruction();
+    }
+    if (pipelineSystem) {
+        // PipelineSystemManager should have similar cleanup for ShaderManager
+        pipelineSystem->cleanupBeforeContextDestruction();
+    }
+    
     movementCommandProcessor.reset();
     gpuEntityManager.reset();
     resourceContext.reset();
@@ -273,7 +282,7 @@ void VulkanRenderer::cleanupModularArchitecture() {
 void VulkanRenderer::drawFrameModular() {
     // CRITICAL FIX: Wait for previous frame compute work to complete
     // Use the same fence system that CommandSubmissionService uses (VulkanSync)
-    VkFence computeFence = sync->getComputeFences()[currentFrame];
+    VkFence computeFence = sync->getComputeFence(currentFrame);
     VkResult waitResult = context->getLoader().vkWaitForFences(
         context->getDevice(), 1, &computeFence, VK_TRUE, UINT64_MAX);
     if (waitResult != VK_SUCCESS) {

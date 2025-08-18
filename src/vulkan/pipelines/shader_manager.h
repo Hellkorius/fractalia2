@@ -11,6 +11,7 @@
 #include <fstream>
 #include <filesystem>
 #include "../core/vulkan_context.h"
+#include "../core/vulkan_raii.h"
 
 // Shader compilation types
 enum class ShaderSourceType {
@@ -64,7 +65,7 @@ struct ShaderModuleSpecHash {
 
 // Cached shader module with metadata
 struct CachedShaderModule {
-    VkShaderModule module = VK_NULL_HANDLE;
+    vulkan_raii::ShaderModule module;  // RAII wrapper for automatic cleanup
     ShaderModuleSpec spec;
     std::vector<uint32_t> spirvCode;  // Store SPIR-V for reflection
     
@@ -104,6 +105,9 @@ public:
     // Initialization
     bool initialize(const VulkanContext& context);
     void cleanup();
+    
+    // Explicit cleanup before context destruction
+    void cleanupBeforeContextDestruction();
 
     // Shader loading and compilation
     VkShaderModule loadShader(const ShaderModuleSpec& spec);
@@ -239,7 +243,7 @@ private:
     
     // Internal shader creation
     std::unique_ptr<CachedShaderModule> createShaderInternal(const ShaderModuleSpec& spec);
-    VkShaderModule createVulkanShaderModule(const std::vector<uint32_t>& spirvCode);
+    vulkan_raii::ShaderModule createVulkanShaderModule(const std::vector<uint32_t>& spirvCode);
     
     // SPIR-V loading and validation
     std::vector<uint32_t> loadSPIRVBinaryFromFile(const std::string& filePath) const;

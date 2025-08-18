@@ -1,5 +1,6 @@
 #include "shader_manager.h"
 #include "../core/vulkan_function_loader.h"
+#include "../core/vulkan_raii.h"
 #include <iostream>
 #include <fstream>
 #include <sstream>
@@ -69,9 +70,13 @@ bool ShaderManager::initialize(const VulkanContext& context) {
 }
 
 void ShaderManager::cleanup() {
+    cleanupBeforeContextDestruction();
+}
+
+void ShaderManager::cleanupBeforeContextDestruction() {
     if (!context) return;
     
-    // Clear shader cache
+    // Clear shader cache before context destruction
     clearCache();
     
     context = nullptr;
@@ -96,7 +101,7 @@ VkShaderModule ShaderManager::loadShader(const ShaderModuleSpec& spec) {
         stats.cacheHits++;
         it->second->lastUsedFrame = stats.cacheHits + stats.cacheMisses;  // Rough frame counter
         it->second->useCount++;
-        return it->second->module;
+        return it->second->module.get();
     }
     
     // Cache miss - create new shader
@@ -109,7 +114,7 @@ VkShaderModule ShaderManager::loadShader(const ShaderModuleSpec& spec) {
         return VK_NULL_HANDLE;
     }
     
-    VkShaderModule module = cachedShader->module;
+    VkShaderModule module = cachedShader->module.get();
     
     // Store in cache
     shaderCache_[spec] = std::move(cachedShader);
@@ -160,6 +165,7 @@ std::unique_ptr<CachedShaderModule> ShaderManager::createShaderInternal(const Sh
     cachedShader->spec = spec;
     cachedShader->sourceModified = getFileModifiedTime(spec.filePath);
     cachedShader->isHotReloadable = spec.enableHotReload;
+    cachedShader->module.setContext(context);
     
     // Load or compile shader based on source type
     std::vector<uint32_t> spirvCode;
@@ -196,11 +202,12 @@ std::unique_ptr<CachedShaderModule> ShaderManager::createShaderInternal(const Sh
     }
     
     // Create Vulkan shader module
-    cachedShader->module = createVulkanShaderModule(spirvCode);
-    if (cachedShader->module == VK_NULL_HANDLE) {
+    auto shaderModule = createVulkanShaderModule(spirvCode);
+    if (!shaderModule) {
         std::cerr << "Failed to create Vulkan shader module: " << spec.filePath << std::endl;
         return nullptr;
     }
+    cachedShader->module = std::move(shaderModule);
     
     // Store SPIR-V code for reflection
     cachedShader->spirvCode = std::move(spirvCode);
@@ -217,7 +224,7 @@ std::unique_ptr<CachedShaderModule> ShaderManager::createShaderInternal(const Sh
     return cachedShader;
 }
 
-VkShaderModule ShaderManager::createVulkanShaderModule(const std::vector<uint32_t>& spirvCode) {
+vulkan_raii::ShaderModule ShaderManager::createVulkanShaderModule(const std::vector<uint32_t>& spirvCode) {
     VkShaderModuleCreateInfo createInfo{};
     createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
     createInfo.codeSize = spirvCode.size() * sizeof(uint32_t);
@@ -229,10 +236,10 @@ VkShaderModule ShaderManager::createVulkanShaderModule(const std::vector<uint32_
     
     if (result != VK_SUCCESS) {
         std::cerr << "Failed to create shader module: " << result << std::endl;
-        return VK_NULL_HANDLE;
+        return vulkan_raii::ShaderModule(VK_NULL_HANDLE, context);
     }
     
-    return shaderModule;
+    return vulkan_raii::make_shader_module(shaderModule, context);
 }
 
 std::vector<uint32_t> ShaderManager::loadSPIRVBinaryFromFile(const std::string& filePath) const {
@@ -378,13 +385,7 @@ VkPipelineShaderStageCreateInfo ShaderManager::createComputeShaderStage(VkShader
 void ShaderManager::clearCache() {
     if (!context) return;
     
-    // Destroy all cached shader modules
-    for (auto& [spec, shader] : shaderCache_) {
-        if (shader->module != VK_NULL_HANDLE) {
-            context->getLoader().vkDestroyShaderModule(context->getDevice(), shader->module, nullptr);
-        }
-    }
-    
+    // RAII wrappers automatically destroy shader modules
     shaderCache_.clear();
     stats.totalShaders = 0;
 }
@@ -400,11 +401,7 @@ void ShaderManager::evictLeastRecentlyUsed() {
         }
     }
     
-    // Destroy the shader
-    if (lruIt->second->module != VK_NULL_HANDLE) {
-        context->getLoader().vkDestroyShaderModule(context->getDevice(), lruIt->second->module, nullptr);
-    }
-    
+    // RAII wrapper automatically destroys shader module
     shaderCache_.erase(lruIt);
     stats.totalShaders--;
 }
@@ -415,11 +412,7 @@ bool ShaderManager::reloadShader(const ShaderModuleSpec& spec) {
         return false;
     }
     
-    // Destroy old shader module
-    if (it->second->module != VK_NULL_HANDLE) {
-        context->getLoader().vkDestroyShaderModule(context->getDevice(), it->second->module, nullptr);
-    }
-    
+    // RAII wrapper automatically destroys old shader module
     // Remove from cache
     shaderCache_.erase(it);
     stats.totalShaders--;
@@ -587,9 +580,7 @@ void ShaderManager::optimizeCache(uint64_t currentFrame) {
     // Simple LRU eviction for shader cache
     for (auto it = shaderCache_.begin(); it != shaderCache_.end();) {
         if (currentFrame - it->second->lastUsedFrame > 1000) { // Evict after 1000 frames
-            if (it->second->module != VK_NULL_HANDLE) {
-                context->getLoader().vkDestroyShaderModule(context->getDevice(), it->second->module, nullptr);
-            }
+            // RAII wrapper automatically destroys shader module
             it = shaderCache_.erase(it);
             stats.totalShaders--;
         } else {

@@ -30,33 +30,24 @@ bool VulkanSync::initialize(const VulkanContext& context) {
 }
 
 void VulkanSync::cleanup() {
+    cleanupBeforeContextDestruction();
+}
+
+void VulkanSync::cleanupBeforeContextDestruction() {
     if (context) {
-        // Cache loader and device references for performance
-        const auto& vk = context->getLoader();
-        const VkDevice device = context->getDevice();
-        
-        for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-            if (i < inFlightFences.size() && inFlightFences[i] != VK_NULL_HANDLE) {
-                vk.vkDestroyFence(device, inFlightFences[i], nullptr);
-            }
-            if (i < computeFences.size() && computeFences[i] != VK_NULL_HANDLE) {
-                vk.vkDestroyFence(device, computeFences[i], nullptr);
-            }
-            if (i < renderFinishedSemaphores.size() && renderFinishedSemaphores[i] != VK_NULL_HANDLE) {
-                vk.vkDestroySemaphore(device, renderFinishedSemaphores[i], nullptr);
-            }
-            if (i < computeFinishedSemaphores.size() && computeFinishedSemaphores[i] != VK_NULL_HANDLE) {
-                vk.vkDestroySemaphore(device, computeFinishedSemaphores[i], nullptr);
-            }
-            if (i < imageAvailableSemaphores.size() && imageAvailableSemaphores[i] != VK_NULL_HANDLE) {
-                vk.vkDestroySemaphore(device, imageAvailableSemaphores[i], nullptr);
-            }
-        }
+        // Clear RAII wrappers before context destruction
+        imageAvailableSemaphores.clear();
+        renderFinishedSemaphores.clear();
+        computeFinishedSemaphores.clear();
+        inFlightFences.clear();
+        computeFences.clear();
         
         if (commandPool != VK_NULL_HANDLE) {
-            vk.vkDestroyCommandPool(device, commandPool, nullptr);
+            context->getLoader().vkDestroyCommandPool(context->getDevice(), commandPool, nullptr);
             commandPool = VK_NULL_HANDLE;
         }
+        
+        context = nullptr;
     }
 }
 
@@ -103,11 +94,12 @@ bool VulkanSync::createCommandBuffers() {
 }
 
 bool VulkanSync::createSyncObjects() {
-    imageAvailableSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
-    renderFinishedSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
-    computeFinishedSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
-    inFlightFences.resize(MAX_FRAMES_IN_FLIGHT);
-    computeFences.resize(MAX_FRAMES_IN_FLIGHT);
+    // Reserve space but don't resize (RAII wrappers don't have default constructor that we want to use)
+    imageAvailableSemaphores.reserve(MAX_FRAMES_IN_FLIGHT);
+    renderFinishedSemaphores.reserve(MAX_FRAMES_IN_FLIGHT);
+    computeFinishedSemaphores.reserve(MAX_FRAMES_IN_FLIGHT);
+    inFlightFences.reserve(MAX_FRAMES_IN_FLIGHT);
+    computeFences.reserve(MAX_FRAMES_IN_FLIGHT);
     
     VkSemaphoreCreateInfo semaphoreInfo{};
     semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
@@ -117,14 +109,30 @@ bool VulkanSync::createSyncObjects() {
     fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
 
     for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-        if (context->getLoader().vkCreateSemaphore(context->getDevice(), &semaphoreInfo, nullptr, &imageAvailableSemaphores[i]) != VK_SUCCESS ||
-            context->getLoader().vkCreateSemaphore(context->getDevice(), &semaphoreInfo, nullptr, &renderFinishedSemaphores[i]) != VK_SUCCESS ||
-            context->getLoader().vkCreateSemaphore(context->getDevice(), &semaphoreInfo, nullptr, &computeFinishedSemaphores[i]) != VK_SUCCESS ||
-            context->getLoader().vkCreateFence(context->getDevice(), &fenceInfo, nullptr, &inFlightFences[i]) != VK_SUCCESS ||
-            context->getLoader().vkCreateFence(context->getDevice(), &fenceInfo, nullptr, &computeFences[i]) != VK_SUCCESS) {
-            std::cerr << "Failed to create synchronization objects" << std::endl;
+        VkSemaphore imageAvailableSemaphore, renderFinishedSemaphore, computeFinishedSemaphore;
+        VkFence inFlightFence, computeFence;
+        
+        if (context->getLoader().vkCreateSemaphore(context->getDevice(), &semaphoreInfo, nullptr, &imageAvailableSemaphore) != VK_SUCCESS ||
+            context->getLoader().vkCreateSemaphore(context->getDevice(), &semaphoreInfo, nullptr, &renderFinishedSemaphore) != VK_SUCCESS ||
+            context->getLoader().vkCreateSemaphore(context->getDevice(), &semaphoreInfo, nullptr, &computeFinishedSemaphore) != VK_SUCCESS ||
+            context->getLoader().vkCreateFence(context->getDevice(), &fenceInfo, nullptr, &inFlightFence) != VK_SUCCESS ||
+            context->getLoader().vkCreateFence(context->getDevice(), &fenceInfo, nullptr, &computeFence) != VK_SUCCESS) {
+            std::cerr << "Failed to create synchronization objects for frame " << i << std::endl;
+            // Clean up any objects created so far
+            imageAvailableSemaphores.clear();
+            renderFinishedSemaphores.clear();
+            computeFinishedSemaphores.clear();
+            inFlightFences.clear();
+            computeFences.clear();
             return false;
         }
+        
+        // Wrap in RAII wrappers
+        imageAvailableSemaphores.emplace_back(imageAvailableSemaphore, context);
+        renderFinishedSemaphores.emplace_back(renderFinishedSemaphore, context);
+        computeFinishedSemaphores.emplace_back(computeFinishedSemaphore, context);
+        inFlightFences.emplace_back(inFlightFence, context);
+        computeFences.emplace_back(computeFence, context);
     }
 
     return true;
@@ -209,5 +217,87 @@ bool VulkanSync::recreateCommandPool() {
     
     std::cout << "VulkanSync: Command pool and buffers successfully recreated" << std::endl;
     return true;
+}
+
+// Individual handle getters
+VkSemaphore VulkanSync::getImageAvailableSemaphore(size_t index) const {
+    if (index >= imageAvailableSemaphores.size()) {
+        return VK_NULL_HANDLE;
+    }
+    return imageAvailableSemaphores[index].get();
+}
+
+VkSemaphore VulkanSync::getRenderFinishedSemaphore(size_t index) const {
+    if (index >= renderFinishedSemaphores.size()) {
+        return VK_NULL_HANDLE;
+    }
+    return renderFinishedSemaphores[index].get();
+}
+
+VkSemaphore VulkanSync::getComputeFinishedSemaphore(size_t index) const {
+    if (index >= computeFinishedSemaphores.size()) {
+        return VK_NULL_HANDLE;
+    }
+    return computeFinishedSemaphores[index].get();
+}
+
+VkFence VulkanSync::getInFlightFence(size_t index) const {
+    if (index >= inFlightFences.size()) {
+        return VK_NULL_HANDLE;
+    }
+    return inFlightFences[index].get();
+}
+
+VkFence VulkanSync::getComputeFence(size_t index) const {
+    if (index >= computeFences.size()) {
+        return VK_NULL_HANDLE;
+    }
+    return computeFences[index].get();
+}
+
+// Getter implementations that return raw Vulkan handles
+std::vector<VkSemaphore> VulkanSync::getImageAvailableSemaphores() const {
+    std::vector<VkSemaphore> handles;
+    handles.reserve(imageAvailableSemaphores.size());
+    for (const auto& semaphore : imageAvailableSemaphores) {
+        handles.push_back(semaphore.get());
+    }
+    return handles;
+}
+
+std::vector<VkSemaphore> VulkanSync::getRenderFinishedSemaphores() const {
+    std::vector<VkSemaphore> handles;
+    handles.reserve(renderFinishedSemaphores.size());
+    for (const auto& semaphore : renderFinishedSemaphores) {
+        handles.push_back(semaphore.get());
+    }
+    return handles;
+}
+
+std::vector<VkSemaphore> VulkanSync::getComputeFinishedSemaphores() const {
+    std::vector<VkSemaphore> handles;
+    handles.reserve(computeFinishedSemaphores.size());
+    for (const auto& semaphore : computeFinishedSemaphores) {
+        handles.push_back(semaphore.get());
+    }
+    return handles;
+}
+
+std::vector<VkFence> VulkanSync::getInFlightFences() const {
+    std::vector<VkFence> handles;
+    handles.reserve(inFlightFences.size());
+    for (const auto& fence : inFlightFences) {
+        handles.push_back(fence.get());
+    }
+    return handles;
+}
+
+std::vector<VkFence> VulkanSync::getComputeFences() const {
+    std::vector<VkFence> handles;
+    handles.reserve(computeFences.size());
+    for (const auto& fence : computeFences) {
+        handles.push_back(fence.get());
+    }
+    return handles;
 }
 

@@ -16,6 +16,9 @@ public:
     // Initialization
     bool initialize(const VulkanContext& context);
     void cleanup();
+    
+    // Explicit cleanup before context destruction
+    void cleanupBeforeContextDestruction();
 
     // Manager access
     GraphicsPipelineManager* getGraphicsManager() { return graphicsManager.get(); }

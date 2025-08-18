@@ -6,6 +6,7 @@
 #include "vulkan_context.h"
 #include "vulkan_function_loader.h"
 #include "vulkan_constants.h"
+#include "vulkan_raii.h"
 
 class VulkanSync {
 public:
@@ -14,14 +15,25 @@ public:
 
     bool initialize(const VulkanContext& context);
     void cleanup();
+    
+    // Explicit cleanup before context destruction
+    void cleanupBeforeContextDestruction();
 
     VkCommandPool getCommandPool() const { return commandPool; }
     const std::vector<VkCommandBuffer>& getCommandBuffers() const { return commandBuffers; }
-    const std::vector<VkSemaphore>& getImageAvailableSemaphores() const { return imageAvailableSemaphores; }
-    const std::vector<VkSemaphore>& getRenderFinishedSemaphores() const { return renderFinishedSemaphores; }
-    const std::vector<VkSemaphore>& getComputeFinishedSemaphores() const { return computeFinishedSemaphores; }
-    const std::vector<VkFence>& getInFlightFences() const { return inFlightFences; }
-    const std::vector<VkFence>& getComputeFences() const { return computeFences; }
+    // Get individual handles by index
+    VkSemaphore getImageAvailableSemaphore(size_t index) const;
+    VkSemaphore getRenderFinishedSemaphore(size_t index) const;
+    VkSemaphore getComputeFinishedSemaphore(size_t index) const;
+    VkFence getInFlightFence(size_t index) const;
+    VkFence getComputeFence(size_t index) const;
+    
+    // Get full vectors (for compatibility)
+    std::vector<VkSemaphore> getImageAvailableSemaphores() const;
+    std::vector<VkSemaphore> getRenderFinishedSemaphores() const;
+    std::vector<VkSemaphore> getComputeFinishedSemaphores() const;
+    std::vector<VkFence> getInFlightFences() const;
+    std::vector<VkFence> getComputeFences() const;
     const std::vector<VkCommandBuffer>& getComputeCommandBuffers() const { return computeCommandBuffers; }
     
     // Optimized command buffer management
@@ -37,11 +49,11 @@ private:
     VkCommandPool commandPool = VK_NULL_HANDLE;
     std::vector<VkCommandBuffer> commandBuffers;        // Graphics command buffers
     std::vector<VkCommandBuffer> computeCommandBuffers; // Compute command buffers
-    std::vector<VkSemaphore> imageAvailableSemaphores;
-    std::vector<VkSemaphore> renderFinishedSemaphores;
-    std::vector<VkSemaphore> computeFinishedSemaphores; // Compute-to-graphics synchronization
-    std::vector<VkFence> inFlightFences;                // Graphics fences
-    std::vector<VkFence> computeFences;                 // Compute fences
+    std::vector<vulkan_raii::Semaphore> imageAvailableSemaphores;
+    std::vector<vulkan_raii::Semaphore> renderFinishedSemaphores;
+    std::vector<vulkan_raii::Semaphore> computeFinishedSemaphores; // Compute-to-graphics synchronization
+    std::vector<vulkan_raii::Fence> inFlightFences;                // Graphics fences
+    std::vector<vulkan_raii::Fence> computeFences;                 // Compute fences
 
     bool createCommandPool();
     bool createCommandBuffers(); 
