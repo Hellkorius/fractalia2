@@ -200,6 +200,13 @@ private:
                                   ResourceAccess srcAccess, ResourceAccess dstAccess);
     void insertBarriersIntoCommandBuffer(VkCommandBuffer commandBuffer);
     
+    // Execution helpers
+    std::pair<bool, bool> analyzeQueueRequirements() const;
+    void beginCommandBuffers(bool useCompute, bool useGraphics, uint32_t frameIndex);
+    void endCommandBuffers(bool useCompute, bool useGraphics, uint32_t frameIndex);
+    void insertBarriersIfNeeded(VkCommandBuffer graphicsCmd, bool& computeExecuted, bool nodeNeedsGraphics);
+    void executeNodesInOrder(uint32_t frameIndex, bool& computeExecuted);
+    
     // Resource helpers
     FrameGraphBuffer* getBufferResource(FrameGraphTypes::ResourceId id);
     FrameGraphImage* getImageResource(FrameGraphTypes::ResourceId id);

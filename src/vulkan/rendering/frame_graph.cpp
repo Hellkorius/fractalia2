@@ -269,94 +269,23 @@ FrameGraph::ExecutionResult FrameGraph::execute(uint32_t frameIndex) {
         return result;
     }
     
-    // Get command buffers and synchronization objects
-    const auto& computeCommandBuffers = sync->getComputeCommandBuffers();
-    const auto& graphicsCommandBuffers = sync->getCommandBuffers();
-    
-    VkCommandBuffer currentComputeCmd = computeCommandBuffers[frameIndex];
-    VkCommandBuffer currentGraphicsCmd = graphicsCommandBuffers[frameIndex];
-    
     // Note: Command buffer reset is handled by VulkanRenderer after fence waits
     // Frame graph assumes command buffers are already reset and ready for recording
     
-    VkCommandBufferBeginInfo beginInfo{};
-    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    // Analyze which command buffers we'll need
+    auto [computeNeeded, graphicsNeeded] = analyzeQueueRequirements();
+    result.computeCommandBufferUsed = computeNeeded;
+    result.graphicsCommandBufferUsed = graphicsNeeded;
     
-    // Check which command buffers we'll need
-    for (auto nodeId : executionOrder) {
-        auto it = nodes.find(nodeId);
-        if (it != nodes.end()) {
-            if (it->second->needsComputeQueue()) result.computeCommandBufferUsed = true;
-            if (it->second->needsGraphicsQueue()) result.graphicsCommandBufferUsed = true;
-        }
-    }
-    
-    // Cache loader reference for performance
-    const auto& vk = context->getLoader();
-    
-    // Only begin command buffers that will be used
-    if (result.computeCommandBufferUsed) {
-        vk.vkBeginCommandBuffer(currentComputeCmd, &beginInfo);
-    }
-    if (result.graphicsCommandBufferUsed) {
-        vk.vkBeginCommandBuffer(currentGraphicsCmd, &beginInfo);
-    }
+    // Begin only the command buffers that will be used
+    beginCommandBuffers(computeNeeded, graphicsNeeded, frameIndex);
     
     // Execute nodes in dependency order
     bool computeExecuted = false;
-    for (auto nodeId : executionOrder) {
-        auto it = nodes.find(nodeId);
-        if (it == nodes.end()) continue;
-        
-        auto& node = it->second;
-        
-        // If switching from compute to graphics, insert barriers first
-        if (computeExecuted && node->needsGraphicsQueue() && (!computeToGraphicsBarriers.bufferBarriers.empty() || !computeToGraphicsBarriers.imageBarriers.empty())) {
-            // Inserting barriers between compute and graphics
-            
-            // Barriers ready for insertion
-            
-            // Insert barriers into graphics command buffer BEFORE graphics work
-            vk.vkCmdPipelineBarrier(
-                currentGraphicsCmd,
-                VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_VERTEX_INPUT_BIT,
-                0,
-                0, nullptr,
-                static_cast<uint32_t>(computeToGraphicsBarriers.bufferBarriers.size()), 
-                computeToGraphicsBarriers.bufferBarriers.data(),
-                static_cast<uint32_t>(computeToGraphicsBarriers.imageBarriers.size()), 
-                computeToGraphicsBarriers.imageBarriers.data()
-            );
-            // Barrier insertion complete
-            
-            // Clear the flag to avoid inserting barriers multiple times
-            computeExecuted = false;
-        }
-        
-        // Choose appropriate command buffer based on node requirements
-        VkCommandBuffer cmdBuffer = node->needsComputeQueue() ? currentComputeCmd : currentGraphicsCmd;
-        
-        // Track if compute was executed
-        if (node->needsComputeQueue()) {
-            computeExecuted = true;
-        }
-        
-        // Executing node
-        
-        // Execute the node
-        node->execute(cmdBuffer, *this);
-        
-        // Node execution completed
-    }
+    executeNodesInOrder(frameIndex, computeExecuted);
     
     // End only the command buffers that were begun
-    if (result.computeCommandBufferUsed) {
-        vk.vkEndCommandBuffer(currentComputeCmd);
-    }
-    if (result.graphicsCommandBufferUsed) {
-        vk.vkEndCommandBuffer(currentGraphicsCmd);
-    }
+    endCommandBuffers(computeNeeded, graphicsNeeded, frameIndex);
     
     // Frame graph complete - command buffers are ready for submission by VulkanRenderer
     return result;
@@ -474,6 +403,99 @@ void FrameGraph::debugPrint() const {
 }
 
 // Private implementation methods
+
+std::pair<bool, bool> FrameGraph::analyzeQueueRequirements() const {
+    bool computeNeeded = false;
+    bool graphicsNeeded = false;
+    
+    for (auto nodeId : executionOrder) {
+        auto it = nodes.find(nodeId);
+        if (it != nodes.end()) {
+            if (it->second->needsComputeQueue()) computeNeeded = true;
+            if (it->second->needsGraphicsQueue()) graphicsNeeded = true;
+        }
+    }
+    
+    return {computeNeeded, graphicsNeeded};
+}
+
+void FrameGraph::beginCommandBuffers(bool useCompute, bool useGraphics, uint32_t frameIndex) {
+    const auto& computeCommandBuffers = sync->getComputeCommandBuffers();
+    const auto& graphicsCommandBuffers = sync->getCommandBuffers();
+    const auto& vk = context->getLoader();
+    
+    VkCommandBufferBeginInfo beginInfo{};
+    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    
+    if (useCompute) {
+        VkCommandBuffer computeCmd = computeCommandBuffers[frameIndex];
+        vk.vkBeginCommandBuffer(computeCmd, &beginInfo);
+    }
+    if (useGraphics) {
+        VkCommandBuffer graphicsCmd = graphicsCommandBuffers[frameIndex];
+        vk.vkBeginCommandBuffer(graphicsCmd, &beginInfo);
+    }
+}
+
+void FrameGraph::endCommandBuffers(bool useCompute, bool useGraphics, uint32_t frameIndex) {
+    const auto& computeCommandBuffers = sync->getComputeCommandBuffers();
+    const auto& graphicsCommandBuffers = sync->getCommandBuffers();
+    const auto& vk = context->getLoader();
+    
+    if (useCompute) {
+        VkCommandBuffer computeCmd = computeCommandBuffers[frameIndex];
+        vk.vkEndCommandBuffer(computeCmd);
+    }
+    if (useGraphics) {
+        VkCommandBuffer graphicsCmd = graphicsCommandBuffers[frameIndex];
+        vk.vkEndCommandBuffer(graphicsCmd);
+    }
+}
+
+void FrameGraph::insertBarriersIfNeeded(VkCommandBuffer graphicsCmd, bool& computeExecuted, bool nodeNeedsGraphics) {
+    if (computeExecuted && nodeNeedsGraphics && (!computeToGraphicsBarriers.bufferBarriers.empty() || !computeToGraphicsBarriers.imageBarriers.empty())) {
+        const auto& vk = context->getLoader();
+        
+        vk.vkCmdPipelineBarrier(
+            graphicsCmd,
+            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+            VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_VERTEX_INPUT_BIT,
+            0,
+            0, nullptr,
+            static_cast<uint32_t>(computeToGraphicsBarriers.bufferBarriers.size()), 
+            computeToGraphicsBarriers.bufferBarriers.data(),
+            static_cast<uint32_t>(computeToGraphicsBarriers.imageBarriers.size()), 
+            computeToGraphicsBarriers.imageBarriers.data()
+        );
+        
+        computeExecuted = false;
+    }
+}
+
+void FrameGraph::executeNodesInOrder(uint32_t frameIndex, bool& computeExecuted) {
+    const auto& computeCommandBuffers = sync->getComputeCommandBuffers();
+    const auto& graphicsCommandBuffers = sync->getCommandBuffers();
+    
+    VkCommandBuffer currentComputeCmd = computeCommandBuffers[frameIndex];
+    VkCommandBuffer currentGraphicsCmd = graphicsCommandBuffers[frameIndex];
+    
+    for (auto nodeId : executionOrder) {
+        auto it = nodes.find(nodeId);
+        if (it == nodes.end()) continue;
+        
+        auto& node = it->second;
+        
+        insertBarriersIfNeeded(currentGraphicsCmd, computeExecuted, node->needsGraphicsQueue());
+        
+        VkCommandBuffer cmdBuffer = node->needsComputeQueue() ? currentComputeCmd : currentGraphicsCmd;
+        
+        if (node->needsComputeQueue()) {
+            computeExecuted = true;
+        }
+        
+        node->execute(cmdBuffer, *this);
+    }
+}
 
 bool FrameGraph::createVulkanBuffer(FrameGraphBuffer& buffer) {
     // Create buffer
