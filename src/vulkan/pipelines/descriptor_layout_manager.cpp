@@ -61,7 +61,7 @@ DescriptorLayoutManager::DescriptorLayoutManager() {
 }
 
 DescriptorLayoutManager::~DescriptorLayoutManager() {
-    cleanup();
+    cleanupBeforeContextDestruction();
 }
 
 bool DescriptorLayoutManager::initialize(const VulkanContext& context) {
@@ -86,47 +86,24 @@ bool DescriptorLayoutManager::initialize(const VulkanContext& context) {
 }
 
 void DescriptorLayoutManager::cleanup() {
+    cleanupBeforeContextDestruction();
+}
+
+void DescriptorLayoutManager::cleanupBeforeContextDestruction() {
     if (!context) return;
     
-    // Clear layout cache
+    // Clear layout cache (RAII handles cleanup automatically)
     clearCache();
     
-    // Cache loader and device references for performance
-    if (context) {
-        const auto& vk = context->getLoader();
-        const VkDevice device = context->getDevice();
-        
-        // Destroy common layouts
-        if (commonLayouts.uniformBuffer != VK_NULL_HANDLE) {
-            vk.vkDestroyDescriptorSetLayout(device, commonLayouts.uniformBuffer, nullptr);
-            commonLayouts.uniformBuffer = VK_NULL_HANDLE;
-        }
-        if (commonLayouts.storageBuffer != VK_NULL_HANDLE) {
-            vk.vkDestroyDescriptorSetLayout(device, commonLayouts.storageBuffer, nullptr);
-            commonLayouts.storageBuffer = VK_NULL_HANDLE;
-        }
-        if (commonLayouts.combinedImageSampler != VK_NULL_HANDLE) {
-            vk.vkDestroyDescriptorSetLayout(device, commonLayouts.combinedImageSampler, nullptr);
-            commonLayouts.combinedImageSampler = VK_NULL_HANDLE;
-        }
-        if (commonLayouts.storageImage != VK_NULL_HANDLE) {
-            vk.vkDestroyDescriptorSetLayout(device, commonLayouts.storageImage, nullptr);
-            commonLayouts.storageImage = VK_NULL_HANDLE;
-        }
-        if (commonLayouts.bindlessTextures != VK_NULL_HANDLE) {
-            vk.vkDestroyDescriptorSetLayout(device, commonLayouts.bindlessTextures, nullptr);
-            commonLayouts.bindlessTextures = VK_NULL_HANDLE;
-        }
-        if (commonLayouts.bindlessBuffers != VK_NULL_HANDLE) {
-            vk.vkDestroyDescriptorSetLayout(device, commonLayouts.bindlessBuffers, nullptr);
-            commonLayouts.bindlessBuffers = VK_NULL_HANDLE;
-        }
-    }
+    // Reset common layouts (RAII handles cleanup automatically)
+    commonLayouts.uniformBuffer.reset();
+    commonLayouts.storageBuffer.reset();
+    commonLayouts.combinedImageSampler.reset();
+    commonLayouts.storageImage.reset();
+    commonLayouts.bindlessTextures.reset();
+    commonLayouts.bindlessBuffers.reset();
     
-    // Destroy managed pools
-    for (VkDescriptorPool pool : managedPools) {
-        context->getLoader().vkDestroyDescriptorPool(context->getDevice(), pool, nullptr);
-    }
+    // Clear managed pools (RAII handles cleanup automatically)
     managedPools.clear();
     
     context = nullptr;
@@ -140,7 +117,7 @@ VkDescriptorSetLayout DescriptorLayoutManager::getLayout(const DescriptorLayoutS
         stats.cacheHits++;
         it->second->lastUsedFrame = stats.cacheHits + stats.cacheMisses;  // Rough frame counter
         it->second->useCount++;
-        return it->second->layout;
+        return it->second->layout.get();
     }
     
     // Cache miss - create new layout
@@ -152,7 +129,7 @@ VkDescriptorSetLayout DescriptorLayoutManager::getLayout(const DescriptorLayoutS
         return VK_NULL_HANDLE;
     }
     
-    VkDescriptorSetLayout layout = cachedLayout->layout;
+    VkDescriptorSetLayout layout = cachedLayout->layout.get();
     
     // Store in cache
     layoutCache_[spec] = std::move(cachedLayout);
@@ -189,10 +166,11 @@ std::unique_ptr<CachedDescriptorLayout> DescriptorLayoutManager::createLayoutInt
     cachedLayout->isBindless = spec.enableBindless;
     
     // Create the Vulkan layout
-    cachedLayout->layout = createVulkanLayout(spec);
-    if (cachedLayout->layout == VK_NULL_HANDLE) {
+    VkDescriptorSetLayout rawLayout = createVulkanLayout(spec);
+    if (rawLayout == VK_NULL_HANDLE) {
         return nullptr;
     }
+    cachedLayout->layout = vulkan_raii::make_descriptor_set_layout(rawLayout, context);
     
     // Update pool size hints
     updatePoolSizeHints(*cachedLayout);
@@ -324,24 +302,26 @@ VkDescriptorPool DescriptorLayoutManager::createOptimalPool(const DescriptorPool
     poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
     poolInfo.pPoolSizes = poolSizes.data();
     
-    VkDescriptorPool pool;
+    VkDescriptorPool rawPool;
     VkResult result = context->getLoader().vkCreateDescriptorPool(
-        context->getDevice(), &poolInfo, nullptr, &pool);
+        context->getDevice(), &poolInfo, nullptr, &rawPool);
     
     if (result != VK_SUCCESS) {
         std::cerr << "Failed to create descriptor pool: " << result << std::endl;
         return VK_NULL_HANDLE;
     }
     
-    managedPools.push_back(pool);
+    vulkan_raii::DescriptorPool pool = vulkan_raii::make_descriptor_pool(rawPool, context);
+    VkDescriptorPool handle = pool.get();
+    managedPools.push_back(std::move(pool));
     stats.activePools++;
     
-    return pool;
+    return handle;
 }
 
 VkDescriptorSetLayout DescriptorLayoutManager::getUniformBufferLayout(VkShaderStageFlags stages) {
-    if (commonLayouts.uniformBuffer != VK_NULL_HANDLE) {
-        return commonLayouts.uniformBuffer;
+    if (commonLayouts.uniformBuffer) {
+        return commonLayouts.uniformBuffer.get();
     }
     
     DescriptorLayoutSpec spec;
@@ -360,8 +340,8 @@ VkDescriptorSetLayout DescriptorLayoutManager::getUniformBufferLayout(VkShaderSt
 }
 
 VkDescriptorSetLayout DescriptorLayoutManager::getStorageBufferLayout(VkShaderStageFlags stages) {
-    if (commonLayouts.storageBuffer != VK_NULL_HANDLE) {
-        return commonLayouts.storageBuffer;
+    if (commonLayouts.storageBuffer) {
+        return commonLayouts.storageBuffer.get();
     }
     
     DescriptorLayoutSpec spec;
@@ -382,13 +362,7 @@ VkDescriptorSetLayout DescriptorLayoutManager::getStorageBufferLayout(VkShaderSt
 void DescriptorLayoutManager::clearCache() {
     if (!context) return;
     
-    // Destroy all cached layouts
-    for (auto& [spec, layout] : layoutCache_) {
-        if (layout->layout != VK_NULL_HANDLE) {
-            context->getLoader().vkDestroyDescriptorSetLayout(context->getDevice(), layout->layout, nullptr);
-        }
-    }
-    
+    // Clear all cached layouts (RAII handles cleanup automatically)
     layoutCache_.clear();
     stats.totalLayouts = 0;
     stats.bindlessLayouts = 0;
@@ -405,11 +379,7 @@ void DescriptorLayoutManager::evictLeastRecentlyUsed() {
         }
     }
     
-    // Destroy the layout
-    if (lruIt->second->layout != VK_NULL_HANDLE) {
-        context->getLoader().vkDestroyDescriptorSetLayout(context->getDevice(), lruIt->second->layout, nullptr);
-    }
-    
+    // Erase the layout (RAII handles cleanup automatically)
     layoutCache_.erase(lruIt);
     stats.totalLayouts--;
 }
@@ -676,9 +646,7 @@ void DescriptorLayoutManager::optimizeCache(uint64_t currentFrame) {
     // Simple LRU eviction for descriptor layout cache
     for (auto it = layoutCache_.begin(); it != layoutCache_.end();) {
         if (currentFrame - it->second->lastUsedFrame > 1000) { // Evict after 1000 frames
-            if (it->second->layout != VK_NULL_HANDLE) {
-                context->getLoader().vkDestroyDescriptorSetLayout(context->getDevice(), it->second->layout, nullptr);
-            }
+            // Erase layout (RAII handles cleanup automatically)
             it = layoutCache_.erase(it);
             stats.totalLayouts--;
         } else {

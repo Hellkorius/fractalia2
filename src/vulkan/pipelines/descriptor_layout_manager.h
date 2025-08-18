@@ -8,6 +8,7 @@
 #include <memory>
 #include <functional>
 #include "../core/vulkan_context.h"
+#include "../core/vulkan_raii.h"
 
 // Descriptor binding specification for flexible layout creation
 struct DescriptorBinding {
@@ -58,7 +59,7 @@ struct DescriptorLayoutSpecHash {
 
 // Cached descriptor set layout with metadata
 struct CachedDescriptorLayout {
-    VkDescriptorSetLayout layout = VK_NULL_HANDLE;
+    vulkan_raii::DescriptorSetLayout layout;
     DescriptorLayoutSpec spec;
     
     // Usage tracking
@@ -113,6 +114,7 @@ public:
     // Initialization
     bool initialize(const VulkanContext& context);
     void cleanup();
+    void cleanupBeforeContextDestruction();
 
     // Layout creation and caching
     VkDescriptorSetLayout getLayout(const DescriptorLayoutSpec& spec);
@@ -125,7 +127,6 @@ public:
     VkDescriptorPool createOptimalPool(const DescriptorPoolConfig& config);
     VkDescriptorPool createPoolForLayouts(const std::vector<VkDescriptorSetLayout>& layouts,
                                          uint32_t maxSets = 1024);
-    void destroyPool(VkDescriptorPool pool);
     
     // Common layout presets
     VkDescriptorSetLayout getUniformBufferLayout(VkShaderStageFlags stages = VK_SHADER_STAGE_ALL);
@@ -189,7 +190,7 @@ private:
     std::unordered_map<DescriptorLayoutSpec, std::unique_ptr<CachedDescriptorLayout>, DescriptorLayoutSpecHash> layoutCache_;
     
     // Pool management
-    std::vector<VkDescriptorPool> managedPools;
+    std::vector<vulkan_raii::DescriptorPool> managedPools;
     
     // Device features and limits
     VkPhysicalDeviceDescriptorIndexingFeatures indexingFeatures{};
@@ -198,12 +199,12 @@ private:
     
     // Common layout cache (for frequently used patterns)
     struct CommonLayouts {
-        VkDescriptorSetLayout uniformBuffer = VK_NULL_HANDLE;
-        VkDescriptorSetLayout storageBuffer = VK_NULL_HANDLE;
-        VkDescriptorSetLayout combinedImageSampler = VK_NULL_HANDLE;
-        VkDescriptorSetLayout storageImage = VK_NULL_HANDLE;
-        VkDescriptorSetLayout bindlessTextures = VK_NULL_HANDLE;
-        VkDescriptorSetLayout bindlessBuffers = VK_NULL_HANDLE;
+        vulkan_raii::DescriptorSetLayout uniformBuffer;
+        vulkan_raii::DescriptorSetLayout storageBuffer;
+        vulkan_raii::DescriptorSetLayout combinedImageSampler;
+        vulkan_raii::DescriptorSetLayout storageImage;
+        vulkan_raii::DescriptorSetLayout bindlessTextures;
+        vulkan_raii::DescriptorSetLayout bindlessBuffers;
     } commonLayouts;
     
     // Statistics
