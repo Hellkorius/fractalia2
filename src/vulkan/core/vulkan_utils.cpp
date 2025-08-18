@@ -8,8 +8,11 @@ uint32_t VulkanUtils::findMemoryType(VkPhysicalDevice physicalDevice,
                                     const VulkanFunctionLoader& loader,
                                     uint32_t typeFilter, 
                                     VkMemoryPropertyFlags properties) {
+    // Cache loader reference for performance
+    const auto& vk = loader;
+    
     VkPhysicalDeviceMemoryProperties memProperties;
-    loader.vkGetPhysicalDeviceMemoryProperties(physicalDevice, &memProperties);
+    vk.vkGetPhysicalDeviceMemoryProperties(physicalDevice, &memProperties);
     
     for (uint32_t i = 0; i < memProperties.memoryTypeCount; i++) {
         if ((typeFilter & (1 << i)) && 
@@ -28,6 +31,9 @@ bool VulkanUtils::createBuffer(VkDevice device,
                              VkMemoryPropertyFlags properties,
                              VkBuffer& buffer,
                              VkDeviceMemory& bufferMemory) {
+    // Cache loader reference for performance
+    const auto& vk = loader;
+    
     // Create buffer
     VkBufferCreateInfo bufferInfo{};
     bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
@@ -35,28 +41,28 @@ bool VulkanUtils::createBuffer(VkDevice device,
     bufferInfo.usage = usage;
     bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     
-    if (loader.vkCreateBuffer(device, &bufferInfo, nullptr, &buffer) != VK_SUCCESS) {
+    if (vk.vkCreateBuffer(device, &bufferInfo, nullptr, &buffer) != VK_SUCCESS) {
         std::cerr << "Failed to create buffer!" << std::endl;
         return false;
     }
     
     // Allocate memory
     VkMemoryRequirements memRequirements;
-    loader.vkGetBufferMemoryRequirements(device, buffer, &memRequirements);
+    vk.vkGetBufferMemoryRequirements(device, buffer, &memRequirements);
     
     VkMemoryAllocateInfo allocInfo{};
     allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
     allocInfo.allocationSize = memRequirements.size;
-    allocInfo.memoryTypeIndex = findMemoryType(loader.getPhysicalDevice(), loader,
+    allocInfo.memoryTypeIndex = findMemoryType(vk.getPhysicalDevice(), vk,
                                              memRequirements.memoryTypeBits, properties);
     
-    if (loader.vkAllocateMemory(device, &allocInfo, nullptr, &bufferMemory) != VK_SUCCESS) {
+    if (vk.vkAllocateMemory(device, &allocInfo, nullptr, &bufferMemory) != VK_SUCCESS) {
         std::cerr << "Failed to allocate buffer memory!" << std::endl;
-        loader.vkDestroyBuffer(device, buffer, nullptr);
+        vk.vkDestroyBuffer(device, buffer, nullptr);
         return false;
     }
     
-    loader.vkBindBufferMemory(device, buffer, bufferMemory, 0);
+    vk.vkBindBufferMemory(device, buffer, bufferMemory, 0);
     return true;
 }
 
@@ -72,6 +78,9 @@ bool VulkanUtils::createImage(VkDevice device,
                             VkImage& image,
                             VkDeviceMemory& imageMemory,
                             VkSampleCountFlagBits numSamples) {
+    // Cache loader reference for performance
+    const auto& vk = loader;
+    
     VkImageCreateInfo imageInfo{};
     imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
     imageInfo.imageType = VK_IMAGE_TYPE_2D;
@@ -87,27 +96,27 @@ bool VulkanUtils::createImage(VkDevice device,
     imageInfo.samples = numSamples;
     imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     
-    if (loader.vkCreateImage(device, &imageInfo, nullptr, &image) != VK_SUCCESS) {
+    if (vk.vkCreateImage(device, &imageInfo, nullptr, &image) != VK_SUCCESS) {
         std::cerr << "Failed to create image!" << std::endl;
         return false;
     }
     
     VkMemoryRequirements memRequirements;
-    loader.vkGetImageMemoryRequirements(device, image, &memRequirements);
+    vk.vkGetImageMemoryRequirements(device, image, &memRequirements);
     
     VkMemoryAllocateInfo allocInfo{};
     allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
     allocInfo.allocationSize = memRequirements.size;
-    allocInfo.memoryTypeIndex = findMemoryType(physicalDevice, loader,
+    allocInfo.memoryTypeIndex = findMemoryType(physicalDevice, vk,
                                              memRequirements.memoryTypeBits, properties);
     
-    if (loader.vkAllocateMemory(device, &allocInfo, nullptr, &imageMemory) != VK_SUCCESS) {
+    if (vk.vkAllocateMemory(device, &allocInfo, nullptr, &imageMemory) != VK_SUCCESS) {
         std::cerr << "Failed to allocate image memory!" << std::endl;
-        loader.vkDestroyImage(device, image, nullptr);
+        vk.vkDestroyImage(device, image, nullptr);
         return false;
     }
     
-    loader.vkBindImageMemory(device, image, imageMemory, 0);
+    vk.vkBindImageMemory(device, image, imageMemory, 0);
     return true;
 }
 
@@ -116,6 +125,9 @@ VkImageView VulkanUtils::createImageView(VkDevice device,
                                        VkImage image,
                                        VkFormat format,
                                        VkImageAspectFlags aspectFlags) {
+    // Cache loader reference for performance
+    const auto& vk = loader;
+    
     VkImageViewCreateInfo viewInfo{};
     viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
     viewInfo.image = image;
@@ -128,7 +140,7 @@ VkImageView VulkanUtils::createImageView(VkDevice device,
     viewInfo.subresourceRange.layerCount = 1;
     
     VkImageView imageView;
-    if (loader.vkCreateImageView(device, &viewInfo, nullptr, &imageView) != VK_SUCCESS) {
+    if (vk.vkCreateImageView(device, &viewInfo, nullptr, &imageView) != VK_SUCCESS) {
         throw std::runtime_error("Failed to create texture image view!");
     }
     
@@ -155,13 +167,16 @@ std::vector<char> VulkanUtils::readFile(const std::string& filename) {
 VkShaderModule VulkanUtils::createShaderModule(VkDevice device,
                                               const VulkanFunctionLoader& loader,
                                               const std::vector<char>& code) {
+    // Cache loader reference for performance
+    const auto& vk = loader;
+    
     VkShaderModuleCreateInfo createInfo{};
     createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
     createInfo.codeSize = code.size();
     createInfo.pCode = reinterpret_cast<const uint32_t*>(code.data());
     
     VkShaderModule shaderModule;
-    if (loader.vkCreateShaderModule(device, &createInfo, nullptr, &shaderModule) != VK_SUCCESS) {
+    if (vk.vkCreateShaderModule(device, &createInfo, nullptr, &shaderModule) != VK_SUCCESS) {
         return VK_NULL_HANDLE;
     }
     
@@ -171,6 +186,9 @@ VkShaderModule VulkanUtils::createShaderModule(VkDevice device,
 VkCommandBuffer VulkanUtils::beginSingleTimeCommands(VkDevice device,
                                                     const VulkanFunctionLoader& loader,
                                                     VkCommandPool commandPool) {
+    // Cache loader reference for performance
+    const auto& vk = loader;
+    
     VkCommandBufferAllocateInfo allocInfo{};
     allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
     allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
@@ -178,13 +196,13 @@ VkCommandBuffer VulkanUtils::beginSingleTimeCommands(VkDevice device,
     allocInfo.commandBufferCount = 1;
     
     VkCommandBuffer commandBuffer;
-    loader.vkAllocateCommandBuffers(device, &allocInfo, &commandBuffer);
+    vk.vkAllocateCommandBuffers(device, &allocInfo, &commandBuffer);
     
     VkCommandBufferBeginInfo beginInfo{};
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
     
-    loader.vkBeginCommandBuffer(commandBuffer, &beginInfo);
+    vk.vkBeginCommandBuffer(commandBuffer, &beginInfo);
     return commandBuffer;
 }
 
@@ -193,15 +211,18 @@ void VulkanUtils::endSingleTimeCommands(VkDevice device,
                                        VkQueue queue,
                                        VkCommandPool commandPool,
                                        VkCommandBuffer commandBuffer) {
-    loader.vkEndCommandBuffer(commandBuffer);
+    // Cache loader reference for performance
+    const auto& vk = loader;
+    
+    vk.vkEndCommandBuffer(commandBuffer);
     
     VkSubmitInfo submitInfo{};
     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
     submitInfo.commandBufferCount = 1;
     submitInfo.pCommandBuffers = &commandBuffer;
     
-    loader.vkQueueSubmit(queue, 1, &submitInfo, VK_NULL_HANDLE);
-    loader.vkQueueWaitIdle(queue);
+    vk.vkQueueSubmit(queue, 1, &submitInfo, VK_NULL_HANDLE);
+    vk.vkQueueWaitIdle(queue);
     
     // Note: Command buffer will be freed automatically when command pool is destroyed
 }
@@ -214,7 +235,10 @@ void VulkanUtils::transitionImageLayout(VkDevice device,
                                       VkFormat format,
                                       VkImageLayout oldLayout,
                                       VkImageLayout newLayout) {
-    VkCommandBuffer commandBuffer = beginSingleTimeCommands(device, loader, commandPool);
+    // Cache loader reference for performance
+    const auto& vk = loader;
+    
+    VkCommandBuffer commandBuffer = beginSingleTimeCommands(device, vk, commandPool);
     
     VkImageMemoryBarrier barrier{};
     barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
@@ -248,10 +272,10 @@ void VulkanUtils::transitionImageLayout(VkDevice device,
         throw std::invalid_argument("Unsupported layout transition!");
     }
     
-    loader.vkCmdPipelineBarrier(commandBuffer, sourceStage, destinationStage, 0,
-                              0, nullptr, 0, nullptr, 1, &barrier);
+    vk.vkCmdPipelineBarrier(commandBuffer, sourceStage, destinationStage, 0,
+                          0, nullptr, 0, nullptr, 1, &barrier);
     
-    endSingleTimeCommands(device, loader, queue, commandPool, commandBuffer);
+    endSingleTimeCommands(device, vk, queue, commandPool, commandBuffer);
 }
 
 void VulkanUtils::copyBuffer(VkDevice device,
@@ -261,13 +285,16 @@ void VulkanUtils::copyBuffer(VkDevice device,
                            VkBuffer srcBuffer,
                            VkBuffer dstBuffer,
                            VkDeviceSize size) {
-    VkCommandBuffer commandBuffer = beginSingleTimeCommands(device, loader, commandPool);
+    // Cache loader reference for performance
+    const auto& vk = loader;
+    
+    VkCommandBuffer commandBuffer = beginSingleTimeCommands(device, vk, commandPool);
     
     VkBufferCopy copyRegion{};
     copyRegion.size = size;
-    loader.vkCmdCopyBuffer(commandBuffer, srcBuffer, dstBuffer, 1, &copyRegion);
+    vk.vkCmdCopyBuffer(commandBuffer, srcBuffer, dstBuffer, 1, &copyRegion);
     
-    endSingleTimeCommands(device, loader, queue, commandPool, commandBuffer);
+    endSingleTimeCommands(device, vk, queue, commandPool, commandBuffer);
 }
 
 void VulkanUtils::copyBufferToImage(VkDevice device,
@@ -278,7 +305,10 @@ void VulkanUtils::copyBufferToImage(VkDevice device,
                                   VkImage image,
                                   uint32_t width,
                                   uint32_t height) {
-    VkCommandBuffer commandBuffer = beginSingleTimeCommands(device, loader, commandPool);
+    // Cache loader reference for performance
+    const auto& vk = loader;
+    
+    VkCommandBuffer commandBuffer = beginSingleTimeCommands(device, vk, commandPool);
     
     VkBufferImageCopy region{};
     region.bufferOffset = 0;
@@ -291,10 +321,10 @@ void VulkanUtils::copyBufferToImage(VkDevice device,
     region.imageOffset = {0, 0, 0};
     region.imageExtent = {width, height, 1};
     
-    loader.vkCmdCopyBufferToImage(commandBuffer, buffer, image,
-                                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+    vk.vkCmdCopyBufferToImage(commandBuffer, buffer, image,
+                            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
     
-    endSingleTimeCommands(device, loader, queue, commandPool, commandBuffer);
+    endSingleTimeCommands(device, vk, queue, commandPool, commandBuffer);
 }
 
 void VulkanUtils::writeDescriptorSets(VkDevice device,
@@ -302,6 +332,9 @@ void VulkanUtils::writeDescriptorSets(VkDevice device,
                                      VkDescriptorSet descriptorSet,
                                      const std::vector<VkDescriptorBufferInfo>& bufferInfos,
                                      VkDescriptorType descriptorType) {
+    // Cache loader reference for performance
+    const auto& vk = loader;
+    
     std::vector<VkWriteDescriptorSet> descriptorWrites(bufferInfos.size());
     
     for (size_t i = 0; i < bufferInfos.size(); i++) {
@@ -314,6 +347,6 @@ void VulkanUtils::writeDescriptorSets(VkDevice device,
         descriptorWrites[i].pBufferInfo = &bufferInfos[i];
     }
     
-    loader.vkUpdateDescriptorSets(device, static_cast<uint32_t>(descriptorWrites.size()), 
-                                descriptorWrites.data(), 0, nullptr);
+    vk.vkUpdateDescriptorSets(device, static_cast<uint32_t>(descriptorWrites.size()), 
+                            descriptorWrites.data(), 0, nullptr);
 }

@@ -30,27 +30,33 @@ bool VulkanSync::initialize(const VulkanContext& context) {
 }
 
 void VulkanSync::cleanup() {
-    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-        if (i < inFlightFences.size() && inFlightFences[i] != VK_NULL_HANDLE && context) {
-            context->getLoader().vkDestroyFence(context->getDevice(), inFlightFences[i], nullptr);
+    if (context) {
+        // Cache loader and device references for performance
+        const auto& vk = context->getLoader();
+        const VkDevice device = context->getDevice();
+        
+        for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+            if (i < inFlightFences.size() && inFlightFences[i] != VK_NULL_HANDLE) {
+                vk.vkDestroyFence(device, inFlightFences[i], nullptr);
+            }
+            if (i < computeFences.size() && computeFences[i] != VK_NULL_HANDLE) {
+                vk.vkDestroyFence(device, computeFences[i], nullptr);
+            }
+            if (i < renderFinishedSemaphores.size() && renderFinishedSemaphores[i] != VK_NULL_HANDLE) {
+                vk.vkDestroySemaphore(device, renderFinishedSemaphores[i], nullptr);
+            }
+            if (i < computeFinishedSemaphores.size() && computeFinishedSemaphores[i] != VK_NULL_HANDLE) {
+                vk.vkDestroySemaphore(device, computeFinishedSemaphores[i], nullptr);
+            }
+            if (i < imageAvailableSemaphores.size() && imageAvailableSemaphores[i] != VK_NULL_HANDLE) {
+                vk.vkDestroySemaphore(device, imageAvailableSemaphores[i], nullptr);
+            }
         }
-        if (i < computeFences.size() && computeFences[i] != VK_NULL_HANDLE && context) {
-            context->getLoader().vkDestroyFence(context->getDevice(), computeFences[i], nullptr);
+        
+        if (commandPool != VK_NULL_HANDLE) {
+            vk.vkDestroyCommandPool(device, commandPool, nullptr);
+            commandPool = VK_NULL_HANDLE;
         }
-        if (i < renderFinishedSemaphores.size() && renderFinishedSemaphores[i] != VK_NULL_HANDLE && context) {
-            context->getLoader().vkDestroySemaphore(context->getDevice(), renderFinishedSemaphores[i], nullptr);
-        }
-        if (i < computeFinishedSemaphores.size() && computeFinishedSemaphores[i] != VK_NULL_HANDLE && context) {
-            context->getLoader().vkDestroySemaphore(context->getDevice(), computeFinishedSemaphores[i], nullptr);
-        }
-        if (i < imageAvailableSemaphores.size() && imageAvailableSemaphores[i] != VK_NULL_HANDLE && context) {
-            context->getLoader().vkDestroySemaphore(context->getDevice(), imageAvailableSemaphores[i], nullptr);
-        }
-    }
-    
-    if (commandPool != VK_NULL_HANDLE && context) {
-        context->getLoader().vkDestroyCommandPool(context->getDevice(), commandPool, nullptr);
-        commandPool = VK_NULL_HANDLE;
     }
 }
 

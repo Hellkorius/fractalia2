@@ -91,30 +91,36 @@ void DescriptorLayoutManager::cleanup() {
     // Clear layout cache
     clearCache();
     
-    // Destroy common layouts
-    if (commonLayouts.uniformBuffer != VK_NULL_HANDLE) {
-        context->getLoader().vkDestroyDescriptorSetLayout(context->getDevice(), commonLayouts.uniformBuffer, nullptr);
-        commonLayouts.uniformBuffer = VK_NULL_HANDLE;
-    }
-    if (commonLayouts.storageBuffer != VK_NULL_HANDLE) {
-        context->getLoader().vkDestroyDescriptorSetLayout(context->getDevice(), commonLayouts.storageBuffer, nullptr);
-        commonLayouts.storageBuffer = VK_NULL_HANDLE;
-    }
-    if (commonLayouts.combinedImageSampler != VK_NULL_HANDLE) {
-        context->getLoader().vkDestroyDescriptorSetLayout(context->getDevice(), commonLayouts.combinedImageSampler, nullptr);
-        commonLayouts.combinedImageSampler = VK_NULL_HANDLE;
-    }
-    if (commonLayouts.storageImage != VK_NULL_HANDLE) {
-        context->getLoader().vkDestroyDescriptorSetLayout(context->getDevice(), commonLayouts.storageImage, nullptr);
-        commonLayouts.storageImage = VK_NULL_HANDLE;
-    }
-    if (commonLayouts.bindlessTextures != VK_NULL_HANDLE) {
-        context->getLoader().vkDestroyDescriptorSetLayout(context->getDevice(), commonLayouts.bindlessTextures, nullptr);
-        commonLayouts.bindlessTextures = VK_NULL_HANDLE;
-    }
-    if (commonLayouts.bindlessBuffers != VK_NULL_HANDLE) {
-        context->getLoader().vkDestroyDescriptorSetLayout(context->getDevice(), commonLayouts.bindlessBuffers, nullptr);
-        commonLayouts.bindlessBuffers = VK_NULL_HANDLE;
+    // Cache loader and device references for performance
+    if (context) {
+        const auto& vk = context->getLoader();
+        const VkDevice device = context->getDevice();
+        
+        // Destroy common layouts
+        if (commonLayouts.uniformBuffer != VK_NULL_HANDLE) {
+            vk.vkDestroyDescriptorSetLayout(device, commonLayouts.uniformBuffer, nullptr);
+            commonLayouts.uniformBuffer = VK_NULL_HANDLE;
+        }
+        if (commonLayouts.storageBuffer != VK_NULL_HANDLE) {
+            vk.vkDestroyDescriptorSetLayout(device, commonLayouts.storageBuffer, nullptr);
+            commonLayouts.storageBuffer = VK_NULL_HANDLE;
+        }
+        if (commonLayouts.combinedImageSampler != VK_NULL_HANDLE) {
+            vk.vkDestroyDescriptorSetLayout(device, commonLayouts.combinedImageSampler, nullptr);
+            commonLayouts.combinedImageSampler = VK_NULL_HANDLE;
+        }
+        if (commonLayouts.storageImage != VK_NULL_HANDLE) {
+            vk.vkDestroyDescriptorSetLayout(device, commonLayouts.storageImage, nullptr);
+            commonLayouts.storageImage = VK_NULL_HANDLE;
+        }
+        if (commonLayouts.bindlessTextures != VK_NULL_HANDLE) {
+            vk.vkDestroyDescriptorSetLayout(device, commonLayouts.bindlessTextures, nullptr);
+            commonLayouts.bindlessTextures = VK_NULL_HANDLE;
+        }
+        if (commonLayouts.bindlessBuffers != VK_NULL_HANDLE) {
+            vk.vkDestroyDescriptorSetLayout(device, commonLayouts.bindlessBuffers, nullptr);
+            commonLayouts.bindlessBuffers = VK_NULL_HANDLE;
+        }
     }
     
     // Destroy managed pools

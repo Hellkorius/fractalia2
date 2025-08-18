@@ -57,16 +57,24 @@ bool VulkanSwapchain::recreate(VkRenderPass renderPass) {
 
     if (!createSwapChain(oldSwapchain)) {
         std::cerr << "Failed to recreate swap chain!" << std::endl;
+        // Cache loader and device references for performance
+        const auto& vk = context->getLoader();
+        const VkDevice device = context->getDevice();
+        
         // If creation failed, we still need to clean up the old swapchain
         if (oldSwapchain != VK_NULL_HANDLE) {
-            context->getLoader().vkDestroySwapchainKHR(context->getDevice(), oldSwapchain, nullptr);
+            vk.vkDestroySwapchainKHR(device, oldSwapchain, nullptr);
         }
         return false;
     }
     
+    // Cache loader and device references for performance
+    const auto& vk = context->getLoader();
+    const VkDevice device = context->getDevice();
+    
     // Now destroy the old swapchain after successful recreation
     if (oldSwapchain != VK_NULL_HANDLE) {
-        context->getLoader().vkDestroySwapchainKHR(context->getDevice(), oldSwapchain, nullptr);
+        vk.vkDestroySwapchainKHR(device, oldSwapchain, nullptr);
     }
     
     if (!createImageViews()) {

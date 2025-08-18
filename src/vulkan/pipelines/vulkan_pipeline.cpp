@@ -70,17 +70,21 @@ bool VulkanPipeline::initialize(const VulkanContext& context, VkFormat swapChain
 void VulkanPipeline::cleanup() {
     if (!context) return;
     
+    // Cache loader and device references for performance
+    const auto& vk = context->getLoader();
+    const VkDevice device = context->getDevice();
+    
     if (graphicsPipeline != VK_NULL_HANDLE) {
-        context->getLoader().vkDestroyPipeline(context->getDevice(), graphicsPipeline, nullptr);
+        vk.vkDestroyPipeline(device, graphicsPipeline, nullptr);
         graphicsPipeline = VK_NULL_HANDLE;
     }
     if (computePipeline != VK_NULL_HANDLE) {
-        context->getLoader().vkDestroyPipeline(context->getDevice(), computePipeline, nullptr);
+        vk.vkDestroyPipeline(device, computePipeline, nullptr);
         computePipeline = VK_NULL_HANDLE;
     }
     
     for (auto& pair : pipelineLayoutCache) {
-        context->getLoader().vkDestroyPipelineLayout(context->getDevice(), pair.second, nullptr);
+        vk.vkDestroyPipelineLayout(device, pair.second, nullptr);
     }
     pipelineLayoutCache.clear();
     
@@ -88,19 +92,19 @@ void VulkanPipeline::cleanup() {
     computePipelineLayout = VK_NULL_HANDLE;
     
     if (renderPass != VK_NULL_HANDLE) {
-        context->getLoader().vkDestroyRenderPass(context->getDevice(), renderPass, nullptr);
+        vk.vkDestroyRenderPass(device, renderPass, nullptr);
         renderPass = VK_NULL_HANDLE;
     }
     if (descriptorSetLayout != VK_NULL_HANDLE) {
-        context->getLoader().vkDestroyDescriptorSetLayout(context->getDevice(), descriptorSetLayout, nullptr);
+        vk.vkDestroyDescriptorSetLayout(device, descriptorSetLayout, nullptr);
         descriptorSetLayout = VK_NULL_HANDLE;
     }
     if (computeDescriptorSetLayout != VK_NULL_HANDLE) {
-        context->getLoader().vkDestroyDescriptorSetLayout(context->getDevice(), computeDescriptorSetLayout, nullptr);
+        vk.vkDestroyDescriptorSetLayout(device, computeDescriptorSetLayout, nullptr);
         computeDescriptorSetLayout = VK_NULL_HANDLE;
     }
     if (pipelineCache != VK_NULL_HANDLE) {
-        context->getLoader().vkDestroyPipelineCache(context->getDevice(), pipelineCache, nullptr);
+        vk.vkDestroyPipelineCache(device, pipelineCache, nullptr);
         pipelineCache = VK_NULL_HANDLE;
     }
 }

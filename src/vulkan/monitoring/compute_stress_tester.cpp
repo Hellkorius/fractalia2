@@ -128,14 +128,18 @@ bool ComputeStressTester::executeComputeDispatch(uint32_t workgroupCount, float&
         return false;
     }
     
+    // Cache loader and device references for performance
+    const auto& vk = context->getLoader();
+    const VkDevice device = context->getDevice();
+    
     // Reset command buffer
-    context->getLoader().vkResetCommandBuffer(testCommandBuffer, 0);
+    vk.vkResetCommandBuffer(testCommandBuffer, 0);
     
     VkCommandBufferBeginInfo beginInfo{};
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
     
-    VkResult result = context->getLoader().vkBeginCommandBuffer(testCommandBuffer, &beginInfo);
+    VkResult result = vk.vkBeginCommandBuffer(testCommandBuffer, &beginInfo);
     if (result != VK_SUCCESS) {
         handleTestFailure("vkBeginCommandBuffer", result);
         return false;
@@ -144,7 +148,7 @@ bool ComputeStressTester::executeComputeDispatch(uint32_t workgroupCount, float&
     // Record dispatch
     recordTestDispatch(testCommandBuffer, workgroupCount);
     
-    result = context->getLoader().vkEndCommandBuffer(testCommandBuffer);
+    result = vk.vkEndCommandBuffer(testCommandBuffer);
     if (result != VK_SUCCESS) {
         handleTestFailure("vkEndCommandBuffer", result);
         return false;
@@ -162,7 +166,7 @@ bool ComputeStressTester::executeComputeDispatch(uint32_t workgroupCount, float&
     submitInfo.commandBufferCount = 1;
     submitInfo.pCommandBuffers = &testCommandBuffer;
     
-    result = context->getLoader().vkQueueSubmit(context->getGraphicsQueue(), 1, &submitInfo, testFence);
+    result = vk.vkQueueSubmit(context->getGraphicsQueue(), 1, &submitInfo, testFence);
     if (result != VK_SUCCESS) {
         handleTestFailure("vkQueueSubmit", result);
         return false;
@@ -201,8 +205,12 @@ bool ComputeStressTester::waitForCompletion(float timeoutMs) {
     
     uint64_t timeoutNs = static_cast<uint64_t>(timeoutMs * 1000000.0f); // Convert to nanoseconds
     
-    VkResult result = context->getLoader().vkWaitForFences(
-        context->getDevice(), 1, &testFence, VK_TRUE, timeoutNs);
+    // Cache loader and device references for performance
+    const auto& vk = context->getLoader();
+    const VkDevice device = context->getDevice();
+    
+    VkResult result = vk.vkWaitForFences(
+        device, 1, &testFence, VK_TRUE, timeoutNs);
     
     if (result == VK_TIMEOUT) {
         std::cerr << "ComputeStressTester: Fence wait timed out after " << timeoutMs << "ms" << std::endl;
@@ -213,7 +221,7 @@ bool ComputeStressTester::waitForCompletion(float timeoutMs) {
     }
     
     // Reset fence for next use
-    context->getLoader().vkResetFences(context->getDevice(), 1, &testFence);
+        vk.vkResetFences(device, 1, &testFence);
     
     return true;
 }

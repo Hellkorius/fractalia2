@@ -270,12 +270,15 @@ FrameGraph::ExecutionResult FrameGraph::execute(uint32_t frameIndex) {
         }
     }
     
+    // Cache loader reference for performance
+    const auto& vk = context->getLoader();
+    
     // Only begin command buffers that will be used
     if (result.computeCommandBufferUsed) {
-        context->getLoader().vkBeginCommandBuffer(currentComputeCmd, &beginInfo);
+        vk.vkBeginCommandBuffer(currentComputeCmd, &beginInfo);
     }
     if (result.graphicsCommandBufferUsed) {
-        context->getLoader().vkBeginCommandBuffer(currentGraphicsCmd, &beginInfo);
+        vk.vkBeginCommandBuffer(currentGraphicsCmd, &beginInfo);
     }
     
     // Execute nodes in dependency order
@@ -293,7 +296,7 @@ FrameGraph::ExecutionResult FrameGraph::execute(uint32_t frameIndex) {
             // Barriers ready for insertion
             
             // Insert barriers into graphics command buffer BEFORE graphics work
-            context->getLoader().vkCmdPipelineBarrier(
+            vk.vkCmdPipelineBarrier(
                 currentGraphicsCmd,
                 VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                 VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_VERTEX_INPUT_BIT,
@@ -328,10 +331,10 @@ FrameGraph::ExecutionResult FrameGraph::execute(uint32_t frameIndex) {
     
     // End only the command buffers that were begun
     if (result.computeCommandBufferUsed) {
-        context->getLoader().vkEndCommandBuffer(currentComputeCmd);
+        vk.vkEndCommandBuffer(currentComputeCmd);
     }
     if (result.graphicsCommandBufferUsed) {
-        context->getLoader().vkEndCommandBuffer(currentGraphicsCmd);
+        vk.vkEndCommandBuffer(currentGraphicsCmd);
     }
     
     // Frame graph complete - command buffers are ready for submission by VulkanRenderer

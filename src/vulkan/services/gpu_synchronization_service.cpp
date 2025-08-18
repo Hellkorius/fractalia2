@@ -13,19 +13,23 @@ GPUSynchronizationService::~GPUSynchronizationService() {
 bool GPUSynchronizationService::initialize(const VulkanContext& context) {
     this->context = &context;
     
+    // Cache loader and device references for performance
+    const auto& vk = context.getLoader();
+    const VkDevice device = context.getDevice();
+    
     // Create compute fences
     for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
         VkFenceCreateInfo fenceInfo{};
         fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
         fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
         
-        if (context.getLoader().vkCreateFence(context.getDevice(), &fenceInfo, nullptr, &computeFences[i]) != VK_SUCCESS) {
+        if (vk.vkCreateFence(device, &fenceInfo, nullptr, &computeFences[i]) != VK_SUCCESS) {
             std::cerr << "GPUSynchronizationService: Failed to create compute fence for frame " << i << std::endl;
             cleanup();
             return false;
         }
         
-        if (context.getLoader().vkCreateFence(context.getDevice(), &fenceInfo, nullptr, &graphicsFences[i]) != VK_SUCCESS) {
+        if (vk.vkCreateFence(device, &fenceInfo, nullptr, &graphicsFences[i]) != VK_SUCCESS) {
             std::cerr << "GPUSynchronizationService: Failed to create graphics fence for frame " << i << std::endl;
             cleanup();
             return false;
@@ -42,13 +46,17 @@ bool GPUSynchronizationService::initialize(const VulkanContext& context) {
 void GPUSynchronizationService::cleanup() {
     if (!context || !initialized) return;
     
+    // Cache loader and device references for performance
+    const auto& vk = context->getLoader();
+    const VkDevice device = context->getDevice();
+    
     for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
         if (computeFences[i] != VK_NULL_HANDLE) {
-            context->getLoader().vkDestroyFence(context->getDevice(), computeFences[i], nullptr);
+            vk.vkDestroyFence(device, computeFences[i], nullptr);
             computeFences[i] = VK_NULL_HANDLE;
         }
         if (graphicsFences[i] != VK_NULL_HANDLE) {
-            context->getLoader().vkDestroyFence(context->getDevice(), graphicsFences[i], nullptr);
+            vk.vkDestroyFence(device, graphicsFences[i], nullptr);
             graphicsFences[i] = VK_NULL_HANDLE;
         }
     }
@@ -113,9 +121,13 @@ bool GPUSynchronizationService::waitForAllFrames() {
         allFences.push_back(graphicsFences[i]);
     }
     
-    VkResult resetResult = context->getLoader().vkResetFences(context->getDevice(), 
-                                                             static_cast<uint32_t>(allFences.size()), 
-                                                             allFences.data());
+    // Cache loader and device references for performance
+    const auto& vk = context->getLoader();
+    const VkDevice device = context->getDevice();
+    
+    VkResult resetResult = vk.vkResetFences(device, 
+                                           static_cast<uint32_t>(allFences.size()), 
+                                           allFences.data());
     if (resetResult != VK_SUCCESS) {
         std::cerr << "GPUSynchronizationService: WARNING - Failed to reset fences after swapchain recreation: " << resetResult << std::endl;
         std::cerr << "  This may cause fence synchronization corruption in subsequent frames" << std::endl;
@@ -127,14 +139,18 @@ bool GPUSynchronizationService::waitForAllFrames() {
 }
 
 VkResult GPUSynchronizationService::waitForFenceRobust(VkFence fence, const char* fenceName) {
+    // Cache loader and device references for performance
+    const auto& vk = context->getLoader();
+    const VkDevice device = context->getDevice();
+    
     const uint64_t timeoutNs = 2000000000ULL; // 2 seconds
     
-    VkResult result = context->getLoader().vkWaitForFences(context->getDevice(), 1, &fence, VK_TRUE, timeoutNs);
+    VkResult result = vk.vkWaitForFences(device, 1, &fence, VK_TRUE, timeoutNs);
     
     if (result == VK_TIMEOUT) {
         std::cerr << "GPUSynchronizationService: Warning: " << fenceName << " fence timeout, forcing synchronization" << std::endl;
         // Force immediate wait with device idle as last resort
-        result = context->getLoader().vkDeviceWaitIdle(context->getDevice());
+        result = vk.vkDeviceWaitIdle(device);
         if (result != VK_SUCCESS) {
             std::cerr << "GPUSynchronizationService: Critical: Failed to synchronize " << fenceName << " pipeline: " << result << std::endl;
         }

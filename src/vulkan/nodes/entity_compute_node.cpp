@@ -168,10 +168,13 @@ void EntityComputeNode::execute(VkCommandBuffer commandBuffer, const FrameGraph&
         return;
     }
     
-    // Bind pipeline and descriptor sets once
-    context->getLoader().vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, dispatch.pipeline);
+    // Cache loader reference for performance
+    const auto& vk = context->getLoader();
     
-    context->getLoader().vkCmdBindDescriptorSets(
+    // Bind pipeline and descriptor sets once
+    vk.vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, dispatch.pipeline);
+    
+    vk.vkCmdBindDescriptorSets(
         commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, dispatch.layout,
         0, 1, &dispatch.descriptorSets[0], 0, nullptr);
     
@@ -182,11 +185,11 @@ void EntityComputeNode::execute(VkCommandBuffer commandBuffer, const FrameGraph&
             timeoutDetector->beginComputeDispatch("EntityMovement", dispatchParams.totalWorkgroups);
         }
         
-        context->getLoader().vkCmdPushConstants(
+        vk.vkCmdPushConstants(
             commandBuffer, dispatch.layout, VK_SHADER_STAGE_COMPUTE_BIT,
             0, sizeof(ComputePushConstants), &pushConstants);
         
-        context->getLoader().vkCmdDispatch(commandBuffer, dispatchParams.totalWorkgroups, 1, 1);
+        vk.vkCmdDispatch(commandBuffer, dispatchParams.totalWorkgroups, 1, 1);
         
         if (timeoutDetector) {
             timeoutDetector->endComputeDispatch();
@@ -198,7 +201,7 @@ void EntityComputeNode::execute(VkCommandBuffer commandBuffer, const FrameGraph&
         memoryBarrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
         memoryBarrier.dstAccessMask = VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT;
         
-        context->getLoader().vkCmdPipelineBarrier(
+        vk.vkCmdPipelineBarrier(
             commandBuffer,
             VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
             VK_PIPELINE_STAGE_VERTEX_INPUT_BIT,
@@ -217,6 +220,9 @@ void EntityComputeNode::executeChunkedDispatch(
     uint32_t totalWorkgroups,
     uint32_t maxWorkgroupsPerChunk,
     uint32_t entityCount) {
+    
+    // Cache loader reference for performance
+    const auto& vk = context->getLoader();
     
     uint32_t processedWorkgroups = 0;
     uint32_t chunkCount = 0;
@@ -237,11 +243,11 @@ void EntityComputeNode::executeChunkedDispatch(
         ComputePushConstants chunkPushConstants = pushConstants;
         chunkPushConstants.entityOffset = baseEntityOffset;
         
-        context->getLoader().vkCmdPushConstants(
+        vk.vkCmdPushConstants(
             commandBuffer, dispatch.layout, VK_SHADER_STAGE_COMPUTE_BIT,
             0, sizeof(ComputePushConstants), &chunkPushConstants);
         
-        context->getLoader().vkCmdDispatch(commandBuffer, currentChunkSize, 1, 1);
+        vk.vkCmdDispatch(commandBuffer, currentChunkSize, 1, 1);
         
         if (timeoutDetector) {
             timeoutDetector->endComputeDispatch();
@@ -254,7 +260,7 @@ void EntityComputeNode::executeChunkedDispatch(
             memoryBarrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
             memoryBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
             
-            context->getLoader().vkCmdPipelineBarrier(
+            vk.vkCmdPipelineBarrier(
                 commandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
                 VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &memoryBarrier, 0, nullptr, 0, nullptr);
         }
@@ -269,7 +275,7 @@ void EntityComputeNode::executeChunkedDispatch(
     finalMemoryBarrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
     finalMemoryBarrier.dstAccessMask = VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT;
     
-    context->getLoader().vkCmdPipelineBarrier(
+    vk.vkCmdPipelineBarrier(
         commandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
         VK_PIPELINE_STAGE_VERTEX_INPUT_BIT, 0, 1, &finalMemoryBarrier, 0, nullptr, 0, nullptr);
     

@@ -95,7 +95,11 @@ CommandExecutor::AsyncTransfer CommandExecutor::copyBufferToBufferAsync(VkBuffer
     allocInfo.commandPool = transferCommandPool;
     allocInfo.commandBufferCount = 1;
     
-    if (context->getLoader().vkAllocateCommandBuffers(context->getDevice(), &allocInfo, &transfer.commandBuffer) != VK_SUCCESS) {
+    // Cache loader and device references for performance
+    const auto& vk = context->getLoader();
+    const VkDevice device = context->getDevice();
+    
+    if (vk.vkAllocateCommandBuffers(device, &allocInfo, &transfer.commandBuffer) != VK_SUCCESS) {
         std::cerr << "Failed to allocate command buffer for async transfer!" << std::endl;
         return transfer;
     }
@@ -104,9 +108,9 @@ CommandExecutor::AsyncTransfer CommandExecutor::copyBufferToBufferAsync(VkBuffer
     VkFenceCreateInfo fenceInfo{};
     fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
     
-    if (context->getLoader().vkCreateFence(context->getDevice(), &fenceInfo, nullptr, &transfer.fence) != VK_SUCCESS) {
+    if (vk.vkCreateFence(device, &fenceInfo, nullptr, &transfer.fence) != VK_SUCCESS) {
         std::cerr << "Failed to create fence for async transfer!" << std::endl;
-        context->getLoader().vkFreeCommandBuffers(context->getDevice(), transferCommandPool, 1, &transfer.commandBuffer);
+        vk.vkFreeCommandBuffers(device, transferCommandPool, 1, &transfer.commandBuffer);
         transfer.commandBuffer = VK_NULL_HANDLE;
         return transfer;
     }
@@ -116,15 +120,15 @@ CommandExecutor::AsyncTransfer CommandExecutor::copyBufferToBufferAsync(VkBuffer
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
     
-    context->getLoader().vkBeginCommandBuffer(transfer.commandBuffer, &beginInfo);
+    vk.vkBeginCommandBuffer(transfer.commandBuffer, &beginInfo);
     
     VkBufferCopy copyRegion{};
     copyRegion.srcOffset = srcOffset;
     copyRegion.dstOffset = dstOffset;
     copyRegion.size = size;
     
-    context->getLoader().vkCmdCopyBuffer(transfer.commandBuffer, src, dst, 1, &copyRegion);
-    context->getLoader().vkEndCommandBuffer(transfer.commandBuffer);
+    vk.vkCmdCopyBuffer(transfer.commandBuffer, src, dst, 1, &copyRegion);
+    vk.vkEndCommandBuffer(transfer.commandBuffer);
     
     // Submit to graphics queue (or transfer queue if available)
     VkSubmitInfo submitInfo{};
@@ -132,7 +136,7 @@ CommandExecutor::AsyncTransfer CommandExecutor::copyBufferToBufferAsync(VkBuffer
     submitInfo.commandBufferCount = 1;
     submitInfo.pCommandBuffers = &transfer.commandBuffer;
     
-    if (context->getLoader().vkQueueSubmit(context->getGraphicsQueue(), 1, &submitInfo, transfer.fence) != VK_SUCCESS) {
+    if (vk.vkQueueSubmit(context->getGraphicsQueue(), 1, &submitInfo, transfer.fence) != VK_SUCCESS) {
         std::cerr << "Failed to submit async transfer command buffer!" << std::endl;
         freeAsyncTransfer(transfer);
         return {};

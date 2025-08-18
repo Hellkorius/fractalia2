@@ -120,7 +120,10 @@ void EntityGraphicsNode::execute(VkCommandBuffer commandBuffer, const FrameGraph
     renderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
     renderPassInfo.pClearValues = clearValues.data();
 
-    context->getLoader().vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
+    // Cache loader reference for performance
+    const auto& vk = context->getLoader();
+
+    vk.vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
 
     // Set dynamic viewport and scissor
     VkViewport viewport{};
@@ -130,17 +133,17 @@ void EntityGraphicsNode::execute(VkCommandBuffer commandBuffer, const FrameGraph
     viewport.height = static_cast<float>(swapchain->getExtent().height);
     viewport.minDepth = 0.0f;
     viewport.maxDepth = 1.0f;
-    context->getLoader().vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
+    vk.vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
 
     VkRect2D scissor{};
     scissor.offset = {0, 0};
     scissor.extent = swapchain->getExtent();
-    context->getLoader().vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
+    vk.vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
     // Entity count already retrieved above
     
     // Bind graphics pipeline
-    context->getLoader().vkCmdBindPipeline(
+    vk.vkCmdBindPipeline(
         commandBuffer, 
         VK_PIPELINE_BIND_POINT_GRAPHICS, 
         pipeline
@@ -150,7 +153,7 @@ void EntityGraphicsNode::execute(VkCommandBuffer commandBuffer, const FrameGraph
     const auto& resourceDescriptorSets = resourceContext->getGraphicsDescriptorSets();
     if (!resourceDescriptorSets.empty() && currentFrameIndex < resourceDescriptorSets.size()) {
         VkDescriptorSet descriptorSet = resourceDescriptorSets[currentFrameIndex];
-        context->getLoader().vkCmdBindDescriptorSets(
+        vk.vkCmdBindDescriptorSets(
             commandBuffer,
             VK_PIPELINE_BIND_POINT_GRAPHICS,
             pipelineLayout,
@@ -170,7 +173,7 @@ void EntityGraphicsNode::execute(VkCommandBuffer commandBuffer, const FrameGraph
         entityCount
     };
     
-    context->getLoader().vkCmdPushConstants(
+    vk.vkCmdPushConstants(
         commandBuffer, 
         pipelineLayout,
         VK_SHADER_STAGE_VERTEX_BIT, 
@@ -186,14 +189,14 @@ void EntityGraphicsNode::execute(VkCommandBuffer commandBuffer, const FrameGraph
             gpuEntityManager->getEntityBuffer()     // Per-instance entity data
         };
         VkDeviceSize offsets[] = {0, 0};
-        context->getLoader().vkCmdBindVertexBuffers(commandBuffer, 0, 2, vertexBuffers, offsets);
+        vk.vkCmdBindVertexBuffers(commandBuffer, 0, 2, vertexBuffers, offsets);
         
         // Bind index buffer for triangle geometry
-        context->getLoader().vkCmdBindIndexBuffer(
+        vk.vkCmdBindIndexBuffer(
             commandBuffer, resourceContext->getIndexBuffer(), 0, VK_INDEX_TYPE_UINT16);
         
         // Draw indexed instances: all entities with triangle geometry
-        context->getLoader().vkCmdDrawIndexed(
+        vk.vkCmdDrawIndexed(
             commandBuffer, 
             resourceContext->getIndexCount(),  // Number of indices per triangle
             entityCount,                      // Number of instances (entities)
@@ -210,7 +213,7 @@ void EntityGraphicsNode::execute(VkCommandBuffer commandBuffer, const FrameGraph
     }
 
     // End render pass
-    context->getLoader().vkCmdEndRenderPass(commandBuffer);
+    vk.vkCmdEndRenderPass(commandBuffer);
 }
 
 void EntityGraphicsNode::updateUniformBuffer() {
