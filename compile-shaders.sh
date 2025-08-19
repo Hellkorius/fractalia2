@@ -16,6 +16,14 @@ cp src/shaders/compiled/fragment.frag.spv build/shaders/
 glslangValidator -V src/shaders/movement_random.comp -o src/shaders/compiled/movement_random.comp.spv
 cp src/shaders/compiled/movement_random.comp.spv build/shaders/
 
+# Export shaders to Windows build folder
+WINDOWS_DEST="/mnt/f/Projects/Fractalia2/build/shaders"
+if mkdir -p "$WINDOWS_DEST" 2>/dev/null; then
+    cp src/shaders/compiled/*.spv "$WINDOWS_DEST/"
+    echo "Shaders exported to Windows build folder: $WINDOWS_DEST"
+else
+    echo "Warning: Could not export to Windows build folder (path may not exist)"
+fi
 
 echo "Shaders compiled successfully!"
 
