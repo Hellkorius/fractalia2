@@ -4,6 +4,7 @@
 #include <vulkan/vulkan.h>
 #include "../rendering/frame_graph.h"
 #include <memory>
+#include <atomic>
 
 // Forward declarations
 class ComputePipelineManager;
@@ -58,7 +59,7 @@ private:
     FrameGraphTypes::ResourceId currentPositionBufferId;
     FrameGraphTypes::ResourceId targetPositionBufferId;
     
-    // External dependencies (not owned)
+    // External dependencies (not owned) - validated during execution
     ComputePipelineManager* computeManager;
     GPUEntityManager* gpuEntityManager;
     std::shared_ptr<GPUTimeoutDetector> timeoutDetector;
@@ -66,6 +67,10 @@ private:
     // Adaptive dispatch parameters
     uint32_t adaptiveMaxWorkgroups = 512; // Conservative limit to prevent GPU timeouts
     bool forceChunkedDispatch = true;     // Always use chunking for stability
+    
+    // Thread-safe debug counter
+    mutable std::atomic<uint32_t> debugCounter{0};
+    mutable std::atomic<uint32_t> frameCounter{0};
     
     // Frame data for compute shader
     struct ComputePushConstants {

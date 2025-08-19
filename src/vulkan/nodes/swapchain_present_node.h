@@ -3,6 +3,7 @@
 #define VK_NO_PROTOTYPES
 #include <vulkan/vulkan.h>
 #include "../rendering/frame_graph.h"
+#include <memory>
 
 // Forward declarations
 class VulkanSwapchain;
@@ -38,7 +39,7 @@ private:
     FrameGraphTypes::ResourceId colorTargetId; // Static placeholder - not used  
     FrameGraphTypes::ResourceId currentSwapchainImageId = 0; // Dynamic per-frame ID
     
-    // External dependencies (not owned)
+    // External dependencies (not owned) - validated during execution
     VulkanSwapchain* swapchain;
     
     // Current frame state

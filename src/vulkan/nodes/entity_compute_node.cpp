@@ -8,22 +8,11 @@
 #include <iostream>
 #include <array>
 #include <glm/glm.hpp>
+#include <stdexcept>
+#include <memory>
 
 namespace {
-    class DebugLogger {
-    public:
-        static void logPeriodic(const std::string& message, int& counter, int interval = 300) {
-            if (counter++ % interval == 0) {
-                std::cout << message << std::endl;
-            }
-        }
-        
-        static void logOnce(const std::string& message, int& counter, int interval = 60) {
-            if (counter++ % interval == 0) {
-                std::cout << message << std::endl;
-            }
-        }
-    };
+    // Removed DebugLogger class - using thread-safe atomic counters instead
     
     struct DispatchParams {
         uint32_t totalWorkgroups;
@@ -56,6 +45,14 @@ EntityComputeNode::EntityComputeNode(
   , computeManager(computeManager)
   , gpuEntityManager(gpuEntityManager)
   , timeoutDetector(timeoutDetector) {
+    
+    // Validate dependencies during construction for fail-fast behavior
+    if (!computeManager) {
+        throw std::invalid_argument("EntityComputeNode: computeManager cannot be null");
+    }
+    if (!gpuEntityManager) {
+        throw std::invalid_argument("EntityComputeNode: gpuEntityManager cannot be null");
+    }
 }
 
 std::vector<ResourceDependency> EntityComputeNode::getInputs() const {
@@ -73,18 +70,20 @@ std::vector<ResourceDependency> EntityComputeNode::getOutputs() const {
 }
 
 void EntityComputeNode::execute(VkCommandBuffer commandBuffer, const FrameGraph& frameGraph) {
-    static int frameCount = 0;
-    static int noEntitiesCounter = 0;
-    frameCount++;
+    frameCounter.fetch_add(1, std::memory_order_relaxed);
     
+    // Validate dependencies are still valid
     if (!computeManager || !gpuEntityManager) {
-        std::cerr << "EntityComputeNode: Missing dependencies" << std::endl;
+        std::cerr << "EntityComputeNode: Critical error - dependencies became null during execution" << std::endl;
         return;
     }
     
     const uint32_t entityCount = gpuEntityManager->getEntityCount();
     if (entityCount == 0) {
-        DebugLogger::logOnce("EntityComputeNode: No entities to process", noEntitiesCounter);
+        uint32_t counter = debugCounter.fetch_add(1, std::memory_order_relaxed);
+        if (counter % 60 == 0) {
+            std::cout << "EntityComputeNode: No entities to process" << std::endl;
+        }
         return;
     }
     
@@ -148,13 +147,13 @@ void EntityComputeNode::execute(VkCommandBuffer commandBuffer, const FrameGraph&
         return;
     }
     
-    // Debug logging
-    static int debugCounter = 0;
-    DebugLogger::logPeriodic(
-        "EntityComputeNode: " + std::to_string(entityCount) + " entities → " + 
-        std::to_string(dispatchParams.totalWorkgroups) + " workgroups (frame " + std::to_string(frameCount) + ")",
-        debugCounter
-    );
+    // Debug logging (thread-safe)
+    uint32_t logCounter = debugCounter.fetch_add(1, std::memory_order_relaxed);
+    if (logCounter % 300 == 0) {
+        std::cout << "EntityComputeNode: " << entityCount << " entities → " << 
+                     dispatchParams.totalWorkgroups << " workgroups (frame " << 
+                     frameCounter.load(std::memory_order_relaxed) << ")" << std::endl;
+    }
     
     const VulkanContext* context = frameGraph.getContext();
     if (!context) {
@@ -273,9 +272,9 @@ void EntityComputeNode::executeChunkedDispatch(
         commandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
         VK_PIPELINE_STAGE_VERTEX_INPUT_BIT, 0, 1, &finalMemoryBarrier, 0, nullptr, 0, nullptr);
     
-    // Debug statistics logging
-    static int chunkDebugCounter = 0;
-    if (chunkDebugCounter++ % 300 == 0) {
+    // Debug statistics logging (thread-safe)
+    uint32_t chunkLogCounter = debugCounter.fetch_add(1, std::memory_order_relaxed);
+    if (chunkLogCounter % 300 == 0) {
         std::string message = "EntityComputeNode: Split dispatch into " + std::to_string(chunkCount) + 
                              " chunks (" + std::to_string(maxWorkgroupsPerChunk) + " max) for " + 
                              std::to_string(entityCount) + " entities";

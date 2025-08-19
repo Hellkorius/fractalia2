@@ -6,6 +6,8 @@
 #include <flecs.h>
 #include <cstdint>
 #include <glm/glm.hpp>
+#include <memory>
+#include <atomic>
 
 // Forward declarations
 class GraphicsPipelineManager;
@@ -75,7 +77,7 @@ private:
     FrameGraphTypes::ResourceId colorTargetId; // Static placeholder - not used
     FrameGraphTypes::ResourceId currentSwapchainImageId = 0; // Dynamic per-frame ID
     
-    // External dependencies (not owned)
+    // External dependencies (not owned) - validated during execution
     GraphicsPipelineManager* graphicsManager;
     VulkanSwapchain* swapchain;
     ResourceContext* resourceContext;
@@ -92,4 +94,10 @@ private:
     
     bool uniformBufferDirty = true;  // Force update on first frame
     uint32_t lastUpdatedFrameIndex = UINT32_MAX; // Track which frame index was last updated
+    
+    // Thread-safe debug counters
+    mutable std::atomic<uint32_t> debugCounter{0};
+    mutable std::atomic<uint32_t> noEntitiesCounter{0};
+    mutable std::atomic<uint32_t> drawCounter{0};
+    mutable std::atomic<uint32_t> updateCounter{0};
 };

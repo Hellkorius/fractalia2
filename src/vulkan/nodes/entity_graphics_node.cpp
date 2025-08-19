@@ -13,6 +13,8 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <flecs.h>
+#include <stdexcept>
+#include <memory>
 
 EntityGraphicsNode::EntityGraphicsNode(
     FrameGraphTypes::ResourceId entityBuffer, 
@@ -29,6 +31,20 @@ EntityGraphicsNode::EntityGraphicsNode(
   , swapchain(swapchain)
   , resourceContext(resourceContext)
   , gpuEntityManager(gpuEntityManager) {
+    
+    // Validate dependencies during construction for fail-fast behavior
+    if (!graphicsManager) {
+        throw std::invalid_argument("EntityGraphicsNode: graphicsManager cannot be null");
+    }
+    if (!swapchain) {
+        throw std::invalid_argument("EntityGraphicsNode: swapchain cannot be null");
+    }
+    if (!resourceContext) {
+        throw std::invalid_argument("EntityGraphicsNode: resourceContext cannot be null");
+    }
+    if (!gpuEntityManager) {
+        throw std::invalid_argument("EntityGraphicsNode: gpuEntityManager cannot be null");
+    }
 }
 
 std::vector<ResourceDependency> EntityGraphicsNode::getInputs() const {
@@ -47,16 +63,17 @@ std::vector<ResourceDependency> EntityGraphicsNode::getOutputs() const {
 
 void EntityGraphicsNode::execute(VkCommandBuffer commandBuffer, const FrameGraph& frameGraph) {
     
+    // Validate dependencies are still valid
     if (!graphicsManager || !swapchain || !resourceContext || !gpuEntityManager) {
-        std::cerr << "EntityGraphicsNode: Missing dependencies" << std::endl;
+        std::cerr << "EntityGraphicsNode: Critical error - dependencies became null during execution" << std::endl;
         return;
     }
     
     const uint32_t entityCount = gpuEntityManager->getEntityCount();
     
     if (entityCount == 0) {
-        static int noEntitiesCounter = 0;
-        if (noEntitiesCounter++ % 60 == 0) {
+        uint32_t counter = noEntitiesCounter.fetch_add(1, std::memory_order_relaxed);
+        if (counter % 60 == 0) {
             std::cout << "EntityGraphicsNode: No entities to render" << std::endl;
         }
         return;
@@ -203,9 +220,9 @@ void EntityGraphicsNode::execute(VkCommandBuffer commandBuffer, const FrameGraph
             0, 0, 0                          // Index/vertex/instance offsets
         );
         
-        // Debug: confirm draw call
-        static int drawCounter = 0;
-        if (drawCounter++ % 60 == 0) {
+        // Debug: confirm draw call (thread-safe)
+        uint32_t counter = drawCounter.fetch_add(1, std::memory_order_relaxed);
+        if (counter % 60 == 0) {
             std::cout << "EntityGraphicsNode: Drew " << entityCount 
                       << " entities with " << resourceContext->getIndexCount() 
                       << " indices per triangle" << std::endl;
@@ -234,9 +251,9 @@ void EntityGraphicsNode::updateUniformBuffer() {
             newUBO.view = cameraMatrices.view;
             newUBO.proj = cameraMatrices.projection;
             
-            // Debug camera matrix application (once per second)
-            static int debugCounter = 0;
-            if (debugCounter++ % 60 == 0) {
+            // Debug camera matrix application (once per second) - thread-safe
+            uint32_t counter = debugCounter.fetch_add(1, std::memory_order_relaxed);
+            if (counter % 60 == 0) {
                 std::cout << "EntityGraphicsNode: Using camera matrices from ECS" << std::endl;
                 std::cout << "  View matrix[3]: " << newUBO.view[3][0] << ", " << newUBO.view[3][1] << ", " << newUBO.view[3][2] << std::endl;
                 std::cout << "  Proj matrix[0][0]: " << newUBO.proj[0][0] << ", [1][1]: " << newUBO.proj[1][1] << std::endl;
@@ -247,8 +264,8 @@ void EntityGraphicsNode::updateUniformBuffer() {
             newUBO.proj = glm::ortho(-4.0f, 4.0f, -3.0f, 3.0f, -5.0f, 5.0f);
             newUBO.proj[1][1] *= -1; // Flip Y for Vulkan
             
-            static int fallbackCounter = 0;
-            if (fallbackCounter++ % 60 == 0) {
+            uint32_t counter = debugCounter.fetch_add(1, std::memory_order_relaxed);
+            if (counter % 60 == 0) {
                 std::cout << "EntityGraphicsNode: Using fallback matrices - no valid camera" << std::endl;
             }
         }
@@ -258,8 +275,8 @@ void EntityGraphicsNode::updateUniformBuffer() {
         newUBO.proj = glm::ortho(-4.0f, 4.0f, -3.0f, 3.0f, -5.0f, 5.0f);
         newUBO.proj[1][1] *= -1; // Flip Y for Vulkan
         
-        static int noWorldCounter = 0;
-        if (noWorldCounter++ % 60 == 0) {
+        uint32_t counter = debugCounter.fetch_add(1, std::memory_order_relaxed);
+        if (counter % 60 == 0) {
             std::cout << "EntityGraphicsNode: Using fallback matrices - no world reference" << std::endl;
         }
     }
@@ -294,9 +311,9 @@ void EntityGraphicsNode::updateUniformBuffer() {
                 uniformBufferDirty = false;
                 lastUpdatedFrameIndex = currentFrameIndex;
                 
-                // Debug optimized updates (once per second)
-                static int updateCounter = 0;
-                if (updateCounter++ % 60 == 0) {
+                // Debug optimized updates (once per second) - thread-safe
+                uint32_t counter = updateCounter.fetch_add(1, std::memory_order_relaxed);
+                if (counter % 60 == 0) {
                     std::cout << "EntityGraphicsNode: Updated uniform buffer (optimized)" << std::endl;
                 }
             }
