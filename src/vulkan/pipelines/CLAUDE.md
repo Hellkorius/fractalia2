@@ -1,313 +1,284 @@
 # Vulkan Pipelines System
 
 ## Overview
-AAA-tier Vulkan pipeline management system with advanced caching, optimization, and hot-reload capabilities for compute and graphics pipelines.
+Vulkan pipeline management subsystem providing RAII-wrapped pipeline creation, caching, and management for compute and graphics workloads. Built on modular component architecture with LRU caching and hardware-aware optimizations.
 
-## File Hierarchy
+## System Architecture
 
-### Core Managers
-- **`pipeline_system_manager.*`** - Unified interface for all pipeline operations
-- **`compute_pipeline_manager.*`** - Compute pipeline caching & dispatch optimization  
-- **`graphics_pipeline_manager.*`** - Refactored modular graphics pipeline coordinator
-- **`shader_manager.*`** - SPIR-V loading, compilation & hot-reload support
-- **`descriptor_layout_manager.*`** - Descriptor set layout caching & pool management
+### Core Components
+- **`PipelineSystemManager`** - Unified entry point managing all pipeline subsystems
+- **`ComputePipelineManager`** - Component-based compute pipeline management
+- **`GraphicsPipelineManager`** - Modular graphics pipeline management
+- **`ShaderManager`** - SPIR-V module loading with hot-reload support
+- **`DescriptorLayoutManager`** - Cached descriptor set layout creation
 
-### Graphics Pipeline Components (New Modular Architecture)
-- **`graphics_pipeline_state_hash.*`** - Pipeline state comparison and hashing utilities
-- **`graphics_pipeline_cache.*`** - LRU cache with statistics tracking
-- **`graphics_render_pass_manager.*`** - Render pass creation and caching
-- **`graphics_pipeline_factory.*`** - Core pipeline compilation engine
-- **`graphics_pipeline_layout_builder.*`** - Pipeline layout creation utilities
+### Modular Compute Components
+- **`ComputePipelineCache`** - LRU cache for compute PSOs
+- **`ComputePipelineFactory`** - Pipeline compilation and creation
+- **`ComputeDispatcher`** - Optimized dispatch operations with barriers
+- **`ComputeDeviceInfo`** - Hardware capability queries
+- **`ComputePipelineTypes`** - Shared data structures
 
-### Utilities  
-- **`hash_utils.*`** - Pipeline state hashing and comparison utilities
+### Modular Graphics Components
+- **`GraphicsPipelineCache`** - LRU cache for graphics PSOs
+- **`GraphicsPipelineFactory`** - Pipeline compilation engine
+- **`GraphicsRenderPassManager`** - Render pass creation and caching
+- **`GraphicsPipelineLayoutBuilder`** - Pipeline layout utilities
+- **`GraphicsPipelineStateHash`** - State comparison and hashing
 
 ## Architecture
 
 ### Data Flow
 ```
-ShaderManager → DescriptorLayoutManager → PipelineManagers → PipelineSystemManager
-      ↓                    ↓                       ↓                    ↓
-   SPIR-V Code      Descriptor Layouts      Pipeline Objects      Unified API
+Input: ComputePipelineState/GraphicsPipelineState
+  ↓
+ShaderManager (SPIR-V loading) + DescriptorLayoutManager (layouts)
+  ↓
+PipelineFactory (compilation) → PipelineCache (LRU storage)
+  ↓
+Output: VkPipeline + VkPipelineLayout
 ```
 
-### Dependencies
-- **VulkanContext**: Core Vulkan objects (device, queues, etc.)
-- **External Tools**: `glslc` for GLSL→SPIR-V compilation
-- **Frame Graph**: Integration with rendering pipeline
+### Input/Output Contracts
 
-## API Reference
+**Input Data Structures:**
+- `ComputePipelineState` - Complete compute pipeline specification with shader path, descriptor layouts, workgroup hints
+- `GraphicsPipelineState` - Complete graphics state including vertex input, rasterization, blending, render pass
+- `DescriptorLayoutSpec` - Binding specifications for descriptor set layout creation
+- `ShaderModuleSpec` - Shader loading specification with hot-reload support
 
-### PipelineSystemManager (Entry Point)
+**Output Objects:**
+- `VkPipeline` - Compiled Vulkan pipeline objects (cached)
+- `VkPipelineLayout` - Associated pipeline layouts
+- `VkDescriptorSetLayout` - Cached descriptor set layouts
+- `VkRenderPass` - Render pass objects for graphics pipelines
 
-**Initialization:**
+**Dependencies:**
+- **VulkanContext** - Core device, queues, function loader
+- **vulkan_raii** - RAII wrappers for automatic resource cleanup
+
+## Key Classes and Responsibilities
+
+### PipelineSystemManager
+**Responsibilities:** Unified initialization and lifecycle management for all pipeline subsystems.
+
+**Interface:**
 ```cpp
-PipelineSystemManager manager;
-manager.initialize(vulkanContext);
+bool initialize(const VulkanContext& context);
+void cleanupBeforeContextDestruction();
 
-// Access individual managers
-auto* graphics = manager.getGraphicsManager();
-auto* compute = manager.getComputeManager();  
-auto* layouts = manager.getLayoutManager();
-auto* shaders = manager.getShaderManager();
+// Component access
+GraphicsPipelineManager* getGraphicsManager();
+ComputePipelineManager* getComputeManager();
+DescriptorLayoutManager* getLayoutManager();
+ShaderManager* getShaderManager();
+
+// Convenience methods
+VkPipeline createGraphicsPipeline(const PipelineCreationInfo& info);
+VkPipeline createComputePipeline(const std::string& computeShaderPath);
 ```
 
-**High-Level Pipeline Creation:**
+### ComputePipelineManager
+**Responsibilities:** Component-coordinated compute pipeline management with caching and optimized dispatch operations.
+
+**Internal Components:**
+- `ComputePipelineCache` - LRU cache for compute PSOs
+- `ComputePipelineFactory` - Pipeline compilation
+- `ComputeDispatcher` - Dispatch operations with barrier management
+- `ComputeDeviceInfo` - Hardware capability queries
+
+**Input Contract:**
 ```cpp
-PipelineCreationInfo info{
-    .vertexShaderPath = "shaders/vertex.spv",
-    .fragmentShaderPath = "shaders/fragment.spv", 
-    .renderPass = renderPass,
-    .enableMSAA = true,
-    .samples = VK_SAMPLE_COUNT_2_BIT
+struct ComputePipelineState {
+    std::string shaderPath;
+    std::vector<VkDescriptorSetLayout> descriptorSetLayouts;
+    std::vector<VkPushConstantRange> pushConstantRanges;
+    uint32_t workgroupSizeX/Y/Z;  // Optimization hints
+    bool isFrequentlyUsed;
 };
-VkPipeline pipeline = manager.createGraphicsPipeline(info);
 ```
 
-### ComputePipelineManager (Refactored Architecture)
-
-**Architecture:** Refactored from monolithic 682-line class into focused components:
-- **ComputePipelineCache**: LRU caching with statistics (95 lines)
-- **ComputePipelineFactory**: Pipeline creation and compilation (118 lines)
-- **ComputeDispatcher**: Dispatch operations and barriers (104 lines)
-- **ComputeDeviceInfo**: Device capabilities and optimization (58 lines)
-- **ComputePipelineTypes**: Shared data structures and utilities
-
-**Input:** 
-- `ComputePipelineState` - Complete pipeline specification
-- `ComputeDispatch` - Dispatch parameters with optimization hints
-
-**Output:**
-- `VkPipeline` - Cached compute pipeline via coordinated components
-- `VkPipelineLayout` - Associated pipeline layout via factory
-- Performance metrics & statistics via aggregated component data
-
-**Key APIs:**
+**Output Contract:**
 ```cpp
-// Pipeline creation with caching (unchanged interface)
-ComputePipelineState state{
-    .shaderPath = "shaders/movement.comp.spv",
-    .descriptorSetLayouts = {entityLayout},
-    .pushConstantRanges = {{VK_SHADER_STAGE_COMPUTE_BIT, 0, 32}},
-    .workgroupSizeX = 32
+VkPipeline getPipeline(const ComputePipelineState& state);
+VkPipelineLayout getPipelineLayout(const ComputePipelineState& state);
+
+// Optimized dispatch methods
+void dispatch(VkCommandBuffer cmd, const ComputeDispatch& dispatch);
+void dispatchBuffer(VkCommandBuffer cmd, const ComputePipelineState& state,
+                   uint32_t elementCount, const std::vector<VkDescriptorSet>& sets);
+void dispatchImage(VkCommandBuffer cmd, const ComputePipelineState& state,
+                  uint32_t width, uint32_t height, const std::vector<VkDescriptorSet>& sets);
+```
+
+### GraphicsPipelineManager
+**Responsibilities:** Modular graphics pipeline management with comprehensive state tracking and render pass integration.
+
+**Internal Components:**
+- `GraphicsPipelineCache` - LRU cache for graphics PSOs
+- `GraphicsPipelineFactory` - Pipeline compilation engine
+- `GraphicsRenderPassManager` - Render pass creation and caching
+- `GraphicsPipelineLayoutBuilder` - Pipeline layout utilities
+- `GraphicsPipelineStateHash` - State comparison for caching
+
+**Input Contract:**
+```cpp
+struct GraphicsPipelineState {
+    std::vector<std::string> shaderStages;  // Vertex, fragment, etc.
+    std::vector<VkVertexInputBindingDescription> vertexBindings;
+    std::vector<VkVertexInputAttributeDescription> vertexAttributes;
+    VkPrimitiveTopology topology;
+    VkPolygonMode polygonMode;
+    VkCullModeFlags cullMode;
+    VkSampleCountFlagBits rasterizationSamples;
+    VkBool32 depthTestEnable;
+    std::vector<VkPipelineColorBlendAttachmentState> colorBlendAttachments;
+    VkRenderPass renderPass;
+    std::vector<VkDescriptorSetLayout> descriptorSetLayouts;
+    std::vector<VkPushConstantRange> pushConstantRanges;
 };
-VkPipeline pipeline = manager.getPipeline(state);
-
-// Optimized dispatch (delegated to ComputeDispatcher)
-manager.dispatch(commandBuffer, dispatch);
-manager.dispatchBuffer(commandBuffer, state, entityCount, descriptorSets);
-manager.dispatchIndirect(commandBuffer, buffer, offset);
-
-// Component access for advanced usage
-auto* cache = manager.getCache();
-auto* deviceInfo = manager.getDeviceInfo();
 ```
 
-**Performance Features:**
-- Component-based LRU cache with configurable size (default: 512 pipelines)
-- Async compilation for hot-reload
-- Hardware-aware workgroup optimization via ComputeDeviceInfo
-- Centralized dispatch operations with barrier optimization
-
-### GraphicsPipelineManager (Refactored Modular Architecture)
-
-**Architecture**: Refactored from monolithic 769-line class into focused components:
-- **GraphicsPipelineCache**: LRU caching with statistics (was inline cache logic)
-- **GraphicsRenderPassManager**: Render pass creation/caching (was 118-line method)
-- **GraphicsPipelineFactory**: Core compilation engine (was 182-line method)
-- **GraphicsPipelineLayoutBuilder**: Layout creation utilities (was inline logic)
-- **GraphicsPipelineStateHash**: State comparison and hashing (was complex operators)
-
-**Input:**
-- `GraphicsPipelineState` - Complete graphics pipeline specification
-- Render pass, vertex input, rasterization, blending state
-
-**Output:**  
-- `VkPipeline` - Cached graphics pipeline via coordinated components
-- `VkPipelineLayout` - Associated pipeline layout via layout builder
-- `VkRenderPass` - Render pass objects via dedicated manager
-
-**Key APIs:**
+**Output Contract:**
 ```cpp
-// Create graphics pipeline state
-GraphicsPipelineState state = GraphicsPipelinePresets::createEntityRenderingState(
-    renderPass, descriptorLayout);
-state.rasterizationSamples = VK_SAMPLE_COUNT_2_BIT;
-state.cullMode = VK_CULL_MODE_BACK_BIT;
+VkPipeline getPipeline(const GraphicsPipelineState& state);
+VkPipelineLayout getPipelineLayout(const GraphicsPipelineState& state);
+VkRenderPass createRenderPass(VkFormat colorFormat, VkFormat depthFormat,
+                             VkSampleCountFlagBits samples, bool enableMSAA);
 
-VkPipeline pipeline = manager.getPipeline(state);
-
-// Render pass creation
-VkRenderPass renderPass = manager.createRenderPass(
-    VK_FORMAT_B8G8R8A8_UNORM,     // Color format
-    VK_FORMAT_D32_SFLOAT,         // Depth format  
-    VK_SAMPLE_COUNT_2_BIT,        // MSAA samples
-    true                          // Enable MSAA
-);
+// Preset configurations
+GraphicsPipelineState createDefaultState();
+GraphicsPipelineState createMSAAState();
+GraphicsPipelineState createWireframeState();
+GraphicsPipelineState createInstancedState();
 ```
-
-**Preset Configurations:**
-- `createDefaultState()` - Basic 3D rendering
-- `createMSAAState()` - Multi-sample anti-aliasing
-- `createWireframeState()` - Debug wireframe rendering
-- `createInstancedState()` - Instanced rendering optimized
 
 ### ShaderManager
+**Responsibilities:** SPIR-V module loading, caching, and compilation with hot-reload support.
 
-**Input:**
-- `ShaderModuleSpec` - Shader file path, stage, specialization constants
-- GLSL source code or pre-compiled SPIR-V
-
-**Output:**
-- `VkShaderModule` - Compiled Vulkan shader module
-- `ShaderReflection` - Descriptor bindings, push constants analysis
-- `VkPipelineShaderStageCreateInfo` - Ready-to-use pipeline stage
-
-**Key APIs:**
+**Input Contract:**
 ```cpp
-// Load pre-compiled SPIR-V
-VkShaderModule shader = manager.loadSPIRVFromFile("shaders/compute.spv");
-
-// Load with specification
-ShaderModuleSpec spec{
-    .filePath = "shaders/movement.comp.spv",
-    .sourceType = ShaderSourceType::SPIRV_BINARY,
-    .stageInfo = {.stage = VK_SHADER_STAGE_COMPUTE_BIT},
-    .enableHotReload = true
+struct ShaderModuleSpec {
+    std::string filePath;
+    ShaderSourceType sourceType;  // SPIRV_BINARY, GLSL_SOURCE, HLSL_SOURCE
+    ShaderStageInfo stageInfo;     // Stage, entry point, specialization
+    std::vector<std::string> includePaths;
+    std::unordered_map<std::string, std::string> defines;
+    bool enableHotReload;
 };
-VkShaderModule shader = manager.loadShader(spec);
-
-// GLSL compilation (requires glslc)
-auto result = manager.compileGLSLFromFile("shaders/vertex.glsl");
-if (result.success) {
-    VkShaderModule shader = manager.createVulkanShaderModule(result.spirvCode);
-}
-
-// Hot reload support
-manager.enableHotReload(true);
-manager.registerReloadCallback("shaders/fragment.glsl", 
-    [](VkShaderModule newShader) { /* Update pipeline */ });
 ```
 
-**Reflection Capabilities:**
+**Output Contract:**
 ```cpp
-ShaderReflection reflection = manager.reflectShader(shaderModule);
-// Access: descriptorBindings, pushConstantRanges, localSize (compute)
+VkShaderModule loadShader(const ShaderModuleSpec& spec);
+VkShaderModule loadSPIRVFromFile(const std::string& filePath);
+std::vector<VkShaderModule> loadShadersBatch(const std::vector<ShaderModuleSpec>& specs);
+
+// Pipeline integration
+VkPipelineShaderStageCreateInfo createShaderStage(VkShaderModule module,
+                                                  VkShaderStageFlagBits stage,
+                                                  const std::string& entryPoint);
+
+// Compilation and reflection
+ShaderCompilationResult compileGLSL(const std::string& source, VkShaderStageFlagBits stage);
+ShaderReflection reflectShader(VkShaderModule module);
+```
+
+**Hot Reload:**
+```cpp
+void enableHotReload(bool enable);
+void checkForShaderReloads();  // Call per frame
+void registerReloadCallback(const std::string& path, std::function<void(VkShaderModule)> callback);
 ```
 
 ### DescriptorLayoutManager
+**Responsibilities:** Cached descriptor set layout creation with optimal pool sizing and bindless support.
 
-**Input:**
-- `DescriptorLayoutSpec` - Binding specifications, flags, bindless configuration
-- `DescriptorBinding` - Individual binding description
-
-**Output:**
-- `VkDescriptorSetLayout` - Cached descriptor set layout
-- `VkDescriptorPool` - Optimally sized descriptor pools
-- Pool size calculations based on usage patterns
-
-**Key APIs:**
+**Input Contract:**
 ```cpp
-// Create layout specification
-DescriptorLayoutSpec spec{
-    .bindings = {
-        {0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_ALL},
-        {1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT},
-        {2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT}
-    },
-    .layoutName = "EntityComputeLayout"
+struct DescriptorLayoutSpec {
+    std::vector<DescriptorBinding> bindings;
+    VkDescriptorSetLayoutCreateFlags flags;
+    bool enableBindless;
+    bool enableUpdateAfterBind;
+    bool enablePartiallyBound;
+    std::string layoutName;  // Debug identifier
 };
-VkDescriptorSetLayout layout = manager.getLayout(spec);
 
-// Builder pattern for complex layouts
-DescriptorLayoutBuilder builder;
-VkDescriptorSetLayout layout = builder
-    .addUniformBuffer(0, VK_SHADER_STAGE_ALL)
-    .addStorageBuffer(1, VK_SHADER_STAGE_COMPUTE_BIT)
-    .addCombinedImageSampler(2, 4, VK_SHADER_STAGE_FRAGMENT_BIT)
-    .setName("MaterialLayout")
-    .build();
-
-// Preset layouts
-VkDescriptorSetLayout entityLayout = DescriptorLayoutPresets::createEntityComputeLayout();
-VkDescriptorSetLayout bindlessLayout = manager.getBindlessTextureLayout(16384);
-
-// Optimal pool creation
-VkDescriptorPool pool = manager.createPoolForLayouts({layout1, layout2}, 1024);
+struct DescriptorBinding {
+    uint32_t binding;
+    VkDescriptorType type;
+    uint32_t descriptorCount;
+    VkShaderStageFlags stageFlags;
+    bool isBindless;
+    uint32_t maxBindlessDescriptors;
+    std::vector<VkSampler> immutableSamplers;
+};
 ```
 
-**Bindless Support:**
-- Update-after-bind descriptors
-- Partially bound descriptor sets  
-- Hardware capability queries
+**Output Contract:**
+```cpp
+VkDescriptorSetLayout getLayout(const DescriptorLayoutSpec& spec);
+VkDescriptorSetLayout createLayout(const DescriptorLayoutSpec& spec);
+std::vector<VkDescriptorSetLayout> createLayoutsBatch(const std::vector<DescriptorLayoutSpec>& specs);
 
-## Performance Considerations
+// Pool management
+VkDescriptorPool createOptimalPool(const DescriptorPoolConfig& config);
+VkDescriptorPool createPoolForLayouts(const std::vector<VkDescriptorSetLayout>& layouts, uint32_t maxSets);
 
-### Caching Strategy
-- **Pipeline Cache**: LRU eviction, frame-based cleanup
-- **Layout Cache**: Persistent, small memory footprint
-- **Shader Cache**: Hot-reload aware, modification time tracking
+// Preset layouts
+VkDescriptorSetLayout getUniformBufferLayout(VkShaderStageFlags stages);
+VkDescriptorSetLayout getStorageBufferLayout(VkShaderStageFlags stages);
+VkDescriptorSetLayout getBindlessTextureLayout(uint32_t maxTextures);
 
-### Optimization Features
-- **Batch Operations**: Reduce driver overhead via batch creation
-- **Workgroup Sizing**: Hardware-aware compute dispatch optimization
-- **Memory Barriers**: Minimal barrier insertion with conflict detection
-- **Pool Sizing**: Usage-based descriptor pool size calculation
+// Hardware capabilities
+bool supportsBindless() const;
+bool supportsUpdateAfterBind() const;
+uint32_t getMaxBindlessDescriptors() const;
+```
 
-### Memory Management
-- **Cache Limits**: Configurable max sizes (pipelines: 512-1024, layouts: 256, shaders: 512)
-- **Cleanup Intervals**: Frame-based eviction (default: 1000 frames)
-- **Pool Strategy**: Pre-sized pools based on layout analysis
+## Performance and Caching
 
-## Integration Points
+### Cache Architecture
+- **LRU Eviction**: All caches use least-recently-used eviction with frame-based tracking
+- **Usage Tracking**: `lastUsedFrame` and `useCount` metrics for intelligent eviction
+- **Size Limits**: Configurable cache sizes (compute: 512, graphics: 1024, layouts: 256, shaders: 512)
+- **Statistics**: Hit ratio, compilation times, frame-based metrics
+
+### Hardware Optimization
+- **Workgroup Sizing**: `ComputeDeviceInfo` provides hardware-aware dispatch optimization
+- **Bindless Support**: Hardware capability queries with fallback handling
+- **RAII Resource Management**: Automatic cleanup prevents resource leaks
+- **Batch Operations**: Multi-pipeline creation reduces driver call overhead
+
+## Integration with Other Systems
 
 ### Frame Graph Integration
 ```cpp
-// Entity compute node usage
-ComputePipelineState movementState = ComputePipelinePresets::createEntityMovementState(descriptorLayout);
-VkPipeline movementPipeline = computeManager->getPipeline(movementState);
-computeManager->dispatchBuffer(cmd, movementState, entityCount, descriptorSets);
+// Entity compute pipeline usage in render nodes
+ComputePipelineState state{
+    .shaderPath = "shaders/movement_random.comp.spv",
+    .descriptorSetLayouts = {entityLayout},
+    .workgroupSizeX = 32
+};
+VkPipeline pipeline = pipelineManager->getComputeManager()->getPipeline(state);
 ```
 
-### Hot Reload Workflow
+### Preset System Integration
 ```cpp
-shaderManager->enableHotReload(true);
-shaderManager->checkForShaderReloads();  // Call per frame
-// Automatic pipeline invalidation and recreation
+// Compute presets for common patterns
+ComputePipelineState entityMovement = ComputePipelinePresets::createEntityMovementState(descriptorLayout);
+GraphicsPipelineState entityRendering = GraphicsPipelinePresets::createEntityRenderingState(renderPass, descriptorLayout);
+DescriptorLayoutSpec entityLayout = DescriptorLayoutPresets::createEntityComputeLayout();
 ```
 
-### Statistics & Debugging
-```cpp
-// Performance monitoring
-auto stats = pipelineManager->getStats();
-std::cout << "Cache hit ratio: " << stats.hitRatio << std::endl;
-std::cout << "Compilations this frame: " << stats.compilationsThisFrame << std::endl;
+### Error Handling and Validation
+- Pipeline state validation before compilation
+- SPIR-V validation for shader modules
+- Hardware capability checks for bindless features
+- Graceful fallback for missing device features
 
-// Debug output
-manager.debugPrintCache();
-```
-
-## Error Handling
-
-### Validation
-- Pipeline state validation before creation
-- Shader SPIR-V validation
-- Descriptor layout compatibility checks
-- Hardware capability verification
-
-### Fallbacks
-- Graceful degradation for missing features
-- Legacy pipeline system compatibility
-- Default state creation for common use cases
-
-## Thread Safety
-
-### Concurrent Access
-- **Read Operations**: Thread-safe (const methods)
-- **Write Operations**: Single-threaded (main thread only)
-- **Cache Access**: Protected by internal synchronization
-
-### Async Compilation
-- Background shader compilation supported
-- Future-based async pipeline creation
-- Hot-reload callbacks executed on main thread
+### Thread Safety
+- Single-threaded design for main render thread
+- Async shader compilation supported via `std::future`
+- Hot-reload callbacks execute on main thread

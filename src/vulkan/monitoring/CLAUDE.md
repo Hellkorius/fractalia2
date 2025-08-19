@@ -3,133 +3,153 @@
 ## Purpose
 GPU performance monitoring and stability validation subsystem for preventing VK_ERROR_DEVICE_LOST and ensuring compute pipeline reliability in high-load scenarios (80,000+ entities at 60 FPS).
 
-## File/Folder Hierarchy
-```
-monitoring/
-├── gpu_memory_monitor.h/.cpp     # Memory usage and bandwidth monitoring
-├── gpu_timeout_detector.h/.cpp   # Compute dispatch timeout detection/recovery
-├── compute_stress_tester.h/.cpp  # Pipeline stability validation and stress testing
-└── CLAUDE.md                     # This documentation
-```
-
-## Component Inputs & Outputs
+## Architecture
 
 ### GPUMemoryMonitor
-**Purpose:** Tracks GPU memory utilization patterns and bandwidth to prevent memory-induced device timeouts.
+**Purpose:** Frame-based memory usage and bandwidth monitoring to prevent memory-induced timeouts.
 
 **Inputs:**
-- `VulkanContext*` - Vulkan device/physical device access for memory queries
-- `VkBuffer` handles via `trackBufferAllocation()`/`recordBufferAccess()`
-- Buffer access patterns (size, read/write flag) per frame
+- `VulkanContext*` - Physical device memory properties and heap information
+- Per-frame buffer access via `recordBufferAccess(VkBuffer, size, isWrite)`
+- Buffer lifecycle via `trackBufferAllocation(VkBuffer, size, name)` / `trackBufferDeallocation(VkBuffer)`
 
 **Outputs:**
-- `MemoryStats` structure containing:
-  - Total/used/available device memory (uint64_t bytes)
-  - Memory utilization percentage
-  - Buffer-specific memory tracking (entity, position, vertex buffers)
-  - Estimated vs theoretical bandwidth (GB/s)
-- `MemoryRecommendation` structure with optimization suggestions
-- Health indicators: `isMemoryHealthy()`, `getMemoryPressure()` (0.0-1.0 scale)
+- `MemoryStats` structure:
+  ```cpp
+  uint64_t totalDeviceMemory;
+  uint64_t usedDeviceMemory; 
+  uint64_t availableDeviceMemory;
+  float memoryUtilizationPercent;
+  uint64_t entityBufferSize, positionBufferSize, vertexBufferSize;
+  float estimatedBandwidthGBps;
+  float theoreticalBandwidthGBps; // Vendor-specific conservative estimates
+  float bandwidthUtilizationPercent;
+  ```
+- `MemoryRecommendation` with optimization flags and recommendation strings
+- Health queries: `isMemoryHealthy()`, `getMemoryPressure()` (0.0-1.0)
 
 **Data Flow:**
-1. `beginFrame()` → Reset frame tracking counters, start timing
-2. `recordBufferAccess(buffer, size, isWrite)` → Accumulate frame bandwidth
-3. `trackBufferAllocation(buffer, size, name)` → Register buffer for monitoring
-4. `endFrame()` → Calculate bandwidth, update rolling averages, generate stats
-5. External systems query `getStats()`/`getRecommendations()` for decisions
+1. `beginFrame()` → Reset counters, start frame timing
+2. `recordBufferAccess()` → Accumulate frame bandwidth statistics  
+3. `endFrame()` → Calculate bandwidth from frame duration, update 60-sample rolling history
+4. `updateMemoryStats()` → Query device memory status, calculate utilization
 
 ### GPUTimeoutDetector
-**Purpose:** Monitors compute dispatch execution time with automatic recovery to prevent VK_ERROR_DEVICE_LOST.
+**Purpose:** CPU/GPU timing-based compute dispatch monitoring with automatic workload reduction.
 
 **Inputs:**
-- `VulkanContext*` - Device access for status queries
-- `VulkanSync*` - Synchronization primitives for fence operations
-- `TimeoutConfig` - Thresholds: warning (16ms), critical (50ms), device lost (100ms)
-- Dispatch timing via `beginComputeDispatch(name, workgroupCount)` / `endComputeDispatch()` pairs
+- `VulkanContext*` - Device status queries and timestamp support detection
+- `VulkanSync*` - Fence operations for device status checking
+- `TimeoutConfig` with thresholds (default: 16ms warning, 50ms critical, 100ms device-lost)
+- Dispatch lifecycle via `beginComputeDispatch(name, workgroups)` / `endComputeDispatch()`
 
 **Outputs:**
-- `DispatchStats` structure containing:
-  - Average/peak dispatch times (milliseconds)
-  - Warning/critical count tracking
-  - Throughput metrics (entities/ms)
-- `RecoveryRecommendation` structure with workload reduction advice
-- Auto-recovery actions: Reduces `recommendedMaxWorkgroups` by 25% on consecutive failures
-- Device health status: `isGPUHealthy()`, `getLastDeviceStatus()`
+- `DispatchStats` structure:
+  ```cpp
+  float averageDispatchTimeMs, peakDispatchTimeMs;
+  uint32_t totalDispatches, warningCount, criticalCount;
+  float throughputEntitiesPerMs;
+  ```
+- `RecoveryRecommendation`:
+  ```cpp
+  bool shouldReduceWorkload, shouldSplitDispatches;
+  uint32_t recommendedMaxWorkgroups;
+  float estimatedSafeDispatchTimeMs;
+  ```
+- Auto-recovery: Reduces `recommendedMaxWorkgroups` by 25% after 3+ consecutive warnings
+- Device health: `isGPUHealthy()`, `getLastDeviceStatus()`
 
 **Data Flow:**
-1. `beginComputeDispatch(name, workgroups)` → Start CPU timing, check device status
-2. [External compute dispatch execution]
-3. `endComputeDispatch()` → Stop timing, check thresholds, trigger auto-recovery if needed
-4. Stats updated in rolling window (30 samples), consecutive warning tracking
-5. External systems query `getRecoveryRecommendation()` for workload adjustments
+1. `beginComputeDispatch()` → Start CPU timing, check device status
+2. [External dispatch execution]
+3. `endComputeDispatch()` → Stop timing, update 30-sample rolling window, check thresholds
+4. Auto-recovery triggers workload reduction on consecutive warnings
+5. `checkDeviceStatus()` → Query device for VK_ERROR_DEVICE_LOST
+
+**Implementation Details:**
+- RAII timestamp query pool with fallback to CPU timing
+- GPU timestamp queries when `timestampComputeAndGraphics == VK_TRUE`
+- Vendor-specific theoretical bandwidth estimates (NVIDIA: 500 GB/s, AMD: 400 GB/s, Intel: 100 GB/s)
 
 ### ComputeStressTester
-**Purpose:** Validates compute pipeline stability under various loads to establish safe operational parameters.
+**Purpose:** Offline stability validation to determine safe operational parameters.
 
 **Inputs:**
-- `VulkanContext*` - Vulkan device access
-- `ComputePipelineManager*` - Pipeline dispatch capabilities
-- `GPUTimeoutDetector*` (optional) - Integration for timeout monitoring during tests
-- `GPUMemoryMonitor*` (optional) - Integration for memory pressure testing
-- `StressTestConfig` - Test parameters (max workgroups, iterations, thresholds)
+- `VulkanContext*`, `ComputePipelineManager*` - Core Vulkan infrastructure
+- Optional `GPUTimeoutDetector`, `GPUMemoryMonitor` - Integration for test monitoring
+- `StressTestConfig`:
+  ```cpp
+  uint32_t maxWorkgroups = 5000;
+  uint32_t workgroupIncrement = 250;
+  uint32_t iterationsPerSize = 10;
+  float timeoutThresholdMs = 50.0f;
+  bool enableMemoryPressure, enableConcurrentTests, validateResults;
+  ```
 
 **Outputs:**
-- `StressTestResult` structure containing:
-  - Maximum stable workgroup count before failure
-  - Performance metrics (average/peak dispatch time, throughput)
-  - GPU utilization and memory bandwidth measurements
-  - Error/warning lists with specific failure points
-  - Recommendations (max workgroups, chunking, workgroup size)
+- `StressTestResult`:
+  ```cpp
+  bool passed;
+  uint32_t maxStableWorkgroups;
+  float averageDispatchTimeMs, peakDispatchTimeMs;
+  float throughputEntitiesPerSecond, memoryBandwidthGBps;
+  struct recommendations {
+      uint32_t recommendedMaxWorkgroups;
+      bool shouldEnableChunking, shouldReduceWorkgroupSize;
+      float safeDispatchTimeMs;
+  };
+  std::vector<std::string> errors, warnings;
+  ```
 
-**Data Flow:**
-1. `createTestResources()` → Allocate test buffers (200k entities max), command pools, descriptors
-2. Test execution methods:
-   - `runQuickValidation(targetWorkgroups)` → Single target test (5 iterations)
-   - `runProgressiveLoad(start, max)` → Incremental testing (250 workgroup steps)
-   - `runStressTest(config)` → Full configurable stress testing
-3. Internal dispatch loop: `executeComputeDispatch()` → Record timing, validate results
-4. `addRecommendations()` → Generate operational guidance based on test results
-5. `destroyTestResources()` → Clean up test infrastructure
+**Test Methods:**
+- `runQuickValidation(workgroups)` → Single target validation (5 iterations)
+- `runProgressiveLoad(start, max)` → Incremental testing with 250-workgroup steps
+- `runStressTest(config)` → Full configurable stress testing
+- Specialized: `testEntityMovementDispatch()`, `testMemoryBandwidth()`, `testConcurrentDispatches()`
 
-## Peripheral Dependencies
+**Infrastructure:**
+- RAII test resources: command pools, buffers (200k entities max), descriptor sets
+- Test entity/position buffer allocation with random movement data
+- GPU memory pressure simulation during testing
 
-### Core Vulkan Infrastructure
-- **VulkanContext** (`../core/vulkan_context.h`) - Device, physical device, memory properties
-- **VulkanSync** (`../core/vulkan_sync.h`) - Fence operations for timeout detection
-- **VulkanFunctionLoader** (`../core/vulkan_function_loader.h`) - Vulkan API access
+## Integration Points
 
-### Pipeline Management
-- **ComputePipelineManager** (`../pipelines/compute_pipeline_manager.h`) - Compute dispatch execution
-- **DescriptorLayoutManager** (`../pipelines/descriptor_layout_manager.h`) - Descriptor set management for stress testing
+### Primary Consumer
+- **EntityComputeNode** (`../nodes/entity_compute_node.cpp`):
+  - Integrates `std::shared_ptr<GPUTimeoutDetector>` for adaptive workgroup limiting
+  - Uses timeout detection for chunked dispatch execution when workgroup count exceeds limits
+  - Implements dispatch parameter calculation based on timeout detector recommendations
 
-### Integration Points
-- **EntityComputeNode** (`../nodes/entity_compute_node.h`) - Primary consumer of monitoring services
-  - Uses `GPUTimeoutDetector` for adaptive workgroup limiting
-  - Integrates timeout detection in compute dispatch loops
+### Core Dependencies
+- **VulkanContext** (`../core/vulkan_context.h`) - Device queries, physical device properties, memory heap access
+- **VulkanSync** (`../core/vulkan_sync.h`) - Fence operations for device status checking
+- **VulkanFunctionLoader** (`../core/vulkan_function_loader.h`) - Direct Vulkan API access
+- **VulkanRAII** (`../core/vulkan_raii.h`) - RAII wrappers for query pools, buffers, command pools, fences
+- **ComputePipelineManager** (`../pipelines/compute_pipeline_manager.h`) - Compute dispatch execution for stress testing
+- **DescriptorLayoutManager** (`../pipelines/descriptor_layout_manager.h`) - Descriptor set creation for test infrastructure
 
-## Key Notes
+## Implementation Notes
 
-### Operational Patterns
-- **Frame-based Monitoring:** Memory and timeout detection operate on frame boundaries matching 60 FPS target
-- **Rolling Averages:** 60-sample bandwidth history, 30-sample dispatch time windows for smooth metrics
-- **Auto-recovery:** Timeout detector automatically reduces workgroups by 25% on consecutive failures (≥3 warnings)
-- **Conservative Estimates:** Bandwidth calculations use conservative GPU-specific estimates to prevent false positives
+### RAII Resource Management
+- All monitoring components use vulkan_raii wrappers for automatic cleanup
+- Explicit `cleanupBeforeContextDestruction()` methods prevent use-after-free
+- Command buffers and descriptor sets managed by parent pools (no individual RAII needed)
+
+### Performance Characteristics
+- **Memory Monitoring:** O(1) per frame, 60-sample bandwidth history rolling window
+- **Timeout Detection:** O(1) per dispatch, 30-sample timing history, CPU fallback when GPU timestamps unavailable
+- **Stress Testing:** High resource usage during testing (offline/development use only)
+
+### Error Handling
+- Optional integration design with nullptr checks throughout
+- Monitoring failures isolated from rendering pipeline
+- Conservative vendor-specific estimates prevent false device-lost detection
+- Auto-recovery mechanisms reduce workload rather than failing hard
 
 ### Critical Thresholds
-- **Memory Pressure:** >85% utilization triggers warnings, >95% critical
-- **Dispatch Timeouts:** 16ms warning, 50ms critical, 100ms device-lost threshold
-- **Stress Testing:** 200k entity maximum for validation, 50ms timeout limit per dispatch
-
-### Integration Requirements
-- Monitoring components designed for optional integration (nullptr checks throughout)
-- Thread-safe for frame-based access patterns
-- CPU-based timing fallback when GPU timestamp queries unavailable
-- Error handling designed to prevent monitoring failures from affecting rendering
-
-### Performance Impact
-- Minimal overhead: O(1) per frame for memory monitoring
-- O(1) per dispatch for timeout detection
-- Stress testing is offline/development-time only (high resource usage during testing)
+- **Dispatch Timeouts:** 16ms warning → 50ms critical → 100ms device-lost
+- **Memory Pressure:** Device-local heap utilization monitoring
+- **Stress Testing:** 200k entity buffer maximum, 50ms per-dispatch timeout limit
 
 ---
-**Note:** This documentation must be updated if any referenced core components, pipeline managers, or integration points change their APIs or data structures.
+**Note:** This documentation reflects the current implementation state. Update when core dependencies or integration patterns change.

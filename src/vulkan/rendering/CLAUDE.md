@@ -1,116 +1,146 @@
 # Vulkan Rendering Subsystem
 
 ## Purpose
-Frame graph coordination and resource management system. Provides declarative render graph compilation with automatic dependency resolution, synchronization barrier insertion, and resource lifecycle management for Vulkan rendering pipeline.
+Declarative frame graph execution coordinator with automatic dependency resolution, barrier optimization, and resource lifecycle management. Orchestrates compute→graphics pipeline transitions with O(n) barrier complexity and integrates GPU memory pressure monitoring.
 
 ## File/Folder Hierarchy
 ```
 vulkan/rendering/
-├── frame_graph.h               # FrameGraph interface and node base classes
-├── frame_graph.cpp             # FrameGraph implementation and node placeholders  
-├── frame_graph_resource_registry.h  # Resource import interface
-└── frame_graph_resource_registry.cpp # ECS-to-frame-graph resource bridge
+├── frame_graph.h               # FrameGraph coordinator and FrameGraphNode base class
+├── frame_graph.cpp             # Execution engine with advanced cycle detection
+├── frame_graph_resource_registry.h  # ECS buffer import interface
+└── frame_graph_resource_registry.cpp # GPUEntityManager→FrameGraph bridge
 ```
 
 ## Inputs & Outputs (by component)
 
 ### FrameGraph (`frame_graph.h/.cpp`)
-**Core frame graph coordinator with automatic dependency resolution and barrier optimization**
+**Execution coordinator with topological sorting, barrier optimization, and GPU monitoring integration**
 
 **Inputs:**
-- `VulkanContext*` - Device handle, physical device, Vulkan function loader access
-- `VulkanSync*` - Command buffer pools, synchronization primitives (fences/semaphores)
-- External resources via `importExternalBuffer()` / `importExternalImage()`
-  - `VkBuffer`, `VkImage` handles with usage flags and metadata
-- FrameGraphNode instances via `addNode<NodeType>()` template
-- Frame data: `time`, `deltaTime`, `frameCounter`, `currentFrameIndex`
+- `VulkanContext&` - Device, physical device, loader access
+- `VulkanSync*` - Synchronization primitives (no command buffers)
+- `QueueManager*` - Per-frame command buffer access
+- Optional monitoring: `GPUMemoryMonitor*`, `GPUTimeoutDetector*`
+- External resources: `importExternalBuffer()` / `importExternalImage()` with VkBuffer/VkImage handles
+- Nodes: `addNode<NodeType>()` template instantiation
+- Frame timing: `updateFrameData(time, deltaTime, frameCounter, currentFrameIndex)`
 
 **Outputs:**
-- Compiled execution graph with topological dependency ordering
-- `ExecutionResult` indicating which command buffers were used (compute/graphics)
-- Resource handles via `getBuffer()`, `getImage()`, `getImageView()`
-- Automatic barrier insertion for compute→graphics resource transitions
-- Command buffer recording with proper synchronization points
+- `ExecutionResult{computeCommandBufferUsed, graphicsCommandBufferUsed}` 
+- Resource access: `getBuffer()`, `getImage()`, `getImageView()` for node execution
+- Optimized barrier batches inserted before graphics nodes requiring compute output
+- Memory pressure response: resource eviction and cleanup operations
+- Timeout-aware execution with GPU health monitoring integration
 
-**Data Structures:**
-- `FrameGraphResource` = `std::variant<FrameGraphBuffer, FrameGraphImage>`
-- `ResourceDependency` = `{resourceId, access, stage}` for dependency tracking
-- `BarrierInfo` = batched buffer/image barriers with pipeline stage masks
+**Core Data Types:**
+- `FrameGraphResource = std::variant<FrameGraphBuffer, FrameGraphImage>`
+- `FrameGraphBuffer/Image` - RAII wrappers with `vulkan_raii::Buffer/Image/Memory`
+- `ResourceDependency{resourceId, access, stage}` - Node input/output declarations
+- `NodeBarrierInfo` - Per-node barrier batches for optimal async execution
+- `ResourceCriticality{Critical, Important, Flexible}` - Memory allocation strategies
 
-**Resource Management:**
-- Internal resources: Full lifecycle (create/destroy Vulkan objects)
-- External resources: Import-only (lifecycle managed externally, `isExternal=true`)
-- Resource ID mapping: String names → numeric IDs for node references
+**Resource Classification:**
+- External (`isExternal=true`): ECS buffers, lifecycle managed by GPUEntityManager
+- Internal (`isExternal=false`): Frame graph creates/destroys Vulkan objects
+- Critical resources: Entity/position buffers requiring device-local memory
+- Evictable resources: Non-critical with >3s access time for memory pressure relief
 
 ### FrameGraphResourceRegistry (`frame_graph_resource_registry.h/.cpp`)  
-**Bridge between ECS system and frame graph resource management**
+**ECS buffer import bridge with standardized resource naming**
 
 **Inputs:**
-- `FrameGraph*` - Frame graph instance for resource import
-- `GPUEntityManager*` - ECS entity buffer provider
-  - Entity buffer (`VkBuffer`) - Entity data storage
-  - Position buffer (`VkBuffer`) - Primary position data  
-  - Current position buffer (`VkBuffer`) - Interpolation source
-  - Target position buffer (`VkBuffer`) - Interpolation target
+- `FrameGraph*` - Target frame graph for resource import
+- `GPUEntityManager*` - Source of ECS-managed VkBuffer handles
+  - `getEntityBuffer()` - 128-byte GPUEntity structs (movement params + transform)
+  - `getPositionBuffer()` - Primary vec4 positions for graphics rendering
+  - `getCurrentPositionBuffer()` - Source positions for compute interpolation
+  - `getTargetPositionBuffer()` - Target positions for compute interpolation
 
 **Outputs:**  
-- Resource IDs for imported buffers:
-  - `entityBufferId` - Main entity data buffer ID
-  - `positionBufferId` - Primary position buffer ID  
-  - `currentPositionBufferId` - Current interpolation buffer ID
-  - `targetPositionBufferId` - Target interpolation buffer ID
-- Resource registration with frame graph naming: "EntityBuffer", "PositionBuffer", etc.
+- `FrameGraphTypes::ResourceId` handles for node dependency declarations:
+  - `entityBufferId` - "EntityBuffer" import
+  - `positionBufferId` - "PositionBuffer" import
+  - `currentPositionBufferId` - "CurrentPositionBuffer" import
+  - `targetPositionBufferId` - "TargetPositionBuffer" import
 
-**Buffer Specifications:**
-- Entity buffer: `maxEntities * sizeof(GPUEntity)`, usage: `STORAGE_BUFFER | VERTEX_BUFFER`
-- Position buffers: `maxEntities * sizeof(glm::vec4)`, usage: `STORAGE_BUFFER [| VERTEX_BUFFER]`
+**Buffer Import Specifications:**
+- Entity buffer: `maxEntities * sizeof(GPUEntity)` (128 bytes), `VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT`
+- Position buffer: `maxEntities * sizeof(glm::vec4)`, `VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT`
+- Interpolation buffers: `maxEntities * sizeof(glm::vec4)`, `VK_BUFFER_USAGE_STORAGE_BUFFER_BIT`
 
-## Peripheral Dependencies
+## External Dependencies
 
-### Core Infrastructure (`../core/`)
-- `vulkan_context.h` - Device management, function loader access
-- `vulkan_sync.h` - Command buffer pools, fence/semaphore synchronization
-- `vulkan_utils.h` - Memory type finding, utility functions
+### Core Infrastructure
+- `../core/vulkan_context.h` - Device, physical device, loader access
+- `../core/queue_manager.h` - Per-frame command buffer management (compute/graphics)
+- `../core/vulkan_sync.h` - Fence/semaphore synchronization (no command buffers)
+- `../core/vulkan_utils.h` - Memory type resolution utilities
+- `../core/vulkan_raii.h` - RAII resource wrappers for automatic cleanup
 
-### Render Graph Nodes (`../nodes/`)
-- `entity_compute_node.h` - Compute shader node for entity movement
-- `entity_graphics_node.h` - Graphics rendering node for entity display  
-- Node implementations inherit from `FrameGraphNode` base class
+### Render Nodes
+- `../nodes/entity_compute_node.h` - Movement computation (needsComputeQueue=true)
+- `../nodes/entity_graphics_node.h` - Instanced rendering (needsGraphicsQueue=true)
+- Nodes inherit `FrameGraphNode` with `getInputs()/getOutputs()` dependency declarations
 
-### ECS Bridge (`../../ecs/`)
-- `gpu_entity_manager.h` - Entity buffer management, CPU↔GPU data transfer
-- Provides VkBuffer handles for entity and position data
+### ECS Data Source
+- `../../ecs/gpu_entity_manager.h` - VkBuffer providers for external resource import
+- `../../ecs/component.h` - GPUEntity struct (128-byte cache-optimized layout)
 
-## Key Notes
+### Monitoring Integration
+- `../monitoring/gpu_memory_monitor.h` - Memory pressure detection
+- `../monitoring/gpu_timeout_detector.h` - GPU health monitoring and workload recommendations
 
-### Compilation Process
-1. **Dependency Analysis**: `buildDependencyGraph()` analyzes resource read/write patterns
-2. **Topological Sort**: `topologicalSort()` orders nodes respecting dependencies
-3. **Barrier Insertion**: `insertSynchronizationBarriers()` adds compute→graphics barriers
-4. **Node Setup**: Calls `setup()` on all nodes post-compilation
+## Technical Architecture
 
-### Synchronization Strategy  
-- **O(n) barrier optimization**: Single-pass barrier insertion with resource write tracking
-- **Compute→Graphics barriers only**: Batched buffer/image barriers for queue transitions
-- **Duplicate prevention**: Checks existing barriers to avoid redundant synchronization
-- **Linear execution**: Single execution order respects all resource dependencies
+### Compilation Pipeline
+1. **Node Registration**: `addNode<NodeType>()` with automatic ID assignment
+2. **Dependency Graph**: Resource producers mapped via `getOutputs()`, consumers via `getInputs()`
+3. **Topological Sort**: Kahn's algorithm with circular dependency detection and detailed cycle reporting
+4. **Barrier Analysis**: Single O(n) pass tracking resource writes for compute→graphics transitions
+5. **Node Setup**: Post-compilation `setup()` calls with frame graph context
 
-### Resource Lifecycle
-- **External resources**: `isExternal=true`, lifecycle managed by owner (GPUEntityManager)
-- **Internal resources**: `isExternal=false`, full Vulkan object lifecycle management  
-- **Frame reset**: Removes non-external resources, preserves external buffer imports
-- **Name collision prevention**: Unique string names enforced during resource creation
+### Execution Flow
+1. **Queue Analysis**: Determine compute/graphics command buffer requirements
+2. **Command Begin**: `QueueManager` provides per-frame command buffers
+3. **Node Execution**: Linear order with barrier insertion before graphics nodes
+4. **Timeout Monitoring**: Optional GPU health checks with workload recommendations
+5. **Command End**: Submit-ready command buffers returned to caller
 
-### Node Execution Model
-- **Command buffer selection**: Nodes specify `needsComputeQueue()` / `needsGraphicsQueue()`
-- **Barrier timing**: Inserted before first graphics node after compute execution
-- **Frame data propagation**: `updateFrameData()` distributes timing to all nodes
-- **Template-based node creation**: `addNode<NodeType>()` with automatic ID assignment
+### Barrier Optimization
+- **O(n) complexity**: Resource write tracking eliminates O(n²) barrier analysis
+- **Batched insertion**: Per-node barrier batches for optimal async execution
+- **Compute→Graphics only**: Queue family transitions, no graphics→graphics barriers
+- **No deduplication**: Removed hash-based deduplication for CPU performance
 
-### Error Handling
-- **Initialization guards**: All operations check `initialized` state
-- **Resource validation**: Name uniqueness, handle validity, dependency cycles
-- **Graceful degradation**: Failed operations return invalid IDs/false status
+### Memory Management
+- **Allocation strategies**: Resource criticality determines device-local vs fallback memory
+- **RAII lifecycle**: `vulkan_raii::Buffer/Image/Memory` wrappers prevent leaks
+- **Pressure response**: Memory monitor integration with automatic resource eviction
+- **Retry mechanisms**: Exponential backoff for transient allocation failures
+
+### Advanced Features
+- **Cycle detection**: Enhanced analysis with resolution suggestions and partial compilation fallback
+- **Resource eviction**: LRU-based cleanup for non-critical resources during memory pressure
+- **Timeout integration**: GPU health monitoring with execution abort on unhealthy GPU state
+- **Transactional compilation**: State backup/restore on compilation failures
+
+## Integration Points
+
+**Upstream Data Flow:**
+- ECS components (Transform, Renderable, MovementPattern) → GPUEntity structs → VkBuffer
+- GPUEntityManager provides external buffer handles → FrameGraphResourceRegistry imports
+- Frame timing data → updateFrameData() → node execution parameters
+
+**Downstream Execution:**
+- Compiled execution order → QueueManager command buffers → node execution
+- Resource barriers → optimal compute→graphics synchronization
+- ExecutionResult → VulkanRenderer submission coordination
+
+**Error Recovery:**
+- Memory pressure → resource eviction → continued execution
+- GPU timeouts → execution abort → external workload reduction
+- Circular dependencies → partial compilation → degraded but functional execution
 
 ---
-**Update Requirement**: If any referenced files, interfaces, or data structures change, this documentation must be updated to maintain accuracy.
+**Implementation Status**: Production-ready with advanced cycle detection, memory pressure handling, and GPU health monitoring. All external dependencies stable.
