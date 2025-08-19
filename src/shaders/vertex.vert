@@ -52,9 +52,49 @@ void main() {
     float timeOffset = ampFreqPhaseOff.w;
     float entityTime = pc.time + timeOffset;
     
-    // Calculate dynamic color based on movement parameters
-    float hue = mod(phase + entityTime * 0.5, 6.28318530718) / 6.28318530718; // Use full precision PI constant
-    color = hsv2rgb(hue, 0.8, 0.9);
+    // Calculate dynamic color based on movement parameters with strong per-entity individualization
+    // Use instance index to create much stronger base color variation per entity
+    float entityBaseHue = mod(float(gl_InstanceIndex) * 0.618034, 1.0); // Golden ratio for good distribution
+    
+    // Per-entity individualized timing and frequencies to break synchronization
+    float entityFreqMultiplier = 0.5 + mod(float(gl_InstanceIndex) * 0.7321, 1.0) * 1.5; // Range: 0.5 to 2.0
+    float entityPhaseOffset = mod(float(gl_InstanceIndex) * 2.3941, 6.28318530718); // Unique phase offset
+    float entityTimeOffset = mod(float(gl_InstanceIndex) * 1.4142, 10.0); // Unique time offset
+    
+    // Individualized phase system - each entity has different phase length and timing
+    float individualTime = entityTime * entityFreqMultiplier + entityTimeOffset + phase;
+    float phaseLengthVariation = 2.0 + mod(float(gl_InstanceIndex) * 0.8660, 1.0) * 3.0; // Phase length: 2-5 seconds
+    float colorPhaseTime = individualTime * 0.4 + entityPhaseOffset;
+    float colorPhase = floor(colorPhaseTime / phaseLengthVariation);
+    float phaseProgress = mod(colorPhaseTime, phaseLengthVariation) / phaseLengthVariation;
+    
+    // Smooth transition using smoothstep for organic feel
+    float phaseTransition = smoothstep(0.0, 1.0, phaseProgress);
+    
+    // Create individualized phase-based hue shifts
+    float entityHueShiftAmount = 0.1 + mod(float(gl_InstanceIndex) * 0.5257, 1.0) * 0.3; // Shift amount: 10-40%
+    float phaseHueShift = mod(colorPhase * entityHueShiftAmount, 1.0);
+    float nextPhaseHueShift = mod((colorPhase + 1.0) * entityHueShiftAmount, 1.0);
+    float currentHueShift = mix(phaseHueShift, nextPhaseHueShift, phaseTransition);
+    
+    // Combine base hue with individualized phase shifting
+    float hue = mod(entityBaseHue + currentHueShift, 1.0);
+    
+    // Highly individualized brightness variation with unique breathing patterns
+    float entityBrightnessBase = mod(float(gl_InstanceIndex) * 0.381966, 1.0);
+    float brightnessFreq = 0.2 + mod(float(gl_InstanceIndex) * 0.9511, 1.0) * 0.4; // Range: 0.2 to 0.6
+    float brightnessPhase = sin(individualTime * brightnessFreq + entityPhaseOffset * 2.0) * 0.4;
+    float brightness = 0.4 + entityBrightnessBase * 0.5 + brightnessPhase;
+    brightness = clamp(brightness, 0.2, 1.0);
+    
+    // Highly individualized saturation variation with unique cycling patterns
+    float entitySaturationBase = mod(float(gl_InstanceIndex) * 0.236068, 1.0);
+    float saturationFreq = 0.15 + mod(float(gl_InstanceIndex) * 0.4472, 1.0) * 0.35; // Range: 0.15 to 0.5
+    float saturationPhase = cos(individualTime * saturationFreq + entityPhaseOffset * 1.7) * 0.45;
+    float saturation = 0.3 + entitySaturationBase * 0.6 + saturationPhase;
+    saturation = clamp(saturation, 0.1, 1.0);
+    
+    color = hsv2rgb(hue, saturation, brightness);
     
     // Apply rotation based on time and final transformation
     float rot = entityTime * 0.1;
