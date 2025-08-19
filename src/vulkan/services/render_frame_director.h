@@ -15,6 +15,7 @@ class ResourceContext;
 class GPUEntityManager;
 class MovementCommandProcessor;
 class PipelineSystemManager;
+class PresentationSurface;
 
 struct RenderFrameResult {
     bool success = false;
@@ -35,7 +36,8 @@ public:
         ResourceContext* resourceContext,
         GPUEntityManager* gpuEntityManager,
         MovementCommandProcessor* movementCommandProcessor,
-        FrameGraph* frameGraph
+        FrameGraph* frameGraph,
+        PresentationSurface* presentationSurface
     );
 
     void cleanup();
@@ -73,6 +75,7 @@ private:
     GPUEntityManager* gpuEntityManager = nullptr;
     MovementCommandProcessor* movementCommandProcessor = nullptr;
     FrameGraph* frameGraph = nullptr;
+    PresentationSurface* presentationSurface = nullptr;
 
     // Resource IDs
     FrameGraphTypes::ResourceId entityBufferId = 0;
@@ -91,7 +94,6 @@ private:
     FrameGraphTypes::NodeId presentNodeId = 0;
 
     // Helper methods
-    bool acquireSwapchainImage(uint32_t currentFrame, uint32_t& imageIndex);
     void setupFrameGraph(uint32_t imageIndex);
     void configureNodes(FrameGraphTypes::NodeId graphicsNodeId, FrameGraphTypes::NodeId presentNodeId, uint32_t imageIndex, flecs::world* world);
     bool compileFrameGraph(uint32_t currentFrame, float totalTime, float deltaTime, uint32_t frameCounter);

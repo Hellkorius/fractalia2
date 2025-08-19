@@ -47,4 +47,5 @@ private:
     // State tracking
     bool recreationInProgress = false;
     bool framebufferResized = false;
+    bool acquisitionInProgress = false;
 };

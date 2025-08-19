@@ -92,7 +92,8 @@ bool GPUSynchronizationService::waitForAllFrames() {
         if (computeInUse[i]) {
             std::cout << "GPUSynchronizationService: Waiting for compute fence " << i << std::endl;
             VkResult result = waitForFenceRobust(computeFences[i].get(), "compute");
-            if (result == VK_ERROR_DEVICE_LOST) {
+            if (result == VK_ERROR_DEVICE_LOST || result == VK_TIMEOUT) {
+                std::cerr << "GPUSynchronizationService: Failed to wait for compute fence " << i << ": " << result << std::endl;
                 return false;
             }
             computeInUse[i] = false;
@@ -101,7 +102,8 @@ bool GPUSynchronizationService::waitForAllFrames() {
         if (graphicsInUse[i]) {
             std::cout << "GPUSynchronizationService: Waiting for graphics fence " << i << std::endl;
             VkResult result = waitForFenceRobust(graphicsFences[i].get(), "graphics");
-            if (result == VK_ERROR_DEVICE_LOST) {
+            if (result == VK_ERROR_DEVICE_LOST || result == VK_TIMEOUT) {
+                std::cerr << "GPUSynchronizationService: Failed to wait for graphics fence " << i << ": " << result << std::endl;
                 return false;
             }
             graphicsInUse[i] = false;
@@ -145,12 +147,10 @@ VkResult GPUSynchronizationService::waitForFenceRobust(VkFence fence, const char
     VkResult result = vk.vkWaitForFences(device, 1, &fence, VK_TRUE, timeoutNs);
     
     if (result == VK_TIMEOUT) {
-        std::cerr << "GPUSynchronizationService: Warning: " << fenceName << " fence timeout, forcing synchronization" << std::endl;
-        // Force immediate wait with device idle as last resort
-        result = vk.vkDeviceWaitIdle(device);
-        if (result != VK_SUCCESS) {
-            std::cerr << "GPUSynchronizationService: Critical: Failed to synchronize " << fenceName << " pipeline: " << result << std::endl;
-        }
+        std::cerr << "GPUSynchronizationService: Critical: " << fenceName << " fence timeout after 2 seconds" << std::endl;
+        std::cerr << "  This indicates a GPU hang or driver issue. Propagating timeout error." << std::endl;
+        // Return timeout instead of forcing device idle - let caller handle recovery
+        return VK_TIMEOUT;
     }
     
     return result;

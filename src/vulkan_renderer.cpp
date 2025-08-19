@@ -221,7 +221,8 @@ bool VulkanRenderer::initializeModularArchitecture() {
         resourceContext.get(),
         gpuEntityManager.get(),
         movementCommandProcessor.get(),
-        frameGraph.get()
+        frameGraph.get(),
+        presentationSurface.get()
     )) {
         std::cerr << "Failed to initialize frame orchestrator" << std::endl;
         return false;

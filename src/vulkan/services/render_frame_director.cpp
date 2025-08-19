@@ -1,4 +1,5 @@
 #include "render_frame_director.h"
+#include "presentation_surface.h"
 #include "../core/vulkan_context.h"
 #include "../core/vulkan_swapchain.h"
 #include "../pipelines/pipeline_system_manager.h"
@@ -26,7 +27,8 @@ bool RenderFrameDirector::initialize(
     ResourceContext* resourceContext,
     GPUEntityManager* gpuEntityManager,
     MovementCommandProcessor* movementCommandProcessor,
-    FrameGraph* frameGraph
+    FrameGraph* frameGraph,
+    PresentationSurface* presentationSurface
 ) {
     this->context = context;
     this->swapchain = swapchain;
@@ -36,6 +38,7 @@ bool RenderFrameDirector::initialize(
     this->gpuEntityManager = gpuEntityManager;
     this->movementCommandProcessor = movementCommandProcessor;
     this->frameGraph = frameGraph;
+    this->presentationSurface = presentationSurface;
 
     return true;
 }
@@ -58,10 +61,15 @@ RenderFrameResult RenderFrameDirector::directFrame(
         movementCommandProcessor->processCommands();
     }
 
-    // 2. Acquire swapchain image
-    if (!acquireSwapchainImage(currentFrame, result.imageIndex)) {
+    // 2. Acquire swapchain image using PresentationSurface
+    SurfaceAcquisitionResult acquisitionResult = presentationSurface->acquireNextImage(currentFrame);
+    if (!acquisitionResult.success) {
+        if (acquisitionResult.recreationNeeded) {
+            std::cout << "RenderFrameDirector: Swapchain recreation needed, skipping frame" << std::endl;
+        }
         return result; // Failed to acquire image
     }
+    result.imageIndex = acquisitionResult.imageIndex;
 
     // 3. Setup frame graph
     setupFrameGraph(result.imageIndex);
@@ -93,26 +101,6 @@ void RenderFrameDirector::updateResourceIds(
     this->targetPositionBufferId = targetPositionBufferId;
 }
 
-bool RenderFrameDirector::acquireSwapchainImage(uint32_t currentFrame, uint32_t& imageIndex) {
-    VkResult result = context->getLoader().vkAcquireNextImageKHR(
-        context->getDevice(), 
-        swapchain->getSwapchain(), 
-        UINT64_MAX, 
-        sync->getImageAvailableSemaphore(currentFrame), 
-        VK_NULL_HANDLE, 
-        &imageIndex
-    );
-
-    if (result == VK_ERROR_OUT_OF_DATE_KHR) {
-        // Signal that swapchain recreation is needed
-        return false;
-    } else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
-        std::cerr << "RenderFrameDirector: Failed to acquire swap chain image" << std::endl;
-        return false;
-    }
-
-    return true;
-}
 
 void RenderFrameDirector::setupFrameGraph(uint32_t imageIndex) {
     // Only reset frame graph if not already compiled to avoid recompilation every frame

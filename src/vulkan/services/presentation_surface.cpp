@@ -32,15 +32,27 @@ void PresentationSurface::cleanup() {
 SurfaceAcquisitionResult PresentationSurface::acquireNextImage(uint32_t currentFrame) {
     SurfaceAcquisitionResult result;
 
+    // Prevent concurrent acquisition attempts
+    if (acquisitionInProgress) {
+        std::cerr << "PresentationSurface: Warning - Concurrent image acquisition attempt blocked" << std::endl;
+        return result; // success = false
+    }
+
     if (framebufferResized) {
         result.recreationNeeded = true;
         return result;
     }
 
+    // Set acquisition guard
+    acquisitionInProgress = true;
+
+    // Use reasonable timeout to prevent infinite waits
+    const uint64_t timeoutNs = 2000000000ULL; // 2 seconds
+    
     VkResult acquireResult = context->getLoader().vkAcquireNextImageKHR(
         context->getDevice(),
         swapchain->getSwapchain(),
-        UINT64_MAX,
+        timeoutNs,
         VK_NULL_HANDLE,
         VK_NULL_HANDLE,
         &result.imageIndex
@@ -48,9 +60,15 @@ SurfaceAcquisitionResult PresentationSurface::acquireNextImage(uint32_t currentF
 
     result.result = acquireResult;
 
+    // Clear acquisition guard before any return
+    acquisitionInProgress = false;
+
     if (acquireResult == VK_ERROR_OUT_OF_DATE_KHR) {
         result.recreationNeeded = true;
         return result;
+    } else if (acquireResult == VK_TIMEOUT) {
+        std::cerr << "PresentationSurface: Timeout waiting for swapchain image acquisition" << std::endl;
+        return result; // success = false, proper timeout handling
     } else if (acquireResult != VK_SUCCESS && acquireResult != VK_SUBOPTIMAL_KHR) {
         std::cerr << "PresentationSurface: Failed to acquire swap chain image: " << acquireResult << std::endl;
         return result;
