@@ -249,12 +249,12 @@ public:
     // Create swarm of entities with specified movement type
     std::vector<Entity> createSwarmWithType(size_t count, const glm::vec3& center, float radius, MovementType movementType) {
         std::uniform_real_distribution<float> angleDist(0.0f, 2.0f * M_PI);
-        std::uniform_real_distribution<float> radiusDist(0.7f, 1.0f); // Start at 70% of radius to strongly avoid center
+        std::uniform_real_distribution<float> smallRadiusDist(0.0f, 0.5f); // Start very close to center for initial dispersal
         
         return createBatch(count, [&](EntityBuilder& builder, size_t i) {
-            // Spread entities in ring formation, avoiding center
+            // Start entities very close to center for dispersal effect
             float angle = angleDist(rng);
-            float r = std::sqrt(radiusDist(rng)) * radius; // Square root for better distribution
+            float r = smallRadiusDist(rng); // Very small initial radius
             glm::vec3 pos = center + glm::vec3(
                 r * std::cos(angle),
                 r * std::sin(angle),
@@ -264,8 +264,8 @@ public:
             // Use a neutral starting color - dynamic colors will be applied by movement system
             glm::vec4 color = glm::vec4(0.8f, 0.8f, 0.8f, 1.0f); // Neutral gray start
             
-            // Create movement pattern with specified type
-            MovementPattern pattern = createMovementPattern(pos, i, count, movementType);
+            // Create movement pattern that will disperse from center
+            MovementPattern pattern = createMovementPattern(center, i, count, movementType);
             
             Entity entity = builder.at(pos)
                    .withColor(color)

@@ -270,14 +270,14 @@ namespace GraphicsPipelinePresets {
         moveParams0Attr.binding = 1;
         moveParams0Attr.location = 7;
         moveParams0Attr.format = VK_FORMAT_R32G32B32A32_SFLOAT;
-        moveParams0Attr.offset = 80;
+        moveParams0Attr.offset = 0;  // movementParams0 is at start of GPUEntity
         state.vertexAttributes.push_back(moveParams0Attr);
         
         VkVertexInputAttributeDescription moveParams1Attr{};
         moveParams1Attr.binding = 1;
         moveParams1Attr.location = 8;
         moveParams1Attr.format = VK_FORMAT_R32G32B32A32_SFLOAT;
-        moveParams1Attr.offset = 96;
+        moveParams1Attr.offset = 16; // movementParams1 is at 16 bytes in GPUEntity
         state.vertexAttributes.push_back(moveParams1Attr);
         
         VkPipelineColorBlendAttachmentState colorBlendAttachment{};

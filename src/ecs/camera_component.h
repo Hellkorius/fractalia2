@@ -12,7 +12,7 @@ struct Camera {
     float rotation{0.0f};                   // Camera rotation in radians around Z-axis
     
     // View bounds (calculated from position/zoom)
-    glm::vec2 viewSize{8.0f, 6.0f};        // Base view size (width, height)
+    glm::vec2 viewSize{200.0f, 150.0f};    // Much larger view size to accommodate dispersed entities
     float aspectRatio{4.0f / 3.0f};        // Aspect ratio to maintain
     
     // Movement controls

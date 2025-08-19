@@ -125,10 +125,26 @@ void main() {
     vec3 currentPosition;
     vec3 target;
     
-    // Initialize buffers for new entities
+    // Initialize buffers for new entities with dispersal
     if (initialized < 0.5) {
         currentPosition = center;
-        target = center;
+        
+        // DISPERSAL PHASE: Generate initial dispersal target FAR away from center
+        uint dispersalSeed = entityIndex ^ 0xDEADBEEFu;
+        uint hash1 = fastHash(dispersalSeed);
+        uint hash2 = fastHash(dispersalSeed ^ 0x55555555u);
+        
+        float dispersalAngle = hashToFloat(hash1) * TWO_PI;
+        float dispersalMagnitude = (4.0 + hashToFloat(hash2) * 6.0) * amplitude; // Reasonable dispersal distance for 30-second cycle
+        
+        vec2 dispersalSinCos = fastSinCos(dispersalAngle);
+        vec3 dispersalDirection = vec3(
+            dispersalMagnitude * dispersalSinCos.y, // cosine
+            dispersalMagnitude * dispersalSinCos.x, // sine
+            0.0
+        );
+        
+        target = center + dispersalDirection; // Initial target is FAR away from center
         currentPos.currentPositions[entityIndex] = vec4(currentPosition, 1.0);
         targetPos.targetPositions[entityIndex] = vec4(target, 1.0);
         entities.entityData[baseOffset + 2u].y = 1.0; // Mark as initialized
@@ -140,11 +156,10 @@ void main() {
     
     // Generate new target on cycle reset
     if (cycle < 1.0) {
-        // Continuity: current becomes previous target
-        if (pc.frame >= float(CYCLE_LENGTH)) {
-            currentPosition = target;
-            currentPos.currentPositions[entityIndex] = vec4(currentPosition, 1.0);
-        }
+        // CRITICAL FIX: At cycle start, current position must be where we actually ended up
+        // This prevents entities from "respawning" at incorrect positions
+        currentPosition = target;  // We reached the target at the end of the previous cycle
+        currentPos.currentPositions[entityIndex] = vec4(currentPosition, 1.0);
         
         // Optimized random generation with fewer hash operations
         uint cycleNumber = pc.frame / CYCLE_LENGTH;
@@ -159,7 +174,7 @@ void main() {
         
         // Entity drift characteristic (computed once per cycle)
         float driftiness = hashToFloat(fastHash(entityIndex ^ 0x12345678u));
-        stepMagnitude *= (2.0 + driftiness);
+        stepMagnitude *= (3.0 + driftiness * 4.0); // Reasonable steps: 3-7x amplitude for longer cycles
         
         // Fast trigonometric calculation using lookup table
         vec2 sinCos = fastSinCos(randAngle);
@@ -169,6 +184,7 @@ void main() {
             0.0
         );
         
+        // Generate new target from the corrected current position
         target = currentPosition + randomStep;
         targetPos.targetPositions[entityIndex] = vec4(target, 1.0);
     }
