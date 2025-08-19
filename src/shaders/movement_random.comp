@@ -135,7 +135,7 @@ void main() {
         uint hash2 = fastHash(dispersalSeed ^ 0x55555555u);
         
         float dispersalAngle = hashToFloat(hash1) * TWO_PI;
-        float dispersalMagnitude = (4.0 + hashToFloat(hash2) * 6.0) * amplitude; // Reasonable dispersal distance for 30-second cycle
+        float dispersalMagnitude = (12.0 + hashToFloat(hash2) * 18.0) * amplitude; // Much further dispersal: 12-30x amplitude
         
         vec2 dispersalSinCos = fastSinCos(dispersalAngle);
         vec3 dispersalDirection = vec3(
