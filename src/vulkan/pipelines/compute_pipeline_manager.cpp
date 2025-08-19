@@ -24,8 +24,8 @@ ComputePipelineManager::~ComputePipelineManager() {
 
 bool ComputePipelineManager::initialize(ShaderManager* shaderManager,
                                       DescriptorLayoutManager* layoutManager) {
-    this->shaderManager = shaderManager;
-    this->layoutManager = layoutManager;
+    this->shaderManager_ = shaderManager;
+    this->layoutManager_ = layoutManager;
     
     // Create pipeline cache for optimal performance
     VkPipelineCacheCreateInfo cacheInfo{};
@@ -33,14 +33,14 @@ bool ComputePipelineManager::initialize(ShaderManager* shaderManager,
     cacheInfo.initialDataSize = 0;
     cacheInfo.pInitialData = nullptr;
     
-    pipelineCache = vulkan_raii::create_pipeline_cache(context, &cacheInfo);
-    if (!pipelineCache) {
+    pipelineCache_ = vulkan_raii::create_pipeline_cache(context, &cacheInfo);
+    if (!pipelineCache_) {
         std::cerr << "Failed to create compute pipeline cache" << std::endl;
         return false;
     }
     
     // Initialize factory with pipeline cache
-    if (!factory_.initialize(shaderManager, pipelineCache)) {
+    if (!factory_.initialize(shaderManager_, pipelineCache_)) {
         std::cerr << "Failed to initialize compute pipeline factory" << std::endl;
         return false;
     }
@@ -75,7 +75,7 @@ void ComputePipelineManager::cleanupBeforeContextDestruction() {
     clearCache();
     
     // Reset pipeline cache (RAII handles cleanup automatically)
-    pipelineCache.reset();
+    pipelineCache_.reset();
     
     context = nullptr;
 }
@@ -208,15 +208,15 @@ bool ComputePipelineManager::recreatePipelineCache() {
     // Clear caches in dependency order
     clearCache();
     
-    if (layoutManager) {
+    if (layoutManager_) {
         std::cout << "ComputePipelineManager: Also clearing descriptor layout cache to prevent stale handles" << std::endl;
-        layoutManager->clearCache();
+        layoutManager_->clearCache();
     }
     
     // Reset pipeline cache
-    if (pipelineCache) {
+    if (pipelineCache_) {
         std::cout << "ComputePipelineManager: Destroying corrupted pipeline cache" << std::endl;
-        pipelineCache.reset();
+        pipelineCache_.reset();
     }
     
     // Create new pipeline cache
@@ -225,14 +225,14 @@ bool ComputePipelineManager::recreatePipelineCache() {
     cacheInfo.initialDataSize = 0;
     cacheInfo.pInitialData = nullptr;
     
-    pipelineCache = vulkan_raii::create_pipeline_cache(context, &cacheInfo);
-    if (!pipelineCache) {
+    pipelineCache_ = vulkan_raii::create_pipeline_cache(context, &cacheInfo);
+    if (!pipelineCache_) {
         std::cerr << "ComputePipelineManager: Failed to recreate pipeline cache" << std::endl;
         return false;
     }
     
     // Reinitialize factory with new cache
-    factory_.initialize(shaderManager, pipelineCache);
+    factory_.initialize(shaderManager_, pipelineCache_);
     
     isRecreating_ = false;
     std::cout << "ComputePipelineManager: Pipeline cache successfully recreated" << std::endl;

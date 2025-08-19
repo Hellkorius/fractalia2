@@ -47,7 +47,7 @@ ShaderManager::~ShaderManager() {
 }
 
 bool ShaderManager::initialize(const VulkanContext& context) {
-    this->context = &context;
+    this->context_ = &context;
     
     // Check for external shader compilers
     if (ShaderCompiler::isGlslcAvailable()) {
@@ -69,12 +69,12 @@ void ShaderManager::cleanup() {
 }
 
 void ShaderManager::cleanupBeforeContextDestruction() {
-    if (!context) return;
+    if (!context_) return;
     
     // Clear shader cache before context destruction
     clearCache();
     
-    context = nullptr;
+    context_ = nullptr;
 }
 
 VkShaderModule ShaderManager::loadShader(const ShaderModuleSpec& spec) {
@@ -116,7 +116,7 @@ VkShaderModule ShaderManager::loadShader(const ShaderModuleSpec& spec) {
     stats.totalShaders++;
     
     // Check if cache needs cleanup
-    if (shaderCache_.size() > maxCacheSize) {
+    if (shaderCache_.size() > maxCacheSize_) {
         evictLeastRecentlyUsed();
     }
     
@@ -160,7 +160,7 @@ std::unique_ptr<CachedShaderModule> ShaderManager::createShaderInternal(const Sh
     cachedShader->spec = spec;
     cachedShader->sourceModified = getFileModifiedTime(spec.filePath);
     cachedShader->isHotReloadable = spec.enableHotReload;
-    cachedShader->module.setContext(context);
+    cachedShader->module.setContext(context_);
     
     // Load or compile shader based on source type
     std::vector<uint32_t> spirvCode;
@@ -226,15 +226,15 @@ vulkan_raii::ShaderModule ShaderManager::createVulkanShaderModule(const std::vec
     createInfo.pCode = spirvCode.data();
     
     VkShaderModule shaderModule;
-    VkResult result = context->getLoader().vkCreateShaderModule(
-        context->getDevice(), &createInfo, nullptr, &shaderModule);
+    VkResult result = context_->getLoader().vkCreateShaderModule(
+        context_->getDevice(), &createInfo, nullptr, &shaderModule);
     
     if (result != VK_SUCCESS) {
         std::cerr << "Failed to create shader module: " << result << std::endl;
-        return vulkan_raii::ShaderModule(VK_NULL_HANDLE, context);
+        return vulkan_raii::ShaderModule(VK_NULL_HANDLE, context_);
     }
     
-    return vulkan_raii::make_shader_module(shaderModule, context);
+    return vulkan_raii::make_shader_module(shaderModule, context_);
 }
 
 std::vector<uint32_t> ShaderManager::loadSPIRVBinaryFromFile(const std::string& filePath) const {
@@ -378,7 +378,7 @@ VkPipelineShaderStageCreateInfo ShaderManager::createComputeShaderStage(VkShader
 }
 
 void ShaderManager::clearCache() {
-    if (!context) return;
+    if (!context_) return;
     
     // RAII wrappers automatically destroy shader modules
     shaderCache_.clear();
@@ -416,8 +416,8 @@ bool ShaderManager::reloadShader(const ShaderModuleSpec& spec) {
     VkShaderModule newModule = loadShader(spec);
     
     // Trigger reload callbacks
-    auto callbackIt = reloadCallbacks.find(spec.filePath);
-    if (callbackIt != reloadCallbacks.end()) {
+    auto callbackIt = reloadCallbacks_.find(spec.filePath);
+    if (callbackIt != reloadCallbacks_.end()) {
         for (const auto& callback : callbackIt->second) {
             callback(newModule);
         }

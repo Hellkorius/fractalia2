@@ -217,26 +217,26 @@ public:
 
 private:
     // Core Vulkan objects
-    const VulkanContext* context = nullptr;
+    const VulkanContext* context_ = nullptr;
     
     // Shader cache
     std::unordered_map<ShaderModuleSpec, std::unique_ptr<CachedShaderModule>, ShaderModuleSpecHash> shaderCache_;
     
     // Hot reload tracking
-    std::unordered_map<std::string, std::vector<std::function<void(VkShaderModule)>>> reloadCallbacks;
-    std::unordered_map<std::string, std::filesystem::file_time_type> fileWatchList;
+    std::unordered_map<std::string, std::vector<std::function<void(VkShaderModule)>>> reloadCallbacks_;
+    std::unordered_map<std::string, std::filesystem::file_time_type> fileWatchList_;
     
     // Global include paths and defines
-    std::vector<std::string> globalIncludePaths;
-    std::unordered_map<std::string, std::string> globalDefines;
+    std::vector<std::string> globalIncludePaths_;
+    std::unordered_map<std::string, std::string> globalDefines_;
     
     // Statistics
     mutable ShaderStats stats;
     
     // Configuration
     bool hotReloadEnabled = false;
-    uint32_t maxCacheSize = DEFAULT_SHADER_CACHE_SIZE;
-    uint64_t cacheCleanupInterval = CACHE_CLEANUP_INTERVAL;
+    uint32_t maxCacheSize_ = DEFAULT_SHADER_CACHE_SIZE;
+    uint64_t cacheCleanupInterval_ = CACHE_CLEANUP_INTERVAL;
     
     // External compiler integration
     std::string glslcPath = "glslc";  // Path to glslc compiler

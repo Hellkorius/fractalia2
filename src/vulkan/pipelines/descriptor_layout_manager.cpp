@@ -64,7 +64,7 @@ DescriptorLayoutManager::~DescriptorLayoutManager() {
 }
 
 bool DescriptorLayoutManager::initialize(const VulkanContext& context) {
-    this->context = &context;
+    this->context_ = &context;
     
     // Query device features and properties for bindless support
     queryDeviceFeatures();
@@ -89,7 +89,7 @@ void DescriptorLayoutManager::cleanup() {
 }
 
 void DescriptorLayoutManager::cleanupBeforeContextDestruction() {
-    if (!context) return;
+    if (!context_) return;
     
     // Clear layout cache (RAII handles cleanup automatically)
     clearCache();
@@ -103,9 +103,9 @@ void DescriptorLayoutManager::cleanupBeforeContextDestruction() {
     commonLayouts.bindlessBuffers.reset();
     
     // Clear managed pools (RAII handles cleanup automatically)
-    managedPools.clear();
+    managedPools_.clear();
     
-    context = nullptr;
+    context_ = nullptr;
 }
 
 VkDescriptorSetLayout DescriptorLayoutManager::getLayout(const DescriptorLayoutSpec& spec) {
@@ -139,7 +139,7 @@ VkDescriptorSetLayout DescriptorLayoutManager::getLayout(const DescriptorLayoutS
     }
     
     // Check if cache needs cleanup
-    if (layoutCache_.size() > maxCacheSize) {
+    if (layoutCache_.size() > maxCacheSize_) {
         evictLeastRecentlyUsed();
     }
     
@@ -169,7 +169,7 @@ std::unique_ptr<CachedDescriptorLayout> DescriptorLayoutManager::createLayoutInt
     if (rawLayout == VK_NULL_HANDLE) {
         return nullptr;
     }
-    cachedLayout->layout = vulkan_raii::make_descriptor_set_layout(rawLayout, context);
+    cachedLayout->layout = vulkan_raii::make_descriptor_set_layout(rawLayout, context_);
     
     // Update pool size hints
     updatePoolSizeHints(*cachedLayout);
@@ -232,8 +232,8 @@ VkDescriptorSetLayout DescriptorLayoutManager::createVulkanLayout(const Descript
     }
     
     VkDescriptorSetLayout layout;
-    VkResult result = context->getLoader().vkCreateDescriptorSetLayout(
-        context->getDevice(), &layoutInfo, nullptr, &layout);
+    VkResult result = context_->getLoader().vkCreateDescriptorSetLayout(
+        context_->getDevice(), &layoutInfo, nullptr, &layout);
     
     if (result != VK_SUCCESS) {
         std::cerr << "Failed to create descriptor set layout: " << result << std::endl;
@@ -302,17 +302,17 @@ VkDescriptorPool DescriptorLayoutManager::createOptimalPool(const DescriptorPool
     poolInfo.pPoolSizes = poolSizes.data();
     
     VkDescriptorPool rawPool;
-    VkResult result = context->getLoader().vkCreateDescriptorPool(
-        context->getDevice(), &poolInfo, nullptr, &rawPool);
+    VkResult result = context_->getLoader().vkCreateDescriptorPool(
+        context_->getDevice(), &poolInfo, nullptr, &rawPool);
     
     if (result != VK_SUCCESS) {
         std::cerr << "Failed to create descriptor pool: " << result << std::endl;
         return VK_NULL_HANDLE;
     }
     
-    vulkan_raii::DescriptorPool pool = vulkan_raii::make_descriptor_pool(rawPool, context);
+    vulkan_raii::DescriptorPool pool = vulkan_raii::make_descriptor_pool(rawPool, context_);
     VkDescriptorPool handle = pool.get();
-    managedPools.push_back(std::move(pool));
+    managedPools_.push_back(std::move(pool));
     stats.activePools++;
     
     return handle;
@@ -359,7 +359,7 @@ VkDescriptorSetLayout DescriptorLayoutManager::getStorageBufferLayout(VkShaderSt
 }
 
 void DescriptorLayoutManager::clearCache() {
-    if (!context) return;
+    if (!context_) return;
     
     // Clear all cached layouts (RAII handles cleanup automatically)
     layoutCache_.clear();
@@ -419,24 +419,24 @@ void DescriptorLayoutManager::updatePoolSizeHints(CachedDescriptorLayout& cached
 
 void DescriptorLayoutManager::queryDeviceFeatures() {
     // Query descriptor indexing features
-    indexingFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES;
+    indexingFeatures_.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES;
     
     VkPhysicalDeviceFeatures2 features2{};
     features2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
-    features2.pNext = &indexingFeatures;
+    features2.pNext = &indexingFeatures_;
     
     // Note: In a full implementation, this would call vkGetPhysicalDeviceFeatures2
     (void)features2; // Suppress unused variable warning
     
     // Note: This would need proper implementation with vkGetPhysicalDeviceFeatures2
     // For now, we'll assume basic support
-    indexingFeatures.descriptorBindingVariableDescriptorCount = VK_TRUE;
-    indexingFeatures.descriptorBindingPartiallyBound = VK_TRUE;
-    indexingFeatures.descriptorBindingUpdateUnusedWhilePending = VK_TRUE;
-    indexingFeatures.descriptorBindingStorageBufferUpdateAfterBind = VK_TRUE;
+    indexingFeatures_.descriptorBindingVariableDescriptorCount = VK_TRUE;
+    indexingFeatures_.descriptorBindingPartiallyBound = VK_TRUE;
+    indexingFeatures_.descriptorBindingUpdateUnusedWhilePending = VK_TRUE;
+    indexingFeatures_.descriptorBindingStorageBufferUpdateAfterBind = VK_TRUE;
     
     // Query properties
-    context->getLoader().vkGetPhysicalDeviceProperties(context->getPhysicalDevice(), &deviceProperties);
+    context_->getLoader().vkGetPhysicalDeviceProperties(context_->getPhysicalDevice(), &deviceProperties_);
 }
 
 void DescriptorLayoutManager::initializeCommonLayouts() {
@@ -500,11 +500,11 @@ bool DescriptorLayoutManager::checkBindlessSupport(const DescriptorLayoutSpec& s
 }
 
 bool DescriptorLayoutManager::supportsBindless() const {
-    return indexingFeatures.descriptorBindingVariableDescriptorCount == VK_TRUE;
+    return indexingFeatures_.descriptorBindingVariableDescriptorCount == VK_TRUE;
 }
 
 bool DescriptorLayoutManager::supportsUpdateAfterBind() const {
-    return indexingFeatures.descriptorBindingStorageBufferUpdateAfterBind == VK_TRUE;
+    return indexingFeatures_.descriptorBindingStorageBufferUpdateAfterBind == VK_TRUE;
 }
 
 uint32_t DescriptorLayoutManager::getMaxBindlessDescriptors() const {

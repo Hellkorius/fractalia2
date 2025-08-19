@@ -185,18 +185,18 @@ public:
 
 private:
     // Core Vulkan objects
-    const VulkanContext* context = nullptr;
+    const VulkanContext* context_ = nullptr;
     
     // Layout cache
     std::unordered_map<DescriptorLayoutSpec, std::unique_ptr<CachedDescriptorLayout>, DescriptorLayoutSpecHash> layoutCache_;
     
     // Pool management
-    std::vector<vulkan_raii::DescriptorPool> managedPools;
+    std::vector<vulkan_raii::DescriptorPool> managedPools_;
     
     // Device features and limits
-    VkPhysicalDeviceDescriptorIndexingFeatures indexingFeatures{};
-    VkPhysicalDeviceDescriptorIndexingProperties indexingProperties{};
-    VkPhysicalDeviceProperties deviceProperties{};
+    VkPhysicalDeviceDescriptorIndexingFeatures indexingFeatures_{};
+    VkPhysicalDeviceDescriptorIndexingProperties indexingProperties_{};
+    VkPhysicalDeviceProperties deviceProperties_{};
     
     // Common layout cache (for frequently used patterns)
     struct CommonLayouts {
@@ -212,8 +212,8 @@ private:
     mutable LayoutStats stats;
     
     // Configuration
-    uint32_t maxCacheSize = DEFAULT_LAYOUT_CACHE_SIZE;
-    uint64_t cacheCleanupInterval = CACHE_CLEANUP_INTERVAL;
+    uint32_t maxCacheSize_ = DEFAULT_LAYOUT_CACHE_SIZE;
+    uint64_t cacheCleanupInterval_ = CACHE_CLEANUP_INTERVAL;
     
     // Internal layout creation
     std::unique_ptr<CachedDescriptorLayout> createLayoutInternal(const DescriptorLayoutSpec& spec);

@@ -115,16 +115,16 @@ public:
                               VkPipelineStageFlags dstStage = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT);
     
     // Access to layout manager for descriptor layout creation
-    DescriptorLayoutManager* getLayoutManager() { return layoutManager; }
-    const DescriptorLayoutManager* getLayoutManager() const { return layoutManager; }
+    DescriptorLayoutManager* getLayoutManager() { return layoutManager_; }
+    const DescriptorLayoutManager* getLayoutManager() const { return layoutManager_; }
 
 private:
     // Core Vulkan objects
-    vulkan_raii::PipelineCache pipelineCache;
+    vulkan_raii::PipelineCache pipelineCache_;
     
     // Dependencies
-    ShaderManager* shaderManager = nullptr;
-    DescriptorLayoutManager* layoutManager = nullptr;
+    ShaderManager* shaderManager_ = nullptr;
+    DescriptorLayoutManager* layoutManager_ = nullptr;
     
     // State management
     bool isRecreating_ = false;  // Synchronization for cache recreation
@@ -142,8 +142,8 @@ private:
     std::unordered_map<ComputePipelineState, ComputeProfileData, ComputePipelineStateHash> profileData;
     
     // Configuration
-    uint32_t maxCacheSize = DEFAULT_COMPUTE_CACHE_SIZE;
-    uint64_t cacheCleanupInterval = CACHE_CLEANUP_INTERVAL;
+    uint32_t maxCacheSize_ = DEFAULT_COMPUTE_CACHE_SIZE;
+    uint64_t cacheCleanupInterval_ = CACHE_CLEANUP_INTERVAL;
     bool enableProfiling = false;
     
     // Internal pipeline creation callback for cache

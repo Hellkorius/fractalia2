@@ -2,7 +2,7 @@
 #include <iostream>
 #include <algorithm>
 
-ComputePipelineCache::ComputePipelineCache(uint32_t maxSize) : maxSize_(maxSize) {}
+ComputePipelineCache::ComputePipelineCache(uint32_t maxCacheSize) : maxCacheSize_(maxCacheSize) {}
 
 VkPipeline ComputePipelineCache::getPipeline(const ComputePipelineState& state) {
     auto it = cache_.find(state);
@@ -33,7 +33,7 @@ VkPipeline ComputePipelineCache::getPipeline(const ComputePipelineState& state) 
     cache_[state] = std::move(cachedPipeline);
     stats_.totalPipelines++;
     
-    if (cache_.size() > maxSize_) {
+    if (cache_.size() > maxCacheSize_) {
         evictLeastRecentlyUsed();
     }
     
@@ -66,7 +66,7 @@ void ComputePipelineCache::insert(const ComputePipelineState& state, std::unique
     cache_[state] = std::move(pipeline);
     stats_.totalPipelines++;
     
-    if (cache_.size() > maxSize_) {
+    if (cache_.size() > maxCacheSize_) {
         evictLeastRecentlyUsed();
     }
 }

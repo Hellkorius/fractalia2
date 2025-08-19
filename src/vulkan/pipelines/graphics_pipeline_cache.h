@@ -31,7 +31,7 @@ struct PipelineStats {
 
 class GraphicsPipelineCache {
 public:
-    explicit GraphicsPipelineCache(uint32_t maxSize = DEFAULT_GRAPHICS_CACHE_SIZE);
+    explicit GraphicsPipelineCache(uint32_t maxCacheSize = DEFAULT_GRAPHICS_CACHE_SIZE);
     ~GraphicsPipelineCache() = default;
 
     VkPipeline getPipeline(const GraphicsPipelineState& state);
@@ -55,7 +55,7 @@ public:
 private:
     std::unordered_map<GraphicsPipelineState, std::unique_ptr<CachedGraphicsPipeline>, GraphicsPipelineStateHash> cache_;
     
-    uint32_t maxSize_;
+    uint32_t maxCacheSize_;
     uint64_t cacheCleanupInterval_ = CACHE_CLEANUP_INTERVAL;
     
     mutable PipelineStats stats_;

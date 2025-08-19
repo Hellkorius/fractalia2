@@ -11,7 +11,7 @@
 
 class ComputePipelineCache {
 public:
-    explicit ComputePipelineCache(uint32_t maxSize = DEFAULT_COMPUTE_CACHE_SIZE);
+    explicit ComputePipelineCache(uint32_t maxCacheSize = DEFAULT_COMPUTE_CACHE_SIZE);
     ~ComputePipelineCache() = default;
 
     struct Stats {
@@ -40,7 +40,7 @@ private:
     std::unordered_map<ComputePipelineState, std::unique_ptr<CachedComputePipeline>, ComputePipelineStateHash> cache_;
     std::function<std::unique_ptr<CachedComputePipeline>(const ComputePipelineState&)> createPipelineCallback_;
     
-    uint32_t maxSize_;
+    uint32_t maxCacheSize_;
     uint64_t frameCounter_ = 0;
     mutable Stats stats_;
     

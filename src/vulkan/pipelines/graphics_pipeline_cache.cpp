@@ -2,7 +2,7 @@
 #include <iostream>
 #include <algorithm>
 
-GraphicsPipelineCache::GraphicsPipelineCache(uint32_t maxSize) : maxSize_(maxSize) {
+GraphicsPipelineCache::GraphicsPipelineCache(uint32_t maxCacheSize) : maxCacheSize_(maxCacheSize) {
 }
 
 VkPipeline GraphicsPipelineCache::getPipeline(const GraphicsPipelineState& state) {
@@ -36,7 +36,7 @@ void GraphicsPipelineCache::storePipeline(const GraphicsPipelineState& state, st
     
     cache_[state] = std::move(pipeline);
     
-    if (cache_.size() > maxSize_) {
+    if (cache_.size() > maxCacheSize_) {
         evictLeastRecentlyUsed();
     }
 }
