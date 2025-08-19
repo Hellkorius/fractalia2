@@ -3,6 +3,7 @@
 #include "vulkan/core/vulkan_context.h"
 #include "vulkan/core/vulkan_swapchain.h"
 #include "vulkan/core/vulkan_sync.h"
+#include "vulkan/core/queue_manager.h"
 #include "vulkan/resources/resource_context.h"
 #include "vulkan/rendering/frame_graph.h"
 #include "vulkan/nodes/entity_compute_node.h"
@@ -77,8 +78,14 @@ bool VulkanRenderer::initialize(SDL_Window* window) {
         return false;
     }
     
+    queueManager = std::make_unique<QueueManager>();
+    if (!queueManager->initialize(*context)) {
+        std::cerr << "Failed to initialize Queue Manager" << std::endl;
+        return false;
+    }
+    
     resourceContext = std::make_unique<ResourceContext>();
-    if (!resourceContext->initialize(*context, sync->getCommandPool())) {
+    if (!resourceContext->initialize(*context, queueManager.get())) {
         std::cerr << "Failed to initialize Resource context" << std::endl;
         return false;
     }
@@ -169,6 +176,7 @@ void VulkanRenderer::cleanup() {
     movementCommandProcessor.reset();
     gpuEntityManager.reset();
     resourceContext.reset();
+    queueManager.reset();
     sync.reset();
     pipelineSystem.reset();
     swapchain.reset();
@@ -184,7 +192,7 @@ void VulkanRenderer::drawFrame() {
 
 bool VulkanRenderer::initializeModularArchitecture() {
     frameGraph = std::make_unique<FrameGraph>();
-    if (!frameGraph->initialize(*context, sync.get())) {
+    if (!frameGraph->initialize(*context, sync.get(), queueManager.get())) {
         std::cerr << "Failed to initialize frame graph" << std::endl;
         return false;
     }
@@ -236,7 +244,7 @@ bool VulkanRenderer::initializeModularArchitecture() {
     );
     
     submissionService = std::make_unique<CommandSubmissionService>();
-    if (!submissionService->initialize(context.get(), sync.get(), swapchain.get())) {
+    if (!submissionService->initialize(context.get(), sync.get(), swapchain.get(), queueManager.get())) {
         std::cerr << "Failed to initialize queue submission manager" << std::endl;
         return false;
     }

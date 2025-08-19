@@ -205,23 +205,8 @@ void RenderFrameDirector::resetSwapchainCache() {
     // 2. Reset cache for new swapchain size  
     swapchainImageIds.assign(swapchain->getImages().size(), 0);
     
-    // 3. CRITICAL FIX FOR SECOND RESIZE CRASH: Recreate command pool to prevent corruption
-    // This addresses cumulative command pool corruption that survives first resize but crashes on second
-    if (sync && !sync->recreateCommandPool()) {
-        std::cerr << "RenderFrameDirector: CRITICAL ERROR - Failed to recreate command pool during swapchain recreation!" << std::endl;
-        std::cerr << "  This may cause subsequent frame rendering to fail or crash." << std::endl;
-    } else {
-        std::cout << "RenderFrameDirector: Successfully recreated command pool during swapchain recreation" << std::endl;
-        
-        // CRITICAL FIX FOR ENTITY UPLOAD CRASH: Update ResourceContext command pool without full reinitialization
-        // This preserves cached descriptor layouts and other state while updating command pool for transfers
-        if (resourceContext && !resourceContext->updateCommandPool(sync->getCommandPool())) {
-            std::cerr << "RenderFrameDirector: CRITICAL ERROR - Failed to update ResourceContext command pool!" << std::endl;
-            std::cerr << "  This may cause staging buffer operations (entity uploads) to crash." << std::endl;
-        } else {
-            std::cout << "RenderFrameDirector: Successfully updated ResourceContext command pool" << std::endl;
-        }
-    }
+    // Command pool management is now handled by QueueManager - no manual recreation needed
+    std::cout << "RenderFrameDirector: Swapchain cache reset complete (QueueManager handles command pools)" << std::endl;
     
     // 4. CRITICAL FIX: Update BOTH graphics AND compute descriptor sets after swapchain recreation
     // This fixes the second window resize crash by ensuring all descriptor sets have valid buffer bindings
@@ -260,8 +245,8 @@ bool RenderFrameDirector::compileFrameGraph(uint32_t currentFrame, float totalTi
         return false;
     }
     
-    // Optimized command buffer reset - batch reset for this frame
-    sync->resetCommandBuffersForFrame(currentFrame);
+    // Command buffer reset is now handled by QueueManager during frame execution
+    // No manual reset needed here
     
     // Update frame data in nodes (AAA pattern: frame graph manages per-frame data)
     frameGraph->updateFrameData(totalTime, deltaTime, frameCounter, currentFrame);

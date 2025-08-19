@@ -2,6 +2,7 @@
 #include "../core/vulkan_context.h"
 #include "../core/vulkan_sync.h"
 #include "../core/vulkan_utils.h"
+#include "../core/queue_manager.h"
 #include "../nodes/entity_compute_node.h"
 #include "../nodes/entity_graphics_node.h"
 #include "../monitoring/gpu_memory_monitor.h"
@@ -22,17 +23,18 @@ FrameGraph::~FrameGraph() {
     cleanup();
 }
 
-bool FrameGraph::initialize(const VulkanContext& context, VulkanSync* sync) {
+bool FrameGraph::initialize(const VulkanContext& context, VulkanSync* sync, QueueManager* queueManager) {
     this->context = &context;
     this->sync = sync;
+    this->queueManager = queueManager;
     
-    if (context.getDevice() == VK_NULL_HANDLE || !sync) {
-        std::cerr << "FrameGraph: Invalid context or sync objects" << std::endl;
+    if (context.getDevice() == VK_NULL_HANDLE || !sync || !queueManager) {
+        std::cerr << "FrameGraph: Invalid context, sync, or queue manager objects" << std::endl;
         return false;
     }
     
     initialized = true;
-    std::cout << "FrameGraph initialized successfully" << std::endl;
+    std::cout << "FrameGraph initialized successfully with QueueManager" << std::endl;
     return true;
 }
 
@@ -534,34 +536,30 @@ std::pair<bool, bool> FrameGraph::analyzeQueueRequirements() const {
 }
 
 void FrameGraph::beginCommandBuffers(bool useCompute, bool useGraphics, uint32_t frameIndex) {
-    const auto& computeCommandBuffers = sync->getComputeCommandBuffers();
-    const auto& graphicsCommandBuffers = sync->getCommandBuffers();
     const auto& vk = context->getLoader();
     
     VkCommandBufferBeginInfo beginInfo{};
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     
     if (useCompute) {
-        VkCommandBuffer computeCmd = computeCommandBuffers[frameIndex];
+        VkCommandBuffer computeCmd = queueManager->getComputeCommandBuffer(frameIndex);
         vk.vkBeginCommandBuffer(computeCmd, &beginInfo);
     }
     if (useGraphics) {
-        VkCommandBuffer graphicsCmd = graphicsCommandBuffers[frameIndex];
+        VkCommandBuffer graphicsCmd = queueManager->getGraphicsCommandBuffer(frameIndex);
         vk.vkBeginCommandBuffer(graphicsCmd, &beginInfo);
     }
 }
 
 void FrameGraph::endCommandBuffers(bool useCompute, bool useGraphics, uint32_t frameIndex) {
-    const auto& computeCommandBuffers = sync->getComputeCommandBuffers();
-    const auto& graphicsCommandBuffers = sync->getCommandBuffers();
     const auto& vk = context->getLoader();
     
     if (useCompute) {
-        VkCommandBuffer computeCmd = computeCommandBuffers[frameIndex];
+        VkCommandBuffer computeCmd = queueManager->getComputeCommandBuffer(frameIndex);
         vk.vkEndCommandBuffer(computeCmd);
     }
     if (useGraphics) {
-        VkCommandBuffer graphicsCmd = graphicsCommandBuffers[frameIndex];
+        VkCommandBuffer graphicsCmd = queueManager->getGraphicsCommandBuffer(frameIndex);
         vk.vkEndCommandBuffer(graphicsCmd);
     }
 }
@@ -578,11 +576,8 @@ void FrameGraph::insertBarriersForNode(FrameGraphTypes::NodeId nodeId, VkCommand
 }
 
 void FrameGraph::executeNodesInOrder(uint32_t frameIndex, bool& computeExecuted) {
-    const auto& computeCommandBuffers = sync->getComputeCommandBuffers();
-    const auto& graphicsCommandBuffers = sync->getCommandBuffers();
-    
-    VkCommandBuffer currentComputeCmd = computeCommandBuffers[frameIndex];
-    VkCommandBuffer currentGraphicsCmd = graphicsCommandBuffers[frameIndex];
+    VkCommandBuffer currentComputeCmd = queueManager->getComputeCommandBuffer(frameIndex);
+    VkCommandBuffer currentGraphicsCmd = queueManager->getGraphicsCommandBuffer(frameIndex);
     
     for (auto nodeId : executionOrder) {
         auto it = nodes.find(nodeId);
@@ -1768,11 +1763,8 @@ bool FrameGraph::attemptResourceEviction(FrameGraphTypes::ResourceId resourceId)
 
 // Timeout-aware execution implementation
 bool FrameGraph::executeWithTimeoutMonitoring(uint32_t frameIndex, bool& computeExecuted) {
-    const auto& computeCommandBuffers = sync->getComputeCommandBuffers();
-    const auto& graphicsCommandBuffers = sync->getCommandBuffers();
-    
-    VkCommandBuffer currentComputeCmd = computeCommandBuffers[frameIndex];
-    VkCommandBuffer currentGraphicsCmd = graphicsCommandBuffers[frameIndex];
+    VkCommandBuffer currentComputeCmd = queueManager->getComputeCommandBuffer(frameIndex);
+    VkCommandBuffer currentGraphicsCmd = queueManager->getGraphicsCommandBuffer(frameIndex);
     
     for (auto nodeId : executionOrder) {
         auto it = nodes.find(nodeId);

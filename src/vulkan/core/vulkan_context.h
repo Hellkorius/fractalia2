@@ -13,9 +13,20 @@ struct QueueFamilyIndices {
     std::optional<uint32_t> graphicsFamily;
     std::optional<uint32_t> presentFamily;
     std::optional<uint32_t> computeFamily;
+    std::optional<uint32_t> transferFamily;
 
-    bool isComplete() {
+    bool isComplete() const {
         return graphicsFamily.has_value() && presentFamily.has_value() && computeFamily.has_value();
+        // Note: transferFamily is optional - will fall back to graphics queue if not available
+    }
+    
+    bool hasDirectTransfer() const {
+        return transferFamily.has_value();
+    }
+    
+    bool hasDedicatedCompute() const {
+        return computeFamily.has_value() && graphicsFamily.has_value() && 
+               computeFamily.value() != graphicsFamily.value();
     }
 };
 
@@ -36,9 +47,19 @@ public:
     VkQueue getGraphicsQueue() const { return graphicsQueue; }
     VkQueue getPresentQueue() const { return presentQueue; }
     VkQueue getComputeQueue() const { return computeQueue; }
+    VkQueue getTransferQueue() const { return transferQueue ? transferQueue : graphicsQueue; } // Fallback to graphics
     uint32_t getGraphicsQueueFamily() const { return queueFamilyIndices.graphicsFamily.value(); }
     uint32_t getComputeQueueFamily() const { return queueFamilyIndices.computeFamily.value(); }
     uint32_t getPresentQueueFamily() const { return queueFamilyIndices.presentFamily.value(); }
+    uint32_t getTransferQueueFamily() const { 
+        return queueFamilyIndices.transferFamily.has_value() ? 
+               queueFamilyIndices.transferFamily.value() : 
+               queueFamilyIndices.graphicsFamily.value(); 
+    }
+    
+    // Queue capability queries
+    bool hasDedicatedTransferQueue() const { return queueFamilyIndices.hasDirectTransfer(); }
+    bool hasDedicatedComputeQueue() const { return queueFamilyIndices.hasDedicatedCompute(); }
     const QueueFamilyIndices& getQueueFamilyIndices() const { return queueFamilyIndices; }
     
     class VulkanFunctionLoader& getLoader() const { return *loader; }
@@ -56,6 +77,7 @@ private:
     VkQueue graphicsQueue = VK_NULL_HANDLE;
     VkQueue presentQueue = VK_NULL_HANDLE;
     VkQueue computeQueue = VK_NULL_HANDLE;
+    VkQueue transferQueue = VK_NULL_HANDLE;
     QueueFamilyIndices queueFamilyIndices;
 
     std::unique_ptr<class VulkanFunctionLoader> loader;

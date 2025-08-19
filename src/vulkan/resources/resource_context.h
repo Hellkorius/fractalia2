@@ -12,6 +12,7 @@
 class VulkanContext;
 class VulkanFunctionLoader;
 class ResourceContext;
+class QueueManager;
 
 #include "command_executor.h"
 #include "memory_allocator.h"
@@ -144,6 +145,7 @@ public:
     ~ResourceContext();
     
     bool initialize(const VulkanContext& context, VkCommandPool commandPool = VK_NULL_HANDLE);
+    bool initialize(const VulkanContext& context, QueueManager* queueManager);
     void cleanup();
     
     // Update command pool without reinitializing everything

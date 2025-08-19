@@ -11,20 +11,17 @@ CommandExecutor::~CommandExecutor() {
     cleanup();
 }
 
-bool CommandExecutor::initialize(const VulkanContext& context, VkCommandPool commandPool) {
+bool CommandExecutor::initialize(const VulkanContext& context, QueueManager* queueManager) {
     this->context = &context;
-    this->commandPool = commandPool;
+    this->queueManager = queueManager;
     
-    if (commandPool == VK_NULL_HANDLE) {
-        std::cerr << "CommandExecutor: Invalid command pool provided!" << std::endl;
+    if (!queueManager) {
+        std::cerr << "CommandExecutor: QueueManager is required for initialization!" << std::endl;
         return false;
     }
     
-    // Create dedicated transfer command pool for async operations
-    if (!createTransferCommandPool()) {
-        std::cerr << "CommandExecutor: Failed to create transfer command pool!" << std::endl;
-        return false;
-    }
+    std::cout << "CommandExecutor: Initialized with modern QueueManager" << std::endl;
+    std::cout << "  - Using dedicated transfer queue: " << (usesDedicatedTransferQueue() ? "YES" : "NO") << std::endl;
     
     return true;
 }
@@ -32,17 +29,17 @@ bool CommandExecutor::initialize(const VulkanContext& context, VkCommandPool com
 void CommandExecutor::cleanup() {
     cleanupBeforeContextDestruction();
     context = nullptr;
-    commandPool = VK_NULL_HANDLE;
+    queueManager = nullptr;
 }
 
 void CommandExecutor::cleanupBeforeContextDestruction() {
-    // Reset RAII wrappers before context destruction
-    transferCommandPool.reset();
+    // QueueManager handles cleanup of its own resources
+    // No manual cleanup needed here
 }
 
 void CommandExecutor::copyBufferToBuffer(VkBuffer src, VkBuffer dst, VkDeviceSize size, 
                                         VkDeviceSize srcOffset, VkDeviceSize dstOffset) {
-    if (!context || commandPool == VK_NULL_HANDLE) {
+    if (!context || !queueManager) {
         std::cerr << "CommandExecutor: Not properly initialized!" << std::endl;
         return;
     }
@@ -54,6 +51,14 @@ void CommandExecutor::copyBufferToBuffer(VkBuffer src, VkBuffer dst, VkDeviceSiz
     
     if (size == 0) {
         std::cerr << "CommandExecutor: Copy size cannot be zero!" << std::endl;
+        return;
+    }
+    
+    // Use graphics command pool for synchronous operations
+    VkCommandPool commandPool = queueManager->getCommandPool(CommandPoolType::Graphics);
+    
+    if (commandPool == VK_NULL_HANDLE) {
+        std::cerr << "CommandExecutor: No valid graphics command pool available!" << std::endl;
         return;
     }
     
@@ -70,10 +75,11 @@ void CommandExecutor::copyBufferToBuffer(VkBuffer src, VkBuffer dst, VkDeviceSiz
     
     context->getLoader().vkCmdCopyBuffer(commandBuffer, src, dst, 1, &copyRegion);
     
+    // Use graphics queue for synchronous completion
     VulkanUtils::endSingleTimeCommands(
         context->getDevice(),
         context->getLoader(),
-        context->getGraphicsQueue(),
+        queueManager->getGraphicsQueue(),
         commandPool,
         commandBuffer
     );
@@ -81,52 +87,35 @@ void CommandExecutor::copyBufferToBuffer(VkBuffer src, VkBuffer dst, VkDeviceSiz
 
 CommandExecutor::AsyncTransfer CommandExecutor::copyBufferToBufferAsync(VkBuffer src, VkBuffer dst, VkDeviceSize size,
                                                                         VkDeviceSize srcOffset, VkDeviceSize dstOffset) {
-    AsyncTransfer transfer{};
-    
-    if (!context || !transferCommandPool) {
+    if (!context || !queueManager) {
         std::cerr << "CommandExecutor: Not properly initialized for async transfers!" << std::endl;
-        return transfer;
+        return {};
     }
     
     if (src == VK_NULL_HANDLE || dst == VK_NULL_HANDLE || size == 0) {
         std::cerr << "CommandExecutor: Invalid parameters for async transfer!" << std::endl;
-        return transfer;
+        return {};
     }
     
-    // Allocate command buffer
-    VkCommandBufferAllocateInfo allocInfo{};
-    allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    allocInfo.commandPool = transferCommandPool.get();
-    allocInfo.commandBufferCount = 1;
-    
-    // Cache loader and device references for performance
-    const auto& vk = context->getLoader();
-    const VkDevice device = context->getDevice();
-    
-    if (vk.vkAllocateCommandBuffers(device, &allocInfo, &transfer.commandBuffer) != VK_SUCCESS) {
-        std::cerr << "Failed to allocate command buffer for async transfer!" << std::endl;
-        return transfer;
-    }
-    
-    // Create fence for synchronization
-    VkFenceCreateInfo fenceInfo{};
-    fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-    
-    transfer.fence = vulkan_raii::create_fence(context, &fenceInfo);
-    if (!transfer.fence) {
-        std::cerr << "Failed to create fence for async transfer!" << std::endl;
-        vk.vkFreeCommandBuffers(device, transferCommandPool.get(), 1, &transfer.commandBuffer);
-        transfer.commandBuffer = VK_NULL_HANDLE;
-        return transfer;
+    // Allocate transfer command from QueueManager
+    AsyncTransfer transfer = queueManager->allocateTransferCommand();
+    if (!transfer.isValid()) {
+        std::cerr << "CommandExecutor: Failed to allocate transfer command from QueueManager!" << std::endl;
+        return {};
     }
     
     // Record command buffer
+    const auto& vk = context->getLoader();
+    
     VkCommandBufferBeginInfo beginInfo{};
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
     
-    vk.vkBeginCommandBuffer(transfer.commandBuffer, &beginInfo);
+    if (vk.vkBeginCommandBuffer(transfer.commandBuffer, &beginInfo) != VK_SUCCESS) {
+        std::cerr << "CommandExecutor: Failed to begin transfer command buffer!" << std::endl;
+        queueManager->freeTransferCommand(transfer);
+        return {};
+    }
     
     VkBufferCopy copyRegion{};
     copyRegion.srcOffset = srcOffset;
@@ -134,17 +123,23 @@ CommandExecutor::AsyncTransfer CommandExecutor::copyBufferToBufferAsync(VkBuffer
     copyRegion.size = size;
     
     vk.vkCmdCopyBuffer(transfer.commandBuffer, src, dst, 1, &copyRegion);
-    vk.vkEndCommandBuffer(transfer.commandBuffer);
     
-    // Submit to graphics queue (or transfer queue if available)
+    if (vk.vkEndCommandBuffer(transfer.commandBuffer) != VK_SUCCESS) {
+        std::cerr << "CommandExecutor: Failed to end transfer command buffer!" << std::endl;
+        queueManager->freeTransferCommand(transfer);
+        return {};
+    }
+    
+    // Submit to optimal transfer queue (dedicated transfer or graphics fallback)
     VkSubmitInfo submitInfo{};
     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
     submitInfo.commandBufferCount = 1;
     submitInfo.pCommandBuffers = &transfer.commandBuffer;
     
-    if (vk.vkQueueSubmit(context->getGraphicsQueue(), 1, &submitInfo, transfer.fence.get()) != VK_SUCCESS) {
-        std::cerr << "Failed to submit async transfer command buffer!" << std::endl;
-        freeAsyncTransfer(transfer);
+    VkQueue transferQueue = queueManager->getTransferQueue();
+    if (vk.vkQueueSubmit(transferQueue, 1, &submitInfo, transfer.fence.get()) != VK_SUCCESS) {
+        std::cerr << "CommandExecutor: Failed to submit async transfer command buffer!" << std::endl;
+        queueManager->freeTransferCommand(transfer);
         return {};
     }
     
@@ -152,44 +147,32 @@ CommandExecutor::AsyncTransfer CommandExecutor::copyBufferToBufferAsync(VkBuffer
 }
 
 bool CommandExecutor::isTransferComplete(const AsyncTransfer& transfer) {
-    if (!transfer.fence) {
-        return true; // Invalid transfer is considered complete
+    if (!queueManager) {
+        return true; // Invalid state is considered complete
     }
-    
-    VkResult result = context->getLoader().vkGetFenceStatus(context->getDevice(), transfer.fence.get());
-    return result == VK_SUCCESS;
+    return queueManager->isTransferComplete(transfer);
 }
 
 void CommandExecutor::waitForTransfer(const AsyncTransfer& transfer) {
-    if (transfer.fence) {
-        VkFence fenceHandle = transfer.fence.get();
-        context->getLoader().vkWaitForFences(context->getDevice(), 1, &fenceHandle, VK_TRUE, UINT64_MAX);
+    if (queueManager) {
+        queueManager->waitForTransfer(transfer);
     }
 }
 
 void CommandExecutor::freeAsyncTransfer(AsyncTransfer& transfer) {
-    // RAII fence will clean up automatically
-    transfer.fence.reset();
-    
-    if (transfer.commandBuffer != VK_NULL_HANDLE) {
-        context->getLoader().vkFreeCommandBuffers(context->getDevice(), transferCommandPool.get(), 1, &transfer.commandBuffer);
-        transfer.commandBuffer = VK_NULL_HANDLE;
+    if (queueManager) {
+        queueManager->freeTransferCommand(transfer);
     }
-    
-    transfer.completed = false;
 }
 
-bool CommandExecutor::createTransferCommandPool() {
-    VkCommandPoolCreateInfo poolInfo{};
-    poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-    poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-    poolInfo.queueFamilyIndex = context->getGraphicsQueueFamily();
-    
-    transferCommandPool = vulkan_raii::create_command_pool(context, &poolInfo);
-    return static_cast<bool>(transferCommandPool);
+bool CommandExecutor::usesDedicatedTransferQueue() const {
+    return queueManager ? queueManager->hasDedicatedTransferQueue() : false;
 }
 
-void CommandExecutor::cleanupTransferCommandPool() {
-    // RAII wrapper will handle cleanup automatically
-    transferCommandPool.reset();
+VkQueue CommandExecutor::getTransferQueue() const {
+    return queueManager ? queueManager->getTransferQueue() : VK_NULL_HANDLE;
+}
+
+uint32_t CommandExecutor::getTransferQueueFamily() const {
+    return queueManager ? queueManager->getTransferQueueFamily() : 0;
 }

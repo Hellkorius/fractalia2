@@ -15,6 +15,7 @@
 // Forward declarations
 class VulkanContext;
 class VulkanSync;
+class QueueManager;
 class GPUTimeoutDetector;
 class GPUMemoryMonitor;
 
@@ -115,7 +116,7 @@ public:
     ~FrameGraph();
     
     // Initialization
-    bool initialize(const VulkanContext& context, VulkanSync* sync);
+    bool initialize(const VulkanContext& context, VulkanSync* sync, QueueManager* queueManager);
     void cleanup();
     void cleanupBeforeContextDestruction();
     
@@ -186,6 +187,7 @@ private:
     // Core state
     const VulkanContext* context = nullptr;
     VulkanSync* sync = nullptr;
+    QueueManager* queueManager = nullptr;
     bool initialized = false;
     
     // Optional monitoring integration

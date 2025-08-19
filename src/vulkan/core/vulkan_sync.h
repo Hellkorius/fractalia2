@@ -8,6 +8,12 @@
 #include "vulkan_constants.h"
 #include "vulkan_raii.h"
 
+/**
+ * @brief Pure Vulkan synchronization object management
+ * 
+ * Manages semaphores and fences for GPU-CPU and GPU-GPU synchronization.
+ * Command buffer management is handled by QueueManager for clean separation of concerns.
+ */
 class VulkanSync {
 public:
     VulkanSync();
@@ -18,44 +24,31 @@ public:
     
     // Explicit cleanup before context destruction
     void cleanupBeforeContextDestruction();
-
-    VkCommandPool getCommandPool() const { return commandPool.get(); }
-    const std::vector<VkCommandBuffer>& getCommandBuffers() const { return commandBuffers; }
-    // Get individual handles by index
+    
+    // Synchronization object access
     VkSemaphore getImageAvailableSemaphore(size_t index) const;
     VkSemaphore getRenderFinishedSemaphore(size_t index) const;
     VkSemaphore getComputeFinishedSemaphore(size_t index) const;
     VkFence getInFlightFence(size_t index) const;
     VkFence getComputeFence(size_t index) const;
     
-    // Get full vectors (for compatibility)
+    // Get full vectors (for compatibility with existing code)
     std::vector<VkSemaphore> getImageAvailableSemaphores() const;
     std::vector<VkSemaphore> getRenderFinishedSemaphores() const;
     std::vector<VkSemaphore> getComputeFinishedSemaphores() const;
     std::vector<VkFence> getInFlightFences() const;
     std::vector<VkFence> getComputeFences() const;
-    const std::vector<VkCommandBuffer>& getComputeCommandBuffers() const { return computeCommandBuffers; }
     
-    // Optimized command buffer management
-    void resetCommandBuffersForFrame(uint32_t frameIndex);
-    void resetAllCommandBuffers();
-    
-    // CRITICAL FIX: Command pool recreation for resize corruption fix
-    bool recreateCommandPool();
-
 private:
     const VulkanContext* context = nullptr;
     
-    vulkan_raii::CommandPool commandPool;
-    std::vector<VkCommandBuffer> commandBuffers;        // Graphics command buffers
-    std::vector<VkCommandBuffer> computeCommandBuffers; // Compute command buffers
+    // Synchronization objects (core responsibility of VulkanSync)
     std::vector<vulkan_raii::Semaphore> imageAvailableSemaphores;
     std::vector<vulkan_raii::Semaphore> renderFinishedSemaphores;
     std::vector<vulkan_raii::Semaphore> computeFinishedSemaphores; // Compute-to-graphics synchronization
     std::vector<vulkan_raii::Fence> inFlightFences;                // Graphics fences
     std::vector<vulkan_raii::Fence> computeFences;                 // Compute fences
 
-    bool createCommandPool();
-    bool createCommandBuffers(); 
+    // Internal methods
     bool createSyncObjects();
 };

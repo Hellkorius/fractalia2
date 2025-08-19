@@ -185,6 +185,11 @@ bool VulkanContext::createLogicalDevice() {
         indices.presentFamily.value(),
         indices.computeFamily.value()
     };
+    
+    // Add transfer queue family if it's different from graphics
+    if (indices.transferFamily.has_value()) {
+        uniqueQueueFamilies.insert(indices.transferFamily.value());
+    }
 
     float queuePriority = 1.0f;
     for (uint32_t queueFamily : uniqueQueueFamilies) {
@@ -256,9 +261,20 @@ void VulkanContext::getDeviceQueues() {
     loader->vkGetDeviceQueue(device.get(), queueFamilyIndices.presentFamily.value(), 0, &presentQueue);
     loader->vkGetDeviceQueue(device.get(), queueFamilyIndices.computeFamily.value(), 0, &computeQueue);
     
+    // Get transfer queue if available (otherwise will use graphics queue fallback)
+    if (queueFamilyIndices.transferFamily.has_value()) {
+        loader->vkGetDeviceQueue(device.get(), queueFamilyIndices.transferFamily.value(), 0, &transferQueue);
+    }
+    
     std::cout << "VulkanContext: Queue families - Graphics: " << queueFamilyIndices.graphicsFamily.value() 
               << ", Present: " << queueFamilyIndices.presentFamily.value()
-              << ", Compute: " << queueFamilyIndices.computeFamily.value() << std::endl;
+              << ", Compute: " << queueFamilyIndices.computeFamily.value();
+    if (queueFamilyIndices.transferFamily.has_value()) {
+        std::cout << ", Transfer: " << queueFamilyIndices.transferFamily.value() << " (dedicated)";
+    } else {
+        std::cout << ", Transfer: " << queueFamilyIndices.graphicsFamily.value() << " (graphics fallback)";
+    }
+    std::cout << std::endl;
 }
 
 QueueFamilyIndices VulkanContext::findQueueFamilies(VkPhysicalDevice device) const {
@@ -310,6 +326,16 @@ QueueFamilyIndices VulkanContext::findQueueFamilies(VkPhysicalDevice device) con
                 indices.computeFamily = i;
             }
         }
+        
+        // Find dedicated transfer queue (prefer transfer-only, fall back to any transfer-capable)
+        if (queueFamily.queueFlags & VK_QUEUE_TRANSFER_BIT) {
+            // Prefer dedicated transfer queue (transfer without graphics/compute)
+            if (!indices.transferFamily.has_value() ||
+                (!(queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT) && 
+                 !(queueFamily.queueFlags & VK_QUEUE_COMPUTE_BIT))) {
+                indices.transferFamily = i;
+            }
+        }
 
         if (indices.isComplete()) {
             break;
@@ -323,6 +349,8 @@ QueueFamilyIndices VulkanContext::findQueueFamilies(VkPhysicalDevice device) con
         std::cout << "VulkanContext: No dedicated compute queue found, using graphics queue for compute" << std::endl;
         indices.computeFamily = indices.graphicsFamily;
     }
+    
+    // Note: Transfer queue fallback is handled in getTransferQueue() - no dedicated queue is acceptable
     
     return indices;
 }

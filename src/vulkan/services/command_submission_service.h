@@ -8,6 +8,7 @@
 class VulkanContext;
 class VulkanSync;
 class VulkanSwapchain;
+class QueueManager;
 
 struct SubmissionResult {
     bool success = false;
@@ -20,7 +21,7 @@ public:
     CommandSubmissionService();
     ~CommandSubmissionService();
 
-    bool initialize(VulkanContext* context, VulkanSync* sync, VulkanSwapchain* swapchain);
+    bool initialize(VulkanContext* context, VulkanSync* sync, VulkanSwapchain* swapchain, QueueManager* queueManager);
     void cleanup();
 
     // Main submission methods
@@ -36,6 +37,7 @@ private:
     VulkanContext* context = nullptr;
     VulkanSync* sync = nullptr;
     VulkanSwapchain* swapchain = nullptr;
+    QueueManager* queueManager = nullptr;
 
     // Helper methods
     SubmissionResult submitComputeWorkAsync(uint32_t computeFrame);

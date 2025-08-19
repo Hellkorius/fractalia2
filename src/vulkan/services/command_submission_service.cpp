@@ -4,6 +4,7 @@
 #include "../core/vulkan_swapchain.h"
 #include "../core/vulkan_function_loader.h"
 #include "../core/vulkan_utils.h"
+#include "../core/queue_manager.h"
 #include <iostream>
 
 CommandSubmissionService::CommandSubmissionService() {
@@ -13,10 +14,18 @@ CommandSubmissionService::~CommandSubmissionService() {
     cleanup();
 }
 
-bool CommandSubmissionService::initialize(VulkanContext* context, VulkanSync* sync, VulkanSwapchain* swapchain) {
+bool CommandSubmissionService::initialize(VulkanContext* context, VulkanSync* sync, VulkanSwapchain* swapchain, QueueManager* queueManager) {
     this->context = context;
     this->sync = sync;
     this->swapchain = swapchain;
+    this->queueManager = queueManager;
+    
+    if (!queueManager) {
+        std::cerr << "CommandSubmissionService: QueueManager is required!" << std::endl;
+        return false;
+    }
+    
+    std::cout << "CommandSubmissionService: Initialized with QueueManager" << std::endl;
     return true;
 }
 
@@ -60,9 +69,8 @@ SubmissionResult CommandSubmissionService::submitComputeWorkAsync(uint32_t compu
     SubmissionResult result;
 
     // Use current frame index for command buffer selection (not computeFrame)
-    uint32_t frameIndex = computeFrame % sync->getComputeCommandBuffers().size();
-    const auto& computeCommandBuffers = sync->getComputeCommandBuffers();
-    VkCommandBuffer computeCommandBuffer = computeCommandBuffers[frameIndex];
+    uint32_t frameIndex = computeFrame % MAX_FRAMES_IN_FLIGHT;
+    VkCommandBuffer computeCommandBuffer = queueManager->getComputeCommandBuffer(frameIndex);
 
     // Reset compute fence for this frame
     VkFence computeFence = sync->getComputeFence(frameIndex);
@@ -83,7 +91,7 @@ SubmissionResult CommandSubmissionService::submitComputeWorkAsync(uint32_t compu
     std::vector<VkCommandBuffer> computeCmdBuffers = {computeCommandBuffer};
     
     VkResult computeSubmitResult = VulkanUtils::submitCommands(
-        context->getComputeQueue(),
+        queueManager->getComputeQueue(),
         vk,
         computeCmdBuffers,
         {}, // no wait semaphores
@@ -96,6 +104,10 @@ SubmissionResult CommandSubmissionService::submitComputeWorkAsync(uint32_t compu
         result.lastResult = computeSubmitResult;
         return result;
     }
+    
+    // Record telemetry for successful compute submission
+    queueManager->getTelemetry().recordSubmission(CommandPoolType::Compute);
+    
     result.success = true;
     return result;
 }
@@ -107,8 +119,7 @@ SubmissionResult CommandSubmissionService::submitGraphicsWork(uint32_t currentFr
     const auto& vk = context->getLoader();
     const VkDevice device = context->getDevice();
 
-    const auto& commandBuffers = sync->getCommandBuffers();
-    VkCommandBuffer graphicsCommandBuffer = commandBuffers[currentFrame];
+    VkCommandBuffer graphicsCommandBuffer = queueManager->getGraphicsCommandBuffer(currentFrame);
 
     // Reset graphics fence
     VkFence graphicsFence = sync->getInFlightFence(currentFrame);
@@ -137,7 +148,7 @@ SubmissionResult CommandSubmissionService::submitGraphicsWork(uint32_t currentFr
     graphicsSubmitInfo.pSignalSemaphores = signalSemaphores;
 
     VkResult graphicsSubmitResult = vk.vkQueueSubmit(
-        context->getGraphicsQueue(), 
+        queueManager->getGraphicsQueue(), 
         1, 
         &graphicsSubmitInfo, 
         graphicsFence
@@ -148,6 +159,10 @@ SubmissionResult CommandSubmissionService::submitGraphicsWork(uint32_t currentFr
         result.lastResult = graphicsSubmitResult;
         return result;
     }
+    
+    // Record telemetry for successful graphics submission
+    queueManager->getTelemetry().recordSubmission(CommandPoolType::Graphics);
+    
     result.success = true;
     return result;
 }
@@ -170,7 +185,7 @@ SubmissionResult CommandSubmissionService::presentFrame(uint32_t currentFrame, u
     presentInfo.pSwapchains = swapChains;
     presentInfo.pImageIndices = &imageIndex;
 
-    VkResult presentResult = vk.vkQueuePresentKHR(context->getPresentQueue(), &presentInfo);
+    VkResult presentResult = vk.vkQueuePresentKHR(queueManager->getPresentQueue(), &presentInfo);
     
     if (presentResult == VK_ERROR_OUT_OF_DATE_KHR || presentResult == VK_SUBOPTIMAL_KHR || framebufferResized) {
         result.swapchainRecreationNeeded = true;
