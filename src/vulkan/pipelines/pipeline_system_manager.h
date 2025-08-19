@@ -55,7 +55,7 @@ public:
     void optimizeCaches(uint64_t currentFrame);
     void resetFrameStats();
     
-    // CRITICAL FIX: Pipeline cache corruption fix for second resize crash
+    // Recreate all pipeline caches for swapchain resize operations
     bool recreateAllPipelineCaches();
 
     // Statistics aggregation

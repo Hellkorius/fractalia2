@@ -194,7 +194,7 @@ bool ComputePipelineManager::recreatePipelineCache() {
     }
     
     isRecreating_ = true;
-    std::cout << "ComputePipelineManager: CRITICAL FIX - Recreating pipeline cache to prevent second resize corruption" << std::endl;
+    std::cout << "ComputePipelineManager: Recreating pipeline cache for swapchain resize" << std::endl;
     
     // Wait for device idle to ensure no pipelines are in use
     const auto& vk = context->getLoader();
@@ -226,7 +226,7 @@ bool ComputePipelineManager::recreatePipelineCache() {
     
     pipelineCache = vulkan_raii::create_pipeline_cache(context, &cacheInfo);
     if (!pipelineCache) {
-        std::cerr << "ComputePipelineManager: CRITICAL FAILURE - Failed to recreate pipeline cache" << std::endl;
+        std::cerr << "ComputePipelineManager: Failed to recreate pipeline cache" << std::endl;
         return false;
     }
     

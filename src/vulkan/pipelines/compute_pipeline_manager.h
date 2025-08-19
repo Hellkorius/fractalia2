@@ -61,7 +61,7 @@ public:
     void optimizeCache(uint64_t currentFrame);
     void clearCache();
     
-    // CRITICAL FIX: Pipeline cache corruption fix for second resize crash
+    // Pipeline cache recreation for swapchain resize operations
     bool recreatePipelineCache();
     
     // Async compilation for hot reloading
@@ -126,7 +126,7 @@ private:
     DescriptorLayoutManager* layoutManager = nullptr;
     
     // State management
-    bool isRecreating_ = false;  // Prevent concurrent recreation
+    bool isRecreating_ = false;  // Synchronization for cache recreation
     
     // Focused components
     ComputePipelineCache cache_;

@@ -249,13 +249,11 @@ bool PipelineSystemManager::recreateRenderPass(VkFormat newFormat) {
     }
     
     
-    // CRITICAL FIX FOR SECOND RESIZE CRASH: Clear cache BEFORE destroying currentRenderPass
-    // clearCache() destroys ALL render passes including the one currentRenderPass points to
-    // This prevents double-destruction which was causing the second resize crash
+    // Clear cache before destroying currentRenderPass to prevent double-destruction
+    // clearCache() destroys all render passes including the one currentRenderPass references
     graphicsManager->clearCache();
     
-    // IMPORTANT: Set currentRenderPass to null since clearCache() already destroyed it
-    // This prevents the redundant destroy call that was causing the crash
+    // Set currentRenderPass to null since clearCache() already destroyed it
     if (currentRenderPass != VK_NULL_HANDLE) {
         currentRenderPass = VK_NULL_HANDLE;
     }
@@ -274,7 +272,7 @@ bool PipelineSystemManager::recreateAllPipelineCaches() {
         return false;
     }
     
-    std::cout << "PipelineSystemManager: CRITICAL FIX - Recreating all pipeline caches for second resize crash prevention" << std::endl;
+    std::cout << "PipelineSystemManager: Recreating all pipeline caches for swapchain resize" << std::endl;
     
     bool success = true;
     
@@ -293,7 +291,7 @@ bool PipelineSystemManager::recreateAllPipelineCaches() {
     if (success) {
         std::cout << "PipelineSystemManager: All pipeline caches successfully recreated" << std::endl;
     } else {
-        std::cerr << "PipelineSystemManager: CRITICAL ERROR - Failed to recreate some pipeline caches" << std::endl;
+        std::cerr << "PipelineSystemManager: Failed to recreate some pipeline caches" << std::endl;
     }
     
     return success;

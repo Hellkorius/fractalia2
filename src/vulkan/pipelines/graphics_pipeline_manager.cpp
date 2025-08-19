@@ -201,7 +201,7 @@ bool GraphicsPipelineManager::recreatePipelineCache() {
     
     pipelineCache_ = vulkan_raii::create_pipeline_cache(context, &cacheInfo);
     if (!pipelineCache_) {
-        std::cerr << "GraphicsPipelineManager: CRITICAL FAILURE - Failed to recreate pipeline cache" << std::endl;
+        std::cerr << "GraphicsPipelineManager: Failed to recreate pipeline cache" << std::endl;
         isRecreating_ = false;
         return false;
     }
