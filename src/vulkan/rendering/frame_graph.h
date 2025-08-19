@@ -204,27 +204,31 @@ private:
     // Compiled execution order
     std::vector<FrameGraphTypes::NodeId> executionOrder;
     
-    // Barrier information with pipeline stages
-    struct BarrierInfo {
+    // Per-node barrier tracking for optimal async execution
+    struct NodeBarrierInfo {
         std::vector<VkBufferMemoryBarrier> bufferBarriers;
         std::vector<VkImageMemoryBarrier> imageBarriers;
-        VkPipelineStageFlags srcStage = 0;
-        VkPipelineStageFlags dstStage = 0;
-        
-        // Hash sets for O(1) barrier deduplication
-        std::unordered_set<uint64_t> bufferBarrierHashes;
-        std::unordered_set<uint64_t> imageBarrierHashes;
+        VkPipelineStageFlags srcStage = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+        VkPipelineStageFlags dstStage = VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_VERTEX_INPUT_BIT;
+        FrameGraphTypes::NodeId targetNodeId = 0;
         
         void clear() {
             bufferBarriers.clear();
             imageBarriers.clear();
-            bufferBarrierHashes.clear();
-            imageBarrierHashes.clear();
-            srcStage = 0;
-            dstStage = 0;
+            targetNodeId = 0;
         }
     };
-    BarrierInfo computeToGraphicsBarriers;
+    
+    // Barrier batches inserted at optimal points for async execution
+    std::vector<NodeBarrierInfo> barrierBatches;
+    
+    // Resource write tracking for O(n) barrier analysis
+    struct ResourceWriteInfo {
+        FrameGraphTypes::NodeId writerNode = 0;
+        PipelineStage stage = PipelineStage::ComputeShader;
+        ResourceAccess access = ResourceAccess::Read;
+    };
+    std::unordered_map<FrameGraphTypes::ResourceId, ResourceWriteInfo> resourceWriteTracking;
     
     // Resource allocation failure telemetry
     struct AllocationTelemetry {
@@ -264,12 +268,14 @@ private:
     // Compilation state backup for transactional compilation
     struct CompilationState {
         std::vector<FrameGraphTypes::NodeId> executionOrder;
-        BarrierInfo computeToGraphicsBarriers;
+        std::vector<NodeBarrierInfo> barrierBatches;
+        std::unordered_map<FrameGraphTypes::ResourceId, ResourceWriteInfo> resourceWriteTracking;
         bool compiled = false;
         
         void clear() {
             executionOrder.clear();
-            computeToGraphicsBarriers.clear();
+            barrierBatches.clear();
+            resourceWriteTracking.clear();
             compiled = false;
         }
     };
@@ -310,18 +316,22 @@ private:
     void backupCompilationState();
     void restoreCompilationState();
     
-    void insertSynchronizationBarriers();
-    void insertBarrierForResource(FrameGraphTypes::ResourceId resourceId, 
-                                  PipelineStage srcStage, PipelineStage dstStage,
-                                  ResourceAccess srcAccess, ResourceAccess dstAccess);
-    void insertBarriersIntoCommandBuffer(VkCommandBuffer commandBuffer);
+    void analyzeBarrierRequirements();
+    void createOptimalBarrierBatches();
+    void insertBarrierBatch(const NodeBarrierInfo& batch, VkCommandBuffer commandBuffer);
     
     // Execution helpers
     std::pair<bool, bool> analyzeQueueRequirements() const;
     void beginCommandBuffers(bool useCompute, bool useGraphics, uint32_t frameIndex);
     void endCommandBuffers(bool useCompute, bool useGraphics, uint32_t frameIndex);
-    void insertBarriersIfNeeded(VkCommandBuffer graphicsCmd, bool& computeExecuted, bool nodeNeedsGraphics);
+    void insertBarriersForNode(FrameGraphTypes::NodeId nodeId, VkCommandBuffer graphicsCmd, bool& computeExecuted, bool nodeNeedsGraphics);
     void executeNodesInOrder(uint32_t frameIndex, bool& computeExecuted);
+    
+    // Optimized barrier helpers
+    void addResourceBarrier(FrameGraphTypes::ResourceId resourceId, FrameGraphTypes::NodeId targetNode,
+                           PipelineStage srcStage, PipelineStage dstStage,
+                           ResourceAccess srcAccess, ResourceAccess dstAccess);
+    FrameGraphTypes::NodeId findNextGraphicsNode(FrameGraphTypes::NodeId fromNode) const;
     
     // Resource helpers
     FrameGraphBuffer* getBufferResource(FrameGraphTypes::ResourceId id);

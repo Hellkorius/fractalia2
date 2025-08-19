@@ -46,7 +46,8 @@ void FrameGraph::cleanup() {
     resourceNameMap.clear();
     resourceCleanupInfo.clear();
     executionOrder.clear();
-    computeToGraphicsBarriers.clear();
+    barrierBatches.clear();
+    resourceWriteTracking.clear();
     
     nextResourceId = 1;
     nextNodeId = 1;
@@ -243,7 +244,8 @@ bool FrameGraph::compile() {
     
     // Clear current compilation state
     executionOrder.clear();
-    computeToGraphicsBarriers.clear();
+    barrierBatches.clear();
+    resourceWriteTracking.clear();
     compiled = false;
     
     // Build dependency graph
@@ -293,7 +295,8 @@ bool FrameGraph::compile() {
             executionOrder = partialResult.validNodes;
             
             // Insert synchronization barriers for valid subgraph
-            insertSynchronizationBarriers();
+            analyzeBarrierRequirements();
+            createOptimalBarrierBatches();
             
             // Setup valid nodes only
             for (auto nodeId : executionOrder) {
@@ -313,7 +316,8 @@ bool FrameGraph::compile() {
     }
     
     // Insert synchronization barriers
-    insertSynchronizationBarriers();
+    analyzeBarrierRequirements();
+    createOptimalBarrierBatches();
     
     // Setup nodes
     for (auto nodeId : executionOrder) {
@@ -404,7 +408,8 @@ void FrameGraph::reset() {
     // Keep execution order and barriers once compiled
     if (!compiled) {
         executionOrder.clear();
-        computeToGraphicsBarriers.clear();
+        barrierBatches.clear();
+    resourceWriteTracking.clear();
     }
     
     // Clear transient resources (including swapchain images that change per frame)
@@ -561,23 +566,14 @@ void FrameGraph::endCommandBuffers(bool useCompute, bool useGraphics, uint32_t f
     }
 }
 
-void FrameGraph::insertBarriersIfNeeded(VkCommandBuffer graphicsCmd, bool& computeExecuted, bool nodeNeedsGraphics) {
-    if (computeExecuted && nodeNeedsGraphics && (!computeToGraphicsBarriers.bufferBarriers.empty() || !computeToGraphicsBarriers.imageBarriers.empty())) {
-        const auto& vk = context->getLoader();
-        
-        vk.vkCmdPipelineBarrier(
-            graphicsCmd,
-            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-            VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_VERTEX_INPUT_BIT,
-            0,
-            0, nullptr,
-            static_cast<uint32_t>(computeToGraphicsBarriers.bufferBarriers.size()), 
-            computeToGraphicsBarriers.bufferBarriers.data(),
-            static_cast<uint32_t>(computeToGraphicsBarriers.imageBarriers.size()), 
-            computeToGraphicsBarriers.imageBarriers.data()
-        );
-        
-        computeExecuted = false;
+void FrameGraph::insertBarriersForNode(FrameGraphTypes::NodeId nodeId, VkCommandBuffer graphicsCmd, bool& computeExecuted, bool nodeNeedsGraphics) {
+    if (!computeExecuted || !nodeNeedsGraphics) return;
+    
+    // Find barriers targeting this node
+    for (const auto& batch : barrierBatches) {
+        if (batch.targetNodeId == nodeId) {
+            insertBarrierBatch(batch, graphicsCmd);
+        }
     }
 }
 
@@ -594,7 +590,7 @@ void FrameGraph::executeNodesInOrder(uint32_t frameIndex, bool& computeExecuted)
         
         auto& node = it->second;
         
-        insertBarriersIfNeeded(currentGraphicsCmd, computeExecuted, node->needsGraphicsQueue());
+        insertBarriersForNode(nodeId, currentGraphicsCmd, computeExecuted, node->needsGraphicsQueue());
         
         VkCommandBuffer cmdBuffer = node->needsComputeQueue() ? currentComputeCmd : currentGraphicsCmd;
         
@@ -1084,62 +1080,59 @@ bool FrameGraph::topologicalSort() {
     return true;
 }
 
-void FrameGraph::insertSynchronizationBarriers() {
-    // Optimized O(n) barrier insertion with resource-based batching
+void FrameGraph::analyzeBarrierRequirements() {
+    // Clear previous tracking
+    resourceWriteTracking.clear();
     
-    // Clear existing barriers
-    computeToGraphicsBarriers.clear();
-    computeToGraphicsBarriers.srcStage = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
-    computeToGraphicsBarriers.dstStage = VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_VERTEX_INPUT_BIT;
-    
-    // Track resource write states for linear dependency checking
-    std::unordered_map<FrameGraphTypes::ResourceId, std::pair<PipelineStage, ResourceAccess>> lastResourceWrites;
-    std::unordered_set<FrameGraphTypes::ResourceId> barrierPendingResources;
-    
-    // Single pass through execution order - O(n) complexity
+    // Single pass analysis - O(n) complexity
     for (auto nodeId : executionOrder) {
         auto nodeIt = nodes.find(nodeId);
         if (nodeIt == nodes.end()) continue;
         
         auto& node = nodeIt->second;
-        bool isGraphicsNode = node->needsGraphicsQueue();
-        // Note: isComputeNode could be used for future compute-specific barrier optimizations
-        (void)node->needsComputeQueue(); // Suppress unused variable warning
         
-        // Process node inputs - check for barriers needed
-        auto inputs = node->getInputs();
-        for (const auto& input : inputs) {
-            auto writeIt = lastResourceWrites.find(input.resourceId);
-            if (writeIt != lastResourceWrites.end()) {
-                // Resource was previously written - check if barrier needed
-                auto [lastStage, lastAccess] = writeIt->second;
-                
-                // Only create barriers for compute->graphics transitions
-                if (isGraphicsNode && !barrierPendingResources.count(input.resourceId)) {
-                    insertBarrierForResource(input.resourceId, lastStage, input.stage, lastAccess, input.access);
-                    barrierPendingResources.insert(input.resourceId);
-                }
-            }
-        }
-        
-        // Update resource write tracking for node outputs
+        // Track resource writes for dependency analysis
         auto outputs = node->getOutputs();
         for (const auto& output : outputs) {
-            lastResourceWrites[output.resourceId] = {output.stage, output.access};
-            // Clear barrier pending since this is a new write
-            barrierPendingResources.erase(output.resourceId);
+            resourceWriteTracking[output.resourceId] = {nodeId, output.stage, output.access};
         }
     }
 }
 
-void FrameGraph::insertBarrierForResource(FrameGraphTypes::ResourceId resourceId, 
-                                          PipelineStage srcStage, PipelineStage dstStage,
-                                          ResourceAccess srcAccess, ResourceAccess dstAccess) {
+void FrameGraph::createOptimalBarrierBatches() {
+    barrierBatches.clear();
+    
+    // Analyze each node's input dependencies
+    for (auto nodeId : executionOrder) {
+        auto nodeIt = nodes.find(nodeId);
+        if (nodeIt == nodes.end() || !nodeIt->second->needsGraphicsQueue()) continue;
+        
+        auto& node = nodeIt->second;
+        auto inputs = node->getInputs();
+        
+        for (const auto& input : inputs) {
+            auto writeIt = resourceWriteTracking.find(input.resourceId);
+            if (writeIt != resourceWriteTracking.end()) {
+                auto& writeInfo = writeIt->second;
+                auto writerNodeIt = nodes.find(writeInfo.writerNode);
+                
+                // Only create barriers for compute->graphics transitions
+                if (writerNodeIt != nodes.end() && writerNodeIt->second->needsComputeQueue()) {
+                    addResourceBarrier(input.resourceId, nodeId, writeInfo.stage, input.stage, 
+                                     writeInfo.access, input.access);
+                }
+            }
+        }
+    }
+}
+
+void FrameGraph::addResourceBarrier(FrameGraphTypes::ResourceId resourceId, FrameGraphTypes::NodeId targetNode,
+                                   PipelineStage srcStage, PipelineStage dstStage,
+                                   ResourceAccess srcAccess, ResourceAccess dstAccess) {
     
     auto convertAccess = [](ResourceAccess access, PipelineStage stage) -> VkAccessFlags {
         switch (access) {
             case ResourceAccess::Read: 
-                // Special case: vertex shader reading as vertex attributes
                 if (stage == PipelineStage::VertexShader) {
                     return VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT | VK_ACCESS_SHADER_READ_BIT;
                 }
@@ -1153,64 +1146,40 @@ void FrameGraph::insertBarrierForResource(FrameGraphTypes::ResourceId resourceId
         }
     };
     
-    // Hash function for barrier deduplication
-    auto hashBuffer = [](VkBuffer buffer, VkAccessFlags srcMask, VkAccessFlags dstMask) -> uint64_t {
-        uint64_t hash = reinterpret_cast<uintptr_t>(buffer);
-        hash ^= static_cast<uint64_t>(srcMask) << 32;
-        hash ^= static_cast<uint64_t>(dstMask) << 16;
-        return hash;
-    };
+    // Find or create barrier batch for this target node
+    auto batchIt = std::find_if(barrierBatches.begin(), barrierBatches.end(),
+        [targetNode](const NodeBarrierInfo& batch) { return batch.targetNodeId == targetNode; });
     
-    auto hashImage = [](VkImage image, VkAccessFlags srcMask, VkAccessFlags dstMask) -> uint64_t {
-        uint64_t hash = reinterpret_cast<uintptr_t>(image);
-        hash ^= static_cast<uint64_t>(srcMask) << 32;
-        hash ^= static_cast<uint64_t>(dstMask) << 16;
-        return hash;
-    };
+    if (batchIt == barrierBatches.end()) {
+        barrierBatches.emplace_back();
+        batchIt = barrierBatches.end() - 1;
+        batchIt->targetNodeId = targetNode;
+    }
     
-    // Check if this is a buffer or image resource
+    // Add resource barrier to the batch (no deduplication for performance)
     const FrameGraphBuffer* buffer = getBufferResource(resourceId);
     if (buffer) {
-        VkAccessFlags srcMask = convertAccess(srcAccess, srcStage);
-        VkAccessFlags dstMask = convertAccess(dstAccess, dstStage);
-        
-        // O(1) hash-based duplicate check
-        uint64_t barrierHash = hashBuffer(buffer->buffer.get(), srcMask, dstMask);
-        if (computeToGraphicsBarriers.bufferBarrierHashes.count(barrierHash)) {
-            return; // Duplicate barrier - skip
-        }
-        
         VkBufferMemoryBarrier barrier{};
         barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-        barrier.srcAccessMask = srcMask;
-        barrier.dstAccessMask = dstMask;
+        barrier.srcAccessMask = convertAccess(srcAccess, srcStage);
+        barrier.dstAccessMask = convertAccess(dstAccess, dstStage);
         barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         barrier.buffer = buffer->buffer.get();
         barrier.offset = 0;
         barrier.size = VK_WHOLE_SIZE;
         
-        computeToGraphicsBarriers.bufferBarriers.push_back(barrier);
-        computeToGraphicsBarriers.bufferBarrierHashes.insert(barrierHash);
+        batchIt->bufferBarriers.push_back(barrier);
         return;
     }
     
     const FrameGraphImage* image = getImageResource(resourceId);
     if (image) {
-        VkAccessFlags srcMask = convertAccess(srcAccess, srcStage);
-        VkAccessFlags dstMask = convertAccess(dstAccess, dstStage);
-        
-        // O(1) hash-based duplicate check
-        uint64_t barrierHash = hashImage(image->image.get(), srcMask, dstMask);
-        if (computeToGraphicsBarriers.imageBarrierHashes.count(barrierHash)) {
-            return; // Duplicate barrier - skip
-        }
-        
         VkImageMemoryBarrier barrier{};
         barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-        barrier.srcAccessMask = srcMask;
-        barrier.dstAccessMask = dstMask;
-        barrier.oldLayout = VK_IMAGE_LAYOUT_GENERAL; // Simplified for now
+        barrier.srcAccessMask = convertAccess(srcAccess, srcStage);
+        barrier.dstAccessMask = convertAccess(dstAccess, dstStage);
+        barrier.oldLayout = VK_IMAGE_LAYOUT_GENERAL;
         barrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
         barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
@@ -1221,25 +1190,39 @@ void FrameGraph::insertBarrierForResource(FrameGraphTypes::ResourceId resourceId
         barrier.subresourceRange.baseArrayLayer = 0;
         barrier.subresourceRange.layerCount = 1;
         
-        computeToGraphicsBarriers.imageBarriers.push_back(barrier);
-        computeToGraphicsBarriers.imageBarrierHashes.insert(barrierHash);
+        batchIt->imageBarriers.push_back(barrier);
     }
 }
 
-void FrameGraph::insertBarriersIntoCommandBuffer(VkCommandBuffer commandBuffer) {
-    if (computeToGraphicsBarriers.bufferBarriers.empty() && computeToGraphicsBarriers.imageBarriers.empty()) return;
+void FrameGraph::insertBarrierBatch(const NodeBarrierInfo& batch, VkCommandBuffer commandBuffer) {
+    if (batch.bufferBarriers.empty() && batch.imageBarriers.empty()) return;
     
-    context->getLoader().vkCmdPipelineBarrier(
+    const auto& vk = context->getLoader();
+    
+    vk.vkCmdPipelineBarrier(
         commandBuffer,
-        computeToGraphicsBarriers.srcStage,
-        computeToGraphicsBarriers.dstStage,
+        batch.srcStage,
+        batch.dstStage,
         0, // dependencyFlags
         0, nullptr, // memory barriers
-        static_cast<uint32_t>(computeToGraphicsBarriers.bufferBarriers.size()), 
-        computeToGraphicsBarriers.bufferBarriers.data(),
-        static_cast<uint32_t>(computeToGraphicsBarriers.imageBarriers.size()), 
-        computeToGraphicsBarriers.imageBarriers.data()
+        static_cast<uint32_t>(batch.bufferBarriers.size()), 
+        batch.bufferBarriers.data(),
+        static_cast<uint32_t>(batch.imageBarriers.size()), 
+        batch.imageBarriers.data()
     );
+}
+
+FrameGraphTypes::NodeId FrameGraph::findNextGraphicsNode(FrameGraphTypes::NodeId fromNode) const {
+    auto it = std::find(executionOrder.begin(), executionOrder.end(), fromNode);
+    if (it == executionOrder.end()) return 0;
+    
+    for (++it; it != executionOrder.end(); ++it) {
+        auto nodeIt = nodes.find(*it);
+        if (nodeIt != nodes.end() && nodeIt->second->needsGraphicsQueue()) {
+            return *it;
+        }
+    }
+    return 0;
 }
 
 // No longer needed - RAII handles automatic cleanup
@@ -1324,13 +1307,15 @@ void GraphicsNode::execute(VkCommandBuffer commandBuffer, const FrameGraph& fram
 // Enhanced compilation methods implementation
 void FrameGraph::backupCompilationState() {
     backupState.executionOrder = executionOrder;
-    backupState.computeToGraphicsBarriers = computeToGraphicsBarriers;
+    backupState.barrierBatches = barrierBatches;
+    backupState.resourceWriteTracking = resourceWriteTracking;
     backupState.compiled = compiled;
 }
 
 void FrameGraph::restoreCompilationState() {
     executionOrder = backupState.executionOrder;
-    computeToGraphicsBarriers = backupState.computeToGraphicsBarriers;
+    barrierBatches = backupState.barrierBatches;
+    resourceWriteTracking = backupState.resourceWriteTracking;
     compiled = backupState.compiled;
 }
 
@@ -1801,7 +1786,7 @@ bool FrameGraph::executeWithTimeoutMonitoring(uint32_t frameIndex, bool& compute
             return false;
         }
         
-        insertBarriersIfNeeded(currentGraphicsCmd, computeExecuted, node->needsGraphicsQueue());
+        insertBarriersForNode(nodeId, currentGraphicsCmd, computeExecuted, node->needsGraphicsQueue());
         
         VkCommandBuffer cmdBuffer = node->needsComputeQueue() ? currentComputeCmd : currentGraphicsCmd;
         
