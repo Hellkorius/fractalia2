@@ -564,6 +564,15 @@ ResourceContext::MemoryStats ResourceContext::getMemoryStats() const {
     return memoryAllocator->getMemoryStats();
 }
 
+// Memory pressure management (delegated to MemoryAllocator)
+bool ResourceContext::isUnderMemoryPressure() const {
+    return memoryAllocator ? memoryAllocator->isUnderMemoryPressure() : false;
+}
+
+bool ResourceContext::attemptMemoryRecovery() {
+    return memoryAllocator ? memoryAllocator->attemptMemoryRecovery() : false;
+}
+
 // Async transfer (partial delegation - still needs staging buffer access)
 CommandExecutor::AsyncTransfer ResourceContext::copyToBufferAsync(const ResourceHandle& dst, const void* data, VkDeviceSize size, VkDeviceSize offset) {
     if (dst.mappedData) {

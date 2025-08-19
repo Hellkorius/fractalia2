@@ -219,6 +219,10 @@ public:
     using MemoryStats = MemoryAllocator::MemoryStats;
     MemoryStats getMemoryStats() const;
     
+    // Memory pressure management (delegated to MemoryAllocator)
+    bool isUnderMemoryPressure() const;
+    bool attemptMemoryRecovery();
+    
 private:
     const VulkanContext* context = nullptr;
     StagingRingBuffer stagingBuffer;

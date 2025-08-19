@@ -111,6 +111,9 @@ private:
     bool validateInitializationState() const;
     bool attemptSwapchainRecreation();
     
+    // Logging helpers
+    void logFrameSuccessIfNeeded(const char* operation);
+    
     // GPU compute state
     float deltaTime = 0.0f;
     float totalTime = 0.0f; // Accumulated simulation time

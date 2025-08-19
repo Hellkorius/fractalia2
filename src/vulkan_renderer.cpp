@@ -373,12 +373,45 @@ void VulkanRenderer::drawFrameModular() {
     const auto& vk = context->getLoader();
     const VkDevice device = context->getDevice();
     
-    // Wait for both compute and graphics fences in a single call for efficiency
-    VkFence fences[] = {computeFence, graphicsFence};
-    VkResult waitResult = vk.vkWaitForFences(device, 2, fences, VK_TRUE, UINT64_MAX);
-    if (waitResult != VK_SUCCESS) {
-        std::cerr << "VulkanRenderer: Failed to wait for GPU fences: " << waitResult << std::endl;
-        return;
+    // Optimization: Only wait for fences that were actually used in the previous frame
+    // Track which command buffers were used from the previous execution
+    static bool previousComputeUsed = true;  // Initialize to true for safety on first frame
+    static bool previousGraphicsUsed = true;
+    
+    std::vector<VkFence> fencesToWait;
+    fencesToWait.reserve(2);
+    
+    if (previousComputeUsed) {
+        fencesToWait.push_back(computeFence);
+    }
+    if (previousGraphicsUsed) {
+        fencesToWait.push_back(graphicsFence);
+    }
+    
+    // Wait only for the fences that are actually needed
+    if (!fencesToWait.empty()) {
+        VkResult waitResult = vk.vkWaitForFences(device, static_cast<uint32_t>(fencesToWait.size()), 
+                                                fencesToWait.data(), VK_TRUE, UINT64_MAX);
+        if (waitResult != VK_SUCCESS) {
+            std::cerr << "VulkanRenderer: Failed to wait for GPU fences: " << waitResult << std::endl;
+            return;
+        }
+    }
+    
+    // Check for memory pressure before proceeding with frame work
+    if (resourceContext && resourceContext->isUnderMemoryPressure()) {
+        std::cout << "VulkanRenderer: Memory pressure detected, attempting recovery..." << std::endl;
+        if (resourceContext->attemptMemoryRecovery()) {
+            std::cout << "VulkanRenderer: Memory recovery successful" << std::endl;
+        } else {
+            std::cerr << "VulkanRenderer: Memory recovery failed, continuing with degraded performance" << std::endl;
+        }
+        
+        // Log memory statistics for debugging
+        auto memStats = resourceContext->getMemoryStats();
+        std::cout << "VulkanRenderer: Memory stats - Total allocated: " << memStats.totalAllocated 
+                  << " bytes, Active allocations: " << memStats.activeAllocations 
+                  << ", Failed allocations: " << memStats.failedAllocations << std::endl;
     }
     
     // Upload pending GPU entities
@@ -435,21 +468,7 @@ void VulkanRenderer::drawFrameModular() {
             return;
         }
     } else {
-        // DETAILED LOGGING: Monitor first few frames after resize
-        static uint32_t lastRecreationFrame = 0;
-        static uint32_t framesAfterRecreation = 0;
-        
-        if (recreationInProgress || (frameCounter - lastRecreationFrame <= 10 && lastRecreationFrame > 0)) {
-            if (recreationInProgress) {
-                lastRecreationFrame = frameCounter;
-                framesAfterRecreation = 0;
-            } else {
-                framesAfterRecreation = frameCounter - lastRecreationFrame;
-            }
-            
-            std::cout << "VulkanRenderer: Frame " << frameCounter << " SUCCESS (+" << framesAfterRecreation 
-                     << " frames post-resize) - Frame direction completed successfully" << std::endl;
-        }
+        logFrameSuccessIfNeeded("Frame direction completed successfully");
     }
     
     // Note: Frame graph nodes already configured in directFrame() - no need to configure again
@@ -467,21 +486,7 @@ void VulkanRenderer::drawFrameModular() {
         std::cerr << "  VkResult: " << submissionResult.lastResult << std::endl;
         return;
     } else {
-        // DETAILED LOGGING: Monitor first few frames after resize for submission success
-        static uint32_t lastRecreationFrame2 = 0;
-        static uint32_t framesAfterRecreation2 = 0;
-        
-        if (recreationInProgress || (frameCounter - lastRecreationFrame2 <= 10 && lastRecreationFrame2 > 0)) {
-            if (recreationInProgress) {
-                lastRecreationFrame2 = frameCounter;
-                framesAfterRecreation2 = 0;
-            } else {
-                framesAfterRecreation2 = frameCounter - lastRecreationFrame2;
-            }
-            
-            std::cout << "VulkanRenderer: Frame " << frameCounter << " SUCCESS (+" << framesAfterRecreation2 
-                     << " frames post-resize) - Frame submission completed successfully" << std::endl;
-        }
+        logFrameSuccessIfNeeded("Frame submission completed successfully");
     }
     
     if ((submissionResult.swapchainRecreationNeeded || framebufferResized) && !recreationInProgress) {
@@ -492,6 +497,24 @@ void VulkanRenderer::drawFrameModular() {
         } else {
             std::cerr << "VulkanRenderer: CRITICAL ERROR - Swapchain recreation FAILED" << std::endl;
         }
+    }
+    
+    // Periodic memory pressure monitoring (every 60 frames to avoid performance impact)
+    if (frameCounter % 60 == 0 && resourceContext) {
+        auto memStats = resourceContext->getMemoryStats();
+        if (memStats.memoryPressure || memStats.failedAllocations > 0) {
+            std::cout << "VulkanRenderer: Frame " << frameCounter << " - Memory pressure status: " 
+                      << (memStats.memoryPressure ? "HIGH" : "Normal") 
+                      << ", Failed allocations: " << memStats.failedAllocations 
+                      << ", Fragmentation: " << (memStats.fragmentationRatio * 100.0f) << "%" << std::endl;
+        }
+    }
+    
+    // Update fence tracking for next frame optimization
+    // Only update if frame was successful to avoid tracking invalid state
+    if (frameResult.success && submissionResult.success) {
+        previousComputeUsed = frameResult.executionResult.computeCommandBufferUsed;
+        previousGraphicsUsed = frameResult.executionResult.graphicsCommandBufferUsed;
     }
     
     totalTime += deltaTime;
@@ -635,5 +658,23 @@ bool VulkanRenderer::attemptSwapchainRecreation() {
         std::cerr << "VulkanRenderer: Exception during swapchain recreation: " << e.what() << std::endl;
         recreationInProgress = false;
         return false;
+    }
+}
+
+void VulkanRenderer::logFrameSuccessIfNeeded(const char* operation) {
+    // Monitor first few frames after resize with consolidated logging
+    static uint32_t lastRecreationFrame = 0;
+    static uint32_t framesAfterRecreation = 0;
+    
+    if (recreationInProgress || (frameCounter - lastRecreationFrame <= 10 && lastRecreationFrame > 0)) {
+        if (recreationInProgress) {
+            lastRecreationFrame = frameCounter;
+            framesAfterRecreation = 0;
+        } else {
+            framesAfterRecreation = frameCounter - lastRecreationFrame;
+        }
+        
+        std::cout << "VulkanRenderer: Frame " << frameCounter << " SUCCESS (+" << framesAfterRecreation 
+                 << " frames post-resize) - " << operation << std::endl;
     }
 }
