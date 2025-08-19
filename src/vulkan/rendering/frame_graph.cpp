@@ -493,115 +493,259 @@ void FrameGraph::executeNodesInOrder(uint32_t frameIndex, bool& computeExecuted)
 }
 
 bool FrameGraph::createVulkanBuffer(FrameGraphBuffer& buffer) {
-    // Create buffer
-    VkBufferCreateInfo bufferInfo{};
-    bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    bufferInfo.size = buffer.size;
-    bufferInfo.usage = buffer.usage;
-    bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    
     // Cache loader and device references for performance
     const auto& vk = context->getLoader();
     const VkDevice device = context->getDevice();
     
-    VkBuffer vkBuffer;
-    if (vk.vkCreateBuffer(device, &bufferInfo, nullptr, &vkBuffer) != VK_SUCCESS) {
-        std::cerr << "FrameGraph: Failed to create buffer" << std::endl;
-        return false;
-    }
-    buffer.buffer = vulkan_raii::Buffer(vkBuffer, context);
+    // Retry configuration
+    constexpr int MAX_RETRIES = 3;
+    constexpr VkMemoryPropertyFlags FALLBACK_MEMORY_TYPES[] = {
+        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
+        0  // Any available memory type
+    };
+    constexpr size_t FALLBACK_COUNT = sizeof(FALLBACK_MEMORY_TYPES) / sizeof(FALLBACK_MEMORY_TYPES[0]);
     
-    // Allocate memory
-    VkMemoryRequirements memRequirements;
-    vk.vkGetBufferMemoryRequirements(device, buffer.buffer.get(), &memRequirements);
-    
-    VkMemoryAllocateInfo allocInfo{};
-    allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    allocInfo.allocationSize = memRequirements.size;
-    allocInfo.memoryTypeIndex = VulkanUtils::findMemoryType(context->getPhysicalDevice(), vk, memRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-    
-    VkDeviceMemory vkMemory;
-    if (vk.vkAllocateMemory(device, &allocInfo, nullptr, &vkMemory) != VK_SUCCESS) {
-        std::cerr << "FrameGraph: Failed to allocate buffer memory" << std::endl;
+    for (int retry = 0; retry < MAX_RETRIES; ++retry) {
+        // Create buffer
+        VkBufferCreateInfo bufferInfo{};
+        bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+        bufferInfo.size = buffer.size;
+        bufferInfo.usage = buffer.usage;
+        bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        
+        VkBuffer vkBuffer;
+        VkResult bufferResult = vk.vkCreateBuffer(device, &bufferInfo, nullptr, &vkBuffer);
+        if (bufferResult != VK_SUCCESS) {
+            std::cerr << "FrameGraph: Buffer creation failed (attempt " << (retry + 1) << "/" << MAX_RETRIES 
+                      << "), VkResult: " << bufferResult << std::endl;
+            if (retry == MAX_RETRIES - 1) {
+                std::cerr << "FrameGraph: All buffer creation attempts failed" << std::endl;
+                return false;
+            }
+            continue;
+        }
+        
+        buffer.buffer = vulkan_raii::Buffer(vkBuffer, context);
+        
+        // Get memory requirements
+        VkMemoryRequirements memRequirements;
+        vk.vkGetBufferMemoryRequirements(device, buffer.buffer.get(), &memRequirements);
+        
+        // Try different memory types with fallback strategy
+        bool memoryAllocated = false;
+        for (size_t fallbackIdx = 0; fallbackIdx < FALLBACK_COUNT; ++fallbackIdx) {
+            VkMemoryPropertyFlags memoryProperties = FALLBACK_MEMORY_TYPES[fallbackIdx];
+            
+            try {
+                uint32_t memoryTypeIndex;
+                if (memoryProperties == 0) {
+                    // Find any compatible memory type
+                    memoryTypeIndex = findAnyCompatibleMemoryType(memRequirements.memoryTypeBits);
+                } else {
+                    memoryTypeIndex = VulkanUtils::findMemoryType(context->getPhysicalDevice(), vk, 
+                                                                  memRequirements.memoryTypeBits, memoryProperties);
+                }
+                
+                VkMemoryAllocateInfo allocInfo{};
+                allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+                allocInfo.allocationSize = memRequirements.size;
+                allocInfo.memoryTypeIndex = memoryTypeIndex;
+                
+                VkDeviceMemory vkMemory;
+                VkResult allocResult = vk.vkAllocateMemory(device, &allocInfo, nullptr, &vkMemory);
+                if (allocResult == VK_SUCCESS) {
+                    buffer.memory = vulkan_raii::DeviceMemory(vkMemory, context);
+                    
+                    // Bind memory
+                    VkResult bindResult = vk.vkBindBufferMemory(device, buffer.buffer.get(), buffer.memory.get(), 0);
+                    if (bindResult == VK_SUCCESS) {
+                        memoryAllocated = true;
+                        if (fallbackIdx > 0) {
+                            std::cerr << "FrameGraph: Buffer memory allocated with fallback strategy " 
+                                      << fallbackIdx << " (properties: 0x" << std::hex << memoryProperties << std::dec << ")" << std::endl;
+                        }
+                        break;
+                    } else {
+                        std::cerr << "FrameGraph: Buffer memory bind failed, VkResult: " << bindResult << std::endl;
+                        buffer.memory.reset();
+                    }
+                } else {
+                    std::cerr << "FrameGraph: Memory allocation failed with properties 0x" << std::hex 
+                              << memoryProperties << std::dec << ", VkResult: " << allocResult << std::endl;
+                }
+            } catch (const std::exception& e) {
+                std::cerr << "FrameGraph: Memory type search failed: " << e.what() << std::endl;
+            }
+        }
+        
+        if (memoryAllocated) {
+            return true;
+        }
+        
+        // Clean up failed attempt
         buffer.buffer.reset();
-        return false;
+        std::cerr << "FrameGraph: Buffer memory allocation failed for all fallback strategies (attempt " 
+                  << (retry + 1) << "/" << MAX_RETRIES << ")" << std::endl;
     }
-    buffer.memory = vulkan_raii::DeviceMemory(vkMemory, context);
     
-    // Bind memory
-    vk.vkBindBufferMemory(device, buffer.buffer.get(), buffer.memory.get(), 0);
-    
-    return true;
+    std::cerr << "FrameGraph: Buffer creation failed after all retry attempts" << std::endl;
+    return false;
 }
 
 bool FrameGraph::createVulkanImage(FrameGraphImage& image) {
-    // Create image
-    VkImageCreateInfo imageInfo{};
-    imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-    imageInfo.imageType = VK_IMAGE_TYPE_2D;
-    imageInfo.extent.width = image.extent.width;
-    imageInfo.extent.height = image.extent.height;
-    imageInfo.extent.depth = 1;
-    imageInfo.mipLevels = 1;
-    imageInfo.arrayLayers = 1;
-    imageInfo.format = image.format;
-    imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
-    imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    imageInfo.usage = image.usage;
-    imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
-    imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    // Cache loader and device references for performance
+    const auto& vk = context->getLoader();
+    const VkDevice device = context->getDevice();
     
-    VkImage vkImage;
-    if (context->getLoader().vkCreateImage(context->getDevice(), &imageInfo, nullptr, &vkImage) != VK_SUCCESS) {
-        std::cerr << "FrameGraph: Failed to create image" << std::endl;
-        return false;
-    }
-    image.image = vulkan_raii::Image(vkImage, context);
+    // Retry configuration
+    constexpr int MAX_RETRIES = 3;
+    constexpr VkMemoryPropertyFlags FALLBACK_MEMORY_TYPES[] = {
+        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
+        0  // Any available memory type
+    };
+    constexpr size_t FALLBACK_COUNT = sizeof(FALLBACK_MEMORY_TYPES) / sizeof(FALLBACK_MEMORY_TYPES[0]);
     
-    // Allocate memory
-    VkMemoryRequirements memRequirements;
-    context->getLoader().vkGetImageMemoryRequirements(context->getDevice(), image.image.get(), &memRequirements);
-    
-    VkMemoryAllocateInfo allocInfo{};
-    allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    allocInfo.allocationSize = memRequirements.size;
-    allocInfo.memoryTypeIndex = VulkanUtils::findMemoryType(context->getPhysicalDevice(), context->getLoader(), memRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-    
-    VkDeviceMemory vkMemory;
-    if (context->getLoader().vkAllocateMemory(context->getDevice(), &allocInfo, nullptr, &vkMemory) != VK_SUCCESS) {
-        std::cerr << "FrameGraph: Failed to allocate image memory" << std::endl;
-        image.image.reset();
-        return false;
-    }
-    image.memory = vulkan_raii::DeviceMemory(vkMemory, context);
-    
-    // Bind memory
-    context->getLoader().vkBindImageMemory(context->getDevice(), image.image.get(), image.memory.get(), 0);
-    
-    // Create image view if it's going to be used as texture/render target
-    if (image.usage & (VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT)) {
-        VkImageViewCreateInfo viewInfo{};
-        viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-        viewInfo.image = image.image.get();
-        viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-        viewInfo.format = image.format;
-        viewInfo.subresourceRange.aspectMask = (image.format == VK_FORMAT_D32_SFLOAT) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
-        viewInfo.subresourceRange.baseMipLevel = 0;
-        viewInfo.subresourceRange.levelCount = 1;
-        viewInfo.subresourceRange.baseArrayLayer = 0;
-        viewInfo.subresourceRange.layerCount = 1;
+    for (int retry = 0; retry < MAX_RETRIES; ++retry) {
+        // Create image
+        VkImageCreateInfo imageInfo{};
+        imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+        imageInfo.imageType = VK_IMAGE_TYPE_2D;
+        imageInfo.extent.width = image.extent.width;
+        imageInfo.extent.height = image.extent.height;
+        imageInfo.extent.depth = 1;
+        imageInfo.mipLevels = 1;
+        imageInfo.arrayLayers = 1;
+        imageInfo.format = image.format;
+        imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
+        imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        imageInfo.usage = image.usage;
+        imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+        imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
         
-        VkImageView vkImageView;
-        if (context->getLoader().vkCreateImageView(context->getDevice(), &viewInfo, nullptr, &vkImageView) != VK_SUCCESS) {
-            std::cerr << "FrameGraph: Failed to create image view" << std::endl;
-            image.memory.reset();
-            image.image.reset();
-            return false;
+        VkImage vkImage;
+        VkResult imageResult = vk.vkCreateImage(device, &imageInfo, nullptr, &vkImage);
+        if (imageResult != VK_SUCCESS) {
+            std::cerr << "FrameGraph: Image creation failed (attempt " << (retry + 1) << "/" << MAX_RETRIES 
+                      << "), VkResult: " << imageResult << std::endl;
+            if (retry == MAX_RETRIES - 1) {
+                std::cerr << "FrameGraph: All image creation attempts failed" << std::endl;
+                return false;
+            }
+            continue;
         }
-        image.view = vulkan_raii::ImageView(vkImageView, context);
+        
+        image.image = vulkan_raii::Image(vkImage, context);
+        
+        // Get memory requirements
+        VkMemoryRequirements memRequirements;
+        vk.vkGetImageMemoryRequirements(device, image.image.get(), &memRequirements);
+        
+        // Try different memory types with fallback strategy
+        bool memoryAllocated = false;
+        for (size_t fallbackIdx = 0; fallbackIdx < FALLBACK_COUNT; ++fallbackIdx) {
+            VkMemoryPropertyFlags memoryProperties = FALLBACK_MEMORY_TYPES[fallbackIdx];
+            
+            try {
+                uint32_t memoryTypeIndex;
+                if (memoryProperties == 0) {
+                    // Find any compatible memory type
+                    memoryTypeIndex = findAnyCompatibleMemoryType(memRequirements.memoryTypeBits);
+                } else {
+                    memoryTypeIndex = VulkanUtils::findMemoryType(context->getPhysicalDevice(), vk, 
+                                                                  memRequirements.memoryTypeBits, memoryProperties);
+                }
+                
+                VkMemoryAllocateInfo allocInfo{};
+                allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+                allocInfo.allocationSize = memRequirements.size;
+                allocInfo.memoryTypeIndex = memoryTypeIndex;
+                
+                VkDeviceMemory vkMemory;
+                VkResult allocResult = vk.vkAllocateMemory(device, &allocInfo, nullptr, &vkMemory);
+                if (allocResult == VK_SUCCESS) {
+                    image.memory = vulkan_raii::DeviceMemory(vkMemory, context);
+                    
+                    // Bind memory
+                    VkResult bindResult = vk.vkBindImageMemory(device, image.image.get(), image.memory.get(), 0);
+                    if (bindResult == VK_SUCCESS) {
+                        memoryAllocated = true;
+                        if (fallbackIdx > 0) {
+                            std::cerr << "FrameGraph: Image memory allocated with fallback strategy " 
+                                      << fallbackIdx << " (properties: 0x" << std::hex << memoryProperties << std::dec << ")" << std::endl;
+                        }
+                        break;
+                    } else {
+                        std::cerr << "FrameGraph: Image memory bind failed, VkResult: " << bindResult << std::endl;
+                        image.memory.reset();
+                    }
+                } else {
+                    std::cerr << "FrameGraph: Memory allocation failed with properties 0x" << std::hex 
+                              << memoryProperties << std::dec << ", VkResult: " << allocResult << std::endl;
+                }
+            } catch (const std::exception& e) {
+                std::cerr << "FrameGraph: Memory type search failed: " << e.what() << std::endl;
+            }
+        }
+        
+        if (!memoryAllocated) {
+            // Clean up failed attempt
+            image.image.reset();
+            std::cerr << "FrameGraph: Image memory allocation failed for all fallback strategies (attempt " 
+                      << (retry + 1) << "/" << MAX_RETRIES << ")" << std::endl;
+            continue;
+        }
+        
+        // Create image view if it's going to be used as texture/render target
+        if (image.usage & (VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT)) {
+            VkImageViewCreateInfo viewInfo{};
+            viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+            viewInfo.image = image.image.get();
+            viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+            viewInfo.format = image.format;
+            viewInfo.subresourceRange.aspectMask = (image.format == VK_FORMAT_D32_SFLOAT) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
+            viewInfo.subresourceRange.baseMipLevel = 0;
+            viewInfo.subresourceRange.levelCount = 1;
+            viewInfo.subresourceRange.baseArrayLayer = 0;
+            viewInfo.subresourceRange.layerCount = 1;
+            
+            VkImageView vkImageView;
+            VkResult viewResult = vk.vkCreateImageView(device, &viewInfo, nullptr, &vkImageView);
+            if (viewResult != VK_SUCCESS) {
+                std::cerr << "FrameGraph: Image view creation failed (attempt " << (retry + 1) << "/" << MAX_RETRIES 
+                          << "), VkResult: " << viewResult << std::endl;
+                // Clean up and retry
+                image.memory.reset();
+                image.image.reset();
+                continue;
+            }
+            image.view = vulkan_raii::ImageView(vkImageView, context);
+        }
+        
+        return true;
     }
     
-    return true;
+    std::cerr << "FrameGraph: Image creation failed after all retry attempts" << std::endl;
+    return false;
+}
+
+uint32_t FrameGraph::findAnyCompatibleMemoryType(uint32_t typeFilter) const {
+    const auto& vk = context->getLoader();
+    
+    VkPhysicalDeviceMemoryProperties memProperties;
+    vk.vkGetPhysicalDeviceMemoryProperties(context->getPhysicalDevice(), &memProperties);
+    
+    // Find first compatible memory type
+    for (uint32_t i = 0; i < memProperties.memoryTypeCount; i++) {
+        if (typeFilter & (1 << i)) {
+            return i;
+        }
+    }
+    
+    throw std::runtime_error("No compatible memory type found for fallback allocation!");
 }
 
 bool FrameGraph::buildDependencyGraph() {

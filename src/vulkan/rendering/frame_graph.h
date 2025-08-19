@@ -225,6 +225,9 @@ private:
     FrameGraphImage* getImageResource(FrameGraphTypes::ResourceId id);
     const FrameGraphBuffer* getBufferResource(FrameGraphTypes::ResourceId id) const;
     const FrameGraphImage* getImageResource(FrameGraphTypes::ResourceId id) const;
+    
+    // Memory allocation helpers
+    uint32_t findAnyCompatibleMemoryType(uint32_t typeFilter) const;
 };
 
 // Helper macros for common node patterns
