@@ -44,11 +44,27 @@ public:
     // Memory type utilities
     uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties);
     
-    // Statistics
+    // Memory pressure detection and management
+    struct DeviceMemoryBudget {
+        VkDeviceSize heapSize = 0;
+        VkDeviceSize usedBytes = 0;
+        VkDeviceSize availableBytes = 0;
+        float pressureRatio = 0.0f; // 0.0 = no pressure, 1.0 = critical
+    };
+    
+    bool isUnderMemoryPressure() const;
+    DeviceMemoryBudget getMemoryBudget(uint32_t heapIndex) const;
+    bool attemptMemoryRecovery();
+    
+    // Statistics with pressure tracking
     struct MemoryStats {
         VkDeviceSize totalAllocated = 0;
         VkDeviceSize totalFreed = 0;
         uint32_t activeAllocations = 0;
+        VkDeviceSize peakUsage = 0;
+        uint32_t failedAllocations = 0;
+        bool memoryPressure = false;
+        float fragmentationRatio = 0.0f;
     };
     
     MemoryStats getMemoryStats() const { return memoryStats; }

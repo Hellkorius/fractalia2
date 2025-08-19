@@ -79,6 +79,11 @@ public:
     StagingRegionGuard allocateGuarded(VkDeviceSize size, VkDeviceSize alignment = 1);
     void reset(); // Reset to beginning of ring buffer
     
+    // Advanced memory management
+    bool tryDefragment(); // Attempt to reduce fragmentation
+    VkDeviceSize getFragmentedBytes() const; // Track wasted space
+    bool isFragmentationCritical() const; // >50% fragmented
+    
     // Getter for buffer handle
     VkBuffer getBuffer() const { return ringBuffer.buffer.get(); }
     
@@ -87,6 +92,11 @@ private:
     ResourceHandle ringBuffer;
     VkDeviceSize currentOffset = 0;
     VkDeviceSize totalSize = 0;
+    
+    // Fragmentation tracking
+    VkDeviceSize totalWastedBytes = 0;
+    uint32_t wrapAroundCount = 0;
+    VkDeviceSize largestFreeBlock = 0;
 };
 
 // GPU buffer with integrated staging support for compute operations

@@ -49,14 +49,35 @@ MemoryAllocator::AllocationInfo MemoryAllocator::allocateMemory(VkMemoryRequirem
     
     uint32_t memoryType = findMemoryType(requirements.memoryTypeBits, properties);
     
+    // Check memory pressure before allocation
+    if (isUnderMemoryPressure()) {
+        std::cerr << "Warning: GPU under memory pressure, attempting recovery..." << std::endl;
+        if (!attemptMemoryRecovery()) {
+            std::cerr << "Memory recovery failed, proceeding with risky allocation" << std::endl;
+        }
+    }
+    
     VkMemoryAllocateInfo allocInfo{};
     allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
     allocInfo.allocationSize = requirements.size;
     allocInfo.memoryTypeIndex = memoryType;
     
-    if (context->getLoader().vkAllocateMemory(context->getDevice(), &allocInfo, nullptr, &allocation.memory) != VK_SUCCESS) {
-        std::cerr << "Failed to allocate memory!" << std::endl;
-        return {};
+    VkResult result = context->getLoader().vkAllocateMemory(context->getDevice(), &allocInfo, nullptr, &allocation.memory);
+    if (result != VK_SUCCESS) {
+        memoryStats.failedAllocations++;
+        
+        if (result == VK_ERROR_OUT_OF_DEVICE_MEMORY || result == VK_ERROR_OUT_OF_HOST_MEMORY) {
+            std::cerr << "Out of memory - attempting emergency recovery..." << std::endl;
+            if (attemptMemoryRecovery()) {
+                // Retry allocation after recovery
+                result = context->getLoader().vkAllocateMemory(context->getDevice(), &allocInfo, nullptr, &allocation.memory);
+            }
+        }
+        
+        if (result != VK_SUCCESS) {
+            std::cerr << "Critical: Memory allocation failed after recovery attempts!" << std::endl;
+            return {};
+        }
     }
     
     allocation.size = requirements.size;
@@ -72,9 +93,16 @@ MemoryAllocator::AllocationInfo MemoryAllocator::allocateMemory(VkMemoryRequirem
         allocator->allocations.push_back(vmaAlloc);
     }
     
-    // Update stats
+    // Update comprehensive stats
     memoryStats.totalAllocated += requirements.size;
     memoryStats.activeAllocations++;
+    
+    if (memoryStats.totalAllocated - memoryStats.totalFreed > memoryStats.peakUsage) {
+        memoryStats.peakUsage = memoryStats.totalAllocated - memoryStats.totalFreed;
+    }
+    
+    // Update pressure status
+    memoryStats.memoryPressure = isUnderMemoryPressure();
     
     return allocation;
 }
@@ -165,6 +193,62 @@ bool MemoryAllocator::initializeVMA() {
     allocator->loader = &context->getLoader();
     
     return true;
+}
+
+bool MemoryAllocator::isUnderMemoryPressure() const {
+    if (!context || !allocator) return false;
+    
+    VkPhysicalDeviceMemoryProperties memProps;
+    context->getLoader().vkGetPhysicalDeviceMemoryProperties(context->getPhysicalDevice(), &memProps);
+    
+    // Check each heap for pressure (>80% usage indicates pressure)
+    for (uint32_t i = 0; i < memProps.memoryHeapCount; i++) {
+        DeviceMemoryBudget budget = getMemoryBudget(i);
+        if (budget.pressureRatio > 0.8f) {
+            return true;
+        }
+    }
+    
+    return false;
+}
+
+MemoryAllocator::DeviceMemoryBudget MemoryAllocator::getMemoryBudget(uint32_t heapIndex) const {
+    DeviceMemoryBudget budget{};
+    
+    if (!context) return budget;
+    
+    VkPhysicalDeviceMemoryProperties memProps;
+    context->getLoader().vkGetPhysicalDeviceMemoryProperties(context->getPhysicalDevice(), &memProps);
+    
+    if (heapIndex >= memProps.memoryHeapCount) return budget;
+    
+    budget.heapSize = memProps.memoryHeaps[heapIndex].size;
+    
+    // Estimate used bytes from our allocations (simplified)
+    VkDeviceSize usedInHeap = 0;
+    for (const auto& alloc : allocator->allocations) {
+        // Simple heuristic: assume allocation is in this heap if it's device-local
+        usedInHeap += alloc.size;
+    }
+    
+    budget.usedBytes = usedInHeap;
+    budget.availableBytes = budget.heapSize > budget.usedBytes ? budget.heapSize - budget.usedBytes : 0;
+    budget.pressureRatio = budget.heapSize > 0 ? (float)budget.usedBytes / budget.heapSize : 1.0f;
+    
+    return budget;
+}
+
+bool MemoryAllocator::attemptMemoryRecovery() {
+    if (!allocator) return false;
+    
+    // Force garbage collection by triggering a memory defragmentation-like cleanup
+    size_t recoveredBytes = 0;
+    
+    // In a real VMA implementation, this would trigger defragmentation
+    // For now, we'll just log the attempt
+    std::cout << "Attempting memory recovery - would trigger VMA defragmentation here" << std::endl;
+    
+    return recoveredBytes > 0;
 }
 
 void MemoryAllocator::cleanupVMA() {

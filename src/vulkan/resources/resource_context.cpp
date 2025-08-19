@@ -108,17 +108,26 @@ void StagingRingBuffer::cleanup() {
 StagingRingBuffer::StagingRegion StagingRingBuffer::allocate(VkDeviceSize size, VkDeviceSize alignment) {
     // Align current offset
     VkDeviceSize alignedOffset = (currentOffset + alignment - 1) & ~(alignment - 1);
+    VkDeviceSize wastedBytes = alignedOffset - currentOffset;
     
     // Check if we need to wrap around
     if (alignedOffset + size > totalSize) {
+        // Track fragmentation from wrap-around
+        totalWastedBytes += (totalSize - currentOffset);
+        wrapAroundCount++;
+        
         alignedOffset = 0; // Wrap to beginning
         currentOffset = 0;
+        wastedBytes = 0; // No alignment waste after wrap
     }
     
     if (alignedOffset + size > totalSize) {
         std::cerr << "Staging buffer allocation too large: " << size << " bytes" << std::endl;
         return {};
     }
+    
+    // Track alignment waste
+    totalWastedBytes += wastedBytes;
     
     StagingRegion region;
     region.buffer = ringBuffer.buffer.get();
@@ -127,6 +136,9 @@ StagingRingBuffer::StagingRegion StagingRingBuffer::allocate(VkDeviceSize size, 
     region.mappedData = static_cast<char*>(ringBuffer.mappedData) + alignedOffset;
     
     currentOffset = alignedOffset + size;
+    
+    // Update largest free block tracking
+    largestFreeBlock = totalSize - currentOffset;
     
     return region;
 }
@@ -137,6 +149,29 @@ StagingRingBuffer::StagingRegionGuard StagingRingBuffer::allocateGuarded(VkDevic
 
 void StagingRingBuffer::reset() {
     currentOffset = 0;
+    // Reset fragmentation tracking on full reset
+    totalWastedBytes = 0;
+    wrapAroundCount = 0;
+    largestFreeBlock = totalSize;
+}
+
+bool StagingRingBuffer::tryDefragment() {
+    // For ring buffers, defragmentation means forced reset if fragmentation is critical
+    if (isFragmentationCritical()) {
+        reset();
+        return true;
+    }
+    return false;
+}
+
+VkDeviceSize StagingRingBuffer::getFragmentedBytes() const {
+    return totalWastedBytes;
+}
+
+bool StagingRingBuffer::isFragmentationCritical() const {
+    if (totalSize == 0) return false;
+    float fragmentationRatio = (float)totalWastedBytes / totalSize;
+    return fragmentationRatio > 0.5f; // >50% fragmented is critical
 }
 
 // GPUBufferRing implementation
