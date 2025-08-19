@@ -229,11 +229,55 @@ private:
     
     bool compiled = false;
     
+    // Compilation state backup for transactional compilation
+    struct CompilationState {
+        std::vector<FrameGraphTypes::NodeId> executionOrder;
+        BarrierInfo computeToGraphicsBarriers;
+        bool compiled = false;
+        
+        void clear() {
+            executionOrder.clear();
+            computeToGraphicsBarriers.clear();
+            compiled = false;
+        }
+    };
+    CompilationState backupState;
+    
+    // Circular dependency analysis structures
+    struct DependencyPath {
+        std::vector<FrameGraphTypes::NodeId> nodeChain;
+        std::vector<FrameGraphTypes::ResourceId> resourceChain;
+    };
+    
+    struct CircularDependencyReport {
+        std::vector<DependencyPath> cycles;
+        std::vector<std::string> resolutionSuggestions;
+    };
+    
+    // Partial compilation support
+    struct PartialCompilationResult {
+        std::vector<FrameGraphTypes::NodeId> validNodes;
+        std::vector<FrameGraphTypes::NodeId> problematicNodes;
+        std::unordered_set<FrameGraphTypes::NodeId> cycleNodes;
+        bool hasValidSubgraph = false;
+    };
+    
     // Internal methods
     bool createVulkanBuffer(FrameGraphBuffer& buffer);
     bool createVulkanImage(FrameGraphImage& image);
     bool buildDependencyGraph();
     bool topologicalSort();
+    
+    // Enhanced compilation methods
+    bool topologicalSortWithCycleDetection(CircularDependencyReport& report);
+    CircularDependencyReport analyzeCycles(const std::unordered_map<FrameGraphTypes::NodeId, int>& inDegree);
+    PartialCompilationResult attemptPartialCompilation();
+    std::vector<DependencyPath> findCyclePaths(FrameGraphTypes::NodeId startNode, 
+        const std::unordered_map<FrameGraphTypes::NodeId, std::vector<FrameGraphTypes::NodeId>>& adjacencyList);
+    std::vector<std::string> generateResolutionSuggestions(const std::vector<DependencyPath>& cycles);
+    void backupCompilationState();
+    void restoreCompilationState();
+    
     void insertSynchronizationBarriers();
     void insertBarrierForResource(FrameGraphTypes::ResourceId resourceId, 
                                   PipelineStage srcStage, PipelineStage dstStage,

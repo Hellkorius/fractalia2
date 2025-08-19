@@ -208,18 +208,77 @@ bool FrameGraph::compile() {
         std::cout << "FrameGraph compilation #" << compileCount << std::endl;
     }
     
-    // Clear previous compilation
+    // Backup current state for transactional compilation
+    backupCompilationState();
+    
+    // Clear current compilation state
     executionOrder.clear();
     computeToGraphicsBarriers.clear();
+    compiled = false;
     
-    // Build dependency graph and sort nodes
+    // Build dependency graph
     if (!buildDependencyGraph()) {
         std::cerr << "FrameGraph: Failed to build dependency graph" << std::endl;
+        restoreCompilationState();
         return false;
     }
     
-    if (!topologicalSort()) {
-        std::cerr << "FrameGraph: Failed to sort nodes (circular dependency?)" << std::endl;
+    // Enhanced topological sort with detailed cycle analysis
+    CircularDependencyReport cycleReport;
+    if (!topologicalSortWithCycleDetection(cycleReport)) {
+        std::cerr << "FrameGraph: Compilation failed due to circular dependencies" << std::endl;
+        
+        // Print detailed cycle analysis
+        if (!cycleReport.cycles.empty()) {
+            std::cerr << "\nDetailed Cycle Analysis:" << std::endl;
+            for (size_t i = 0; i < cycleReport.cycles.size(); i++) {
+                const auto& cycle = cycleReport.cycles[i];
+                std::cerr << "Cycle " << (i + 1) << ": ";
+                
+                for (size_t j = 0; j < cycle.nodeChain.size(); j++) {
+                    auto nodeIt = nodes.find(cycle.nodeChain[j]);
+                    if (nodeIt != nodes.end()) {
+                        std::cerr << nodeIt->second->getName();
+                        if (j < cycle.resourceChain.size()) {
+                            std::cerr << " --[resource " << cycle.resourceChain[j] << "]--> ";
+                        }
+                    }
+                }
+                std::cerr << std::endl;
+            }
+            
+            std::cerr << "\nResolution Suggestions:" << std::endl;
+            for (const auto& suggestion : cycleReport.resolutionSuggestions) {
+                std::cerr << "- " << suggestion << std::endl;
+            }
+        }
+        
+        // Attempt partial compilation as fallback
+        PartialCompilationResult partialResult = attemptPartialCompilation();
+        if (partialResult.hasValidSubgraph) {
+            std::cerr << "\nFalling back to partial compilation:" << std::endl;
+            std::cerr << "- Executing " << partialResult.validNodes.size() << " valid nodes" << std::endl;
+            std::cerr << "- Skipping " << partialResult.problematicNodes.size() << " problematic nodes" << std::endl;
+            
+            executionOrder = partialResult.validNodes;
+            
+            // Insert synchronization barriers for valid subgraph
+            insertSynchronizationBarriers();
+            
+            // Setup valid nodes only
+            for (auto nodeId : executionOrder) {
+                auto it = nodes.find(nodeId);
+                if (it != nodes.end()) {
+                    it->second->setup(*this);
+                }
+            }
+            
+            compiled = true;
+            std::cerr << "Partial compilation successful" << std::endl;
+            return true;
+        }
+        
+        restoreCompilationState();
         return false;
     }
     
@@ -235,7 +294,7 @@ bool FrameGraph::compile() {
     }
     
     compiled = true;
-    // Compilation successful
+    std::cout << "FrameGraph compilation successful (" << executionOrder.size() << " nodes)" << std::endl;
     
     return true;
 }
@@ -1207,4 +1266,333 @@ void GraphicsNode::execute(VkCommandBuffer commandBuffer, const FrameGraph& fram
     // In the real implementation, this would begin render pass,
     // bind graphics pipeline, descriptor sets, push constants, and draw
     std::cout << "GraphicsNode: Executing graphics pass" << std::endl;
+}
+
+// Enhanced compilation methods implementation
+void FrameGraph::backupCompilationState() {
+    backupState.executionOrder = executionOrder;
+    backupState.computeToGraphicsBarriers = computeToGraphicsBarriers;
+    backupState.compiled = compiled;
+}
+
+void FrameGraph::restoreCompilationState() {
+    executionOrder = backupState.executionOrder;
+    computeToGraphicsBarriers = backupState.computeToGraphicsBarriers;
+    compiled = backupState.compiled;
+}
+
+bool FrameGraph::topologicalSortWithCycleDetection(CircularDependencyReport& report) {
+    // Efficient O(V + E) topological sort using Kahn's algorithm with enhanced cycle detection
+    executionOrder.clear();
+    
+    // Build resource producer mapping for O(1) dependency lookups
+    std::unordered_map<FrameGraphTypes::ResourceId, FrameGraphTypes::NodeId> resourceProducers;
+    for (const auto& [nodeId, node] : nodes) {
+        auto outputs = node->getOutputs();
+        for (const auto& output : outputs) {
+            resourceProducers[output.resourceId] = nodeId;
+        }
+    }
+    
+    // Build adjacency list and calculate in-degrees
+    std::unordered_map<FrameGraphTypes::NodeId, std::vector<FrameGraphTypes::NodeId>> adjacencyList;
+    std::unordered_map<FrameGraphTypes::NodeId, int> inDegree;
+    
+    // Initialize in-degrees to 0
+    for (const auto& [nodeId, node] : nodes) {
+        inDegree[nodeId] = 0;
+        adjacencyList[nodeId] = {};
+    }
+    
+    // Build graph edges: if nodeA produces resource that nodeB consumes, nodeA -> nodeB
+    for (const auto& [nodeId, node] : nodes) {
+        auto inputs = node->getInputs();
+        for (const auto& input : inputs) {
+            auto producerIt = resourceProducers.find(input.resourceId);
+            if (producerIt != resourceProducers.end() && producerIt->second != nodeId) {
+                FrameGraphTypes::NodeId producerNodeId = producerIt->second;
+                adjacencyList[producerNodeId].push_back(nodeId);
+                inDegree[nodeId]++;
+            }
+        }
+    }
+    
+    // Kahn's algorithm: start with nodes that have no dependencies
+    std::queue<FrameGraphTypes::NodeId> zeroInDegreeQueue;
+    for (const auto& [nodeId, degree] : inDegree) {
+        if (degree == 0) {
+            zeroInDegreeQueue.push(nodeId);
+        }
+    }
+    
+    size_t processedNodes = 0;
+    while (!zeroInDegreeQueue.empty()) {
+        FrameGraphTypes::NodeId currentNode = zeroInDegreeQueue.front();
+        zeroInDegreeQueue.pop();
+        
+        executionOrder.push_back(currentNode);
+        processedNodes++;
+        
+        // Reduce in-degree for all dependent nodes
+        for (FrameGraphTypes::NodeId dependentNode : adjacencyList[currentNode]) {
+            inDegree[dependentNode]--;
+            if (inDegree[dependentNode] == 0) {
+                zeroInDegreeQueue.push(dependentNode);
+            }
+        }
+    }
+    
+    // Check for circular dependencies
+    if (processedNodes != nodes.size()) {
+        // Enhanced cycle analysis
+        report = analyzeCycles(inDegree);
+        return false;
+    }
+    
+    return true;
+}
+
+FrameGraph::CircularDependencyReport FrameGraph::analyzeCycles(const std::unordered_map<FrameGraphTypes::NodeId, int>& inDegree) {
+    CircularDependencyReport report;
+    
+    // Find nodes involved in cycles (those with remaining in-degree > 0)
+    std::unordered_set<FrameGraphTypes::NodeId> cycleNodes;
+    for (const auto& [nodeId, degree] : inDegree) {
+        if (degree > 0) {
+            cycleNodes.insert(nodeId);
+        }
+    }
+    
+    // Build adjacency list for cycle nodes only
+    std::unordered_map<FrameGraphTypes::NodeId, std::vector<FrameGraphTypes::NodeId>> cycleAdjacencyList;
+    std::unordered_map<FrameGraphTypes::ResourceId, FrameGraphTypes::NodeId> resourceProducers;
+    
+    // Build resource producers map
+    for (const auto& [nodeId, node] : nodes) {
+        if (cycleNodes.find(nodeId) != cycleNodes.end()) {
+            auto outputs = node->getOutputs();
+            for (const auto& output : outputs) {
+                resourceProducers[output.resourceId] = nodeId;
+            }
+        }
+    }
+    
+    // Build cycle adjacency list with resource tracking
+    for (const auto& nodeId : cycleNodes) {
+        auto nodeIt = nodes.find(nodeId);
+        if (nodeIt != nodes.end()) {
+            auto inputs = nodeIt->second->getInputs();
+            for (const auto& input : inputs) {
+                auto producerIt = resourceProducers.find(input.resourceId);
+                if (producerIt != resourceProducers.end() && producerIt->second != nodeId) {
+                    FrameGraphTypes::NodeId producerNodeId = producerIt->second;
+                    if (cycleNodes.find(producerNodeId) != cycleNodes.end()) {
+                        cycleAdjacencyList[producerNodeId].push_back(nodeId);
+                    }
+                }
+            }
+        }
+    }
+    
+    // Find actual cycle paths using DFS
+    std::unordered_set<FrameGraphTypes::NodeId> visited;
+    for (const auto& startNode : cycleNodes) {
+        if (visited.find(startNode) == visited.end()) {
+            std::vector<DependencyPath> cyclePaths = findCyclePaths(startNode, cycleAdjacencyList);
+            report.cycles.insert(report.cycles.end(), cyclePaths.begin(), cyclePaths.end());
+            
+            // Mark all nodes in found cycles as visited
+            for (const auto& path : cyclePaths) {
+                for (const auto& nodeId : path.nodeChain) {
+                    visited.insert(nodeId);
+                }
+            }
+        }
+    }
+    
+    // Generate resolution suggestions
+    report.resolutionSuggestions = generateResolutionSuggestions(report.cycles);
+    
+    return report;
+}
+
+std::vector<FrameGraph::DependencyPath> FrameGraph::findCyclePaths(FrameGraphTypes::NodeId startNode, 
+    const std::unordered_map<FrameGraphTypes::NodeId, std::vector<FrameGraphTypes::NodeId>>& adjacencyList) {
+    
+    std::vector<DependencyPath> cycles;
+    std::vector<FrameGraphTypes::NodeId> path;
+    std::unordered_set<FrameGraphTypes::NodeId> inPath;
+    
+    std::function<void(FrameGraphTypes::NodeId)> dfs = [&](FrameGraphTypes::NodeId node) {
+        if (inPath.find(node) != inPath.end()) {
+            // Found a cycle - extract the cycle from the path
+            DependencyPath cycle;
+            bool inCycle = false;
+            for (size_t i = 0; i < path.size(); i++) {
+                if (path[i] == node) {
+                    inCycle = true;
+                }
+                if (inCycle) {
+                    cycle.nodeChain.push_back(path[i]);
+                    
+                    // Find the resource that creates the dependency
+                    if (i + 1 < path.size()) {
+                        FrameGraphTypes::NodeId nextNode = path[i + 1];
+                        auto nextNodeIt = nodes.find(nextNode);
+                        if (nextNodeIt != nodes.end()) {
+                            auto inputs = nextNodeIt->second->getInputs();
+                            for (const auto& input : inputs) {
+                                // Find which resource from current node is consumed by next node
+                                auto currentNodeIt = nodes.find(path[i]);
+                                if (currentNodeIt != nodes.end()) {
+                                    auto outputs = currentNodeIt->second->getOutputs();
+                                    for (const auto& output : outputs) {
+                                        if (output.resourceId == input.resourceId) {
+                                            cycle.resourceChain.push_back(input.resourceId);
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            cycle.nodeChain.push_back(node); // Close the cycle
+            cycles.push_back(cycle);
+            return;
+        }
+        
+        path.push_back(node);
+        inPath.insert(node);
+        
+        auto adjIt = adjacencyList.find(node);
+        if (adjIt != adjacencyList.end()) {
+            for (FrameGraphTypes::NodeId neighbor : adjIt->second) {
+                dfs(neighbor);
+            }
+        }
+        
+        path.pop_back();
+        inPath.erase(node);
+    };
+    
+    dfs(startNode);
+    return cycles;
+}
+
+std::vector<std::string> FrameGraph::generateResolutionSuggestions(const std::vector<DependencyPath>& cycles) {
+    std::vector<std::string> suggestions;
+    
+    if (cycles.empty()) {
+        return suggestions;
+    }
+    
+    suggestions.push_back("Consider these resolution strategies:");
+    
+    // Analyze each cycle for specific suggestions
+    for (size_t i = 0; i < cycles.size(); i++) {
+        const auto& cycle = cycles[i];
+        
+        suggestions.push_back("Cycle " + std::to_string(i + 1) + " resolution options:");
+        
+        // Suggest breaking the cycle by removing dependencies
+        if (cycle.nodeChain.size() >= 2) {
+            auto node1It = nodes.find(cycle.nodeChain[0]);
+            auto node2It = nodes.find(cycle.nodeChain[1]);
+            if (node1It != nodes.end() && node2It != nodes.end()) {
+                suggestions.push_back("  • Remove dependency between " + node1It->second->getName() + 
+                                    " and " + node2It->second->getName());
+            }
+        }
+        
+        // Suggest intermediate resources
+        suggestions.push_back("  • Introduce intermediate buffer/texture to break direct dependency");
+        
+        // Suggest reordering operations
+        suggestions.push_back("  • Consider if operations can be reordered or merged");
+        
+        // Suggest alternative data flow
+        suggestions.push_back("  • Use separate render targets or double buffering");
+    }
+    
+    suggestions.push_back("General strategies:");
+    suggestions.push_back("  • Split complex nodes into smaller, independent operations");
+    suggestions.push_back("  • Use temporal separation (multi-pass rendering)");
+    suggestions.push_back("  • Consider if read-after-write can be converted to write-after-read");
+    
+    return suggestions;
+}
+
+FrameGraph::PartialCompilationResult FrameGraph::attemptPartialCompilation() {
+    PartialCompilationResult result;
+    
+    // Build resource producer mapping
+    std::unordered_map<FrameGraphTypes::ResourceId, FrameGraphTypes::NodeId> resourceProducers;
+    for (const auto& [nodeId, node] : nodes) {
+        auto outputs = node->getOutputs();
+        for (const auto& output : outputs) {
+            resourceProducers[output.resourceId] = nodeId;
+        }
+    }
+    
+    // Build adjacency list
+    std::unordered_map<FrameGraphTypes::NodeId, std::vector<FrameGraphTypes::NodeId>> adjacencyList;
+    std::unordered_map<FrameGraphTypes::NodeId, int> inDegree;
+    
+    for (const auto& [nodeId, node] : nodes) {
+        inDegree[nodeId] = 0;
+        adjacencyList[nodeId] = {};
+    }
+    
+    for (const auto& [nodeId, node] : nodes) {
+        auto inputs = node->getInputs();
+        for (const auto& input : inputs) {
+            auto producerIt = resourceProducers.find(input.resourceId);
+            if (producerIt != resourceProducers.end() && producerIt->second != nodeId) {
+                FrameGraphTypes::NodeId producerNodeId = producerIt->second;
+                adjacencyList[producerNodeId].push_back(nodeId);
+                inDegree[nodeId]++;
+            }
+        }
+    }
+    
+    // Identify cycle nodes
+    std::queue<FrameGraphTypes::NodeId> zeroInDegreeQueue;
+    std::vector<FrameGraphTypes::NodeId> tempExecutionOrder;
+    
+    for (const auto& [nodeId, degree] : inDegree) {
+        if (degree == 0) {
+            zeroInDegreeQueue.push(nodeId);
+        }
+    }
+    
+    // Process acyclic portion
+    auto tempInDegree = inDegree;
+    while (!zeroInDegreeQueue.empty()) {
+        FrameGraphTypes::NodeId currentNode = zeroInDegreeQueue.front();
+        zeroInDegreeQueue.pop();
+        
+        tempExecutionOrder.push_back(currentNode);
+        result.validNodes.push_back(currentNode);
+        
+        for (FrameGraphTypes::NodeId dependentNode : adjacencyList[currentNode]) {
+            tempInDegree[dependentNode]--;
+            if (tempInDegree[dependentNode] == 0) {
+                zeroInDegreeQueue.push(dependentNode);
+            }
+        }
+    }
+    
+    // Identify problematic nodes
+    for (const auto& [nodeId, degree] : tempInDegree) {
+        if (degree > 0) {
+            result.problematicNodes.push_back(nodeId);
+            result.cycleNodes.insert(nodeId);
+        }
+    }
+    
+    result.hasValidSubgraph = !result.validNodes.empty();
+    
+    return result;
 }
