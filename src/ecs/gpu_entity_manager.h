@@ -40,7 +40,7 @@ public:
     
     // Entity management
     void addEntity(const GPUEntity& entity);
-    void addEntitiesFromECS(const std::vector<Entity>& entities);
+    void addEntitiesFromECS(const std::vector<flecs::entity>& entities);
     void uploadPendingEntities(); // Upload staged entities to GPU
     void clearAllEntities();
     

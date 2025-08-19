@@ -183,19 +183,20 @@ void GPUEntityManager::addEntity(const GPUEntity& entity) {
     stagingEntities.push_back(entity);
 }
 
-void GPUEntityManager::addEntitiesFromECS(const std::vector<Entity>& entities) {
+void GPUEntityManager::addEntitiesFromECS(const std::vector<flecs::entity>& entities) {
     for (const auto& entity : entities) {
         if (activeEntityCount + stagingEntities.size() >= MAX_ENTITIES) {
             std::cerr << "GPUEntityManager: Reached max capacity, stopping entity addition" << std::endl;
             break;
         }
         
-        auto* transform = entity.get<Transform>();
-        auto* renderable = entity.get<Renderable>();
-        auto* pattern = entity.get<MovementPattern>();
+        // Get components from entity using .get<>()
+        const Transform* transform = entity.get<Transform>();
+        const Renderable* renderable = entity.get<Renderable>();
+        const MovementPattern* movement = entity.get<MovementPattern>();
         
-        if (transform && renderable && pattern) {
-            GPUEntity gpuEntity = GPUEntity::fromECS(*transform, *renderable, *pattern);
+        if (transform && renderable && movement) {
+            GPUEntity gpuEntity = GPUEntity::fromECS(*transform, *renderable, *movement);
             stagingEntities.push_back(gpuEntity);
         }
     }

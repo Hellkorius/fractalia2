@@ -2,13 +2,14 @@
 
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/quaternion.hpp>
 #include <cstdint>
 #include <cstring>
 
 // Transform component - consolidates position/rotation for better cache locality
 struct Transform {
     glm::vec3 position{0.0f, 0.0f, 0.0f};
-    glm::vec3 rotation{0.0f, 0.0f, 0.0f};
+    glm::quat rotation{1.0f, 0.0f, 0.0f, 0.0f}; // w, x, y, z (identity quaternion)
     glm::vec3 scale{1.0f, 1.0f, 1.0f};
     
     // Cached transform matrix - updated when dirty
@@ -17,18 +18,21 @@ struct Transform {
     
     const glm::mat4& getMatrix() const {
         if (dirty) {
-            matrix = glm::translate(glm::mat4(1.0f), position) *
-                    glm::rotate(glm::mat4(1.0f), rotation.z, glm::vec3(0, 0, 1)) *
-                    glm::rotate(glm::mat4(1.0f), rotation.y, glm::vec3(0, 1, 0)) *
-                    glm::rotate(glm::mat4(1.0f), rotation.x, glm::vec3(1, 0, 0)) *
-                    glm::scale(glm::mat4(1.0f), scale);
+            glm::mat4 translationMatrix = glm::translate(glm::mat4(1.0f), position);
+            glm::mat4 rotationMatrix = glm::mat4_cast(rotation);
+            glm::mat4 scaleMatrix = glm::scale(glm::mat4(1.0f), scale);
+            matrix = translationMatrix * rotationMatrix * scaleMatrix;
             dirty = false;
         }
         return matrix;
     }
     
     void setPosition(const glm::vec3& pos) { position = pos; dirty = true; }
-    void setRotation(const glm::vec3& rot) { rotation = rot; dirty = true; }
+    void setRotation(const glm::quat& rot) { rotation = rot; dirty = true; }
+    void setRotation(const glm::vec3& eulerAngles) { 
+        rotation = glm::quat(eulerAngles);
+        dirty = true; 
+    }
     void setScale(const glm::vec3& scl) { scale = scl; dirty = true; }
 };
 
@@ -44,9 +48,13 @@ struct Renderable {
     uint32_t layer{0}; // For depth sorting
     bool visible{true};
     
+    // Transform matrix for GPU upload
+    glm::mat4 modelMatrix{1.0f};
+    
     // Change tracking for optimization
     mutable uint32_t version{0};
-    void markDirty() const { ++version; }
+    mutable bool dirty{true};
+    void markDirty() const { ++version; dirty = true; }
 };
 
 // Lifetime management component
@@ -70,6 +78,7 @@ enum class MovementType {
 
 struct MovementPattern {
     MovementType type{MovementType::RandomWalk};
+    MovementType movementType{MovementType::RandomWalk}; // For compatibility
     
     // Basic movement parameters
     float amplitude{1.0f};      // Size/scale of pattern
@@ -82,7 +91,26 @@ struct MovementPattern {
     
     // Runtime state
     mutable float totalTime{0.0f};
+    mutable float currentTime{0.0f};
     mutable bool initialized{false};
+};
+
+// Culling data for frustum and occlusion culling
+struct CullingData {
+    bool visible{true};
+    float distance{0.0f};
+    bool frustumCulled{false};
+    bool occlusionCulled{false};
+    uint32_t lastFrameVisible{0};
+};
+
+// Level of Detail data
+struct LODData {
+    uint32_t level{0};        // 0 = highest detail, higher numbers = lower detail
+    float distance{0.0f};     // Distance from camera
+    uint32_t meshLOD{0};      // Mesh LOD index
+    uint32_t textureLOD{0};   // Texture LOD index
+    bool needsUpdate{true};   // LOD needs recalculation
 };
 
 // Input system components for ECS-based input handling

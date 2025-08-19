@@ -145,7 +145,7 @@ namespace SimpleControlSystem {
                 glm::vec3(controlState->entityCreationPos.x, controlState->entityCreationPos.y, 0.0f)
             );
             if (mouseEntity.is_valid()) {
-                std::vector<Entity> entityVec = {mouseEntity};
+                std::vector<flecs::entity> entityVec = {mouseEntity};
                 gpuManager->addEntitiesFromECS(entityVec);
                 gpuManager->uploadPendingEntities();
                 DEBUG_LOG("Created GPU entity with movement pattern");
