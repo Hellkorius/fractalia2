@@ -157,6 +157,9 @@ public:
     // Debug
     void debugPrint() const;
     
+    // Performance monitoring
+    void logAllocationTelemetry() const;
+    
     // Context access for nodes
     const VulkanContext* getContext() const { return context; }
 
@@ -200,6 +203,30 @@ private:
     };
     BarrierInfo computeToGraphicsBarriers;
     
+    // Resource allocation failure telemetry
+    struct AllocationTelemetry {
+        uint32_t totalAttempts = 0;
+        uint32_t successfulCreations = 0;
+        uint32_t retriedCreations = 0;
+        uint32_t fallbackAllocations = 0;
+        uint32_t hostMemoryFallbacks = 0;
+        uint32_t criticalResourceFailures = 0;
+        
+        void recordAttempt() { ++totalAttempts; }
+        void recordSuccess(bool wasRetried, bool wasFallback, bool wasHostMemory) {
+            ++successfulCreations;
+            if (wasRetried) ++retriedCreations;
+            if (wasFallback) ++fallbackAllocations;
+            if (wasHostMemory) ++hostMemoryFallbacks;
+        }
+        void recordCriticalFailure() { ++criticalResourceFailures; }
+        
+        // Performance impact assessment
+        float getRetryRate() const { return totalAttempts ? (float)retriedCreations / totalAttempts : 0.0f; }
+        float getFallbackRate() const { return totalAttempts ? (float)fallbackAllocations / totalAttempts : 0.0f; }
+        float getHostMemoryRate() const { return totalAttempts ? (float)hostMemoryFallbacks / totalAttempts : 0.0f; }
+    } mutable allocationTelemetry;
+    
     bool compiled = false;
     
     // Internal methods
@@ -228,6 +255,20 @@ private:
     
     // Memory allocation helpers
     uint32_t findAnyCompatibleMemoryType(uint32_t typeFilter) const;
+    
+    // Resource classification
+    enum class ResourceCriticality {
+        Critical,    // Must be device local, fail fast if not possible
+        Important,   // Prefer device local, allow limited fallback
+        Flexible     // Accept any memory type for allocation success
+    };
+    
+    ResourceCriticality classifyResource(const FrameGraphBuffer& buffer) const;
+    ResourceCriticality classifyResource(const FrameGraphImage& image) const;
+    
+    // Advanced allocation strategies
+    bool tryAllocateWithStrategy(FrameGraphBuffer& buffer, ResourceCriticality criticality);
+    bool tryAllocateWithStrategy(FrameGraphImage& image, ResourceCriticality criticality);
 };
 
 // Helper macros for common node patterns

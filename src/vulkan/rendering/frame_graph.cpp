@@ -10,6 +10,8 @@
 #include <cassert>
 #include <functional>
 #include <unordered_set>
+#include <thread>
+#include <chrono>
 
 FrameGraph::FrameGraph() {
 }
@@ -493,21 +495,112 @@ void FrameGraph::executeNodesInOrder(uint32_t frameIndex, bool& computeExecuted)
 }
 
 bool FrameGraph::createVulkanBuffer(FrameGraphBuffer& buffer) {
-    // Cache loader and device references for performance
+    allocationTelemetry.recordAttempt();
+    
+    // Classify resource criticality for allocation strategy
+    ResourceCriticality criticality = classifyResource(buffer);
+    
+    return tryAllocateWithStrategy(buffer, criticality);
+}
+
+bool FrameGraph::createVulkanImage(FrameGraphImage& image) {
+    allocationTelemetry.recordAttempt();
+    
+    // Classify resource criticality for allocation strategy
+    ResourceCriticality criticality = classifyResource(image);
+    
+    return tryAllocateWithStrategy(image, criticality);
+}
+
+uint32_t FrameGraph::findAnyCompatibleMemoryType(uint32_t typeFilter) const {
+    const auto& vk = context->getLoader();
+    
+    VkPhysicalDeviceMemoryProperties memProperties;
+    vk.vkGetPhysicalDeviceMemoryProperties(context->getPhysicalDevice(), &memProperties);
+    
+    // Find first compatible memory type
+    for (uint32_t i = 0; i < memProperties.memoryTypeCount; i++) {
+        if (typeFilter & (1 << i)) {
+            return i;
+        }
+    }
+    
+    throw std::runtime_error("No compatible memory type found for fallback allocation!");
+}
+
+FrameGraph::ResourceCriticality FrameGraph::classifyResource(const FrameGraphBuffer& buffer) const {
+    // Critical: Entity and position buffers that are accessed every frame
+    if (buffer.usage & VK_BUFFER_USAGE_STORAGE_BUFFER_BIT) {
+        // Check debug names for ECS buffers
+        if (buffer.debugName.find("Entity") != std::string::npos ||
+            buffer.debugName.find("Position") != std::string::npos) {
+            return ResourceCriticality::Critical;
+        }
+    }
+    
+    // Important: Vertex/Index buffers used for rendering
+    if (buffer.usage & (VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT)) {
+        return ResourceCriticality::Important;
+    }
+    
+    // Flexible: Staging, uniform, and other temporary buffers
+    return ResourceCriticality::Flexible;
+}
+
+FrameGraph::ResourceCriticality FrameGraph::classifyResource(const FrameGraphImage& image) const {
+    // Critical: Render targets and depth buffers
+    if (image.usage & (VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT)) {
+        return ResourceCriticality::Critical;
+    }
+    
+    // Important: Textures that are sampled frequently
+    if (image.usage & VK_IMAGE_USAGE_SAMPLED_BIT) {
+        return ResourceCriticality::Important;
+    }
+    
+    // Flexible: Storage images and other temporary resources
+    return ResourceCriticality::Flexible;
+}
+
+bool FrameGraph::tryAllocateWithStrategy(FrameGraphBuffer& buffer, ResourceCriticality criticality) {
     const auto& vk = context->getLoader();
     const VkDevice device = context->getDevice();
     
-    // Retry configuration
-    constexpr int MAX_RETRIES = 3;
-    constexpr VkMemoryPropertyFlags FALLBACK_MEMORY_TYPES[] = {
-        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
-        0  // Any available memory type
-    };
-    constexpr size_t FALLBACK_COUNT = sizeof(FALLBACK_MEMORY_TYPES) / sizeof(FALLBACK_MEMORY_TYPES[0]);
+    // Determine retry and fallback limits based on criticality
+    int maxRetries = 1;
+    std::vector<VkMemoryPropertyFlags> memoryStrategies;
     
-    for (int retry = 0; retry < MAX_RETRIES; ++retry) {
+    switch (criticality) {
+        case ResourceCriticality::Critical:
+            maxRetries = 2;  // Limited retries for critical resources
+            memoryStrategies = {VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT};  // Device local only
+            break;
+            
+        case ResourceCriticality::Important:
+            maxRetries = 2;
+            memoryStrategies = {
+                VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
+            };
+            break;
+            
+        case ResourceCriticality::Flexible:
+            maxRetries = 3;
+            memoryStrategies = {
+                VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
+                0  // Any compatible memory
+            };
+            break;
+    }
+    
+    for (int retry = 0; retry < maxRetries; ++retry) {
+        // Exponential backoff delay for retries (except first attempt)
+        if (retry > 0) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10 * (1 << (retry - 1))));
+        }
+        
         // Create buffer
         VkBufferCreateInfo bufferInfo{};
         bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
@@ -518,12 +611,9 @@ bool FrameGraph::createVulkanBuffer(FrameGraphBuffer& buffer) {
         VkBuffer vkBuffer;
         VkResult bufferResult = vk.vkCreateBuffer(device, &bufferInfo, nullptr, &vkBuffer);
         if (bufferResult != VK_SUCCESS) {
-            std::cerr << "FrameGraph: Buffer creation failed (attempt " << (retry + 1) << "/" << MAX_RETRIES 
-                      << "), VkResult: " << bufferResult << std::endl;
-            if (retry == MAX_RETRIES - 1) {
-                std::cerr << "FrameGraph: All buffer creation attempts failed" << std::endl;
-                return false;
-            }
+            std::cerr << "[FrameGraph] Buffer creation failed: " << buffer.debugName 
+                      << " (criticality: " << static_cast<int>(criticality) << ", attempt " << (retry + 1) 
+                      << "/" << maxRetries << ", VkResult: " << bufferResult << ")" << std::endl;
             continue;
         }
         
@@ -533,15 +623,19 @@ bool FrameGraph::createVulkanBuffer(FrameGraphBuffer& buffer) {
         VkMemoryRequirements memRequirements;
         vk.vkGetBufferMemoryRequirements(device, buffer.buffer.get(), &memRequirements);
         
-        // Try different memory types with fallback strategy
-        bool memoryAllocated = false;
-        for (size_t fallbackIdx = 0; fallbackIdx < FALLBACK_COUNT; ++fallbackIdx) {
-            VkMemoryPropertyFlags memoryProperties = FALLBACK_MEMORY_TYPES[fallbackIdx];
+        // Try memory allocation strategies
+        bool wasRetried = (retry > 0);
+        bool wasFallback = false;
+        bool wasHostMemory = false;
+        
+        for (size_t strategyIdx = 0; strategyIdx < memoryStrategies.size(); ++strategyIdx) {
+            VkMemoryPropertyFlags memoryProperties = memoryStrategies[strategyIdx];
+            wasFallback = (strategyIdx > 0);
+            wasHostMemory = (memoryProperties & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) != 0;
             
             try {
                 uint32_t memoryTypeIndex;
                 if (memoryProperties == 0) {
-                    // Find any compatible memory type
                     memoryTypeIndex = findAnyCompatibleMemoryType(memRequirements.memoryTypeBits);
                 } else {
                     memoryTypeIndex = VulkanUtils::findMemoryType(context->getPhysicalDevice(), vk, 
@@ -558,58 +652,86 @@ bool FrameGraph::createVulkanBuffer(FrameGraphBuffer& buffer) {
                 if (allocResult == VK_SUCCESS) {
                     buffer.memory = vulkan_raii::DeviceMemory(vkMemory, context);
                     
-                    // Bind memory
                     VkResult bindResult = vk.vkBindBufferMemory(device, buffer.buffer.get(), buffer.memory.get(), 0);
                     if (bindResult == VK_SUCCESS) {
-                        memoryAllocated = true;
-                        if (fallbackIdx > 0) {
-                            std::cerr << "FrameGraph: Buffer memory allocated with fallback strategy " 
-                                      << fallbackIdx << " (properties: 0x" << std::hex << memoryProperties << std::dec << ")" << std::endl;
+                        // Success - record telemetry
+                        allocationTelemetry.recordSuccess(wasRetried, wasFallback, wasHostMemory);
+                        
+                        if (wasFallback) {
+                            std::cerr << "[FrameGraph] PERFORMANCE WARNING: Buffer '" << buffer.debugName 
+                                      << "' allocated with fallback memory (properties: 0x" << std::hex 
+                                      << memoryProperties << std::dec << ")" << std::endl;
                         }
-                        break;
+                        
+                        return true;
                     } else {
-                        std::cerr << "FrameGraph: Buffer memory bind failed, VkResult: " << bindResult << std::endl;
+                        std::cerr << "[FrameGraph] Buffer memory bind failed: " << buffer.debugName 
+                                  << " (VkResult: " << bindResult << ")" << std::endl;
                         buffer.memory.reset();
                     }
-                } else {
-                    std::cerr << "FrameGraph: Memory allocation failed with properties 0x" << std::hex 
-                              << memoryProperties << std::dec << ", VkResult: " << allocResult << std::endl;
+                } else if (allocResult == VK_ERROR_OUT_OF_DEVICE_MEMORY || 
+                          allocResult == VK_ERROR_OUT_OF_HOST_MEMORY) {
+                    // Expected allocation failures - continue to next strategy
+                    continue;
                 }
             } catch (const std::exception& e) {
-                std::cerr << "FrameGraph: Memory type search failed: " << e.what() << std::endl;
+                // Memory type not available - continue
+                continue;
             }
         }
         
-        if (memoryAllocated) {
-            return true;
-        }
-        
-        // Clean up failed attempt
+        // All memory strategies failed for this attempt
         buffer.buffer.reset();
-        std::cerr << "FrameGraph: Buffer memory allocation failed for all fallback strategies (attempt " 
-                  << (retry + 1) << "/" << MAX_RETRIES << ")" << std::endl;
     }
     
-    std::cerr << "FrameGraph: Buffer creation failed after all retry attempts" << std::endl;
+    // Complete failure
+    if (criticality == ResourceCriticality::Critical) {
+        allocationTelemetry.recordCriticalFailure();
+        std::cerr << "[FrameGraph] CRITICAL FAILURE: Unable to allocate critical buffer '" 
+                  << buffer.debugName << "' - system performance will be severely degraded" << std::endl;
+    }
+    
     return false;
 }
 
-bool FrameGraph::createVulkanImage(FrameGraphImage& image) {
-    // Cache loader and device references for performance
+bool FrameGraph::tryAllocateWithStrategy(FrameGraphImage& image, ResourceCriticality criticality) {
     const auto& vk = context->getLoader();
     const VkDevice device = context->getDevice();
     
-    // Retry configuration
-    constexpr int MAX_RETRIES = 3;
-    constexpr VkMemoryPropertyFlags FALLBACK_MEMORY_TYPES[] = {
-        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
-        0  // Any available memory type
-    };
-    constexpr size_t FALLBACK_COUNT = sizeof(FALLBACK_MEMORY_TYPES) / sizeof(FALLBACK_MEMORY_TYPES[0]);
+    // Determine retry and fallback limits based on criticality
+    int maxRetries = 1;
+    std::vector<VkMemoryPropertyFlags> memoryStrategies;
     
-    for (int retry = 0; retry < MAX_RETRIES; ++retry) {
+    switch (criticality) {
+        case ResourceCriticality::Critical:
+            maxRetries = 2;
+            memoryStrategies = {VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT};
+            break;
+            
+        case ResourceCriticality::Important:
+            maxRetries = 2;
+            memoryStrategies = {
+                VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
+            };
+            break;
+            
+        case ResourceCriticality::Flexible:
+            maxRetries = 3;
+            memoryStrategies = {
+                VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+                VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
+                0
+            };
+            break;
+    }
+    
+    for (int retry = 0; retry < maxRetries; ++retry) {
+        if (retry > 0) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10 * (1 << (retry - 1))));
+        }
+        
         // Create image
         VkImageCreateInfo imageInfo{};
         imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
@@ -629,12 +751,9 @@ bool FrameGraph::createVulkanImage(FrameGraphImage& image) {
         VkImage vkImage;
         VkResult imageResult = vk.vkCreateImage(device, &imageInfo, nullptr, &vkImage);
         if (imageResult != VK_SUCCESS) {
-            std::cerr << "FrameGraph: Image creation failed (attempt " << (retry + 1) << "/" << MAX_RETRIES 
-                      << "), VkResult: " << imageResult << std::endl;
-            if (retry == MAX_RETRIES - 1) {
-                std::cerr << "FrameGraph: All image creation attempts failed" << std::endl;
-                return false;
-            }
+            std::cerr << "[FrameGraph] Image creation failed: " << image.debugName 
+                      << " (criticality: " << static_cast<int>(criticality) << ", attempt " << (retry + 1) 
+                      << "/" << maxRetries << ", VkResult: " << imageResult << ")" << std::endl;
             continue;
         }
         
@@ -644,15 +763,20 @@ bool FrameGraph::createVulkanImage(FrameGraphImage& image) {
         VkMemoryRequirements memRequirements;
         vk.vkGetImageMemoryRequirements(device, image.image.get(), &memRequirements);
         
-        // Try different memory types with fallback strategy
+        bool wasRetried = (retry > 0);
+        bool wasFallback = false;
+        bool wasHostMemory = false;
         bool memoryAllocated = false;
-        for (size_t fallbackIdx = 0; fallbackIdx < FALLBACK_COUNT; ++fallbackIdx) {
-            VkMemoryPropertyFlags memoryProperties = FALLBACK_MEMORY_TYPES[fallbackIdx];
+        VkMemoryPropertyFlags usedMemoryProperties = 0;
+        
+        for (size_t strategyIdx = 0; strategyIdx < memoryStrategies.size(); ++strategyIdx) {
+            VkMemoryPropertyFlags memoryProperties = memoryStrategies[strategyIdx];
+            wasFallback = (strategyIdx > 0);
+            wasHostMemory = (memoryProperties & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) != 0;
             
             try {
                 uint32_t memoryTypeIndex;
                 if (memoryProperties == 0) {
-                    // Find any compatible memory type
                     memoryTypeIndex = findAnyCompatibleMemoryType(memRequirements.memoryTypeBits);
                 } else {
                     memoryTypeIndex = VulkanUtils::findMemoryType(context->getPhysicalDevice(), vk, 
@@ -669,37 +793,30 @@ bool FrameGraph::createVulkanImage(FrameGraphImage& image) {
                 if (allocResult == VK_SUCCESS) {
                     image.memory = vulkan_raii::DeviceMemory(vkMemory, context);
                     
-                    // Bind memory
                     VkResult bindResult = vk.vkBindImageMemory(device, image.image.get(), image.memory.get(), 0);
                     if (bindResult == VK_SUCCESS) {
                         memoryAllocated = true;
-                        if (fallbackIdx > 0) {
-                            std::cerr << "FrameGraph: Image memory allocated with fallback strategy " 
-                                      << fallbackIdx << " (properties: 0x" << std::hex << memoryProperties << std::dec << ")" << std::endl;
-                        }
+                        usedMemoryProperties = memoryProperties;
                         break;
                     } else {
-                        std::cerr << "FrameGraph: Image memory bind failed, VkResult: " << bindResult << std::endl;
                         image.memory.reset();
                     }
-                } else {
-                    std::cerr << "FrameGraph: Memory allocation failed with properties 0x" << std::hex 
-                              << memoryProperties << std::dec << ", VkResult: " << allocResult << std::endl;
+                } else if (allocResult != VK_ERROR_OUT_OF_DEVICE_MEMORY && 
+                          allocResult != VK_ERROR_OUT_OF_HOST_MEMORY) {
+                    // Unexpected error - log and continue
+                    continue;
                 }
-            } catch (const std::exception& e) {
-                std::cerr << "FrameGraph: Memory type search failed: " << e.what() << std::endl;
+            } catch (const std::exception&) {
+                continue;
             }
         }
         
         if (!memoryAllocated) {
-            // Clean up failed attempt
             image.image.reset();
-            std::cerr << "FrameGraph: Image memory allocation failed for all fallback strategies (attempt " 
-                      << (retry + 1) << "/" << MAX_RETRIES << ")" << std::endl;
             continue;
         }
         
-        // Create image view if it's going to be used as texture/render target
+        // Create image view if needed
         if (image.usage & (VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT)) {
             VkImageViewCreateInfo viewInfo{};
             viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
@@ -715,9 +832,6 @@ bool FrameGraph::createVulkanImage(FrameGraphImage& image) {
             VkImageView vkImageView;
             VkResult viewResult = vk.vkCreateImageView(device, &viewInfo, nullptr, &vkImageView);
             if (viewResult != VK_SUCCESS) {
-                std::cerr << "FrameGraph: Image view creation failed (attempt " << (retry + 1) << "/" << MAX_RETRIES 
-                          << "), VkResult: " << viewResult << std::endl;
-                // Clean up and retry
                 image.memory.reset();
                 image.image.reset();
                 continue;
@@ -725,27 +839,48 @@ bool FrameGraph::createVulkanImage(FrameGraphImage& image) {
             image.view = vulkan_raii::ImageView(vkImageView, context);
         }
         
+        // Success
+        allocationTelemetry.recordSuccess(wasRetried, wasFallback, wasHostMemory);
+        
+        if (wasFallback) {
+            std::cerr << "[FrameGraph] PERFORMANCE WARNING: Image '" << image.debugName 
+                      << "' allocated with fallback memory (properties: 0x" << std::hex 
+                      << usedMemoryProperties << std::dec << ")" << std::endl;
+        }
+        
         return true;
     }
     
-    std::cerr << "FrameGraph: Image creation failed after all retry attempts" << std::endl;
+    // Complete failure
+    if (criticality == ResourceCriticality::Critical) {
+        allocationTelemetry.recordCriticalFailure();
+        std::cerr << "[FrameGraph] CRITICAL FAILURE: Unable to allocate critical image '" 
+                  << image.debugName << "' - system performance will be severely degraded" << std::endl;
+    }
+    
     return false;
 }
 
-uint32_t FrameGraph::findAnyCompatibleMemoryType(uint32_t typeFilter) const {
-    const auto& vk = context->getLoader();
+void FrameGraph::logAllocationTelemetry() const {
+    if (allocationTelemetry.totalAttempts == 0) return;
     
-    VkPhysicalDeviceMemoryProperties memProperties;
-    vk.vkGetPhysicalDeviceMemoryProperties(context->getPhysicalDevice(), &memProperties);
+    std::cout << "[FrameGraph] Allocation Telemetry Report:" << std::endl;
+    std::cout << "  Total attempts: " << allocationTelemetry.totalAttempts << std::endl;
+    std::cout << "  Successful: " << allocationTelemetry.successfulCreations << std::endl;
+    std::cout << "  Retry rate: " << (allocationTelemetry.getRetryRate() * 100.0f) << "%" << std::endl;
+    std::cout << "  Fallback rate: " << (allocationTelemetry.getFallbackRate() * 100.0f) << "%" << std::endl;
+    std::cout << "  Host memory rate: " << (allocationTelemetry.getHostMemoryRate() * 100.0f) << "%" << std::endl;
+    std::cout << "  Critical failures: " << allocationTelemetry.criticalResourceFailures << std::endl;
     
-    // Find first compatible memory type
-    for (uint32_t i = 0; i < memProperties.memoryTypeCount; i++) {
-        if (typeFilter & (1 << i)) {
-            return i;
-        }
+    // Performance impact warnings
+    if (allocationTelemetry.getHostMemoryRate() > 0.1f) {
+        std::cerr << "[FrameGraph] WARNING: >10% of allocations using host memory - GPU performance impacted" << std::endl;
     }
     
-    throw std::runtime_error("No compatible memory type found for fallback allocation!");
+    if (allocationTelemetry.criticalResourceFailures > 0) {
+        std::cerr << "[FrameGraph] CRITICAL: " << allocationTelemetry.criticalResourceFailures 
+                  << " critical resource allocation failures detected" << std::endl;
+    }
 }
 
 bool FrameGraph::buildDependencyGraph() {
