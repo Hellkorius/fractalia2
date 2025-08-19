@@ -31,9 +31,52 @@ public:
         VkBuffer buffer;  // Keep raw handle for compatibility
         VkDeviceSize offset;
         VkDeviceSize size;
+        
+        // Validity check
+        bool isValid() const { return mappedData != nullptr && buffer != VK_NULL_HANDLE; }
+    };
+    
+    // RAII wrapper for staging region allocation
+    class StagingRegionGuard {
+    public:
+        StagingRegionGuard(StagingRingBuffer* buffer, VkDeviceSize size, VkDeviceSize alignment = 1)
+            : stagingBuffer(buffer), region(buffer ? buffer->allocate(size, alignment) : StagingRegion{}) {}
+        
+        ~StagingRegionGuard() = default; // Ring buffer manages its own memory
+        
+        StagingRegionGuard(const StagingRegionGuard&) = delete;
+        StagingRegionGuard& operator=(const StagingRegionGuard&) = delete;
+        
+        StagingRegionGuard(StagingRegionGuard&& other) noexcept 
+            : stagingBuffer(other.stagingBuffer), region(other.region) {
+            other.stagingBuffer = nullptr;
+            other.region = {};
+        }
+        
+        StagingRegionGuard& operator=(StagingRegionGuard&& other) noexcept {
+            if (this != &other) {
+                stagingBuffer = other.stagingBuffer;
+                region = other.region;
+                other.stagingBuffer = nullptr;
+                other.region = {};
+            }
+            return *this;
+        }
+        
+        const StagingRegion& get() const { return region; }
+        bool isValid() const { return region.isValid(); }
+        
+        // Access operators
+        const StagingRegion* operator->() const { return &region; }
+        const StagingRegion& operator*() const { return region; }
+        
+    private:
+        StagingRingBuffer* stagingBuffer;
+        StagingRegion region;
     };
     
     StagingRegion allocate(VkDeviceSize size, VkDeviceSize alignment = 1);
+    StagingRegionGuard allocateGuarded(VkDeviceSize size, VkDeviceSize alignment = 1);
     void reset(); // Reset to beginning of ring buffer
     
     // Getter for buffer handle

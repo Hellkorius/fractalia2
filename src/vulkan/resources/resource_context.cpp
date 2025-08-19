@@ -131,6 +131,10 @@ StagingRingBuffer::StagingRegion StagingRingBuffer::allocate(VkDeviceSize size, 
     return region;
 }
 
+StagingRingBuffer::StagingRegionGuard StagingRingBuffer::allocateGuarded(VkDeviceSize size, VkDeviceSize alignment) {
+    return StagingRegionGuard(this, size, alignment);
+}
+
 void StagingRingBuffer::reset() {
     currentOffset = 0;
 }
@@ -496,12 +500,27 @@ CommandExecutor::AsyncTransfer ResourceContext::copyToBufferAsync(const Resource
     } else {
         // Use staging buffer with async transfer
         auto stagingRegion = stagingBuffer.allocate(size);
+        if (!stagingRegion.mappedData) {
+            // Try to reset and allocate again
+            stagingBuffer.reset();
+            stagingRegion = stagingBuffer.allocate(size);
+        }
+        
         if (stagingRegion.mappedData) {
             memcpy(stagingRegion.mappedData, data, size);
-            return executor.copyBufferToBufferAsync(
+            
+            // Important: Create proper AsyncTransfer with staging region tracking
+            auto asyncTransfer = executor.copyBufferToBufferAsync(
                 stagingRegion.buffer, dst.buffer.get(), size, 
                 stagingRegion.offset, offset
             );
+            
+            // Note: staging region will be valid until next stagingBuffer.reset()
+            // The transfer must complete before the next reset cycle
+            return asyncTransfer;
+        } else {
+            std::cerr << "ResourceContext::copyToBufferAsync: Failed to allocate staging buffer for " 
+                      << size << " bytes" << std::endl;
         }
     }
     

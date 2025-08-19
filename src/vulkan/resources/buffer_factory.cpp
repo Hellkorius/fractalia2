@@ -210,23 +210,33 @@ void BufferFactory::copyToBuffer(const ResourceHandle& dst, const void* data, Vk
                 // Reset staging buffer and try again
                 stagingBuffer->reset();
                 stagingRegion = stagingBuffer->allocate(chunkSize);
+                
+                // If still no space, try with smaller chunk
+                if (!stagingRegion.mappedData && chunkSize > 1024) {
+                    chunkSize = std::min(chunkSize / 2, static_cast<VkDeviceSize>(1024 * 1024)); // Try with 1MB max
+                    stagingRegion = stagingBuffer->allocate(chunkSize);
+                }
             }
             
             if (stagingRegion.mappedData) {
                 memcpy(stagingRegion.mappedData, static_cast<const char*>(data) + currentOffset, chunkSize);
-                // Use synchronous transfer to ensure data is available before returning
+                
+                // Create staging handle with proper ownership management
                 ResourceHandle stagingHandle;
                 stagingHandle.buffer = vulkan_raii::make_buffer(stagingRegion.buffer, context);
                 stagingHandle.buffer.detach(); // Don't own the buffer - staging buffer manages it
                 stagingHandle.mappedData = stagingRegion.mappedData;
                 stagingHandle.size = chunkSize;
                 
+                // Synchronous transfer to ensure completion before moving to next chunk
                 copyBufferToBuffer(stagingHandle, dst, chunkSize, stagingRegion.offset, offset + currentOffset);
                 
                 remaining -= chunkSize;
                 currentOffset += chunkSize;
             } else {
-                std::cerr << "BufferFactory::copyToBuffer: Failed to allocate staging buffer for chunk of size " << chunkSize << std::endl;
+                std::cerr << "BufferFactory::copyToBuffer: Failed to allocate staging buffer for chunk of size " 
+                          << chunkSize << " bytes. Remaining: " << remaining << " bytes" << std::endl;
+                // Break to prevent infinite loop
                 break;
             }
         }

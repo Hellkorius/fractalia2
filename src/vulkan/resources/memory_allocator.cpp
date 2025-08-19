@@ -3,6 +3,7 @@
 #include "../core/vulkan_function_loader.h"
 #include <iostream>
 #include <stdexcept>
+#include <algorithm>
 
 // Simple VMA allocator replacement using manual allocation
 struct VmaAllocator_Impl {
@@ -61,6 +62,16 @@ MemoryAllocator::AllocationInfo MemoryAllocator::allocateMemory(VkMemoryRequirem
     allocation.size = requirements.size;
     allocation.memoryTypeIndex = memoryType;
     
+    // Track allocation in VMA wrapper for proper cleanup
+    if (allocator) {
+        VmaAllocator_Impl::Allocation vmaAlloc;
+        vmaAlloc.memory = allocation.memory;
+        vmaAlloc.offset = 0;
+        vmaAlloc.size = requirements.size;
+        vmaAlloc.mappedData = nullptr;
+        allocator->allocations.push_back(vmaAlloc);
+    }
+    
     // Update stats
     memoryStats.totalAllocated += requirements.size;
     memoryStats.activeAllocations++;
@@ -73,6 +84,18 @@ void MemoryAllocator::freeMemory(const AllocationInfo& allocation) {
     
     if (allocation.mappedData) {
         context->getLoader().vkUnmapMemory(context->getDevice(), allocation.memory);
+    }
+    
+    // Remove from VMA tracking before freeing
+    if (allocator) {
+        auto& allocations = allocator->allocations;
+        allocations.erase(
+            std::remove_if(allocations.begin(), allocations.end(),
+                [&allocation](const VmaAllocator_Impl::Allocation& alloc) {
+                    return alloc.memory == allocation.memory;
+                }),
+            allocations.end()
+        );
     }
     
     context->getLoader().vkFreeMemory(context->getDevice(), allocation.memory, nullptr);
@@ -104,6 +127,7 @@ uint32_t MemoryAllocator::findMemoryType(uint32_t typeFilter, VkMemoryPropertyFl
     VkPhysicalDeviceMemoryProperties memProperties;
     context->getLoader().vkGetPhysicalDeviceMemoryProperties(context->getPhysicalDevice(), &memProperties);
     
+    // First pass: exact match
     for (uint32_t i = 0; i < memProperties.memoryTypeCount; i++) {
         if ((typeFilter & (1 << i)) && 
             (memProperties.memoryTypes[i].propertyFlags & properties) == properties) {
@@ -111,7 +135,26 @@ uint32_t MemoryAllocator::findMemoryType(uint32_t typeFilter, VkMemoryPropertyFl
         }
     }
     
-    throw std::runtime_error("Failed to find suitable memory type!");
+    // Second pass: fallback to compatible memory type with required properties
+    for (uint32_t i = 0; i < memProperties.memoryTypeCount; i++) {
+        if ((typeFilter & (1 << i)) && 
+            (memProperties.memoryTypes[i].propertyFlags & properties) != 0) {
+            std::cerr << "Warning: Using fallback memory type " << i 
+                      << " (requested properties not fully supported)" << std::endl;
+            return i;
+        }
+    }
+    
+    // Final fallback: any valid memory type from filter
+    for (uint32_t i = 0; i < memProperties.memoryTypeCount; i++) {
+        if (typeFilter & (1 << i)) {
+            std::cerr << "Warning: Using basic fallback memory type " << i 
+                      << " (properties may not match requirements)" << std::endl;
+            return i;
+        }
+    }
+    
+    throw std::runtime_error("Failed to find any suitable memory type!");
 }
 
 bool MemoryAllocator::initializeVMA() {
