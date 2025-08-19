@@ -196,6 +196,9 @@ int main(int argc, char* argv[]) {
         
         {
             PROFILE_SCOPE("Input Cleanup");
+            // Input cleanup is handled by InputService internally during processFrame
+            // This ensures proper service encapsulation
+            // Note: Frame state clearing is still needed for backward compatibility
             auto inputEntity = world.lookup("InputManager");
             if (inputEntity.is_valid()) {
                 auto* keyboard = inputEntity.get_mut<KeyboardInput>();

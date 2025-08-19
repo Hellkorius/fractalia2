@@ -1,5 +1,7 @@
 #include "input_system.h"
 #include "camera_system.h"
+#include "../core/service_locator.h"
+#include "../services/camera_service.h"
 #include <iostream>
 
 // Static InputContext instance owned by InputManager
@@ -210,8 +212,9 @@ namespace InputManager {
             screenSize = glm::vec2(static_cast<float>(width), static_cast<float>(height));
         }
         
-        // Use camera system for proper screen-to-world transformation
-        glm::vec2 worldPos = CameraManager::screenToWorld(world, screenPos, screenSize);
+        // Use camera service for proper screen-to-world transformation
+        auto cameraService = ServiceLocator::instance().getService<CameraService>();
+        glm::vec2 worldPos = cameraService->screenToWorld(glm::vec3(screenPos, 0.0f), screenSize);
         return worldPos;
     }
 }

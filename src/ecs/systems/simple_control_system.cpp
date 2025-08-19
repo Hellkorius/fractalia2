@@ -2,6 +2,8 @@
 #include "input_system.h"
 #include "systems_common.h"
 #include "../../graphicstests.h"
+#include "../core/service_locator.h"
+#include "../services/input_service.h"
 #include <SDL3/SDL.h>
 
 namespace SimpleControlSystem {
@@ -35,56 +37,51 @@ namespace SimpleControlSystem {
             .run([](flecs::iter& it) {
                 auto* controlState = it.world().get_mut<ControlState>();
                 auto* appState = it.world().get_mut<ApplicationState>();
-                auto inputEntity = it.world().lookup("InputManager");
                 
-                if (!controlState || !appState || !inputEntity.is_valid()) {
+                if (!controlState || !appState) {
                     return;
                 }
                 
-                auto* keyboard = inputEntity.get<KeyboardInput>();
-                auto* mouse = inputEntity.get<MouseInput>();
-                
-                if (!keyboard || !mouse) {
-                    return;
-                }
+                // Get input service for cleaner input access
+                auto inputService = ServiceLocator::instance().getService<InputService>();
                 
                 // Application controls
-                if (keyboard->isKeyPressed(SDL_SCANCODE_ESCAPE)) {
+                if (inputService->isKeyPressed(SDL_SCANCODE_ESCAPE)) {
                     appState->requestQuit = true;
                     appState->running = false;
                 }
                 
                 // Entity creation controls - use frame-based detection to prevent flooding
-                if (keyboard->isKeyPressed(SDL_SCANCODE_EQUALS) || 
-                    keyboard->isKeyPressed(SDL_SCANCODE_KP_PLUS)) {
+                if (inputService->isKeyPressed(SDL_SCANCODE_EQUALS) || 
+                    inputService->isKeyPressed(SDL_SCANCODE_KP_PLUS)) {
                     controlState->requestSwarmCreation = true;
                 }
                 
-                if (mouse->isButtonPressed(0)) {
+                if (inputService->isMouseButtonPressed(0)) {
                     controlState->requestEntityCreation = true;
-                    controlState->entityCreationPos = mouse->worldPosition;
+                    controlState->entityCreationPos = inputService->getMouseWorldPosition();
                 }
                 
                 // Movement type is fixed to random walk - no switching needed
                 
                 // Performance stats - frame-based
-                if (keyboard->isKeyPressed(SDL_SCANCODE_P)) {
+                if (inputService->isKeyPressed(SDL_SCANCODE_P)) {
                     controlState->requestPerformanceStats = true;
                 }
                 
                 // System scheduler performance report
-                if (keyboard->isKeyPressed(SDL_SCANCODE_I)) {
+                if (inputService->isKeyPressed(SDL_SCANCODE_I)) {
                     controlState->requestSystemSchedulerStats = true;
                 }
                 
                 // Quick stats with minus key
-                if (keyboard->isKeyPressed(SDL_SCANCODE_MINUS) || 
-                    keyboard->isKeyPressed(SDL_SCANCODE_KP_MINUS)) {
+                if (inputService->isKeyPressed(SDL_SCANCODE_MINUS) || 
+                    inputService->isKeyPressed(SDL_SCANCODE_KP_MINUS)) {
                     controlState->requestPerformanceStats = true;
                 }
                 
                 // Graphics tests with T key
-                if (keyboard->isKeyPressed(SDL_SCANCODE_T)) {
+                if (inputService->isKeyPressed(SDL_SCANCODE_T)) {
                     controlState->requestGraphicsTests = true;
                 }
                 

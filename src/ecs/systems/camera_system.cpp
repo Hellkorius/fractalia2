@@ -1,41 +1,43 @@
 #include "camera_system.h"
 #include "input_system.h"
 #include "../camera_component.h"
+#include "../core/service_locator.h"
+#include "../services/input_service.h"
 #include <iostream>
 
 // Camera control system - processes input and updates camera
 void camera_control_system(flecs::entity e, Camera& camera, const float dt) {
-    flecs::world world = e.world();
+    // Get input service for camera controls
+    auto inputService = ServiceLocator::instance().getService<InputService>();
     
-    // Get input state for camera controls
     glm::vec3 moveDelta{0.0f};
     float zoomDelta = 1.0f;
     float rotationDelta = 0.0f;
     
     // WASD movement
-    if (InputQuery::isKeyDown(world, SDL_SCANCODE_W)) {
+    if (inputService->isKeyDown(SDL_SCANCODE_W)) {
         moveDelta.y += camera.moveSpeed * dt;
     }
-    if (InputQuery::isKeyDown(world, SDL_SCANCODE_S)) {
+    if (inputService->isKeyDown(SDL_SCANCODE_S)) {
         moveDelta.y -= camera.moveSpeed * dt;
     }
-    if (InputQuery::isKeyDown(world, SDL_SCANCODE_A)) {
+    if (inputService->isKeyDown(SDL_SCANCODE_A)) {
         moveDelta.x -= camera.moveSpeed * dt;
     }
-    if (InputQuery::isKeyDown(world, SDL_SCANCODE_D)) {
+    if (inputService->isKeyDown(SDL_SCANCODE_D)) {
         moveDelta.x += camera.moveSpeed * dt;
     }
     
     // Q/E for up/down movement
-    if (InputQuery::isKeyDown(world, SDL_SCANCODE_Q)) {
+    if (inputService->isKeyDown(SDL_SCANCODE_Q)) {
         moveDelta.z += camera.moveSpeed * dt;
     }
-    if (InputQuery::isKeyDown(world, SDL_SCANCODE_E)) {
+    if (inputService->isKeyDown(SDL_SCANCODE_E)) {
         moveDelta.z -= camera.moveSpeed * dt;
     }
     
     // Mouse wheel for zoom
-    glm::vec2 wheelDelta = InputQuery::getMouseWheelDelta(world);
+    glm::vec2 wheelDelta = inputService->getMouseWheelDelta();
     if (wheelDelta.y != 0.0f) {
         float zoomFactor = 1.0f + (camera.zoomSpeed * wheelDelta.y * dt);
         zoomDelta = zoomFactor;
@@ -43,20 +45,20 @@ void camera_control_system(flecs::entity e, Camera& camera, const float dt) {
     
     // Shift for speed boost
     float speedMultiplier = 1.0f;
-    if (InputQuery::isKeyDown(world, SDL_SCANCODE_LSHIFT) || InputQuery::isKeyDown(world, SDL_SCANCODE_RSHIFT)) {
+    if (inputService->isKeyDown(SDL_SCANCODE_LSHIFT) || inputService->isKeyDown(SDL_SCANCODE_RSHIFT)) {
         speedMultiplier = 2.5f;
     }
     
     // Ctrl for precision mode
-    if (InputQuery::isKeyDown(world, SDL_SCANCODE_LCTRL) || InputQuery::isKeyDown(world, SDL_SCANCODE_RCTRL)) {
+    if (inputService->isKeyDown(SDL_SCANCODE_LCTRL) || inputService->isKeyDown(SDL_SCANCODE_RCTRL)) {
         speedMultiplier = 0.25f;
     }
     
     // R/T for rotation
-    if (InputQuery::isKeyDown(world, SDL_SCANCODE_R)) {
+    if (inputService->isKeyDown(SDL_SCANCODE_R)) {
         rotationDelta += camera.rotationSpeed * dt;
     }
-    if (InputQuery::isKeyDown(world, SDL_SCANCODE_T)) {
+    if (inputService->isKeyDown(SDL_SCANCODE_T)) {
         rotationDelta -= camera.rotationSpeed * dt;
     }
     
@@ -90,7 +92,7 @@ void camera_control_system(flecs::entity e, Camera& camera, const float dt) {
     }
     
     // Reset camera with SPACE key
-    if (InputQuery::isKeyPressed(world, SDL_SCANCODE_SPACE)) {
+    if (inputService->isKeyPressed(SDL_SCANCODE_SPACE)) {
         camera.setPosition(glm::vec3(0.0f, 0.0f, 0.0f));
         camera.setZoom(1.0f);
         camera.setRotation(0.0f);
@@ -98,7 +100,7 @@ void camera_control_system(flecs::entity e, Camera& camera, const float dt) {
     }
     
     // Debug: Print camera info on C key press
-    if (InputQuery::isKeyPressed(world, SDL_SCANCODE_C)) {
+    if (inputService->isKeyPressed(SDL_SCANCODE_C)) {
         std::cout << "Camera - Position: (" << camera.position.x << ", " << camera.position.y << ", " << camera.position.z << ")"
                   << " Zoom: " << camera.zoom
                   << " Rotation: " << glm::degrees(camera.rotation) << "°" << std::endl;
