@@ -125,7 +125,7 @@ namespace SimpleControlSystem {
                 DEBUG_LOG("Adding " << SystemConstants::DEFAULT_ENTITY_BATCH_SIZE << " more GPU entities...");
                 auto newEntities = entityFactory.createSwarm(SystemConstants::DEFAULT_ENTITY_BATCH_SIZE, glm::vec3(15.0f, 15.0f, 0.0f), 8.0f);
                 gpuManager->addEntitiesFromECS(newEntities);
-                renderer.uploadPendingGPUEntities();
+                gpuManager->uploadPendingEntities();
                 DEBUG_LOG("Total GPU entities now: " << gpuManager->getEntityCount());
             } else {
                 DEBUG_LOG("Cannot add more entities - limit reached (" << currentCount << "/" << maxEntities << ")");
@@ -147,7 +147,7 @@ namespace SimpleControlSystem {
             if (mouseEntity.is_valid()) {
                 std::vector<Entity> entityVec = {mouseEntity};
                 gpuManager->addEntitiesFromECS(entityVec);
-                renderer.uploadPendingGPUEntities();
+                gpuManager->uploadPendingEntities();
                 DEBUG_LOG("Created GPU entity with movement pattern");
             }
         }

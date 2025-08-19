@@ -108,8 +108,9 @@ int main(int argc, char* argv[]) {
         8.0f
     );
     
-    renderer.getGPUEntityManager()->addEntitiesFromECS(swarmEntities);
-    renderer.uploadPendingGPUEntities();
+    auto* gpuEntityManager = renderer.getGPUEntityManager();
+    gpuEntityManager->addEntitiesFromECS(swarmEntities);
+    gpuEntityManager->uploadPendingEntities();
     
     DEBUG_LOG("Created " << swarmEntities.size() << " GPU entities!");
     

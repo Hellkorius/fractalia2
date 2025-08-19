@@ -31,6 +31,8 @@ class CommandSubmissionService;
 class FrameGraphResourceRegistry;
 class GPUSynchronizationService;
 class PresentationSurface;
+class FrameStateManager;
+class ErrorRecoveryService;
 
 class VulkanRenderer {
 public:
@@ -43,14 +45,8 @@ public:
     void drawFrame();
     
     
-    bool validateEntityCapacity(uint32_t entityCount, const char* source = "unknown") const;
-    
-    // GPU entity buffer testing
-    bool testBufferOverflowProtection() const;
-    
     // GPU entity management
     GPUEntityManager* getGPUEntityManager() { return gpuEntityManager.get(); }
-    void uploadPendingGPUEntities();
     void setDeltaTime(float deltaTime) { 
         this->deltaTime = deltaTime; 
         clampedDeltaTime = deltaTime;  // Update static member for global access
@@ -77,7 +73,6 @@ private:
     // Removed duplicate MAX_FRAMES_IN_FLIGHT - using public constant
     uint32_t currentFrame = 0;
     bool framebufferResized = false;
-    bool recreationInProgress = false;
 
     // Core Vulkan modules
     std::unique_ptr<VulkanContext> context;
@@ -100,16 +95,14 @@ private:
     std::unique_ptr<FrameGraphResourceRegistry> resourceRegistry;
     std::unique_ptr<GPUSynchronizationService> syncService;
     std::unique_ptr<PresentationSurface> presentationSurface;
+    std::unique_ptr<FrameStateManager> frameStateManager;
+    std::unique_ptr<ErrorRecoveryService> errorRecoveryService;
 
 
     // Helper functions
     bool initializeModularArchitecture();
     void cleanupModularArchitecture();
     void drawFrameModular();
-    
-    // Error handling and validation
-    bool validateInitializationState() const;
-    bool attemptSwapchainRecreation();
     
     // Logging helpers
     void logFrameSuccessIfNeeded(const char* operation);

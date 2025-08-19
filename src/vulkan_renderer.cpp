@@ -14,6 +14,8 @@
 #include "vulkan/rendering/frame_graph_resource_registry.h"
 #include "vulkan/services/gpu_synchronization_service.h"
 #include "vulkan/services/presentation_surface.h"
+#include "vulkan/services/frame_state_manager.h"
+#include "vulkan/services/error_recovery_service.h"
 #include "vulkan/pipelines/pipeline_system_manager.h"
 #include "ecs/gpu_entity_manager.h"
 #include "ecs/component.h"
@@ -206,8 +208,8 @@ bool VulkanRenderer::initialize(SDL_Window* window) {
     }
     
     // Final validation - ensure all critical components are available
-    if (!validateInitializationState()) {
-        std::cerr << "Initialization state validation failed" << std::endl;
+    if (!frameDirector || !submissionService || !frameStateManager || !errorRecoveryService) {
+        std::cerr << "Initialization state validation failed - missing critical services" << std::endl;
         cleanup();
         return false;
     }
@@ -353,11 +355,19 @@ bool VulkanRenderer::initializeModularArchitecture() {
         return false;
     }
     
+    frameStateManager = std::make_unique<FrameStateManager>();
+    frameStateManager->initialize();
+    
+    errorRecoveryService = std::make_unique<ErrorRecoveryService>();
+    errorRecoveryService->initialize(presentationSurface.get());
+    
     std::cout << "Modular architecture initialized successfully" << std::endl;
     return true;
 }
 
 void VulkanRenderer::cleanupModularArchitecture() {
+    errorRecoveryService.reset();
+    frameStateManager.reset();
     submissionService.reset();
     frameDirector.reset();
     presentationSurface.reset();
@@ -367,41 +377,27 @@ void VulkanRenderer::cleanupModularArchitecture() {
 }
 
 void VulkanRenderer::drawFrameModular() {
-    // Wait for previous frame GPU work to complete
-    // Use VulkanSync fences directly (same system CommandSubmissionService uses)
-    VkFence computeFence = sync->getComputeFence(currentFrame);
-    VkFence graphicsFence = sync->getInFlightFence(currentFrame);
-    
-    const auto& vk = context->getLoader();
-    const VkDevice device = context->getDevice();
-    
-    // Optimization: Only wait for fences that were actually used in the previous frame
-    // Track which command buffers were used from the previous execution
-    static bool previousComputeUsed = true;  // Initialize to true for safety on first frame
-    static bool previousGraphicsUsed = true;
-    
-    std::vector<VkFence> fencesToWait;
-    fencesToWait.reserve(2);
-    
-    if (previousComputeUsed) {
-        fencesToWait.push_back(computeFence);
-    }
-    if (previousGraphicsUsed) {
-        fencesToWait.push_back(graphicsFence);
-    }
-    
-    // Wait only for the fences that are actually needed
-    if (!fencesToWait.empty()) {
-        VkResult waitResult = vk.vkWaitForFences(device, static_cast<uint32_t>(fencesToWait.size()), 
-                                                fencesToWait.data(), VK_TRUE, UINT64_MAX);
-        if (waitResult != VK_SUCCESS) {
-            std::cerr << "VulkanRenderer: Failed to wait for GPU fences: " << waitResult << std::endl;
-            return;
+    // Wait for previous frame GPU work to complete using FrameStateManager
+    if (frameStateManager && frameStateManager->hasActiveFences(currentFrame)) {
+        auto fencesToWait = frameStateManager->getFencesToWait(currentFrame, sync.get());
+        
+        if (!fencesToWait.empty()) {
+            const auto& vk = context->getLoader();
+            const VkDevice device = context->getDevice();
+            
+            VkResult waitResult = vk.vkWaitForFences(device, static_cast<uint32_t>(fencesToWait.size()), 
+                                                    fencesToWait.data(), VK_TRUE, UINT64_MAX);
+            if (waitResult != VK_SUCCESS) {
+                std::cerr << "VulkanRenderer: Failed to wait for GPU fences: " << waitResult << std::endl;
+                return;
+            }
         }
     }
     
     // Upload pending GPU entities
-    uploadPendingGPUEntities();
+    if (gpuEntityManager && gpuEntityManager->hasPendingUploads()) {
+        gpuEntityManager->uploadPendingEntities();
+    }
     
     // Orchestrate the frame
     auto frameResult = frameDirector->directFrame(
@@ -413,44 +409,11 @@ void VulkanRenderer::drawFrameModular() {
     );
     
     if (!frameResult.success) {
-        std::cerr << "VulkanRenderer: Frame " << frameCounter << " FAILED in frameDirector->directFrame()" << std::endl;
-        
-        // Proactive swapchain recreation - check for common failure conditions
-        bool shouldRecreate = false;
-        const char* recreationReason = nullptr;
-        
-        if (presentationSurface && presentationSurface->isFramebufferResized() && !recreationInProgress) {
-            shouldRecreate = true;
-            recreationReason = "framebuffer resize detected";
+        RenderFrameResult retryResult = {};
+        if (errorRecoveryService && errorRecoveryService->handleFrameFailure(
+            frameResult, frameDirector.get(), currentFrame, totalTime, deltaTime, frameCounter, world, retryResult)) {
+            frameResult = retryResult;
         } else {
-            // For now, attempt recreation on any frame failure as a fallback
-            shouldRecreate = true;
-            recreationReason = "general frame failure (proactive recovery)";
-        }
-        
-        if (shouldRecreate) {
-            std::cout << "VulkanRenderer: Initiating proactive swapchain recreation due to: " << recreationReason << std::endl;
-            if (attemptSwapchainRecreation()) {
-                std::cout << "VulkanRenderer: Swapchain recreation successful, retrying frame" << std::endl;
-                // Retry the frame immediately after successful recreation
-                if (frameDirector) {
-                    frameResult = frameDirector->directFrame(currentFrame, totalTime, deltaTime, frameCounter, world);
-                    if (frameResult.success) {
-                        std::cout << "VulkanRenderer: Frame retry after swapchain recreation succeeded" << std::endl;
-                    } else {
-                        std::cerr << "VulkanRenderer: Frame retry after swapchain recreation still failed" << std::endl;
-                        return;
-                    }
-                } else {
-                    std::cerr << "VulkanRenderer: Frame director unavailable for retry" << std::endl;
-                    return;
-                }
-            } else {
-                std::cerr << "VulkanRenderer: Swapchain recreation failed, skipping frame" << std::endl;
-                return;
-            }
-        } else {
-            std::cerr << "VulkanRenderer: Frame failure not related to swapchain, skipping frame" << std::endl;
             return;
         }
     } else {
@@ -475,11 +438,12 @@ void VulkanRenderer::drawFrameModular() {
         logFrameSuccessIfNeeded("Frame submission completed successfully");
     }
     
-    if ((submissionResult.swapchainRecreationNeeded || framebufferResized) && !recreationInProgress) {
+    if (submissionResult.swapchainRecreationNeeded || framebufferResized) {
         std::cout << "VulkanRenderer: SWAPCHAIN RECREATION INITIATED - Frame " << frameCounter << std::endl;
         
-        if (attemptSwapchainRecreation()) {
+        if (presentationSurface && presentationSurface->recreateSwapchain()) {
             std::cout << "VulkanRenderer: SWAPCHAIN RECREATION COMPLETED - Next frames should render normally" << std::endl;
+            framebufferResized = false;  // Reset the flag
         } else {
             std::cerr << "VulkanRenderer: CRITICAL ERROR - Swapchain recreation FAILED" << std::endl;
         }
@@ -496,11 +460,14 @@ void VulkanRenderer::drawFrameModular() {
         }
     }
     
-    // Update fence tracking for next frame optimization
+    // Update frame state tracking for next frame optimization
     // Only update if frame was successful to avoid tracking invalid state
-    if (frameResult.success && submissionResult.success) {
-        previousComputeUsed = frameResult.executionResult.computeCommandBufferUsed;
-        previousGraphicsUsed = frameResult.executionResult.graphicsCommandBufferUsed;
+    if (frameResult.success && submissionResult.success && frameStateManager) {
+        frameStateManager->updateFrameState(
+            currentFrame,
+            frameResult.executionResult.computeCommandBufferUsed,
+            frameResult.executionResult.graphicsCommandBufferUsed
+        );
     }
     
     totalTime += deltaTime;
@@ -508,37 +475,6 @@ void VulkanRenderer::drawFrameModular() {
     currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
 }
 
-// ========== LEGACY METHOD IMPLEMENTATIONS ==========
-
-void VulkanRenderer::uploadPendingGPUEntities() {
-    if (gpuEntityManager && gpuEntityManager->hasPendingUploads()) {
-        gpuEntityManager->uploadPendingEntities();
-    }
-}
-
-bool VulkanRenderer::validateEntityCapacity(uint32_t entityCount, const char* source) const {
-    if (!gpuEntityManager) return false;
-    
-    uint32_t maxCapacity = gpuEntityManager->getMaxEntities();
-    if (entityCount > maxCapacity) {
-        std::cerr << "VulkanRenderer: " << source << " requested " << entityCount 
-                  << " entities, but max capacity is " << maxCapacity << std::endl;
-        return false;
-    }
-    return true;
-}
-
-bool VulkanRenderer::testBufferOverflowProtection() const {
-    if (!gpuEntityManager) return false;
-    
-    uint32_t gpuEntityCount = gpuEntityManager->getEntityCount();
-    uint32_t maxGpuEntities = gpuEntityManager->getMaxEntities();
-    
-    std::cout << "Buffer overflow protection test:" << std::endl;
-    std::cout << "GPU entities: " << gpuEntityCount << "/" << maxGpuEntities << std::endl;
-    
-    return gpuEntityCount <= maxGpuEntities;
-}
 
 void VulkanRenderer::updateAspectRatio(int windowWidth, int windowHeight) {
     if (world) {
@@ -547,105 +483,9 @@ void VulkanRenderer::updateAspectRatio(int windowWidth, int windowHeight) {
 }
 
 void VulkanRenderer::setFramebufferResized(bool resized) {
+    framebufferResized = resized;
     if (presentationSurface) {
         presentationSurface->setFramebufferResized(resized);
-    }
-}
-
-bool VulkanRenderer::validateInitializationState() const {
-    // Validate core Vulkan components
-    if (!context || !context->getDevice()) {
-        std::cerr << "VulkanRenderer: Invalid Vulkan context or device" << std::endl;
-        return false;
-    }
-    
-    if (!swapchain) {
-        std::cerr << "VulkanRenderer: Missing swapchain" << std::endl;
-        return false;
-    }
-    
-    if (!pipelineSystem) {
-        std::cerr << "VulkanRenderer: Missing pipeline system" << std::endl;
-        return false;
-    }
-    
-    if (!sync) {
-        std::cerr << "VulkanRenderer: Missing synchronization objects" << std::endl;
-        return false;
-    }
-    
-    if (!queueManager) {
-        std::cerr << "VulkanRenderer: Missing queue manager" << std::endl;
-        return false;
-    }
-    
-    if (!resourceContext) {
-        std::cerr << "VulkanRenderer: Missing resource context" << std::endl;
-        return false;
-    }
-    
-    if (!gpuEntityManager) {
-        std::cerr << "VulkanRenderer: Missing GPU entity manager" << std::endl;
-        return false;
-    }
-    
-    // Validate modular architecture components
-    if (!frameGraph) {
-        std::cerr << "VulkanRenderer: Missing frame graph" << std::endl;
-        return false;
-    }
-    
-    if (!frameDirector) {
-        std::cerr << "VulkanRenderer: Missing frame director" << std::endl;
-        return false;
-    }
-    
-    if (!submissionService) {
-        std::cerr << "VulkanRenderer: Missing submission service" << std::endl;
-        return false;
-    }
-    
-    if (!presentationSurface) {
-        std::cerr << "VulkanRenderer: Missing presentation surface" << std::endl;
-        return false;
-    }
-    
-    return true;
-}
-
-bool VulkanRenderer::attemptSwapchainRecreation() {
-    if (!presentationSurface || recreationInProgress) {
-        return false;
-    }
-    
-    recreationInProgress = true;
-    
-    try {
-        // Wait for device to be idle before recreation
-        if (context && context->getDevice() != VK_NULL_HANDLE) {
-            const auto& vk = context->getLoader();
-            const VkDevice device = context->getDevice();
-            vk.vkDeviceWaitIdle(device);
-        }
-        
-        bool recreationSuccess = presentationSurface->recreateSwapchain();
-        if (recreationSuccess && frameDirector) {
-            frameDirector->resetSwapchainCache();
-            std::cout << "VulkanRenderer: Swapchain recreation and cache reset successful" << std::endl;
-        } else {
-            std::cerr << "VulkanRenderer: Swapchain recreation failed" << std::endl;
-            recreationInProgress = false;
-            return false;
-        }
-        
-        framebufferResized = false;
-        recreationInProgress = false;
-        return true;
-        
-    } catch (const std::exception& e) {
-        std::cerr << "VulkanRenderer: Exception during swapchain recreation: " << e.what() << std::endl;
-        recreationInProgress = false;
-        return false;
     }
 }
 
@@ -654,13 +494,8 @@ void VulkanRenderer::logFrameSuccessIfNeeded(const char* operation) {
     static uint32_t lastRecreationFrame = 0;
     static uint32_t framesAfterRecreation = 0;
     
-    if (recreationInProgress || (frameCounter - lastRecreationFrame <= 10 && lastRecreationFrame > 0)) {
-        if (recreationInProgress) {
-            lastRecreationFrame = frameCounter;
-            framesAfterRecreation = 0;
-        } else {
-            framesAfterRecreation = frameCounter - lastRecreationFrame;
-        }
+    if (frameCounter - lastRecreationFrame <= 10 && lastRecreationFrame > 0) {
+        framesAfterRecreation = frameCounter - lastRecreationFrame;
         
         std::cout << "VulkanRenderer: Frame " << frameCounter << " SUCCESS (+" << framesAfterRecreation 
                  << " frames post-resize) - " << operation << std::endl;
