@@ -166,8 +166,20 @@ bool GraphicsPipelineManager::recreatePipelineCache() {
         return false;
     }
     
+    if (isRecreating_) {
+        std::cerr << "GraphicsPipelineManager: Recreation already in progress, ignoring request" << std::endl;
+        return true; // Consider it successful to avoid error cascades
+    }
+    
+    isRecreating_ = true;
     std::cout << "GraphicsPipelineManager: Recreating pipeline cache to prevent corruption" << std::endl;
     
+    // Wait for device idle to ensure no pipelines are in use
+    const auto& vk = context->getLoader();
+    const VkDevice device = context->getDevice();
+    vk.vkDeviceWaitIdle(device);
+    
+    // Clear caches in dependency order
     clearCache();
     
     if (layoutManager_) {
@@ -175,11 +187,13 @@ bool GraphicsPipelineManager::recreatePipelineCache() {
         layoutManager_->clearCache();
     }
     
+    // Reset pipeline cache
     if (pipelineCache_) {
         std::cout << "GraphicsPipelineManager: Destroying pipeline cache" << std::endl;
         pipelineCache_.reset();
     }
     
+    // Create new pipeline cache
     VkPipelineCacheCreateInfo cacheInfo{};
     cacheInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
     cacheInfo.initialDataSize = 0;
@@ -188,9 +202,11 @@ bool GraphicsPipelineManager::recreatePipelineCache() {
     pipelineCache_ = vulkan_raii::create_pipeline_cache(context, &cacheInfo);
     if (!pipelineCache_) {
         std::cerr << "GraphicsPipelineManager: CRITICAL FAILURE - Failed to recreate pipeline cache" << std::endl;
+        isRecreating_ = false;
         return false;
     }
     
+    isRecreating_ = false;
     std::cout << "GraphicsPipelineManager: Pipeline cache successfully recreated" << std::endl;
     return true;
 }

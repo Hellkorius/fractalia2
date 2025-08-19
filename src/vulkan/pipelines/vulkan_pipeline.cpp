@@ -75,31 +75,24 @@ void VulkanPipeline::cleanup() {
 void VulkanPipeline::cleanupBeforeContextDestruction() {
     if (!context) return;
     
-    // Cache loader and device references for performance
-    const auto& vk = context->getLoader();
-    const VkDevice device = context->getDevice();
-    
-    // Reset RAII wrappers (automatic cleanup)
+    // Reset all RAII wrappers in dependency order (automatic cleanup)
+    // Pipelines first (depend on layouts)
     graphicsPipeline.reset();
     computePipeline.reset();
+    
+    // Pipeline layouts (depend on descriptor layouts)
+    pipelineLayout.reset();
+    computePipelineLayout.reset();
     
     // Clean up cached pipeline layouts
     pipelineLayoutCache.clear();
     
-    // Clean up raw pipeline layouts (these aren't wrapped yet)
-    if (pipelineLayout != VK_NULL_HANDLE) {
-        vk.vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
-        pipelineLayout = VK_NULL_HANDLE;
-    }
-    if (computePipelineLayout != VK_NULL_HANDLE) {
-        vk.vkDestroyPipelineLayout(device, computePipelineLayout, nullptr);
-        computePipelineLayout = VK_NULL_HANDLE;
-    }
-    
-    // Reset RAII wrappers (automatic cleanup)
-    renderPass.reset();
+    // Descriptor layouts and render pass
     descriptorSetLayout.reset();
     computeDescriptorSetLayout.reset();
+    renderPass.reset();
+    
+    // Pipeline cache last
     pipelineCache.reset();
 }
 
@@ -405,7 +398,7 @@ bool VulkanPipeline::createGraphicsPipeline() {
     dynamicState.dynamicStateCount = static_cast<uint32_t>(dynamicStates.size());
     dynamicState.pDynamicStates = dynamicStates.data();
 
-    pipelineLayout = getOrCreatePipelineLayout(descriptorSetLayout.get());
+    pipelineLayout = vulkan_raii::PipelineLayout(getOrCreatePipelineLayout(descriptorSetLayout.get()), context);
 
     VkGraphicsPipelineCreateInfo pipelineInfo{};
     pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
@@ -419,7 +412,7 @@ bool VulkanPipeline::createGraphicsPipeline() {
     pipelineInfo.pDepthStencilState = &depthStencil;
     pipelineInfo.pColorBlendState = &colorBlending;
     pipelineInfo.pDynamicState = &dynamicState;
-    pipelineInfo.layout = pipelineLayout;
+    pipelineInfo.layout = pipelineLayout.get();
     pipelineInfo.renderPass = renderPass.get();
     pipelineInfo.subpass = 0;
     pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
@@ -533,10 +526,12 @@ bool VulkanPipeline::createComputePipeline() {
     layoutInfo.pushConstantRangeCount = 1;
     layoutInfo.pPushConstantRanges = &pushConstantRange;
     
-    if (context->getLoader().vkCreatePipelineLayout(context->getDevice(), &layoutInfo, nullptr, &computePipelineLayout) != VK_SUCCESS) {
+    VkPipelineLayout rawComputeLayout;
+    if (context->getLoader().vkCreatePipelineLayout(context->getDevice(), &layoutInfo, nullptr, &rawComputeLayout) != VK_SUCCESS) {
         std::cerr << "Failed to create unified compute pipeline layout" << std::endl;
         return false;
     }
+    computePipelineLayout = vulkan_raii::make_pipeline_layout(rawComputeLayout, context);
     
     // Create unified compute pipeline using random movement shader
     auto shaderCode = VulkanUtils::readFile("shaders/compiled/movement_random.comp.spv");
@@ -556,7 +551,7 @@ bool VulkanPipeline::createComputePipeline() {
     VkComputePipelineCreateInfo pipelineInfo{};
     pipelineInfo.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
     pipelineInfo.stage = shaderStageInfo;
-    pipelineInfo.layout = computePipelineLayout;
+    pipelineInfo.layout = computePipelineLayout.get();
     
     VkPipeline rawComputePipeline;
     if (context->getLoader().vkCreateComputePipelines(context->getDevice(), pipelineCache.get(), 1, &pipelineInfo, nullptr, &rawComputePipeline) != VK_SUCCESS) {

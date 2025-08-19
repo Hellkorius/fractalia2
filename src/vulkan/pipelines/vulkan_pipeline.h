@@ -45,27 +45,27 @@ public:
     bool recreate(VkFormat swapChainImageFormat);
 
     VkRenderPass getRenderPass() const { return renderPass.get(); }
-    VkPipelineLayout getPipelineLayout() const { return pipelineLayout; }
+    VkPipelineLayout getPipelineLayout() const { return pipelineLayout.get(); }
     VkPipeline getGraphicsPipeline() const { return graphicsPipeline.get(); }
     VkDescriptorSetLayout getDescriptorSetLayout() const { return descriptorSetLayout.get(); }
     
     // Unified compute pipeline support
     VkPipeline getComputePipeline() const { return computePipeline.get(); }
-    VkPipelineLayout getComputePipelineLayout() const { return computePipelineLayout; }
+    VkPipelineLayout getComputePipelineLayout() const { return computePipelineLayout.get(); }
     VkDescriptorSetLayout getComputeDescriptorSetLayout() const { return computeDescriptorSetLayout.get(); }
 
 private:
     const VulkanContext* context = nullptr;
     
     vulkan_raii::RenderPass renderPass;
-    VkPipelineLayout pipelineLayout = VK_NULL_HANDLE;
+    vulkan_raii::PipelineLayout pipelineLayout;
     vulkan_raii::Pipeline graphicsPipeline;
     vulkan_raii::DescriptorSetLayout descriptorSetLayout;
     vulkan_raii::PipelineCache pipelineCache;
     
     // Unified compute pipeline resources
-    VkPipelineLayout computePipelineLayout = VK_NULL_HANDLE; // Unified pipeline layout
-    vulkan_raii::DescriptorSetLayout computeDescriptorSetLayout; // Unified layout (3 bindings)
+    vulkan_raii::PipelineLayout computePipelineLayout;
+    vulkan_raii::DescriptorSetLayout computeDescriptorSetLayout;
     vulkan_raii::Pipeline computePipeline;
     
     // Pipeline layout cache (instance-owned for proper cleanup)

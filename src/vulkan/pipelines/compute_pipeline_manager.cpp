@@ -188,8 +188,23 @@ bool ComputePipelineManager::recreatePipelineCache() {
         return false;
     }
     
+    if (isRecreating_) {
+        std::cerr << "ComputePipelineManager: Recreation already in progress, ignoring request" << std::endl;
+        return true; // Consider it successful to avoid error cascades
+    }
+    
+    isRecreating_ = true;
     std::cout << "ComputePipelineManager: CRITICAL FIX - Recreating pipeline cache to prevent second resize corruption" << std::endl;
     
+    // Wait for device idle to ensure no pipelines are in use
+    const auto& vk = context->getLoader();
+    const VkDevice device = context->getDevice();
+    vk.vkDeviceWaitIdle(device);
+    
+    // Clear async compilations to prevent race conditions
+    asyncCompilations.clear();
+    
+    // Clear caches in dependency order
     clearCache();
     
     if (layoutManager) {
@@ -197,11 +212,13 @@ bool ComputePipelineManager::recreatePipelineCache() {
         layoutManager->clearCache();
     }
     
+    // Reset pipeline cache
     if (pipelineCache) {
         std::cout << "ComputePipelineManager: Destroying corrupted pipeline cache" << std::endl;
         pipelineCache.reset();
     }
     
+    // Create new pipeline cache
     VkPipelineCacheCreateInfo cacheInfo{};
     cacheInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
     cacheInfo.initialDataSize = 0;
@@ -216,6 +233,7 @@ bool ComputePipelineManager::recreatePipelineCache() {
     // Reinitialize factory with new cache
     factory_.initialize(shaderManager, pipelineCache);
     
+    isRecreating_ = false;
     std::cout << "ComputePipelineManager: Pipeline cache successfully recreated" << std::endl;
     return true;
 }

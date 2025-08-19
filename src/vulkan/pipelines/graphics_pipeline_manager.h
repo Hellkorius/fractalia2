@@ -67,6 +67,7 @@ private:
     DescriptorLayoutManager* layoutManager_ = nullptr;
     
     bool hotReloadEnabled_ = false;
+    bool isRecreating_ = false;  // Prevent concurrent recreation
     uint32_t maxCacheSize_ = 1024;
     uint64_t cacheCleanupInterval_ = 1000;
     

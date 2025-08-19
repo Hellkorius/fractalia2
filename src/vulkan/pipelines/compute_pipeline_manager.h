@@ -125,6 +125,9 @@ private:
     ShaderManager* shaderManager = nullptr;
     DescriptorLayoutManager* layoutManager = nullptr;
     
+    // State management
+    bool isRecreating_ = false;  // Prevent concurrent recreation
+    
     // Focused components
     ComputePipelineCache cache_;
     ComputePipelineFactory factory_;

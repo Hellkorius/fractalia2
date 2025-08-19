@@ -83,8 +83,15 @@ void ComputePipelineCache::optimizeCache(uint64_t currentFrame) {
 }
 
 void ComputePipelineCache::clear() {
+    // Clear cache in dependency order - pipelines first, then layouts
     cache_.clear();
+    
+    // Reset statistics to prevent corruption
     stats_.totalPipelines = 0;
+    stats_.cacheHits = 0;
+    stats_.cacheMisses = 0;
+    stats_.totalCompilationTime = std::chrono::nanoseconds{0};
+    stats_.hitRatio = 0.0f;
 }
 
 void ComputePipelineCache::resetFrameStats() {
