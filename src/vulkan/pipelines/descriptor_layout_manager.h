@@ -9,6 +9,7 @@
 #include <functional>
 #include "../core/vulkan_context.h"
 #include "../core/vulkan_raii.h"
+#include "../core/vulkan_constants.h"
 
 // Descriptor binding specification for flexible layout creation
 struct DescriptorBinding {
@@ -84,7 +85,7 @@ struct CachedDescriptorLayout {
 
 // Descriptor pool configuration with automatic sizing
 struct DescriptorPoolConfig {
-    uint32_t maxSets = 1024;
+    uint32_t maxSets = DEFAULT_MAX_DESCRIPTOR_SETS;
     
     // Pool size multipliers (will be calculated based on layout usage)
     float uniformBufferMultiplier = 2.0f;
@@ -96,7 +97,7 @@ struct DescriptorPoolConfig {
     
     // Bindless support
     bool enableBindless = false;
-    uint32_t maxBindlessDescriptors = 65536;
+    uint32_t maxBindlessDescriptors = 65536; // Keep as is - specific to hardware limit
     
     // Pool management
     bool allowFreeDescriptorSets = true;
@@ -126,7 +127,7 @@ public:
     // Descriptor pool management
     VkDescriptorPool createOptimalPool(const DescriptorPoolConfig& config);
     VkDescriptorPool createPoolForLayouts(const std::vector<VkDescriptorSetLayout>& layouts,
-                                         uint32_t maxSets = 1024);
+                                         uint32_t maxSets = DEFAULT_MAX_DESCRIPTOR_SETS);
     
     // Common layout presets
     VkDescriptorSetLayout getUniformBufferLayout(VkShaderStageFlags stages = VK_SHADER_STAGE_ALL);
@@ -136,8 +137,8 @@ public:
     VkDescriptorSetLayout getStorageImageLayout(VkShaderStageFlags stages = VK_SHADER_STAGE_COMPUTE_BIT);
     
     // Bindless layouts
-    VkDescriptorSetLayout getBindlessTextureLayout(uint32_t maxTextures = 16384);
-    VkDescriptorSetLayout getBindlessBufferLayout(uint32_t maxBuffers = 8192);
+    VkDescriptorSetLayout getBindlessTextureLayout(uint32_t maxTextures = MAX_BINDLESS_TEXTURES);
+    VkDescriptorSetLayout getBindlessBufferLayout(uint32_t maxBuffers = MAX_BINDLESS_BUFFERS);
     
     // Layout analysis and optimization
     struct LayoutAnalysis {
@@ -211,8 +212,8 @@ private:
     mutable LayoutStats stats;
     
     // Configuration
-    uint32_t maxCacheSize = 256;
-    uint64_t cacheCleanupInterval = 1000;  // frames
+    uint32_t maxCacheSize = DEFAULT_LAYOUT_CACHE_SIZE;
+    uint64_t cacheCleanupInterval = CACHE_CLEANUP_INTERVAL;
     
     // Internal layout creation
     std::unique_ptr<CachedDescriptorLayout> createLayoutInternal(const DescriptorLayoutSpec& spec);
@@ -256,8 +257,8 @@ namespace DescriptorLayoutPresets {
     DescriptorLayoutSpec createPostProcessLayout();
     
     // Bindless variants
-    DescriptorLayoutSpec createBindlessTextureLayout(uint32_t maxTextures = 16384);
-    DescriptorLayoutSpec createBindlessBufferLayout(uint32_t maxBuffers = 8192);
+    DescriptorLayoutSpec createBindlessTextureLayout(uint32_t maxTextures = MAX_BINDLESS_TEXTURES);
+    DescriptorLayoutSpec createBindlessBufferLayout(uint32_t maxBuffers = MAX_BINDLESS_BUFFERS);
     
     // Debug and profiling
     DescriptorLayoutSpec createDebugLayout();
@@ -275,8 +276,8 @@ public:
     DescriptorLayoutBuilder& addSampler(uint32_t binding, VkShaderStageFlags stages = VK_SHADER_STAGE_FRAGMENT_BIT);
     
     // Bindless variants
-    DescriptorLayoutBuilder& addBindlessTextures(uint32_t binding, uint32_t maxCount = 16384);
-    DescriptorLayoutBuilder& addBindlessBuffers(uint32_t binding, uint32_t maxCount = 8192);
+    DescriptorLayoutBuilder& addBindlessTextures(uint32_t binding, uint32_t maxCount = MAX_BINDLESS_TEXTURES);
+    DescriptorLayoutBuilder& addBindlessBuffers(uint32_t binding, uint32_t maxCount = MAX_BINDLESS_BUFFERS);
     
     // Configuration
     DescriptorLayoutBuilder& setName(const std::string& name);

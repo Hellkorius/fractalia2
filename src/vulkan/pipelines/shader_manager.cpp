@@ -574,7 +574,7 @@ bool ShaderCompiler::isSpirvOptAvailable() {
 void ShaderManager::optimizeCache(uint64_t currentFrame) {
     // Simple LRU eviction for shader cache
     for (auto it = shaderCache_.begin(); it != shaderCache_.end();) {
-        if (currentFrame - it->second->lastUsedFrame > 1000) { // Evict after 1000 frames
+        if (currentFrame - it->second->lastUsedFrame > CACHE_CLEANUP_INTERVAL) {
             // RAII wrapper automatically destroys shader module
             it = shaderCache_.erase(it);
             stats.totalShaders--;

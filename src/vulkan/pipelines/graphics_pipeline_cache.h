@@ -6,6 +6,7 @@
 #include <memory>
 #include <chrono>
 #include "../core/vulkan_raii.h"
+#include "../core/vulkan_constants.h"
 #include "graphics_pipeline_state_hash.h"
 
 struct CachedGraphicsPipeline {
@@ -30,7 +31,7 @@ struct PipelineStats {
 
 class GraphicsPipelineCache {
 public:
-    explicit GraphicsPipelineCache(uint32_t maxSize = 1024);
+    explicit GraphicsPipelineCache(uint32_t maxSize = DEFAULT_GRAPHICS_CACHE_SIZE);
     ~GraphicsPipelineCache() = default;
 
     VkPipeline getPipeline(const GraphicsPipelineState& state);
@@ -55,7 +56,7 @@ private:
     std::unordered_map<GraphicsPipelineState, std::unique_ptr<CachedGraphicsPipeline>, GraphicsPipelineStateHash> cache_;
     
     uint32_t maxSize_;
-    uint64_t cacheCleanupInterval_ = 1000;
+    uint64_t cacheCleanupInterval_ = CACHE_CLEANUP_INTERVAL;
     
     mutable PipelineStats stats_;
     

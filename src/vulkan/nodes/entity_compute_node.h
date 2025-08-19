@@ -3,6 +3,7 @@
 #define VK_NO_PROTOTYPES
 #include <vulkan/vulkan.h>
 #include "../rendering/frame_graph.h"
+#include "../core/vulkan_constants.h"
 #include <memory>
 #include <atomic>
 
@@ -65,7 +66,7 @@ private:
     std::shared_ptr<GPUTimeoutDetector> timeoutDetector;
     
     // Adaptive dispatch parameters
-    uint32_t adaptiveMaxWorkgroups = 512; // Conservative limit to prevent GPU timeouts
+    uint32_t adaptiveMaxWorkgroups = MAX_WORKGROUPS_PER_CHUNK;
     bool forceChunkedDispatch = true;     // Always use chunking for stability
     
     // Thread-safe debug counter

@@ -3,6 +3,7 @@
 #include "descriptor_layout_manager.h"
 #include "../core/vulkan_function_loader.h"
 #include "../core/vulkan_utils.h"
+#include "../core/vulkan_constants.h"
 #include <iostream>
 #include <chrono>
 #include <algorithm>
@@ -14,7 +15,7 @@
 
 // ComputePipelineManager implementation
 ComputePipelineManager::ComputePipelineManager(VulkanContext* ctx) 
-    : VulkanManagerBase(ctx), cache_(512), factory_(ctx), dispatcher_(ctx), deviceInfo_(ctx) {
+    : VulkanManagerBase(ctx), cache_(DEFAULT_COMPUTE_CACHE_SIZE), factory_(ctx), dispatcher_(ctx), deviceInfo_(ctx) {
 }
 
 ComputePipelineManager::~ComputePipelineManager() {
@@ -279,7 +280,7 @@ ComputePipelineState ComputePipelineManager::createBufferProcessingState(const s
     ComputePipelineState state{};
     state.shaderPath = shaderPath;
     state.descriptorSetLayouts.push_back(descriptorLayout);
-    state.workgroupSizeX = 64;  // Good for buffer processing
+    state.workgroupSizeX = THREADS_PER_WORKGROUP;
     state.workgroupSizeY = 1;
     state.workgroupSizeZ = 1;
     state.isFrequentlyUsed = true;
@@ -293,7 +294,7 @@ namespace ComputePipelinePresets {
         ComputePipelineState state{};
         state.shaderPath = "shaders/movement_random.comp.spv";
         state.descriptorSetLayouts.push_back(descriptorLayout);
-        state.workgroupSizeX = 64;  // MUST match shader local_size_x = 64
+        state.workgroupSizeX = THREADS_PER_WORKGROUP;  // MUST match shader local_size_x
         state.workgroupSizeY = 1;
         state.workgroupSizeZ = 1;
         state.isFrequentlyUsed = true;

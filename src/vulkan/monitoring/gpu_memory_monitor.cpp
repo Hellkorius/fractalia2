@@ -1,6 +1,7 @@
 #include "gpu_memory_monitor.h"
 #include "../core/vulkan_context.h"
 #include "../core/vulkan_function_loader.h"
+#include "../core/vulkan_constants.h"
 #include <iostream>
 #include <algorithm>
 #include <numeric>
@@ -175,7 +176,7 @@ bool GPUMemoryMonitor::isMemoryHealthy() const {
     
     const float maxUtilization = 80.0f;
     const float maxBandwidthUtilization = 70.0f;
-    const uint64_t minAvailable = 500 * 1024 * 1024; // 500MB
+    const uint64_t minAvailable = MIN_AVAILABLE_MEMORY;
     
     return currentStats.memoryUtilizationPercent < maxUtilization &&
            currentStats.bandwidthUtilizationPercent < maxBandwidthUtilization &&
@@ -211,7 +212,7 @@ GPUMemoryMonitor::MemoryRecommendation GPUMemoryMonitor::getRecommendations() co
         rec.recommendations.push_back("Optimize buffer layout for better cache utilization");
     }
     
-    if (currentStats.entityBufferSize > 50 * 1024 * 1024) { // > 50MB
+    if (currentStats.entityBufferSize > LARGE_BUFFER_THRESHOLD) {
         rec.recommendations.push_back("Entity buffer is large - consider LOD or culling");
     }
     

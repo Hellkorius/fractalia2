@@ -73,7 +73,7 @@ void ComputePipelineCache::insert(const ComputePipelineState& state, std::unique
 
 void ComputePipelineCache::optimizeCache(uint64_t currentFrame) {
     for (auto it = cache_.begin(); it != cache_.end();) {
-        if (currentFrame - it->second->lastUsedFrame > 1000) {
+        if (currentFrame - it->second->lastUsedFrame > CACHE_CLEANUP_INTERVAL) {
             it = cache_.erase(it);
             stats_.totalPipelines--;
         } else {

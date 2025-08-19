@@ -2,6 +2,7 @@
 #include "../core/vulkan_context.h"
 #include "../core/vulkan_function_loader.h"
 #include "../core/vulkan_utils.h"
+#include "../core/vulkan_constants.h"
 #include "../../PolygonFactory.h"
 #include <iostream>
 #include <stdexcept>
@@ -331,7 +332,7 @@ bool ResourceContext::initialize(const VulkanContext& context, VkCommandPool com
     }
     
     // Initialize staging buffer (16MB for large entity uploads)
-    if (!stagingBuffer.initialize(context, 16 * 1024 * 1024)) {
+    if (!stagingBuffer.initialize(context, STAGING_BUFFER_SIZE)) {
         std::cerr << "Failed to initialize staging buffer!" << std::endl;
         return false;
     }
@@ -376,7 +377,7 @@ bool ResourceContext::initialize(const VulkanContext& context, QueueManager* que
     }
     
     // Initialize staging buffer (16MB for large entity uploads)
-    if (!stagingBuffer.initialize(context, 16 * 1024 * 1024)) {
+    if (!stagingBuffer.initialize(context, STAGING_BUFFER_SIZE)) {
         std::cerr << "Failed to initialize staging buffer!" << std::endl;
         return false;
     }

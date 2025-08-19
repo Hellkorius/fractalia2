@@ -1,6 +1,7 @@
 #include "compute_stress_tester.h"
 #include "../core/vulkan_context.h"
 #include "../core/vulkan_function_loader.h"
+#include "../core/vulkan_constants.h"
 #include "../pipelines/compute_pipeline_manager.h"
 #include "gpu_timeout_detector.h"
 #include "gpu_memory_monitor.h"
@@ -88,7 +89,7 @@ ComputeStressTester::StressTestResult ComputeStressTester::runProgressiveLoad(ui
         result.passed = true;
         
         // Calculate throughput
-        uint32_t entitiesPerDispatch = result.maxStableWorkgroups * 64; // 64 threads per workgroup
+        uint32_t entitiesPerDispatch = result.maxStableWorkgroups * THREADS_PER_WORKGROUP;
         if (result.averageDispatchTimeMs > 0.0f) {
             result.throughputEntitiesPerSecond = entitiesPerDispatch / (result.averageDispatchTimeMs / 1000.0f);
         }
@@ -114,7 +115,7 @@ bool ComputeStressTester::testEntityMovementDispatch(uint32_t workgroupCount, ui
         }
         
         // Validate results occasionally
-        if (i % 3 == 0 && !validateEntityMovement(workgroupCount * 64)) {
+        if (i % 3 == 0 && !validateEntityMovement(workgroupCount * THREADS_PER_WORKGROUP)) {
             std::cerr << "ComputeStressTester: Entity movement validation failed" << std::endl;
             return false;
         }

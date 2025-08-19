@@ -12,6 +12,7 @@
 #include <filesystem>
 #include "../core/vulkan_context.h"
 #include "../core/vulkan_raii.h"
+#include "../core/vulkan_constants.h"
 
 // Shader compilation types
 enum class ShaderSourceType {
@@ -234,8 +235,8 @@ private:
     
     // Configuration
     bool hotReloadEnabled = false;
-    uint32_t maxCacheSize = 512;
-    uint64_t cacheCleanupInterval = 1000;  // frames
+    uint32_t maxCacheSize = DEFAULT_SHADER_CACHE_SIZE;
+    uint64_t cacheCleanupInterval = CACHE_CLEANUP_INTERVAL;
     
     // External compiler integration
     std::string glslcPath = "glslc";  // Path to glslc compiler

@@ -3,6 +3,7 @@
 #define VK_NO_PROTOTYPES
 #include <vulkan/vulkan.h>
 #include "../core/vulkan_raii.h"
+#include "../core/vulkan_constants.h"
 
 class VulkanContext;
 
@@ -20,12 +21,12 @@ public:
     
     // Descriptor pool configuration
     struct DescriptorPoolConfig {
-        uint32_t maxSets = 1024;
-        uint32_t uniformBuffers = 1024;
-        uint32_t storageBuffers = 1024;
-        uint32_t sampledImages = 1024;
-        uint32_t storageImages = 512;
-        uint32_t samplers = 512;
+        uint32_t maxSets = DEFAULT_MAX_DESCRIPTOR_SETS;
+        uint32_t uniformBuffers = DEFAULT_MAX_DESCRIPTOR_SETS;
+        uint32_t storageBuffers = DEFAULT_MAX_DESCRIPTOR_SETS;
+        uint32_t sampledImages = DEFAULT_MAX_DESCRIPTOR_SETS;
+        uint32_t storageImages = DEFAULT_COMPUTE_CACHE_SIZE;
+        uint32_t samplers = DEFAULT_COMPUTE_CACHE_SIZE;
         bool allowFreeDescriptorSets = true;
         bool bindlessReady = false; // Future-proof for bindless
     };

@@ -2,6 +2,7 @@
 #include "../core/vulkan_context.h"
 #include "../core/vulkan_function_loader.h"
 #include "../core/vulkan_utils.h"
+#include "../core/vulkan_constants.h"
 #include <iostream>
 
 GPUSynchronizationService::GPUSynchronizationService() {
@@ -142,7 +143,7 @@ VkResult GPUSynchronizationService::waitForFenceRobust(VkFence fence, const char
     const auto& vk = context->getLoader();
     const VkDevice device = context->getDevice();
     
-    const uint64_t timeoutNs = 2000000000ULL; // 2 seconds
+    const uint64_t timeoutNs = FENCE_TIMEOUT_2_SECONDS;
     
     VkResult result = vk.vkWaitForFences(device, 1, &fence, VK_TRUE, timeoutNs);
     

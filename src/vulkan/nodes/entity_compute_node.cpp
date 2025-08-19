@@ -3,6 +3,7 @@
 #include "../../ecs/gpu_entity_manager.h"
 #include "../core/vulkan_context.h"
 #include "../core/vulkan_function_loader.h"
+#include "../core/vulkan_constants.h"
 #include "../pipelines/descriptor_layout_manager.h"
 #include "../monitoring/gpu_timeout_detector.h"
 #include <iostream>
@@ -21,7 +22,7 @@ namespace {
     };
     
     DispatchParams calculateDispatchParams(uint32_t entityCount, uint32_t maxWorkgroups, bool forceChunking) {
-        const uint32_t totalWorkgroups = (entityCount + 63) / 64;
+        const uint32_t totalWorkgroups = (entityCount + THREADS_PER_WORKGROUP - 1) / THREADS_PER_WORKGROUP;
         return {
             totalWorkgroups,
             maxWorkgroups,
@@ -118,7 +119,7 @@ void EntityComputeNode::execute(VkCommandBuffer commandBuffer, const FrameGraph&
     dispatch.pushConstantData = &pushConstants;
     dispatch.pushConstantSize = sizeof(ComputePushConstants);
     dispatch.pushConstantStages = VK_SHADER_STAGE_COMPUTE_BIT;
-    dispatch.calculateOptimalDispatch(entityCount, glm::uvec3(64, 1, 1));
+    dispatch.calculateOptimalDispatch(entityCount, glm::uvec3(THREADS_PER_WORKGROUP, 1, 1));
     
     // Apply adaptive workload management
     uint32_t maxWorkgroupsPerDispatch = adaptiveMaxWorkgroups;
@@ -222,7 +223,7 @@ void EntityComputeNode::executeChunkedDispatch(
     
     while (processedWorkgroups < totalWorkgroups) {
         uint32_t currentChunkSize = std::min(maxWorkgroupsPerChunk, totalWorkgroups - processedWorkgroups);
-        uint32_t baseEntityOffset = processedWorkgroups * 64;
+        uint32_t baseEntityOffset = processedWorkgroups * THREADS_PER_WORKGROUP;
         
         if (entityCount <= baseEntityOffset) break; // No more entities to process
         

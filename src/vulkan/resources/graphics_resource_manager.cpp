@@ -159,8 +159,8 @@ bool GraphicsResourceManager::createTriangleBuffers() {
 
 bool GraphicsResourceManager::createGraphicsDescriptorPool(VkDescriptorSetLayout descriptorSetLayout) {
     std::vector<VkDescriptorPoolSize> poolSizes = {
-        {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1024},
-        {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1024}
+        {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, DEFAULT_MAX_DESCRIPTOR_SETS},
+        {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, DEFAULT_MAX_DESCRIPTOR_SETS}
     };
     
     VkDescriptorPoolCreateInfo poolInfo{};
@@ -168,7 +168,7 @@ bool GraphicsResourceManager::createGraphicsDescriptorPool(VkDescriptorSetLayout
     poolInfo.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
     poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
     poolInfo.pPoolSizes = poolSizes.data();
-    poolInfo.maxSets = 1024;
+    poolInfo.maxSets = DEFAULT_MAX_DESCRIPTOR_SETS;
     
     graphicsDescriptorPool = vulkan_raii::create_descriptor_pool(context, &poolInfo);
     

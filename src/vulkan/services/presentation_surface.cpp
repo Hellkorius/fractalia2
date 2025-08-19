@@ -3,6 +3,7 @@
 #include "../core/vulkan_swapchain.h"
 #include "../pipelines/pipeline_system_manager.h"
 #include "../core/vulkan_function_loader.h"
+#include "../core/vulkan_constants.h"
 #include "gpu_synchronization_service.h"
 #include <iostream>
 
@@ -47,7 +48,7 @@ SurfaceAcquisitionResult PresentationSurface::acquireNextImage(uint32_t currentF
     acquisitionInProgress = true;
 
     // Use reasonable timeout to prevent infinite waits
-    const uint64_t timeoutNs = 2000000000ULL; // 2 seconds
+    const uint64_t timeoutNs = FENCE_TIMEOUT_2_SECONDS;
     
     VkResult acquireResult = context->getLoader().vkAcquireNextImageKHR(
         context->getDevice(),

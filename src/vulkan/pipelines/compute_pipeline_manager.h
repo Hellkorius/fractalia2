@@ -8,6 +8,7 @@
 #include <memory>
 #include <chrono>
 #include <functional>
+#include "../core/vulkan_constants.h"
 #include <future>
 #include <glm/glm.hpp>
 #include "../core/vulkan_context.h"
@@ -141,8 +142,8 @@ private:
     std::unordered_map<ComputePipelineState, ComputeProfileData, ComputePipelineStateHash> profileData;
     
     // Configuration
-    uint32_t maxCacheSize = 512;
-    uint64_t cacheCleanupInterval = 1000;  // frames
+    uint32_t maxCacheSize = DEFAULT_COMPUTE_CACHE_SIZE;
+    uint64_t cacheCleanupInterval = CACHE_CLEANUP_INTERVAL;
     bool enableProfiling = false;
     
     // Internal pipeline creation callback for cache

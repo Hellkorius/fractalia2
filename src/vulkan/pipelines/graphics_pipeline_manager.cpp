@@ -1,12 +1,13 @@
 #include "graphics_pipeline_manager.h"
 #include "shader_manager.h"
 #include "descriptor_layout_manager.h"
+#include "../core/vulkan_constants.h"
 #include <iostream>
 #include <glm/glm.hpp>
 
 GraphicsPipelineManager::GraphicsPipelineManager(VulkanContext* ctx) 
     : VulkanManagerBase(ctx)
-    , maxCacheSize_(1024)
+    , maxCacheSize_(DEFAULT_GRAPHICS_CACHE_SIZE)
     , cache_(maxCacheSize_)
     , renderPassManager_(ctx)
     , factory_(ctx)

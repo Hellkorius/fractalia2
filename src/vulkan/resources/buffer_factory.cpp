@@ -1,6 +1,7 @@
 #include "buffer_factory.h"
 #include "../core/vulkan_context.h"
 #include "../core/vulkan_function_loader.h"
+#include "../core/vulkan_constants.h"
 #include "resource_context.h" // For StagingRingBuffer
 #include "command_executor.h"
 #include <iostream>
@@ -197,7 +198,7 @@ void BufferFactory::copyToBuffer(const ResourceHandle& dst, const void* data, Vk
         memcpy(static_cast<char*>(dst.mappedData) + offset, data, size);
     } else if (stagingBuffer) {
         // Handle large uploads by chunking if necessary
-        const VkDeviceSize maxChunkSize = 8 * 1024 * 1024; // 8MB chunks
+        const VkDeviceSize maxChunkSize = MAX_CHUNK_SIZE;
         VkDeviceSize remaining = size;
         VkDeviceSize currentOffset = 0;
         
@@ -213,7 +214,7 @@ void BufferFactory::copyToBuffer(const ResourceHandle& dst, const void* data, Vk
                 
                 // If still no space, try with smaller chunk
                 if (!stagingRegion.mappedData && chunkSize > 1024) {
-                    chunkSize = std::min(chunkSize / 2, static_cast<VkDeviceSize>(1024 * 1024)); // Try with 1MB max
+                    chunkSize = std::min(chunkSize / 2, static_cast<VkDeviceSize>(MEGABYTE)); // Try with 1MB max
                     stagingRegion = stagingBuffer->allocate(chunkSize);
                 }
             }

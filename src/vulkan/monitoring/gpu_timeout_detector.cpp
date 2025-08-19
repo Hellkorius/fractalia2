@@ -2,6 +2,7 @@
 #include "../core/vulkan_context.h"
 #include "../core/vulkan_sync.h"
 #include "../core/vulkan_function_loader.h"
+#include "../core/vulkan_constants.h"
 #include <iostream>
 #include <algorithm>
 #include <numeric>
@@ -138,7 +139,7 @@ void GPUTimeoutDetector::updateStats(float dispatchTimeMs, uint32_t workgroupCou
     
     // Calculate throughput if workgroup count is available
     if (workgroupCount > 0 && dispatchTimeMs > 0.0f) {
-        uint32_t entitiesProcessed = workgroupCount * 64; // 64 threads per workgroup
+        uint32_t entitiesProcessed = workgroupCount * THREADS_PER_WORKGROUP;
         stats.throughputEntitiesPerMs = entitiesProcessed / dispatchTimeMs;
     }
 }

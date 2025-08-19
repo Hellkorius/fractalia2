@@ -7,10 +7,11 @@
 #include <chrono>
 #include <functional>
 #include "compute_pipeline_types.h"
+#include "../core/vulkan_constants.h"
 
 class ComputePipelineCache {
 public:
-    explicit ComputePipelineCache(uint32_t maxSize = 512);
+    explicit ComputePipelineCache(uint32_t maxSize = DEFAULT_COMPUTE_CACHE_SIZE);
     ~ComputePipelineCache() = default;
 
     struct Stats {

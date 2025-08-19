@@ -644,7 +644,7 @@ void DescriptorLayoutBuilder::reset() {
 void DescriptorLayoutManager::optimizeCache(uint64_t currentFrame) {
     // Simple LRU eviction for descriptor layout cache
     for (auto it = layoutCache_.begin(); it != layoutCache_.end();) {
-        if (currentFrame - it->second->lastUsedFrame > 1000) { // Evict after 1000 frames
+        if (currentFrame - it->second->lastUsedFrame > CACHE_CLEANUP_INTERVAL) {
             // Erase layout (RAII handles cleanup automatically)
             it = layoutCache_.erase(it);
             stats.totalLayouts--;

@@ -8,6 +8,7 @@
 #include <functional>
 #include <chrono>
 #include "../core/vulkan_context.h"
+#include "../core/vulkan_constants.h"
 #include "../core/vulkan_manager_base.h"
 #include "../core/vulkan_raii.h"
 #include "graphics_pipeline_state_hash.h"
@@ -68,8 +69,8 @@ private:
     
     bool hotReloadEnabled_ = false;
     bool isRecreating_ = false;  // Synchronization for cache recreation
-    uint32_t maxCacheSize_ = 1024;
-    uint64_t cacheCleanupInterval_ = 1000;
+    uint32_t maxCacheSize_ = DEFAULT_GRAPHICS_CACHE_SIZE;
+    uint64_t cacheCleanupInterval_ = CACHE_CLEANUP_INTERVAL;
     
     GraphicsPipelineCache cache_;
     GraphicsRenderPassManager renderPassManager_;
