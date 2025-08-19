@@ -599,6 +599,23 @@ InputEvents* InputService::getInputEvents() const {
     return inputEntity.get_mut<InputEvents>();
 }
 
+bool InputService::hasWindowResizeEvent(int& width, int& height) const {
+    auto* events = getInputEvents();
+    if (!events) {
+        return false;
+    }
+    
+    for (size_t i = 0; i < events->eventCount; i++) {
+        const auto& event = events->events[i];
+        if (event.type == InputEvents::Event::WINDOW_RESIZE) {
+            width = event.windowResizeEvent.width;
+            height = event.windowResizeEvent.height;
+            return true;
+        }
+    }
+    return false;
+}
+
 // Convenience namespace implementation
 namespace Input {
     InputService& getService() {

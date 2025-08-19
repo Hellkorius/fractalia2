@@ -156,6 +156,9 @@ public:
     bool isInputConsumed() const { return inputConsumed; }
     void setInputConsumed(bool consumed) { inputConsumed = consumed; }
     
+    // Window event handling
+    bool hasWindowResizeEvent(int& width, int& height) const;
+    
     // Debug and introspection
     std::vector<std::string> getActiveContexts() const;
     std::vector<std::string> getRegisteredActions() const;

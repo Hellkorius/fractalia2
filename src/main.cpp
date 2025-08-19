@@ -171,20 +171,12 @@ int main(int argc, char* argv[]) {
         SimpleControlSystem::processControlActions(world, renderer, entityFactory);
         
         // Handle window resize for camera aspect ratio
-        auto inputEntity = world.lookup("InputManager");
-        if (inputEntity.is_valid()) {
-            auto* events = inputEntity.get<InputEvents>();
-            if (events) {
-                for (size_t i = 0; i < events->eventCount; i++) {
-                    const auto& event = events->events[i];
-                    if (event.type == InputEvents::Event::WINDOW_RESIZE) {
-                        cameraService->handleWindowResize(event.windowResizeEvent.width, event.windowResizeEvent.height);
-                        renderer.updateAspectRatio(event.windowResizeEvent.width, event.windowResizeEvent.height);
-                        renderer.setFramebufferResized(true);
-                        DEBUG_LOG("Window resized to " << event.windowResizeEvent.width << "x" << event.windowResizeEvent.height);
-                    }
-                }
-            }
+        int width, height;
+        if (inputService->hasWindowResizeEvent(width, height)) {
+            cameraService->handleWindowResize(width, height);
+            renderer.updateAspectRatio(width, height);
+            renderer.setFramebufferResized(true);
+            DEBUG_LOG("Window resized to " << width << "x" << height);
         }
 
         PROFILE_BEGIN_FRAME();
