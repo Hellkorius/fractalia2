@@ -56,43 +56,43 @@ void main() {
     // Use instance index to create much stronger base color variation per entity
     float entityBaseHue = mod(float(gl_InstanceIndex) * 0.618034, 1.0); // Golden ratio for good distribution
     
-    // Per-entity individualized timing and frequencies to break synchronization
-    float entityFreqMultiplier = 0.5 + mod(float(gl_InstanceIndex) * 0.7321, 1.0) * 1.5; // Range: 0.5 to 2.0
+    // Per-entity individualized timing and frequencies - INTENSE VERSION
+    float entityFreqMultiplier = 0.3 + mod(float(gl_InstanceIndex) * 0.7321, 1.0) * 2.7; // Range: 0.3 to 3.0 (much wider)
     float entityPhaseOffset = mod(float(gl_InstanceIndex) * 2.3941, 6.28318530718); // Unique phase offset
-    float entityTimeOffset = mod(float(gl_InstanceIndex) * 1.4142, 10.0); // Unique time offset
+    float entityTimeOffset = mod(float(gl_InstanceIndex) * 1.4142, 15.0); // Unique time offset (longer spread)
     
-    // Individualized phase system - each entity has different phase length and timing
+    // INTENSE individualized phase system - shorter, more frequent phases
     float individualTime = entityTime * entityFreqMultiplier + entityTimeOffset + phase;
-    float phaseLengthVariation = 2.0 + mod(float(gl_InstanceIndex) * 0.8660, 1.0) * 3.0; // Phase length: 2-5 seconds
-    float colorPhaseTime = individualTime * 0.4 + entityPhaseOffset;
+    float phaseLengthVariation = 0.8 + mod(float(gl_InstanceIndex) * 0.8660, 1.0) * 1.7; // Phase length: 0.8-2.5 seconds (much faster)
+    float colorPhaseTime = individualTime * 0.8 + entityPhaseOffset; // 2x faster base rate
     float colorPhase = floor(colorPhaseTime / phaseLengthVariation);
     float phaseProgress = mod(colorPhaseTime, phaseLengthVariation) / phaseLengthVariation;
     
-    // Smooth transition using smoothstep for organic feel
-    float phaseTransition = smoothstep(0.0, 1.0, phaseProgress);
+    // More dramatic transition curves for intensity
+    float phaseTransition = smoothstep(0.1, 0.9, phaseProgress); // Steeper transitions
     
-    // Create individualized phase-based hue shifts
-    float entityHueShiftAmount = 0.1 + mod(float(gl_InstanceIndex) * 0.5257, 1.0) * 0.3; // Shift amount: 10-40%
+    // INTENSE individualized phase-based hue shifts - much larger jumps
+    float entityHueShiftAmount = 0.2 + mod(float(gl_InstanceIndex) * 0.5257, 1.0) * 0.6; // Shift amount: 20-80% (massive jumps)
     float phaseHueShift = mod(colorPhase * entityHueShiftAmount, 1.0);
     float nextPhaseHueShift = mod((colorPhase + 1.0) * entityHueShiftAmount, 1.0);
     float currentHueShift = mix(phaseHueShift, nextPhaseHueShift, phaseTransition);
     
-    // Combine base hue with individualized phase shifting
+    // Combine base hue with INTENSE individualized phase shifting
     float hue = mod(entityBaseHue + currentHueShift, 1.0);
     
-    // Highly individualized brightness variation with unique breathing patterns
+    // EXTREME brightness variation with intense breathing patterns
     float entityBrightnessBase = mod(float(gl_InstanceIndex) * 0.381966, 1.0);
-    float brightnessFreq = 0.2 + mod(float(gl_InstanceIndex) * 0.9511, 1.0) * 0.4; // Range: 0.2 to 0.6
-    float brightnessPhase = sin(individualTime * brightnessFreq + entityPhaseOffset * 2.0) * 0.4;
-    float brightness = 0.4 + entityBrightnessBase * 0.5 + brightnessPhase;
-    brightness = clamp(brightness, 0.2, 1.0);
+    float brightnessFreq = 0.4 + mod(float(gl_InstanceIndex) * 0.9511, 1.0) * 1.2; // Range: 0.4 to 1.6 (much faster)
+    float brightnessPhase = sin(individualTime * brightnessFreq + entityPhaseOffset * 2.0) * 0.7; // Much stronger amplitude
+    float brightness = 0.2 + entityBrightnessBase * 0.7 + brightnessPhase; // Range: -0.5 to 1.6
+    brightness = clamp(brightness, 0.05, 1.0); // Allow very dim to very bright
     
-    // Highly individualized saturation variation with unique cycling patterns
+    // EXTREME saturation variation with intense cycling patterns
     float entitySaturationBase = mod(float(gl_InstanceIndex) * 0.236068, 1.0);
-    float saturationFreq = 0.15 + mod(float(gl_InstanceIndex) * 0.4472, 1.0) * 0.35; // Range: 0.15 to 0.5
-    float saturationPhase = cos(individualTime * saturationFreq + entityPhaseOffset * 1.7) * 0.45;
-    float saturation = 0.3 + entitySaturationBase * 0.6 + saturationPhase;
-    saturation = clamp(saturation, 0.1, 1.0);
+    float saturationFreq = 0.3 + mod(float(gl_InstanceIndex) * 0.4472, 1.0) * 1.0; // Range: 0.3 to 1.3 (much faster)
+    float saturationPhase = cos(individualTime * saturationFreq + entityPhaseOffset * 1.7) * 0.8; // Much stronger amplitude
+    float saturation = 0.1 + entitySaturationBase * 0.8 + saturationPhase; // Range: -0.7 to 1.7
+    saturation = clamp(saturation, 0.0, 1.0); // Allow completely desaturated to fully saturated
     
     color = hsv2rgb(hue, saturation, brightness);
     
