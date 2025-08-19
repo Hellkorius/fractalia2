@@ -224,7 +224,9 @@ void VulkanRenderer::cleanup() {
     // Wait for device to be idle before cleanup - but only if context is valid
     if (context && context->getDevice() != VK_NULL_HANDLE) {
         try {
-            context->getLoader().vkDeviceWaitIdle(context->getDevice());
+            const auto& vk = context->getLoader();
+            const VkDevice device = context->getDevice();
+            vk.vkDeviceWaitIdle(device);
         } catch (const std::exception& e) {
             std::cerr << "Exception during device wait idle: " << e.what() << std::endl;
         }
@@ -396,22 +398,6 @@ void VulkanRenderer::drawFrameModular() {
             std::cerr << "VulkanRenderer: Failed to wait for GPU fences: " << waitResult << std::endl;
             return;
         }
-    }
-    
-    // Check for memory pressure before proceeding with frame work
-    if (resourceContext && resourceContext->isUnderMemoryPressure()) {
-        std::cout << "VulkanRenderer: Memory pressure detected, attempting recovery..." << std::endl;
-        if (resourceContext->attemptMemoryRecovery()) {
-            std::cout << "VulkanRenderer: Memory recovery successful" << std::endl;
-        } else {
-            std::cerr << "VulkanRenderer: Memory recovery failed, continuing with degraded performance" << std::endl;
-        }
-        
-        // Log memory statistics for debugging
-        auto memStats = resourceContext->getMemoryStats();
-        std::cout << "VulkanRenderer: Memory stats - Total allocated: " << memStats.totalAllocated 
-                  << " bytes, Active allocations: " << memStats.activeAllocations 
-                  << ", Failed allocations: " << memStats.failedAllocations << std::endl;
     }
     
     // Upload pending GPU entities
@@ -637,7 +623,9 @@ bool VulkanRenderer::attemptSwapchainRecreation() {
     try {
         // Wait for device to be idle before recreation
         if (context && context->getDevice() != VK_NULL_HANDLE) {
-            context->getLoader().vkDeviceWaitIdle(context->getDevice());
+            const auto& vk = context->getLoader();
+            const VkDevice device = context->getDevice();
+            vk.vkDeviceWaitIdle(device);
         }
         
         bool recreationSuccess = presentationSurface->recreateSwapchain();
