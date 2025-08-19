@@ -70,7 +70,7 @@ Vulkan subsystem uses local caching pattern for VulkanFunctionLoader calls:
 
 - **Pattern**: `const auto& vk = context->getLoader(); const VkDevice device = context->getDevice();`
 - **Usage**: Apply in functions with multiple Vulkan API calls to avoid repeated `context->getLoader().vkFunction()` 
-- **Files Using Pattern**: vulkan_utils.cpp, entity_compute_node.cpp, entity_graphics_node.cpp, gpu_synchronization_service.cpp, vulkan_swapchain.cpp, command_executor.cpp, vulkan_sync.cpp, descriptor_layout_manager.cpp, frame_graph.cpp, vulkan_pipeline.cpp, compute_stress_tester.cpp
+- **Files Using Pattern**: vulkan_utils.cpp, entity_compute_node.cpp, entity_graphics_node.cpp, gpu_synchronization_service.cpp, vulkan_swapchain.cpp, command_executor.cpp, vulkan_sync.cpp, descriptor_layout_manager.cpp, frame_graph.cpp, compute_stress_tester.cpp
 - **Alternative**: VulkanManagerBase provides wrapper methods for pipeline managers
 
 ### RAII Vulkan Resource Management

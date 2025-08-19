@@ -19,9 +19,8 @@ AAA-tier Vulkan pipeline management system with advanced caching, optimization, 
 - **`graphics_pipeline_factory.*`** - Core pipeline compilation engine
 - **`graphics_pipeline_layout_builder.*`** - Pipeline layout creation utilities
 
-### Legacy/Utilities
-- **`vulkan_pipeline.*`** - Legacy pipeline utilities (being phased out)
-- **`pipeline_system_simple.h`** - Simplified pipeline system for gradual migration
+### Utilities  
+- **`hash_utils.*`** - Pipeline state hashing and comparison utilities
 
 ## Architecture
 
