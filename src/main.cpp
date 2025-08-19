@@ -20,6 +20,13 @@
 #include "ecs/profiler.h"
 #include "ecs/gpu_entity_manager.h"
 
+// New service-based architecture includes
+#include "ecs/core/world_manager.h"
+#include "ecs/core/service_locator.h"
+#include "ecs/services/input_service.h"
+#include "ecs/services/camera_service.h"
+#include "ecs/services/rendering_service.h"
+
 int main(int argc, char* argv[]) {
     constexpr int TARGET_FPS = 60;
     constexpr float TARGET_FRAME_TIME = 1000.0f / TARGET_FPS; // 16.67ms
@@ -62,7 +69,35 @@ int main(int argc, char* argv[]) {
         return -1;
     }
 
-    flecs::world world;
+    // Initialize service-based architecture
+    auto worldManager = ServiceLocator::instance().createAndRegister<WorldManager>();
+    auto inputService = ServiceLocator::instance().createAndRegister<InputService>();
+    auto cameraService = ServiceLocator::instance().createAndRegister<CameraService>();
+    auto renderingService = ServiceLocator::instance().createAndRegister<RenderingService>();
+    
+    // Initialize services in proper order
+    if (!worldManager->initialize()) {
+        std::cerr << "Failed to initialize WorldManager" << std::endl;
+        return -1;
+    }
+    
+    if (!cameraService->initialize(worldManager->getWorld())) {
+        std::cerr << "Failed to initialize CameraService" << std::endl;
+        return -1;
+    }
+    
+    if (!inputService->initialize(worldManager->getWorld(), window)) {
+        std::cerr << "Failed to initialize InputService" << std::endl;
+        return -1;
+    }
+    
+    if (!renderingService->initialize(worldManager->getWorld(), &renderer)) {
+        std::cerr << "Failed to initialize RenderingService" << std::endl;
+        return -1;
+    }
+    
+    // Get world reference for backward compatibility
+    flecs::world& world = worldManager->getWorld();
     
     EntityFactory entityFactory(world);
     SystemScheduler scheduler(world);
@@ -88,11 +123,27 @@ int main(int argc, char* argv[]) {
         .each(lifetime_system)
         .child_of(scheduler.getPhysicsPhase());
     
-    InputManager::createInputEntity(world);
-    InputManager::setWindow(window);
-    
-    CameraManager::createMainCamera(world);
     DEBUG_LOG("Camera entities: " << world.count<Camera>());
+    DEBUG_LOG("Verifying main camera exists...");
+    auto mainCamera = world.lookup("MainCamera");
+    if (mainCamera.is_valid()) {
+        DEBUG_LOG("Main camera entity found with ID: " << mainCamera.id());
+        if (mainCamera.has<Camera>()) {
+            DEBUG_LOG("Main camera has Camera component");
+        } else {
+            DEBUG_LOG("ERROR: Main camera missing Camera component!");
+        }
+    } else {
+        DEBUG_LOG("ERROR: Main camera entity not found!");
+    }
+    
+    DEBUG_LOG("Verifying input entity exists...");
+    auto inputEntity = world.lookup("InputManager");
+    if (inputEntity.is_valid()) {
+        DEBUG_LOG("Input entity found with ID: " << inputEntity.id());
+    } else {
+        DEBUG_LOG("ERROR: Input entity not found!");
+    }
     
     renderer.setWorld(&world);
     
@@ -128,7 +179,15 @@ int main(int argc, char* argv[]) {
         
         deltaTime = std::min(deltaTime, 1.0f / 30.0f);
         
-        InputManager::processSDLEvents(world);
+        inputService->processSDLEvents();
+        
+        // Debug: Test if input is working
+        static int debugFrameCount = 0;
+        if (++debugFrameCount % 120 == 0) { // Every 2 seconds at 60fps
+            if (InputQuery::isKeyDown(world, SDL_SCANCODE_W)) {
+                DEBUG_LOG("W key detected as down");
+            }
+        }
         
         auto* appState = world.get<ApplicationState>();
         if (appState && (appState->requestQuit || !appState->running)) {
@@ -147,6 +206,7 @@ int main(int argc, char* argv[]) {
                 for (size_t i = 0; i < events->eventCount; i++) {
                     const auto& event = events->events[i];
                     if (event.type == InputEvents::Event::WINDOW_RESIZE) {
+                        cameraService->handleWindowResize(event.windowResizeEvent.width, event.windowResizeEvent.height);
                         renderer.updateAspectRatio(event.windowResizeEvent.width, event.windowResizeEvent.height);
                         renderer.setFramebufferResized(true);
                         DEBUG_LOG("Window resized to " << event.windowResizeEvent.width << "x" << event.windowResizeEvent.height);
@@ -159,7 +219,7 @@ int main(int argc, char* argv[]) {
         
         {
             PROFILE_SCOPE("ECS Update");
-            world.progress(deltaTime);
+            worldManager->executeFrame(deltaTime);
         }
         
         {
@@ -213,6 +273,10 @@ int main(int argc, char* argv[]) {
 
 
     renderer.cleanup();
+    
+    // Cleanup services
+    ServiceLocator::instance().clear();
+    
     SDL_DestroyWindow(window);
     SDL_Quit();
 

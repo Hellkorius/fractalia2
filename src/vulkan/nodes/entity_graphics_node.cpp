@@ -9,6 +9,8 @@
 #include "../../ecs/camera_component.h"
 #include "../pipelines/descriptor_layout_manager.h"
 #include <iostream>
+#include "../../ecs/core/service_locator.h"
+#include "../../ecs/services/camera_service.h"
 #include <array>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -246,27 +248,36 @@ void EntityGraphicsNode::updateUniformBuffer() {
 
     // Get camera matrices from ECS if available
     if (world != nullptr) {
-        auto cameraMatrices = CameraManager::getCameraMatrices(*world);
-        if (cameraMatrices.valid) {
-            newUBO.view = cameraMatrices.view;
-            newUBO.proj = cameraMatrices.projection;
-            
-            // Debug camera matrix application (once per second) - thread-safe
-            uint32_t counter = debugCounter.fetch_add(1, std::memory_order_relaxed);
-            if (counter % 60 == 0) {
-                std::cout << "EntityGraphicsNode: Using camera matrices from ECS" << std::endl;
-                std::cout << "  View matrix[3]: " << newUBO.view[3][0] << ", " << newUBO.view[3][1] << ", " << newUBO.view[3][2] << std::endl;
-                std::cout << "  Proj matrix[0][0]: " << newUBO.proj[0][0] << ", [1][1]: " << newUBO.proj[1][1] << std::endl;
-            }
+        // Try to get camera service first, fallback to direct manager if service not available
+        auto cameraService = ServiceLocator::instance().getService<CameraService>();
+        if (cameraService) {
+            // Use individual matrix methods from service
+            newUBO.view = cameraService->getViewMatrix();
+            newUBO.proj = cameraService->getProjectionMatrix();
         } else {
-            // Fallback to default matrices if no camera found
-            newUBO.view = glm::mat4(1.0f);
-            newUBO.proj = glm::ortho(-4.0f, 4.0f, -3.0f, 3.0f, -5.0f, 5.0f);
-            newUBO.proj[1][1] *= -1; // Flip Y for Vulkan
-            
-            uint32_t counter = debugCounter.fetch_add(1, std::memory_order_relaxed);
-            if (counter % 60 == 0) {
-                std::cout << "EntityGraphicsNode: Using fallback matrices - no valid camera" << std::endl;
+            // Fallback to direct manager access for compatibility
+            auto cameraMatrices = CameraManager::getCameraMatrices(*world);
+            if (cameraMatrices.valid) {
+                newUBO.view = cameraMatrices.view;
+                newUBO.proj = cameraMatrices.projection;
+                
+                // Debug camera matrix application (once per second) - thread-safe
+                uint32_t counter = debugCounter.fetch_add(1, std::memory_order_relaxed);
+                if (counter % 60 == 0) {
+                    std::cout << "EntityGraphicsNode: Using camera matrices from ECS" << std::endl;
+                    std::cout << "  View matrix[3]: " << newUBO.view[3][0] << ", " << newUBO.view[3][1] << ", " << newUBO.view[3][2] << std::endl;
+                    std::cout << "  Proj matrix[0][0]: " << newUBO.proj[0][0] << ", [1][1]: " << newUBO.proj[1][1] << std::endl;
+                }
+            } else {
+                // Fallback to default matrices if no camera found
+                newUBO.view = glm::mat4(1.0f);
+                newUBO.proj = glm::ortho(-4.0f, 4.0f, -3.0f, 3.0f, -5.0f, 5.0f);
+                newUBO.proj[1][1] *= -1; // Flip Y for Vulkan
+                
+                uint32_t counter = debugCounter.fetch_add(1, std::memory_order_relaxed);
+                if (counter % 60 == 0) {
+                    std::cout << "EntityGraphicsNode: Using fallback matrices - no valid camera" << std::endl;
+                }
             }
         }
     } else {

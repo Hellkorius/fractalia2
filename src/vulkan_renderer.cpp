@@ -477,9 +477,8 @@ void VulkanRenderer::drawFrameModular() {
 
 
 void VulkanRenderer::updateAspectRatio(int windowWidth, int windowHeight) {
-    if (world) {
-        CameraManager::updateAspectRatio(*world, windowWidth, windowHeight);
-    }
+    // Camera aspect ratio updates are now handled by CameraService
+    // This method is kept for renderer-specific aspect ratio handling if needed
 }
 
 void VulkanRenderer::setFramebufferResized(bool resized) {

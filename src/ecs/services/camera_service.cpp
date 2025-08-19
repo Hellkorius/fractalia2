@@ -13,15 +13,20 @@ CameraService::~CameraService() {
 
 bool CameraService::initialize(flecs::world& world) {
     if (initialized) {
+        std::cout << "CameraService::initialize() - Already initialized" << std::endl;
         return true;
     }
+    
+    std::cout << "CameraService::initialize() - Starting initialization..." << std::endl;
     
     this->world = &world;
     
     // Ensure main camera exists
+    std::cout << "CameraService::initialize() - Calling ensureMainCamera..." << std::endl;
     ensureMainCamera();
     
     initialized = true;
+    std::cout << "CameraService::initialize() - Initialization complete. Camera count: " << cameras.size() << std::endl;
     return true;
 }
 
@@ -753,13 +758,17 @@ Camera CameraService::interpolateCameras(const Camera& start, const Camera& end,
 }
 
 void CameraService::ensureMainCamera() {
-    if (!initialized || !world) {
+    if (!world) {
+        std::cout << "CameraService::ensureMainCamera() - No world reference" << std::endl;
         return;
     }
+    
+    std::cout << "CameraService::ensureMainCamera() - Checking for existing camera..." << std::endl;
     
     // Check if we already have a main camera from CameraManager
     flecs::entity mainCamera = CameraManager::getMainCamera(*world);
     if (mainCamera.is_valid()) {
+        std::cout << "CameraService::ensureMainCamera() - Found existing main camera" << std::endl;
         // Adopt the existing main camera
         CameraID mainID = nextCameraID++;
         cameras[mainID] = mainCamera;
@@ -767,16 +776,22 @@ void CameraService::ensureMainCamera() {
         if (activeCameraID == 0) {
             activeCameraID = mainID;
         }
+        std::cout << "CameraService::ensureMainCamera() - Adopted existing camera with ID " << mainID << std::endl;
     } else {
+        std::cout << "CameraService::ensureMainCamera() - No existing camera, creating new one..." << std::endl;
         // Create a new main camera through CameraManager
         mainCamera = CameraManager::createMainCamera(*world);
         if (mainCamera.is_valid()) {
+            std::cout << "CameraService::ensureMainCamera() - Successfully created main camera" << std::endl;
             CameraID mainID = nextCameraID++;
             cameras[mainID] = mainCamera;
             cameraNames["main"] = mainID;
             if (activeCameraID == 0) {
                 activeCameraID = mainID;
             }
+            std::cout << "CameraService::ensureMainCamera() - Registered camera with ID " << mainID << std::endl;
+        } else {
+            std::cout << "CameraService::ensureMainCamera() - ERROR: Failed to create main camera!" << std::endl;
         }
     }
 }
