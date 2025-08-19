@@ -4,6 +4,8 @@
 #include "../core/vulkan_utils.h"
 #include "../nodes/entity_compute_node.h"
 #include "../nodes/entity_graphics_node.h"
+#include "../monitoring/gpu_memory_monitor.h"
+#include "../monitoring/gpu_timeout_detector.h"
 #include <iostream>
 #include <queue>
 #include <algorithm>
@@ -42,6 +44,7 @@ void FrameGraph::cleanup() {
     nodes.clear();
     resources.clear();
     resourceNameMap.clear();
+    resourceCleanupInfo.clear();
     executionOrder.clear();
     computeToGraphicsBarriers.clear();
     
@@ -98,6 +101,13 @@ FrameGraphTypes::ResourceId FrameGraph::createBuffer(const std::string& name, Vk
     resources[id] = std::move(buffer);
     resourceNameMap[name] = id;
     
+    // Initialize resource cleanup tracking
+    ResourceCleanupInfo cleanupInfo;
+    cleanupInfo.lastAccessTime = std::chrono::steady_clock::now();
+    cleanupInfo.criticality = classifyResource(std::get<FrameGraphBuffer>(resources[id]));
+    cleanupInfo.canEvict = !std::get<FrameGraphBuffer>(resources[id]).isExternal;
+    resourceCleanupInfo[id] = cleanupInfo;
+    
     std::cout << "FrameGraph: Created buffer '" << name << "' (ID: " << id << ", Size: " << size << ")" << std::endl;
     return id;
 }
@@ -132,6 +142,13 @@ FrameGraphTypes::ResourceId FrameGraph::createImage(const std::string& name, VkF
     resources[id] = std::move(image);
     resourceNameMap[name] = id;
     
+    // Initialize resource cleanup tracking
+    ResourceCleanupInfo cleanupInfo;
+    cleanupInfo.lastAccessTime = std::chrono::steady_clock::now();
+    cleanupInfo.criticality = classifyResource(std::get<FrameGraphImage>(resources[id]));
+    cleanupInfo.canEvict = !std::get<FrameGraphImage>(resources[id]).isExternal;
+    resourceCleanupInfo[id] = cleanupInfo;
+    
     std::cout << "FrameGraph: Created image '" << name << "' (ID: " << id << ")" << std::endl;
     return id;
 }
@@ -160,6 +177,13 @@ FrameGraphTypes::ResourceId FrameGraph::importExternalBuffer(const std::string& 
     
     resources[id] = std::move(frameGraphBuffer);
     resourceNameMap[name] = id;
+    
+    // Initialize resource cleanup tracking for external buffer
+    ResourceCleanupInfo cleanupInfo;
+    cleanupInfo.lastAccessTime = std::chrono::steady_clock::now();
+    cleanupInfo.criticality = classifyResource(std::get<FrameGraphBuffer>(resources[id]));
+    cleanupInfo.canEvict = false; // External buffers cannot be evicted
+    resourceCleanupInfo[id] = cleanupInfo;
     
     std::cout << "FrameGraph: Imported external buffer '" << name << "' (ID: " << id << ")" << std::endl;
     return id;
@@ -192,7 +216,13 @@ FrameGraphTypes::ResourceId FrameGraph::importExternalImage(const std::string& n
     resources[id] = std::move(frameGraphImage);
     resourceNameMap[name] = id;
     
-    // Imported external image
+    // Initialize resource cleanup tracking for external image
+    ResourceCleanupInfo cleanupInfo;
+    cleanupInfo.lastAccessTime = std::chrono::steady_clock::now();
+    cleanupInfo.criticality = classifyResource(std::get<FrameGraphImage>(resources[id]));
+    cleanupInfo.canEvict = false; // External images cannot be evicted
+    resourceCleanupInfo[id] = cleanupInfo;
+    
     return id;
 }
 
@@ -328,6 +358,16 @@ FrameGraph::ExecutionResult FrameGraph::execute(uint32_t frameIndex) {
         return result;
     }
     
+    // Check for memory pressure and perform cleanup if needed
+    if (isMemoryPressureCritical()) {
+        performResourceCleanup();
+        
+        // If still critical, attempt resource eviction
+        if (isMemoryPressureCritical()) {
+            evictNonCriticalResources();
+        }
+    }
+    
     // Note: Command buffer reset is handled by VulkanRenderer after fence waits
     // Frame graph assumes command buffers are already reset and ready for recording
     
@@ -339,9 +379,18 @@ FrameGraph::ExecutionResult FrameGraph::execute(uint32_t frameIndex) {
     // Begin only the command buffers that will be used
     beginCommandBuffers(computeNeeded, graphicsNeeded, frameIndex);
     
-    // Execute nodes in dependency order
+    // Execute nodes with timeout monitoring if available
     bool computeExecuted = false;
-    executeNodesInOrder(frameIndex, computeExecuted);
+    if (timeoutDetector) {
+        if (!executeWithTimeoutMonitoring(frameIndex, computeExecuted)) {
+            // Timeout occurred, end command buffers and return early
+            endCommandBuffers(computeNeeded, graphicsNeeded, frameIndex);
+            handleExecutionTimeout();
+            return result;
+        }
+    } else {
+        executeNodesInOrder(frameIndex, computeExecuted);
+    }
     
     // End only the command buffers that were begun
     endCommandBuffers(computeNeeded, graphicsNeeded, frameIndex);
@@ -375,7 +424,9 @@ void FrameGraph::reset() {
         }, it->second);
         
         if (shouldRemove) {
+            FrameGraphTypes::ResourceId resourceId = it->first;
             resourceNameMap.erase(std::visit([](const auto& resource) { return resource.debugName; }, it->second));
+            resourceCleanupInfo.erase(resourceId); // Remove cleanup tracking for removed resources
             it = resources.erase(it);
         } else {
             ++it;
@@ -400,7 +451,9 @@ void FrameGraph::removeSwapchainResources() {
         
         if (shouldRemove) {
             std::cout << "FrameGraph: Removing old swapchain resource: " << debugName << std::endl;
+            FrameGraphTypes::ResourceId resourceId = it->first;
             resourceNameMap.erase(debugName);
+            resourceCleanupInfo.erase(resourceId); // Remove cleanup tracking for swapchain resources
             it = resources.erase(it);
         } else {
             ++it;
@@ -587,7 +640,7 @@ uint32_t FrameGraph::findAnyCompatibleMemoryType(uint32_t typeFilter) const {
     throw std::runtime_error("No compatible memory type found for fallback allocation!");
 }
 
-FrameGraph::ResourceCriticality FrameGraph::classifyResource(const FrameGraphBuffer& buffer) const {
+ResourceCriticality FrameGraph::classifyResource(const FrameGraphBuffer& buffer) const {
     // Critical: Entity and position buffers that are accessed every frame
     if (buffer.usage & VK_BUFFER_USAGE_STORAGE_BUFFER_BIT) {
         // Check debug names for ECS buffers
@@ -606,7 +659,7 @@ FrameGraph::ResourceCriticality FrameGraph::classifyResource(const FrameGraphBuf
     return ResourceCriticality::Flexible;
 }
 
-FrameGraph::ResourceCriticality FrameGraph::classifyResource(const FrameGraphImage& image) const {
+ResourceCriticality FrameGraph::classifyResource(const FrameGraphImage& image) const {
     // Critical: Render targets and depth buffers
     if (image.usage & (VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT)) {
         return ResourceCriticality::Critical;
@@ -1595,4 +1648,206 @@ FrameGraph::PartialCompilationResult FrameGraph::attemptPartialCompilation() {
     result.hasValidSubgraph = !result.validNodes.empty();
     
     return result;
+}
+
+// Resource cleanup and memory management implementation
+void FrameGraph::performResourceCleanup() {
+    if (!memoryMonitor) return;
+    
+    // Update access tracking for all resources accessed this frame
+    for (auto nodeId : executionOrder) {
+        auto nodeIt = nodes.find(nodeId);
+        if (nodeIt == nodes.end()) continue;
+        
+        // Track input resources
+        auto inputs = nodeIt->second->getInputs();
+        for (const auto& input : inputs) {
+            updateResourceAccessTracking(input.resourceId);
+        }
+        
+        // Track output resources
+        auto outputs = nodeIt->second->getOutputs();
+        for (const auto& output : outputs) {
+            updateResourceAccessTracking(output.resourceId);
+        }
+    }
+    
+    std::cout << "[FrameGraph] Resource cleanup performed" << std::endl;
+}
+
+bool FrameGraph::isMemoryPressureCritical() const {
+    if (!memoryMonitor) return false;
+    
+    float memoryPressure = memoryMonitor->getMemoryPressure();
+    return memoryPressure > 0.85f; // Critical threshold: >85% memory pressure
+}
+
+void FrameGraph::evictNonCriticalResources() {
+    auto candidates = getEvictionCandidates();
+    
+    if (candidates.empty()) {
+        std::cerr << "[FrameGraph] No eviction candidates available" << std::endl;
+        return;
+    }
+    
+    size_t evictedCount = 0;
+    size_t targetEvictions = std::min(candidates.size(), size_t(5)); // Limit to 5 evictions per frame
+    
+    for (size_t i = 0; i < targetEvictions; ++i) {
+        if (attemptResourceEviction(candidates[i])) {
+            ++evictedCount;
+        }
+    }
+    
+    std::cout << "[FrameGraph] Evicted " << evictedCount << " non-critical resources" << std::endl;
+}
+
+void FrameGraph::updateResourceAccessTracking(FrameGraphTypes::ResourceId resourceId) {
+    auto it = resourceCleanupInfo.find(resourceId);
+    if (it != resourceCleanupInfo.end()) {
+        it->second.lastAccessTime = std::chrono::steady_clock::now();
+        it->second.accessCount++;
+    }
+}
+
+void FrameGraph::markResourceForEviction(FrameGraphTypes::ResourceId resourceId) {
+    auto it = resourceCleanupInfo.find(resourceId);
+    if (it != resourceCleanupInfo.end() && it->second.canEvict) {
+        it->second.canEvict = true; // Mark as evictable if not already
+    }
+}
+
+std::vector<FrameGraphTypes::ResourceId> FrameGraph::getEvictionCandidates() {
+    std::vector<FrameGraphTypes::ResourceId> candidates;
+    auto now = std::chrono::steady_clock::now();
+    
+    // Find resources that haven't been accessed in the last 3 seconds and can be evicted
+    const auto EVICTION_THRESHOLD = std::chrono::seconds(3);
+    
+    for (const auto& [resourceId, cleanupInfo] : resourceCleanupInfo) {
+        if (!cleanupInfo.canEvict) continue;
+        if (cleanupInfo.criticality == ResourceCriticality::Critical) continue; // Never evict critical resources
+        
+        auto timeSinceAccess = now - cleanupInfo.lastAccessTime;
+        if (timeSinceAccess > EVICTION_THRESHOLD) {
+            candidates.push_back(resourceId);
+        }
+    }
+    
+    // Sort candidates by criticality and last access time (least critical, oldest first)
+    std::sort(candidates.begin(), candidates.end(), [this](FrameGraphTypes::ResourceId a, FrameGraphTypes::ResourceId b) {
+        auto& infoA = resourceCleanupInfo.at(a);
+        auto& infoB = resourceCleanupInfo.at(b);
+        
+        if (infoA.criticality != infoB.criticality) {
+            return infoA.criticality > infoB.criticality; // Less critical first
+        }
+        return infoA.lastAccessTime < infoB.lastAccessTime; // Older first
+    });
+    
+    return candidates;
+}
+
+bool FrameGraph::attemptResourceEviction(FrameGraphTypes::ResourceId resourceId) {
+    auto resourceIt = resources.find(resourceId);
+    auto cleanupIt = resourceCleanupInfo.find(resourceId);
+    
+    if (resourceIt == resources.end() || cleanupIt == resourceCleanupInfo.end()) {
+        return false;
+    }
+    
+    if (!cleanupIt->second.canEvict || cleanupIt->second.criticality == ResourceCriticality::Critical) {
+        return false;
+    }
+    
+    // Find and remove from name map
+    std::string debugName;
+    std::visit([&debugName](const auto& resource) {
+        debugName = resource.debugName;
+    }, resourceIt->second);
+    
+    auto nameIt = std::find_if(resourceNameMap.begin(), resourceNameMap.end(),
+        [resourceId](const auto& pair) { return pair.second == resourceId; });
+    
+    if (nameIt != resourceNameMap.end()) {
+        resourceNameMap.erase(nameIt);
+    }
+    
+    // Remove resource and cleanup info
+    resources.erase(resourceIt);
+    resourceCleanupInfo.erase(cleanupIt);
+    
+    std::cout << "[FrameGraph] Evicted resource: " << debugName << " (ID: " << resourceId << ")" << std::endl;
+    return true;
+}
+
+// Timeout-aware execution implementation
+bool FrameGraph::executeWithTimeoutMonitoring(uint32_t frameIndex, bool& computeExecuted) {
+    const auto& computeCommandBuffers = sync->getComputeCommandBuffers();
+    const auto& graphicsCommandBuffers = sync->getCommandBuffers();
+    
+    VkCommandBuffer currentComputeCmd = computeCommandBuffers[frameIndex];
+    VkCommandBuffer currentGraphicsCmd = graphicsCommandBuffers[frameIndex];
+    
+    for (auto nodeId : executionOrder) {
+        auto it = nodes.find(nodeId);
+        if (it == nodes.end()) continue;
+        
+        auto& node = it->second;
+        
+        // Check GPU health before executing
+        if (!timeoutDetector->isGPUHealthy()) {
+            std::cerr << "[FrameGraph] GPU unhealthy, aborting execution" << std::endl;
+            return false;
+        }
+        
+        insertBarriersIfNeeded(currentGraphicsCmd, computeExecuted, node->needsGraphicsQueue());
+        
+        VkCommandBuffer cmdBuffer = node->needsComputeQueue() ? currentComputeCmd : currentGraphicsCmd;
+        
+        // Begin timeout monitoring for this node
+        std::string nodeName = node->getName() + "_FrameGraph";
+        if (node->needsComputeQueue()) {
+            timeoutDetector->beginComputeDispatch(nodeName.c_str(), 1); // Generic workgroup count
+            computeExecuted = true;
+        }
+        
+        // Execute the node
+        node->execute(cmdBuffer, *this);
+        
+        // End timeout monitoring
+        if (node->needsComputeQueue()) {
+            timeoutDetector->endComputeDispatch();
+            
+            // Check if we need to apply recovery recommendations
+            auto recommendation = timeoutDetector->getRecoveryRecommendation();
+            if (recommendation.shouldReduceWorkload) {
+                std::cout << "[FrameGraph] Applying timeout recovery recommendations" << std::endl;
+                // Future: Could implement workload reduction at frame graph level
+            }
+        }
+        
+        // Final health check after node execution
+        if (!timeoutDetector->isGPUHealthy()) {
+            std::cerr << "[FrameGraph] GPU became unhealthy after node execution" << std::endl;
+            return false;
+        }
+    }
+    
+    return true;
+}
+
+void FrameGraph::handleExecutionTimeout() {
+    std::cerr << "[FrameGraph] Execution timeout detected - frame graph execution aborted" << std::endl;
+    
+    if (timeoutDetector) {
+        auto stats = timeoutDetector->getStats();
+        std::cerr << "[FrameGraph] Timeout stats - Average: " << stats.averageDispatchTimeMs 
+                  << "ms, Peak: " << stats.peakDispatchTimeMs << "ms, Warnings: " << stats.warningCount << std::endl;
+    }
+    
+    // Could implement additional recovery strategies here:
+    // - Mark nodes for reduced execution
+    // - Schedule recompilation with simpler graph
+    // - Request external systems to reduce entity count
 }

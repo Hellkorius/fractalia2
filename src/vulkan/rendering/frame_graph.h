@@ -9,11 +9,14 @@
 #include <unordered_set>
 #include <functional>
 #include <variant>
+#include <chrono>
 #include "../core/vulkan_raii.h"
 
 // Forward declarations
 class VulkanContext;
 class VulkanSync;
+class GPUTimeoutDetector;
+class GPUMemoryMonitor;
 
 namespace FrameGraphTypes {
     using ResourceId = uint32_t;
@@ -64,6 +67,13 @@ enum class PipelineStage {
     Transfer
 };
 
+// Resource classification for allocation strategies
+enum class ResourceCriticality {
+    Critical,    // Must be device local, fail fast if not possible
+    Important,   // Prefer device local, allow limited fallback
+    Flexible     // Accept any memory type for allocation success
+};
+
 // Resource dependency descriptor
 struct ResourceDependency {
     FrameGraphTypes::ResourceId resourceId;
@@ -108,6 +118,10 @@ public:
     bool initialize(const VulkanContext& context, VulkanSync* sync);
     void cleanup();
     void cleanupBeforeContextDestruction();
+    
+    // Optional monitoring integration
+    void setMemoryMonitor(GPUMemoryMonitor* monitor) { memoryMonitor = monitor; }
+    void setTimeoutDetector(GPUTimeoutDetector* detector) { timeoutDetector = detector; }
     
     // Resource management
     FrameGraphTypes::ResourceId createBuffer(const std::string& name, VkDeviceSize size, VkBufferUsageFlags usage);
@@ -160,6 +174,11 @@ public:
     // Performance monitoring
     void logAllocationTelemetry() const;
     
+    // Resource management and recovery
+    void performResourceCleanup();
+    bool isMemoryPressureCritical() const;
+    void evictNonCriticalResources();
+    
     // Context access for nodes
     const VulkanContext* getContext() const { return context; }
 
@@ -168,6 +187,10 @@ private:
     const VulkanContext* context = nullptr;
     VulkanSync* sync = nullptr;
     bool initialized = false;
+    
+    // Optional monitoring integration
+    GPUMemoryMonitor* memoryMonitor = nullptr;
+    GPUTimeoutDetector* timeoutDetector = nullptr;
     
     // Resource storage
     std::unordered_map<FrameGraphTypes::ResourceId, FrameGraphResource> resources;
@@ -226,6 +249,15 @@ private:
         float getFallbackRate() const { return totalAttempts ? (float)fallbackAllocations / totalAttempts : 0.0f; }
         float getHostMemoryRate() const { return totalAttempts ? (float)hostMemoryFallbacks / totalAttempts : 0.0f; }
     } mutable allocationTelemetry;
+    
+    // Resource cleanup tracking
+    struct ResourceCleanupInfo {
+        std::chrono::steady_clock::time_point lastAccessTime;
+        uint32_t accessCount = 0;
+        ResourceCriticality criticality = ResourceCriticality::Flexible;
+        bool canEvict = true;
+    };
+    std::unordered_map<FrameGraphTypes::ResourceId, ResourceCleanupInfo> resourceCleanupInfo;
     
     bool compiled = false;
     
@@ -301,18 +333,22 @@ private:
     uint32_t findAnyCompatibleMemoryType(uint32_t typeFilter) const;
     
     // Resource classification
-    enum class ResourceCriticality {
-        Critical,    // Must be device local, fail fast if not possible
-        Important,   // Prefer device local, allow limited fallback
-        Flexible     // Accept any memory type for allocation success
-    };
-    
     ResourceCriticality classifyResource(const FrameGraphBuffer& buffer) const;
     ResourceCriticality classifyResource(const FrameGraphImage& image) const;
     
     // Advanced allocation strategies
     bool tryAllocateWithStrategy(FrameGraphBuffer& buffer, ResourceCriticality criticality);
     bool tryAllocateWithStrategy(FrameGraphImage& image, ResourceCriticality criticality);
+    
+    // Resource cleanup and memory management
+    void updateResourceAccessTracking(FrameGraphTypes::ResourceId resourceId);
+    void markResourceForEviction(FrameGraphTypes::ResourceId resourceId);
+    std::vector<FrameGraphTypes::ResourceId> getEvictionCandidates();
+    bool attemptResourceEviction(FrameGraphTypes::ResourceId resourceId);
+    
+    // Timeout-aware execution
+    bool executeWithTimeoutMonitoring(uint32_t frameIndex, bool& computeExecuted);
+    void handleExecutionTimeout();
 };
 
 // Helper macros for common node patterns
