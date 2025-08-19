@@ -255,18 +255,19 @@ void VulkanRenderer::cleanupModularArchitecture() {
 }
 
 void VulkanRenderer::drawFrameModular() {
-    // CRITICAL FIX: Wait for previous frame compute work to complete
-    // Use the same fence system that CommandSubmissionService uses (VulkanSync)
+    // Wait for previous frame GPU work to complete
+    // Use VulkanSync fences directly (same system CommandSubmissionService uses)
     VkFence computeFence = sync->getComputeFence(currentFrame);
-    VkResult waitResult = context->getLoader().vkWaitForFences(
-        context->getDevice(), 1, &computeFence, VK_TRUE, UINT64_MAX);
-    if (waitResult != VK_SUCCESS) {
-        std::cerr << "VulkanRenderer: Failed to wait for compute fence: " << waitResult << std::endl;
-        return;
-    }
+    VkFence graphicsFence = sync->getInFlightFence(currentFrame);
     
-    // Wait for graphics fence using existing system
-    if (syncService->waitForGraphicsFence(currentFrame) != VK_SUCCESS) {
+    const auto& vk = context->getLoader();
+    const VkDevice device = context->getDevice();
+    
+    // Wait for both compute and graphics fences in a single call for efficiency
+    VkFence fences[] = {computeFence, graphicsFence};
+    VkResult waitResult = vk.vkWaitForFences(device, 2, fences, VK_TRUE, UINT64_MAX);
+    if (waitResult != VK_SUCCESS) {
+        std::cerr << "VulkanRenderer: Failed to wait for GPU fences: " << waitResult << std::endl;
         return;
     }
     
