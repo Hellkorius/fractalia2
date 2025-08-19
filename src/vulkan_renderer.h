@@ -107,6 +107,10 @@ private:
     void cleanupModularArchitecture();
     void drawFrameModular();
     
+    // Error handling and validation
+    bool validateInitializationState() const;
+    bool attemptSwapchainRecreation();
+    
     // GPU compute state
     float deltaTime = 0.0f;
     float totalTime = 0.0f; // Accumulated simulation time
