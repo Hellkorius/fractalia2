@@ -41,8 +41,7 @@ void FrameGraph::cleanup() {
     resources.clear();
     resourceNameMap.clear();
     executionOrder.clear();
-    computeToGraphicsBarriers.bufferBarriers.clear();
-    computeToGraphicsBarriers.imageBarriers.clear();
+    computeToGraphicsBarriers.clear();
     
     nextResourceId = 1;
     nextNodeId = 1;
@@ -209,8 +208,7 @@ bool FrameGraph::compile() {
     
     // Clear previous compilation
     executionOrder.clear();
-    computeToGraphicsBarriers.bufferBarriers.clear();
-    computeToGraphicsBarriers.imageBarriers.clear();
+    computeToGraphicsBarriers.clear();
     
     // Build dependency graph and sort nodes
     if (!buildDependencyGraph()) {
@@ -296,10 +294,7 @@ void FrameGraph::reset() {
     // Keep execution order and barriers once compiled
     if (!compiled) {
         executionOrder.clear();
-        computeToGraphicsBarriers.bufferBarriers.clear();
-        computeToGraphicsBarriers.imageBarriers.clear();
-        computeToGraphicsBarriers.srcStage = 0;
-        computeToGraphicsBarriers.dstStage = 0;
+        computeToGraphicsBarriers.clear();
     }
     
     // Clear transient resources (including swapchain images that change per frame)
@@ -617,59 +612,82 @@ bool FrameGraph::buildDependencyGraph() {
 }
 
 bool FrameGraph::topologicalSort() {
-    // Implement proper topological sorting based on resource dependencies
+    // Efficient O(V + E) topological sort using Kahn's algorithm
     executionOrder.clear();
     
-    std::unordered_set<FrameGraphTypes::NodeId> visited;
-    std::unordered_set<FrameGraphTypes::NodeId> visiting;
+    // Build resource producer mapping for O(1) dependency lookups
+    std::unordered_map<FrameGraphTypes::ResourceId, FrameGraphTypes::NodeId> resourceProducers;
+    for (const auto& [nodeId, node] : nodes) {
+        auto outputs = node->getOutputs();
+        for (const auto& output : outputs) {
+            resourceProducers[output.resourceId] = nodeId;
+        }
+    }
     
-    std::function<bool(FrameGraphTypes::NodeId)> visit = [&](FrameGraphTypes::NodeId nodeId) -> bool {
-        if (visiting.count(nodeId)) {
-            std::cerr << "FrameGraph: Circular dependency detected involving node " << nodeId << std::endl;
-            return false; // Circular dependency
-        }
-        if (visited.count(nodeId)) {
-            return true; // Already processed
-        }
-        
-        visiting.insert(nodeId);
-        
-        auto nodeIt = nodes.find(nodeId);
-        if (nodeIt == nodes.end()) return false;
-        
-        auto& node = nodeIt->second;
+    // Build adjacency list and calculate in-degrees
+    std::unordered_map<FrameGraphTypes::NodeId, std::vector<FrameGraphTypes::NodeId>> adjacencyList;
+    std::unordered_map<FrameGraphTypes::NodeId, int> inDegree;
+    
+    // Initialize in-degrees to 0
+    for (const auto& [nodeId, node] : nodes) {
+        inDegree[nodeId] = 0;
+        adjacencyList[nodeId] = {};
+    }
+    
+    // Build graph edges: if nodeA produces resource that nodeB consumes, nodeA -> nodeB
+    for (const auto& [nodeId, node] : nodes) {
         auto inputs = node->getInputs();
-        
-        // Find nodes that produce our input resources (dependencies)
         for (const auto& input : inputs) {
-            for (const auto& [otherNodeId, otherNode] : nodes) {
-                if (otherNodeId == nodeId) continue;
-                
-                auto outputs = otherNode->getOutputs();
-                for (const auto& output : outputs) {
-                    if (output.resourceId == input.resourceId) {
-                        // This node depends on otherNode
-                        if (!visit(otherNodeId)) {
-                            return false;
-                        }
-                    }
+            auto producerIt = resourceProducers.find(input.resourceId);
+            if (producerIt != resourceProducers.end() && producerIt->second != nodeId) {
+                FrameGraphTypes::NodeId producerNodeId = producerIt->second;
+                adjacencyList[producerNodeId].push_back(nodeId);
+                inDegree[nodeId]++;
+            }
+        }
+    }
+    
+    // Kahn's algorithm: start with nodes that have no dependencies
+    std::queue<FrameGraphTypes::NodeId> zeroInDegreeQueue;
+    for (const auto& [nodeId, degree] : inDegree) {
+        if (degree == 0) {
+            zeroInDegreeQueue.push(nodeId);
+        }
+    }
+    
+    size_t processedNodes = 0;
+    while (!zeroInDegreeQueue.empty()) {
+        FrameGraphTypes::NodeId currentNode = zeroInDegreeQueue.front();
+        zeroInDegreeQueue.pop();
+        
+        executionOrder.push_back(currentNode);
+        processedNodes++;
+        
+        // Reduce in-degree for all dependent nodes
+        for (FrameGraphTypes::NodeId dependentNode : adjacencyList[currentNode]) {
+            inDegree[dependentNode]--;
+            if (inDegree[dependentNode] == 0) {
+                zeroInDegreeQueue.push(dependentNode);
+            }
+        }
+    }
+    
+    // Check for circular dependencies
+    if (processedNodes != nodes.size()) {
+        std::cerr << "FrameGraph: Circular dependency detected. Processed " << processedNodes 
+                  << " nodes out of " << nodes.size() << std::endl;
+        
+        // Report nodes involved in cycles (for debugging)
+        for (const auto& [nodeId, degree] : inDegree) {
+            if (degree > 0) {
+                auto nodeIt = nodes.find(nodeId);
+                if (nodeIt != nodes.end()) {
+                    std::cerr << "FrameGraph: Node in cycle: " << nodeIt->second->getName() 
+                              << " (ID: " << nodeId << ", remaining in-degree: " << degree << ")" << std::endl;
                 }
             }
         }
-        
-        visiting.erase(nodeId);
-        visited.insert(nodeId);
-        executionOrder.push_back(nodeId);
-        return true;
-    };
-    
-    // Visit all nodes
-    for (const auto& [nodeId, node] : nodes) {
-        if (!visited.count(nodeId)) {
-            if (!visit(nodeId)) {
-                return false;
-            }
-        }
+        return false;
     }
     
     return true;
@@ -679,8 +697,7 @@ void FrameGraph::insertSynchronizationBarriers() {
     // Optimized O(n) barrier insertion with resource-based batching
     
     // Clear existing barriers
-    computeToGraphicsBarriers.bufferBarriers.clear();
-    computeToGraphicsBarriers.imageBarriers.clear();
+    computeToGraphicsBarriers.clear();
     computeToGraphicsBarriers.srcStage = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
     computeToGraphicsBarriers.dstStage = VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_VERTEX_INPUT_BIT;
     
@@ -745,19 +762,31 @@ void FrameGraph::insertBarrierForResource(FrameGraphTypes::ResourceId resourceId
         }
     };
     
+    // Hash function for barrier deduplication
+    auto hashBuffer = [](VkBuffer buffer, VkAccessFlags srcMask, VkAccessFlags dstMask) -> uint64_t {
+        uint64_t hash = reinterpret_cast<uintptr_t>(buffer);
+        hash ^= static_cast<uint64_t>(srcMask) << 32;
+        hash ^= static_cast<uint64_t>(dstMask) << 16;
+        return hash;
+    };
+    
+    auto hashImage = [](VkImage image, VkAccessFlags srcMask, VkAccessFlags dstMask) -> uint64_t {
+        uint64_t hash = reinterpret_cast<uintptr_t>(image);
+        hash ^= static_cast<uint64_t>(srcMask) << 32;
+        hash ^= static_cast<uint64_t>(dstMask) << 16;
+        return hash;
+    };
+    
     // Check if this is a buffer or image resource
     const FrameGraphBuffer* buffer = getBufferResource(resourceId);
     if (buffer) {
         VkAccessFlags srcMask = convertAccess(srcAccess, srcStage);
         VkAccessFlags dstMask = convertAccess(dstAccess, dstStage);
         
-        // Check for duplicate barriers on same buffer
-        for (const auto& existingBarrier : computeToGraphicsBarriers.bufferBarriers) {
-            if (existingBarrier.buffer == buffer->buffer.get() && 
-                existingBarrier.srcAccessMask == srcMask && 
-                existingBarrier.dstAccessMask == dstMask) {
-                return; // Duplicate barrier - skip
-            }
+        // O(1) hash-based duplicate check
+        uint64_t barrierHash = hashBuffer(buffer->buffer.get(), srcMask, dstMask);
+        if (computeToGraphicsBarriers.bufferBarrierHashes.count(barrierHash)) {
+            return; // Duplicate barrier - skip
         }
         
         VkBufferMemoryBarrier barrier{};
@@ -771,6 +800,7 @@ void FrameGraph::insertBarrierForResource(FrameGraphTypes::ResourceId resourceId
         barrier.size = VK_WHOLE_SIZE;
         
         computeToGraphicsBarriers.bufferBarriers.push_back(barrier);
+        computeToGraphicsBarriers.bufferBarrierHashes.insert(barrierHash);
         return;
     }
     
@@ -779,13 +809,10 @@ void FrameGraph::insertBarrierForResource(FrameGraphTypes::ResourceId resourceId
         VkAccessFlags srcMask = convertAccess(srcAccess, srcStage);
         VkAccessFlags dstMask = convertAccess(dstAccess, dstStage);
         
-        // Check for duplicate barriers on same image
-        for (const auto& existingBarrier : computeToGraphicsBarriers.imageBarriers) {
-            if (existingBarrier.image == image->image.get() && 
-                existingBarrier.srcAccessMask == srcMask && 
-                existingBarrier.dstAccessMask == dstMask) {
-                return; // Duplicate barrier - skip
-            }
+        // O(1) hash-based duplicate check
+        uint64_t barrierHash = hashImage(image->image.get(), srcMask, dstMask);
+        if (computeToGraphicsBarriers.imageBarrierHashes.count(barrierHash)) {
+            return; // Duplicate barrier - skip
         }
         
         VkImageMemoryBarrier barrier{};
@@ -804,6 +831,7 @@ void FrameGraph::insertBarrierForResource(FrameGraphTypes::ResourceId resourceId
         barrier.subresourceRange.layerCount = 1;
         
         computeToGraphicsBarriers.imageBarriers.push_back(barrier);
+        computeToGraphicsBarriers.imageBarrierHashes.insert(barrierHash);
     }
 }
 

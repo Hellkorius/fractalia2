@@ -184,6 +184,19 @@ private:
         std::vector<VkImageMemoryBarrier> imageBarriers;
         VkPipelineStageFlags srcStage = 0;
         VkPipelineStageFlags dstStage = 0;
+        
+        // Hash sets for O(1) barrier deduplication
+        std::unordered_set<uint64_t> bufferBarrierHashes;
+        std::unordered_set<uint64_t> imageBarrierHashes;
+        
+        void clear() {
+            bufferBarriers.clear();
+            imageBarriers.clear();
+            bufferBarrierHashes.clear();
+            imageBarrierHashes.clear();
+            srcStage = 0;
+            dstStage = 0;
+        }
     };
     BarrierInfo computeToGraphicsBarriers;
     
