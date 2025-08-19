@@ -124,26 +124,6 @@ int main(int argc, char* argv[]) {
         .child_of(scheduler.getPhysicsPhase());
     
     DEBUG_LOG("Camera entities: " << world.count<Camera>());
-    DEBUG_LOG("Verifying main camera exists...");
-    auto mainCamera = world.lookup("MainCamera");
-    if (mainCamera.is_valid()) {
-        DEBUG_LOG("Main camera entity found with ID: " << mainCamera.id());
-        if (mainCamera.has<Camera>()) {
-            DEBUG_LOG("Main camera has Camera component");
-        } else {
-            DEBUG_LOG("ERROR: Main camera missing Camera component!");
-        }
-    } else {
-        DEBUG_LOG("ERROR: Main camera entity not found!");
-    }
-    
-    DEBUG_LOG("Verifying input entity exists...");
-    auto inputEntity = world.lookup("InputManager");
-    if (inputEntity.is_valid()) {
-        DEBUG_LOG("Input entity found with ID: " << inputEntity.id());
-    } else {
-        DEBUG_LOG("ERROR: Input entity not found!");
-    }
     
     renderer.setWorld(&world);
     
@@ -180,14 +160,6 @@ int main(int argc, char* argv[]) {
         deltaTime = std::min(deltaTime, 1.0f / 30.0f);
         
         inputService->processSDLEvents();
-        
-        // Debug: Test if input is working
-        static int debugFrameCount = 0;
-        if (++debugFrameCount % 120 == 0) { // Every 2 seconds at 60fps
-            if (InputQuery::isKeyDown(world, SDL_SCANCODE_W)) {
-                DEBUG_LOG("W key detected as down");
-            }
-        }
         
         auto* appState = world.get<ApplicationState>();
         if (appState && (appState->requestQuit || !appState->running)) {
