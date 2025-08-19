@@ -43,4 +43,10 @@ if [ -f ../vendored/SDL3-3.1.6/x86_64-w64-mingw32/bin/SDL3.dll ]; then
     echo "SDL3.dll copied to build directory"
 fi
 
+echo "Copying build folder to /mnt/f/Projects/Fractalia2..."
+DEST_DIR="/mnt/f/Projects/Fractalia2"
+mkdir -p "$DEST_DIR"
+cp -r . "$DEST_DIR/build"
+echo "Build folder copied to $DEST_DIR/build"
+
 
