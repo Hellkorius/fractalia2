@@ -62,6 +62,9 @@ bool GameControlService::initialize(flecs::world& world, VulkanRenderer* rendere
     integrateWithRenderingService();
     
     initialized = true;
+    // Print control instructions (migrated from simple_control_system)
+    printControlInstructions();
+    
     DEBUG_LOG("ControlService initialized successfully");
     return true;
 }
@@ -328,7 +331,7 @@ void GameControlService::integrateWithInputService() {
         "graphics_tests",
         InputActionType::DIGITAL,
         "Run graphics tests",
-        {InputBinding(InputBinding::InputType::KEYBOARD_KEY, SDL_SCANCODE_G)}
+        {InputBinding(InputBinding::InputType::KEYBOARD_KEY, SDL_SCANCODE_T)}
     });
     
     inputService->registerAction({
@@ -642,6 +645,22 @@ void GameControlService::logControlState() const {
     DEBUG_LOG("ControlService State - Debug:" << controlState.debugMode 
               << " Wireframe:" << controlState.wireframeMode 
               << " Movement:" << controlState.currentMovementType);
+}
+
+void GameControlService::printControlInstructions() const {
+    std::cout << "\n=== Flecs GPU Compute Movement Demo Controls ===" << std::endl;
+    std::cout << "ESC: Exit" << std::endl;
+    std::cout << "P: Print detailed performance report" << std::endl;
+    std::cout << "+/=: Add 1000 more GPU entities" << std::endl;
+    std::cout << "Left Click: Create GPU entity with movement at mouse position" << std::endl;
+    std::cout << "All entities use random walk movement pattern" << std::endl;
+    std::cout << "T: Run graphics buffer overflow tests" << std::endl;
+    std::cout << "F3: Toggle debug mode" << std::endl;
+    std::cout << "R: Reset camera" << std::endl;
+    std::cout << "F: Focus camera on entities" << std::endl;
+    std::cout << "WASD: Move camera" << std::endl;
+    std::cout << "Mouse Wheel: Zoom camera" << std::endl;
+    std::cout << "===============================================\n" << std::endl;
 }
 
 // Convenience namespace implementation

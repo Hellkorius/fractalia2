@@ -111,6 +111,7 @@ public:
     // Statistics and monitoring
     void printControlStats() const;
     void logControlState() const;
+    void printControlInstructions() const;
 
 private:
     // Core data
