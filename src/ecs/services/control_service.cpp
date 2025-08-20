@@ -459,14 +459,15 @@ void GameControlService::createEntity(const glm::vec2& position) {
     }
     
     glm::vec3 pos3d(position.x, position.y, 0.0f);
-    auto entities = entityFactory->createSwarm(1, pos3d, 0.1f);
-    std::cout << "Created " << entities.size() << " entities from EntityFactory" << std::endl;
+    flecs::entity entity = entityFactory->createExactEntity(pos3d);
+    std::cout << "Created single entity at exact position from EntityFactory" << std::endl;
     
     auto* gpuEntityManager = renderer->getGPUEntityManager();
     if (gpuEntityManager) {
+        std::vector<flecs::entity> entities = {entity};
         gpuEntityManager->addEntitiesFromECS(entities);
         gpuEntityManager->uploadPendingEntities();
-        std::cout << "Added entities to GPU manager and uploaded" << std::endl;
+        std::cout << "Added entity to GPU manager and uploaded" << std::endl;
     } else {
         std::cout << "ERROR: gpuEntityManager is null!" << std::endl;
     }

@@ -35,7 +35,7 @@ glm::vec2 CameraTransforms::screenToWorld(const glm::vec2& screenPos, const Came
     
     glm::vec2 normalizedScreen;
     normalizedScreen.x = (screenPos.x / screenSize.x - 0.5f);
-    normalizedScreen.y = (screenPos.y / screenSize.y - 0.5f);
+    normalizedScreen.y = -(screenPos.y / screenSize.y - 0.5f);  // Flip Y axis: SDL screen coords (Y=0 top) to world coords (Y=0 center)
     
     glm::vec2 worldOffset = (normalizedScreen * viewSize) / zoom;
     

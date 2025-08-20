@@ -43,7 +43,7 @@ layout(std430, binding = 3) buffer TargetPositionBuffer {
 
 // Constants for improved performance
 const float TWO_PI = 6.28318530718;
-const uint CYCLE_LENGTH = 600u;
+const uint CYCLE_LENGTH = 900u; // Balanced cycle length for active but smooth movement (15 seconds at 60fps)
 const float INV_4294967295 = 2.3283064e-10; // 1.0 / 4294967295.0
 
 // Optimized Wang hash - fewer operations
@@ -125,26 +125,11 @@ void main() {
     vec3 currentPosition;
     vec3 target;
     
-    // Initialize buffers for new entities with dispersal
+    // Initialize buffers for new entities - NO initial dispersal
     if (initialized < 0.5) {
         currentPosition = center;
+        target = center; // Start exactly at spawn position - no initial movement
         
-        // DISPERSAL PHASE: Generate initial dispersal target FAR away from center
-        uint dispersalSeed = entityIndex ^ 0xDEADBEEFu;
-        uint hash1 = fastHash(dispersalSeed);
-        uint hash2 = fastHash(dispersalSeed ^ 0x55555555u);
-        
-        float dispersalAngle = hashToFloat(hash1) * TWO_PI;
-        float dispersalMagnitude = (12.0 + hashToFloat(hash2) * 18.0) * amplitude; // Much further dispersal: 12-30x amplitude
-        
-        vec2 dispersalSinCos = fastSinCos(dispersalAngle);
-        vec3 dispersalDirection = vec3(
-            dispersalMagnitude * dispersalSinCos.y, // cosine
-            dispersalMagnitude * dispersalSinCos.x, // sine
-            0.0
-        );
-        
-        target = center + dispersalDirection; // Initial target is FAR away from center
         currentPos.currentPositions[entityIndex] = vec4(currentPosition, 1.0);
         targetPos.targetPositions[entityIndex] = vec4(target, 1.0);
         entities.entityData[baseOffset + 2u].y = 1.0; // Mark as initialized
@@ -174,7 +159,7 @@ void main() {
         
         // Entity drift characteristic (computed once per cycle)
         float driftiness = hashToFloat(fastHash(entityIndex ^ 0x12345678u));
-        stepMagnitude *= (3.0 + driftiness * 4.0); // Reasonable steps: 3-7x amplitude for longer cycles
+        stepMagnitude *= (2.0 + driftiness * 4.0); // More active steps: 2-6x amplitude for dynamic movement
         
         // Fast trigonometric calculation using lookup table
         vec2 sinCos = fastSinCos(randAngle);

@@ -152,9 +152,9 @@ private:
         // Create variation based on entity index
         float t = static_cast<float>(index) / static_cast<float>(totalCount);
         
-        // Simple parameters for petal movement
-        pattern.amplitude = 15.0f + 10.0f * t; // Much larger varied radius
-        pattern.frequency = 0.5f + 1.0f * t; // Varied speed
+        // Simple parameters for active movement
+        pattern.amplitude = 12.0f + 8.0f * t; // Larger radius for more active movement
+        pattern.frequency = 0.8f + 1.2f * t; // Higher frequency for more dynamic behavior
         pattern.phase = t * 6.28318530718f * 2.0f; // Phase variation
         pattern.timeOffset = t * 10.0f; // Stagger timing
         
@@ -219,22 +219,40 @@ public:
             .build();
     }
     
-    // Create a single entity with movement pattern
+    // Create a single entity with movement pattern at exact position
     flecs::entity createMovingEntity(const glm::vec3& pos) {
         return createMovingEntityWithType(pos, MovementType::RandomWalk);
     }
     
-    // Create a single entity with specified movement type
+    // Create a single entity with specified movement type at exact position
     flecs::entity createMovingEntityWithType(const glm::vec3& pos, MovementType movementType) {
         glm::vec4 color = glm::vec4(0.8f, 0.8f, 0.8f, 1.0f); // Neutral start - dynamic colors will be applied
         
-        // Entity spawns at mouse click, movement pattern centered at mouse click
+        // Entity spawns at exact mouse click position, movement pattern centered at click position
         MovementPattern pattern = createMovementPattern(pos, 0, 1, movementType);
         
         flecs::entity entity = create()
-            .at(pos)
+            .at(pos)  // Spawn at exact position
             .withColor(color)
             .asDynamic()
+            .build();
+            
+        entity.set<MovementPattern>(pattern);
+        return entity;
+    }
+    
+    // Create a single entity at exact position (no radius offset)
+    flecs::entity createExactEntity(const glm::vec3& pos, MovementType movementType = MovementType::RandomWalk) {
+        glm::vec4 color = glm::vec4(0.8f, 0.8f, 0.8f, 1.0f);
+        
+        // Movement pattern centered at exact spawn position
+        MovementPattern pattern = createMovementPattern(pos, 0, 1, movementType);
+        
+        flecs::entity entity = create()
+            .at(pos)  // Exact position - no random offset
+            .withColor(color)
+            .asDynamic()
+            .asPooled()
             .build();
             
         entity.set<MovementPattern>(pattern);
