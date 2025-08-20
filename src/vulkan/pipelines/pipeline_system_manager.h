@@ -45,10 +45,6 @@ public:
     VkPipeline createGraphicsPipeline(const PipelineCreationInfo& info);
     VkPipeline createComputePipeline(const std::string& computeShaderPath);
 
-    // Legacy compatibility methods for gradual migration
-    VkRenderPass createRenderPass(VkFormat colorFormat, VkSampleCountFlagBits samples = VK_SAMPLE_COUNT_2_BIT, bool enableMSAA = false);
-    bool recreateRenderPass(VkFormat newFormat);
-    VkRenderPass getCurrentRenderPass() const { return currentRenderPass; }
 
     // Integrated operations
     void warmupCommonPipelines();
@@ -78,8 +74,6 @@ private:
     std::unique_ptr<GraphicsPipelineManager> graphicsManager;
     std::unique_ptr<ComputePipelineManager> computeManager;
 
-    // Legacy compatibility state
-    VkRenderPass currentRenderPass = VK_NULL_HANDLE;
 
     // Internal initialization helpers
     bool initializeManagers();

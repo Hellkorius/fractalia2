@@ -5,7 +5,7 @@
 // Forward declarations
 class VulkanContext;
 class VulkanSwapchain;
-class PipelineSystemManager;
+class GraphicsPipelineManager;
 class GPUSynchronizationService;
 
 struct SurfaceAcquisitionResult {
@@ -23,7 +23,7 @@ public:
     bool initialize(
         VulkanContext* context,
         VulkanSwapchain* swapchain,
-        PipelineSystemManager* pipelineSystem,
+        GraphicsPipelineManager* graphicsManager,
         GPUSynchronizationService* syncManager
     );
     
@@ -41,8 +41,11 @@ private:
     // Dependencies
     VulkanContext* context = nullptr;
     VulkanSwapchain* swapchain = nullptr;
-    PipelineSystemManager* pipelineSystem = nullptr;
+    GraphicsPipelineManager* graphicsManager = nullptr;
     GPUSynchronizationService* syncManager = nullptr;
+    
+    // Current render pass tracking for swapchain recreation
+    VkRenderPass currentRenderPass = VK_NULL_HANDLE;
 
     // State tracking
     bool recreationInProgress = false;

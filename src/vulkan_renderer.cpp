@@ -307,7 +307,7 @@ bool VulkanRenderer::initializeModularArchitecture() {
     }
     
     presentationSurface = std::make_unique<PresentationSurface>();
-    if (!presentationSurface->initialize(context.get(), swapchain.get(), pipelineSystem.get(), syncService.get())) {
+    if (!presentationSurface->initialize(context.get(), swapchain.get(), pipelineSystem->getGraphicsManager(), syncService.get())) {
         std::cerr << "Failed to initialize swapchain coordinator" << std::endl;
         return false;
     }

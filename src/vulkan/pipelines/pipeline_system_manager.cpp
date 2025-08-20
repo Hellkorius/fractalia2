@@ -231,40 +231,6 @@ PipelineSystemManager::SystemStats PipelineSystemManager::getStats() const {
     return stats;
 }
 
-// Legacy compatibility methods
-VkRenderPass PipelineSystemManager::createRenderPass(VkFormat colorFormat, VkSampleCountFlagBits samples, bool enableMSAA) {
-    if (!graphicsManager) {
-        std::cerr << "Graphics manager not initialized" << std::endl;
-        return VK_NULL_HANDLE;
-    }
-    
-    currentRenderPass = graphicsManager->createRenderPass(colorFormat, VK_FORMAT_UNDEFINED, samples, enableMSAA);
-    return currentRenderPass;
-}
-
-bool PipelineSystemManager::recreateRenderPass(VkFormat newFormat) {
-    if (!graphicsManager) {
-        std::cout << "PipelineSystemManager: ERROR - No graphics manager" << std::endl;
-        return false;
-    }
-    
-    
-    // Clear cache before destroying currentRenderPass to prevent double-destruction
-    // clearCache() destroys all render passes including the one currentRenderPass references
-    graphicsManager->clearCache();
-    
-    // Set currentRenderPass to null since clearCache() already destroyed it
-    if (currentRenderPass != VK_NULL_HANDLE) {
-        currentRenderPass = VK_NULL_HANDLE;
-    }
-    
-    // Create new render pass
-    currentRenderPass = graphicsManager->createRenderPass(newFormat, VK_FORMAT_UNDEFINED, VK_SAMPLE_COUNT_2_BIT, true);
-    if (currentRenderPass != VK_NULL_HANDLE) {
-    } else {
-    }
-    return currentRenderPass != VK_NULL_HANDLE;
-}
 
 bool PipelineSystemManager::recreateAllPipelineCaches() {
     if (!context) {
