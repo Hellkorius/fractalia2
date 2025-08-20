@@ -1,7 +1,7 @@
 #pragma once
 
 #include <flecs.h>
-#include "component.h"
+#include "../components/component.h"
 #include <iostream>
 #include <string>
 #include <chrono>

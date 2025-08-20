@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../component.h"
+#include "../components/component.h"
 #include <glm/glm.hpp>
 #include <flecs.h>
 #include <string>

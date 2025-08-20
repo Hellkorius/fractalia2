@@ -4,11 +4,11 @@
 #include <iostream>
 #include <chrono>
 #include <flecs.h>
-#include "../component.h"
-#include "../constants.h"
-#include "../debug.h"
+#include "../components/component.h"
+#include "../utilities/constants.h"
+#include "../utilities/debug.h"
 #include "../../vulkan_renderer.h"
-#include "../entity_factory.h"
+#include "../core/entity_factory.h"
 #include "../gpu_entity_manager.h"
 #include "../movement_command_system.h"
-#include "../profiler.h"
+#include "../utilities/profiler.h"

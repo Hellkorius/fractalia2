@@ -1,7 +1,7 @@
 #pragma once
 
-#include "../component.h"
-#include "../camera_component.h"
+#include "../components/component.h"
+#include "../components/camera_component.h"
 #include <SDL3/SDL.h>
 #include <flecs.h>
 #include <glm/glm.hpp>

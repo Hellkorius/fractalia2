@@ -1,7 +1,7 @@
 #pragma once
 
 #include "../core/service_locator.h"
-#include "../component.h"
+#include "../components/component.h"
 #include "../systems/input_system.h"
 #include <SDL3/SDL.h>
 #include <flecs.h>

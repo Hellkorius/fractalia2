@@ -1,7 +1,7 @@
 #pragma once
 
-#include "entity.h"
-#include "component.h"
+#include "../components/entity.h"
+#include "../components/component.h"
 #include <memory>
 #include <functional>
 #include <vector>

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "../core/service_locator.h"
-#include "../component.h"
+#include "../components/component.h"
 #include <flecs.h>
 #include <glm/glm.hpp>
 #include <functional>

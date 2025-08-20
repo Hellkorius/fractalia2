@@ -3,7 +3,7 @@
 #include "../core/world_manager.h"
 #include "../movement_command_system.h"
 #include "../gpu_entity_manager.h"
-#include "../component.h"
+#include "../components/component.h"
 #include <flecs.h>
 #include <memory>
 #include <vector>

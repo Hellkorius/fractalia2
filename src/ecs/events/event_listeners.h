@@ -2,7 +2,7 @@
 
 #include "event_bus.h"
 #include "event_types.h"
-#include "../component.h"
+#include "../components/component.h"
 #include <flecs.h>
 #include <functional>
 #include <memory>

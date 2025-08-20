@@ -1,8 +1,8 @@
 #pragma once
 
 #include "../core/service_locator.h"
-#include "../component.h"
-#include "../camera_component.h"
+#include "../components/component.h"
+#include "../components/camera_component.h"
 #include "../systems/camera_system.h"
 #include <flecs.h>
 #include <glm/glm.hpp>

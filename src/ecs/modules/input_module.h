@@ -2,7 +2,7 @@
 
 #include "../core/world_manager.h"
 #include "../systems/input_system.h"
-#include "../component.h"
+#include "../components/component.h"
 #include <SDL3/SDL.h>
 #include <flecs.h>
 #include <memory>

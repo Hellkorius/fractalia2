@@ -1,6 +1,6 @@
 #include "camera_system.h"
 #include "input_system.h"
-#include "../camera_component.h"
+#include "../components/camera_component.h"
 #include "../core/service_locator.h"
 #include "../services/input_service.h"
 #include <iostream>

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../component.h"
+#include "../components/component.h"
 #include <SDL3/SDL.h>
 #include <flecs.h>
 #include <glm/glm.hpp>

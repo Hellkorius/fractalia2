@@ -18,9 +18,9 @@
 #include "vulkan/services/error_recovery_service.h"
 #include "vulkan/pipelines/pipeline_system_manager.h"
 #include "ecs/gpu_entity_manager.h"
-#include "ecs/component.h"
+#include "ecs/components/component.h"
 #include "ecs/systems/camera_system.h"
-#include "ecs/camera_component.h"
+#include "ecs/components/camera_component.h"
 #include "ecs/movement_command_system.h"
 // Removed legacy simple control system include - using service-based architecture
 #include <iostream>
