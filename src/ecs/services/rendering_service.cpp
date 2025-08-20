@@ -45,7 +45,7 @@ bool RenderingService::initialize(flecs::world& world, VulkanRenderer* renderer)
         cameraService = &ServiceLocator::instance().requireService<CameraService>();
     }
     
-    // Setup ECS integration (from RenderingModule)
+    // Setup ECS integration
     try {
         setupRenderingPhases();
         registerRenderingSystems();
@@ -684,7 +684,7 @@ void RenderingService::flushPendingOperations() {
 }
 
 // ============================================================================
-// ECS Integration Methods (absorbed from RenderingModule)
+// ECS Integration Methods
 // ============================================================================
 
 void RenderingService::setupRenderingPhases() {

@@ -6,13 +6,10 @@
 
 #include "vulkan_renderer.h"
 #include "ecs/utilities/debug.h"
-#include "PolygonFactory.h"
 #include <flecs.h>
 #include "ecs/core/entity_factory.h"
-#include "ecs/utilities/system_scheduler.h"
 #include "ecs/systems/lifetime_system.h"
 // Removed legacy input system include - using service-based architecture
-#include "ecs/components/camera_component.h"
 #include "ecs/components/component.h"
 #include "ecs/utilities/profiler.h"
 #include "ecs/gpu/gpu_entity_manager.h"
@@ -145,27 +142,9 @@ int main(int argc, char* argv[]) {
         return -1;
     }
     
-    // EntityFactory already created above for service initialization
-    SystemScheduler scheduler(world);
-    
-    scheduler.initialize();
-    
-    // Direct Flecs system registration with phases
-    
-    // Camera systems - disabled legacy system, using service-based architecture
-    // world.system<Camera>("CameraControlSystem")
-    //     .each([](flecs::entity e, Camera& camera) {
-    //         camera_control_system(e, camera, e.world().delta_time());
-    //     })
-    //     .child_of(scheduler.getInputPhase());
-    
-    // Camera matrix system removed - matrices are computed on-demand in Camera component
-        
-    DEBUG_LOG("Camera systems registered");
-    
+    // Simple system registration - no complex scheduling needed
     world.system<Lifetime>("LifetimeSystem")
-        .each(lifetime_system)
-        .child_of(scheduler.getPhysicsPhase());
+        .each(lifetime_system);
     
     DEBUG_LOG("Camera entities: " << world.count<Camera>());
     

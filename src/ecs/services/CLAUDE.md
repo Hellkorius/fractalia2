@@ -15,7 +15,6 @@ src/ecs/services/
 ├── camera_service.h/cpp          # Multi-camera management orchestration
 ├── input_service.h/cpp           # Action-based input system with context switching
 ├── control_service.h/cpp         # Game control logic coordination (GameControlService)
-├── control_service_minimal.h     # Test service (TestControlService) - minimal implementation
 └── rendering_service.h/cpp       # Render queue management with culling/batching
 ```
 
@@ -130,16 +129,6 @@ InputService::processFrame()
 - `submitRenderQueue()` - submits to GPU via VulkanRenderer
 - `calculateLOD()` → int (LOD level)
 
-### TestControlService (control_service_minimal.h)
-**Inputs:**
-- None (minimal test service)
-
-**Outputs:**  
-- None (minimal test service)
-
-**Purpose:**
-- Service pattern compliance testing
-- Dependency injection validation
 
 ## Data Flow Between Components
 

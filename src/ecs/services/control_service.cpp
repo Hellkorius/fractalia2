@@ -62,7 +62,7 @@ bool GameControlService::initialize(flecs::world& world, VulkanRenderer* rendere
     integrateWithRenderingService();
     
     initialized = true;
-    // Print control instructions (migrated from simple_control_system)
+    // Print control instructions
     printControlInstructions();
     
     DEBUG_LOG("ControlService initialized successfully");

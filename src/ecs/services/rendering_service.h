@@ -133,7 +133,7 @@ public:
     bool initialize(flecs::world& world, VulkanRenderer* renderer);
     void cleanup();
     
-    // ECS integration (absorbed from RenderingModule)
+    // ECS integration
     void setupRenderingPhases();
     void registerRenderingSystems();
     void cleanupSystems();
@@ -219,10 +219,10 @@ public:
     // Service access (for convenience namespaces)
     CameraService* getCameraService() const { return cameraService; }
     
-    // Frame coordination (from RenderingModule)
+    // Frame coordination
     bool shouldRender() const;
     
-    // Render state management (from RenderingModule)
+    // Render state management
     struct RenderState {
         bool cullingEnabled = true;
         bool lodEnabled = true;
@@ -268,13 +268,13 @@ private:
     bool wireframeMode = false;
     bool multithreadingEnabled = false;
     
-    // ECS system entities (from RenderingModule)
+    // ECS system entities
     flecs::entity renderPrepareSystem_;
     flecs::entity cullSystem_;
     flecs::entity lodSystem_;
     flecs::entity gpuSyncSystem_;
     
-    // Render state (from RenderingModule)
+    // Render state
     RenderState renderState_;
     flecs::entity cameraEntity_;
     bool frameInProgress_ = false;
@@ -326,13 +326,13 @@ private:
     void renderDebugLOD();
     void renderDebugCulling();
     
-    // ECS system callbacks (from RenderingModule)
+    // ECS system callbacks
     static void renderPrepareSystemCallback(flecs::entity e, Transform& transform, Renderable& renderable);
     static void cullSystemCallback(flecs::entity e, Transform& transform, Renderable& renderable, CullingData& cullingData);
     static void lodSystemCallback(flecs::entity e, Transform& transform, Renderable& renderable, LODData& lodData);
     static void gpuSyncSystemCallback(flecs::entity e, Transform& transform, Renderable& renderable);
     
-    // Helper methods (from RenderingModule)
+    // Helper methods
     bool isEntityVisibleInFrustum(const Transform& transform, const Renderable& renderable, 
                                   const glm::mat4& viewMatrix, const glm::mat4& projMatrix);
     uint32_t calculateLODLevel(const glm::vec3& entityPosition, const glm::vec3& cameraPosition);
