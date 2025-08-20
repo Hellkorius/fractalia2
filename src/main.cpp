@@ -13,7 +13,6 @@
 #include "ecs/systems/lifetime_system.h"
 // Removed legacy input system include - using service-based architecture
 #include "ecs/systems/camera_system.h"
-#include "ecs/movement_command_system.h"
 #include "ecs/components/camera_component.h"
 #include "ecs/components/component.h"
 #include "ecs/utilities/profiler.h"

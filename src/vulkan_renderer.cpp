@@ -21,7 +21,6 @@
 #include "ecs/components/component.h"
 #include "ecs/systems/camera_system.h"
 #include "ecs/components/camera_component.h"
-#include "ecs/movement_command_system.h"
 // Removed legacy simple control system include - using service-based architecture
 #include <iostream>
 #include <array>
@@ -191,16 +190,7 @@ bool VulkanRenderer::initialize(SDL_Window* window) {
         return false;
     }
     
-    // Phase 7: Command processing (depends on GPU entity manager)
-    movementCommandProcessor = std::make_unique<MovementCommandProcessor>(gpuEntityManager.get());
-    if (!movementCommandProcessor) {
-        std::cerr << "Failed to create movement command processor" << std::endl;
-        cleanup();
-        return false;
-    }
-    std::cout << "Movement command processor initialized" << std::endl;
-    
-    // Phase 8: Modular architecture (depends on all previous components)
+    // Phase 7: Modular architecture (depends on all previous components)
     if (!initializeModularArchitecture()) {
         std::cerr << "Failed to initialize modular architecture" << std::endl;
         cleanup();
@@ -255,9 +245,6 @@ void VulkanRenderer::cleanup() {
     }
     
     // Reset components in reverse dependency order
-    if (movementCommandProcessor) {
-        movementCommandProcessor.reset();
-    }
     
     if (gpuEntityManager) {
         gpuEntityManager.reset();
@@ -334,7 +321,6 @@ bool VulkanRenderer::initializeModularArchitecture() {
         sync.get(),
         resourceContext.get(),
         gpuEntityManager.get(),
-        movementCommandProcessor.get(),
         frameGraph.get(),
         presentationSurface.get()
     )) {

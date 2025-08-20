@@ -19,7 +19,6 @@ class VulkanSync;
 class QueueManager;
 class ResourceContext;
 class GPUEntityManager;
-class MovementCommandProcessor;
 class FrameGraph;
 class EntityComputeNode;
 class EntityGraphicsNode;
@@ -57,9 +56,6 @@ public:
     void updateAspectRatio(int windowWidth, int windowHeight);
     void setFramebufferResized(bool resized);
     
-    // Movement command processing
-    class MovementCommandProcessor* getMovementCommandProcessor() { return movementCommandProcessor.get(); }
-    
     // Static access to clamped deltaTime for global use
     static float getClampedDelta() { return clampedDeltaTime; }
     
@@ -81,7 +77,6 @@ private:
     std::unique_ptr<QueueManager> queueManager;
     std::unique_ptr<ResourceContext> resourceContext;
     std::unique_ptr<GPUEntityManager> gpuEntityManager;
-    std::unique_ptr<MovementCommandProcessor> movementCommandProcessor;
     
     // AAA Pipeline System
     std::unique_ptr<class PipelineSystemManager> pipelineSystem;

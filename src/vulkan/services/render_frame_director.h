@@ -13,7 +13,6 @@ class VulkanSwapchain;
 class VulkanSync;
 class ResourceContext;
 class GPUEntityManager;
-class MovementCommandProcessor;
 class PipelineSystemManager;
 class PresentationSurface;
 
@@ -35,7 +34,6 @@ public:
         VulkanSync* sync,
         ResourceContext* resourceContext,
         GPUEntityManager* gpuEntityManager,
-        MovementCommandProcessor* movementCommandProcessor,
         FrameGraph* frameGraph,
         PresentationSurface* presentationSurface
     );
@@ -73,7 +71,6 @@ private:
     VulkanSync* sync = nullptr;
     ResourceContext* resourceContext = nullptr;
     GPUEntityManager* gpuEntityManager = nullptr;
-    MovementCommandProcessor* movementCommandProcessor = nullptr;
     FrameGraph* frameGraph = nullptr;
     PresentationSurface* presentationSurface = nullptr;
 

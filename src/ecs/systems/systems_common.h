@@ -10,5 +10,4 @@
 #include "../../vulkan_renderer.h"
 #include "../core/entity_factory.h"
 #include "../gpu_entity_manager.h"
-#include "../movement_command_system.h"
 #include "../utilities/profiler.h"

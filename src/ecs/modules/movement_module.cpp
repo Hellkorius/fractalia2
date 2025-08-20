@@ -23,10 +23,6 @@ bool MovementModule::initialize(flecs::world& world) {
     try {
         world_ = &world;
         
-        // Initialize command processor if we have a GPU manager
-        if (gpuEntityManager_) {
-            commandProcessor_ = std::make_unique<MovementCommandProcessor>(gpuEntityManager_);
-        }
         
         // Setup movement processing phases
         setupMovementPhases();
@@ -55,7 +51,6 @@ void MovementModule::shutdown() {
     try {
         cleanupSystems();
         
-        commandProcessor_.reset();
         world_ = nullptr;
         initialized_ = false;
         
@@ -72,10 +67,6 @@ void MovementModule::update(float deltaTime) {
     auto updateStart = std::chrono::high_resolution_clock::now();
     
     try {
-        // Process movement commands if we have a command processor
-        if (commandProcessor_) {
-            processMovementCommands();
-        }
         
         // Update movement patterns
         updateMovementPatterns(deltaTime);
@@ -104,34 +95,8 @@ const std::string& MovementModule::getName() const {
 void MovementModule::setGPUEntityManager(GPUEntityManager* gpuManager) {
     gpuEntityManager_ = gpuManager;
     
-    if (initialized_ && gpuManager && !commandProcessor_) {
-        commandProcessor_ = std::make_unique<MovementCommandProcessor>(gpuManager);
-    }
 }
 
-bool MovementModule::enqueueMovementCommand(const MovementCommand& command) {
-    if (!commandProcessor_) {
-        return false;
-    }
-    
-    bool result = commandProcessor_->getCommandQueue().enqueue(command);
-    if (result) {
-        stats_.commandsEnqueued++;
-    }
-    return result;
-}
-
-void MovementModule::processMovementCommands() {
-    if (!commandProcessor_) {
-        return;
-    }
-    
-    size_t commandsBefore = commandProcessor_->getStats().totalCommandsProcessed;
-    commandProcessor_->processCommands();
-    size_t commandsAfter = commandProcessor_->getStats().totalCommandsProcessed;
-    
-    stats_.commandsProcessed += (commandsAfter - commandsBefore);
-}
 
 void MovementModule::updateMovementPatterns(float deltaTime) {
     if (!world_) {
@@ -331,15 +296,4 @@ namespace MovementModuleAccess {
         return worldManager->getModule<MovementModule>("MovementModule");
     }
     
-    bool enqueueMovementCommand(flecs::world& world, const MovementCommand& command) {
-        auto module = getMovementModule(world);
-        return module ? module->enqueueMovementCommand(command) : false;
-    }
-    
-    void processMovementCommands(flecs::world& world) {
-        auto module = getMovementModule(world);
-        if (module) {
-            module->processMovementCommands();
-        }
-    }
 }

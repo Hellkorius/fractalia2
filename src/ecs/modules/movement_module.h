@@ -1,7 +1,6 @@
 #pragma once
 
 #include "../core/world_manager.h"
-#include "../movement_command_system.h"
 #include "../gpu_entity_manager.h"
 #include "../components/component.h"
 #include <flecs.h>
@@ -37,9 +36,6 @@ public:
     void setGPUEntityManager(GPUEntityManager* gpuManager);
     GPUEntityManager* getGPUEntityManager() const { return gpuEntityManager_; }
 
-    // Movement command interface
-    bool enqueueMovementCommand(const MovementCommand& command);
-    void processMovementCommands();
     
     // Movement pattern management
     void updateMovementPatterns(float deltaTime);
@@ -65,7 +61,6 @@ private:
     
     flecs::world* world_;
     GPUEntityManager* gpuEntityManager_;
-    std::unique_ptr<MovementCommandProcessor> commandProcessor_;
     
     // System entities for proper cleanup
     flecs::entity movementUpdateSystem_;
@@ -119,17 +114,4 @@ namespace MovementModuleAccess {
      */
     std::shared_ptr<MovementModule> getMovementModule(flecs::world& world);
     
-    /**
-     * @brief Quick access to enqueue movement commands
-     * @param world The Flecs world instance
-     * @param command The movement command to enqueue
-     * @return True if command was successfully enqueued
-     */
-    bool enqueueMovementCommand(flecs::world& world, const MovementCommand& command);
-    
-    /**
-     * @brief Process all pending movement commands
-     * @param world The Flecs world instance
-     */
-    void processMovementCommands(flecs::world& world);
 }

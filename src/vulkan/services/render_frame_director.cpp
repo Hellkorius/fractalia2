@@ -9,7 +9,6 @@
 #include "../nodes/entity_graphics_node.h"
 #include "../nodes/swapchain_present_node.h"
 #include "../../ecs/gpu_entity_manager.h"
-#include "../../ecs/movement_command_system.h"
 #include <iostream>
 
 RenderFrameDirector::RenderFrameDirector() {
@@ -26,7 +25,6 @@ bool RenderFrameDirector::initialize(
     VulkanSync* sync,
     ResourceContext* resourceContext,
     GPUEntityManager* gpuEntityManager,
-    MovementCommandProcessor* movementCommandProcessor,
     FrameGraph* frameGraph,
     PresentationSurface* presentationSurface
 ) {
@@ -36,7 +34,6 @@ bool RenderFrameDirector::initialize(
     this->sync = sync;
     this->resourceContext = resourceContext;
     this->gpuEntityManager = gpuEntityManager;
-    this->movementCommandProcessor = movementCommandProcessor;
     this->frameGraph = frameGraph;
     this->presentationSurface = presentationSurface;
 
@@ -56,12 +53,7 @@ RenderFrameResult RenderFrameDirector::directFrame(
 ) {
     RenderFrameResult result;
 
-    // 1. Process movement commands
-    if (movementCommandProcessor) {
-        movementCommandProcessor->processCommands();
-    }
-
-    // 2. Acquire swapchain image using PresentationSurface
+    // 1. Acquire swapchain image using PresentationSurface
     SurfaceAcquisitionResult acquisitionResult = presentationSurface->acquireNextImage(currentFrame);
     if (!acquisitionResult.success) {
         if (acquisitionResult.recreationNeeded) {
@@ -71,18 +63,18 @@ RenderFrameResult RenderFrameDirector::directFrame(
     }
     result.imageIndex = acquisitionResult.imageIndex;
 
-    // 3. Setup frame graph
+    // 2. Setup frame graph
     setupFrameGraph(result.imageIndex);
 
-    // 4. Compile frame graph (don't execute yet)
+    // 3. Compile frame graph (don't execute yet)
     if (!compileFrameGraph(currentFrame, totalTime, deltaTime, frameCounter)) {
         return result;
     }
 
-    // 5. Configure frame graph nodes with world reference after swapchain acquisition
+    // 4. Configure frame graph nodes with world reference after swapchain acquisition
     configureFrameGraphNodes(result.imageIndex, world);
 
-    // 6. Execute frame graph
+    // 5. Execute frame graph
     result.executionResult = frameGraph->execute(currentFrame);
     result.success = true;
 
