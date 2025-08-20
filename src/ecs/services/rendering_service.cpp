@@ -693,7 +693,7 @@ void RenderingService::setupRenderingPhases() {
         .depends_on(cullPhase);
         
     // Create GPU sync phase that runs last
-    auto gpuSyncPhase = world->entity("GPUSyncPhase")
+    world->entity("GPUSyncPhase")
         .add(flecs::Phase)
         .depends_on(lodPhase);
 }

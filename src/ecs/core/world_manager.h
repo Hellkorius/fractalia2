@@ -52,6 +52,8 @@ public:
     void unloadAllModules();
 
     void executeFrame(float deltaTime);
+    
+    void registerSystems();
 
     void registerPerformanceCallback(std::function<void(float)> callback);
     void enablePerformanceMonitoring(bool enable);

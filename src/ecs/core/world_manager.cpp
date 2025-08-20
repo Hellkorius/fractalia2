@@ -1,4 +1,6 @@
 #include "world_manager.h"
+#include "../systems/movement_system.h"
+#include "../gpu/gpu_entity_manager.h"
 #include <algorithm>
 #include <chrono>
 #include <stdexcept>
@@ -30,6 +32,9 @@ bool WorldManager::initialize() {
         
         // Enable performance monitoring by default
         enablePerformanceMonitoring(true);
+        
+        // Register built-in systems
+        registerSystems();
         
         return true;
     } catch (const std::exception& e) {
@@ -140,6 +145,12 @@ void WorldManager::executeFrame(float deltaTime) {
         frameTimeAccumulator_ = 0.0f;
         frameCount_ = 0;
     }
+}
+
+void WorldManager::registerSystems() {
+    // Register movement systems
+    // Note: GPUEntityManager will be provided by services that need GPU sync
+    MovementSystem::registerSystems(world_, nullptr);
 }
 
 void WorldManager::registerPerformanceCallback(std::function<void(float)> callback) {
