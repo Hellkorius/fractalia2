@@ -130,8 +130,8 @@ private:
     
     // Timing and cooldowns
     float deltaTime = 0.0f;
-    float entityCreationCooldown = 0.1f; // 100ms
-    float swarmCreationCooldown = 1.0f;  // 1 second
+    float entityCreationCooldown = 0.01f; // 10ms - minimal delay for immediate response
+    float swarmCreationCooldown = 0.05f; // 50ms - fast swarm creation
     
     // Internal methods
     void initializeDefaultActions();

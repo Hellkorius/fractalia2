@@ -125,7 +125,9 @@ void GameControlService::handleInput() {
     // Entity creation
     if (inputService->isActionJustPressed("create_entity")) {
         std::cout << "GameControlService: create_entity action triggered!" << std::endl;
+        glm::vec2 mouseScreen = inputService->getMousePosition();
         controlState.entityCreationPos = inputService->getMouseWorldPosition();
+        std::cout << "Mouse screen: (" << mouseScreen.x << ", " << mouseScreen.y << ") -> world: (" << controlState.entityCreationPos.x << ", " << controlState.entityCreationPos.y << ")" << std::endl;
         executeAction("create_entity");
     } else if (inputService->isActionActive("create_entity")) {
         std::cout << "GameControlService: create_entity is active but not just pressed" << std::endl;

@@ -1,4 +1,5 @@
 #include "input_service.h"
+#include "camera_service.h"
 #include "../systems/input_system.h"
 #include <iostream>
 #include <algorithm>
@@ -292,8 +293,28 @@ glm::vec2 InputService::getMousePosition() const {
 }
 
 glm::vec2 InputService::getMouseWorldPosition() const {
-    // TODO: Convert screen position to world position using camera service
-    return initialized ? mouseState.position : glm::vec2(0.0f);
+    if (!initialized) {
+        return glm::vec2(0.0f);
+    }
+    
+    // Try to get CameraService for screen-to-world conversion
+    try {
+        auto& cameraService = ServiceLocator::instance().requireService<CameraService>();
+        
+        // Get window size from SDL
+        int windowWidth, windowHeight;
+        if (window) {
+            SDL_GetWindowSize(window, &windowWidth, &windowHeight);
+            glm::vec2 screenSize(static_cast<float>(windowWidth), static_cast<float>(windowHeight));
+            return cameraService.screenToWorld(mouseState.position, screenSize);
+        }
+    } catch (const std::exception& e) {
+        // CameraService not available, fall back to screen coordinates
+        std::cerr << "InputService: Could not convert to world coordinates: " << e.what() << std::endl;
+    }
+    
+    // Fallback to raw screen position
+    return mouseState.position;
 }
 
 glm::vec2 InputService::getMouseDelta() const {
