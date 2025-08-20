@@ -1,7 +1,9 @@
 # ECS Modules Directory
 
 ## Purpose
-Self-contained ECS modules that encapsulate domain-specific systems, phases, and component processing. Each module handles initialization, system registration, phase setup, and cleanup for a specific subsystem (input, movement, rendering) within the Flecs ECS framework.
+Self-contained ECS modules that encapsulate domain-specific systems, phases, and component processing. Each module handles initialization, system registration, phase setup, and cleanup for a specific subsystem (input, movement) within the Flecs ECS framework.
+
+**Note:** Rendering functionality has been integrated directly into RenderingService (see `../services/rendering_service.*`) for better architectural cohesion.
 
 ## File/Folder Hierarchy
 ```
@@ -9,9 +11,7 @@ Self-contained ECS modules that encapsulate domain-specific systems, phases, and
 ├── input_module.h          # Input processing module interface
 ├── input_module.cpp        # SDL event processing, input state management
 ├── movement_module.h       # Movement and physics module interface  
-├── movement_module.cpp     # Random walk patterns, velocity physics
-├── rendering_module.h      # Rendering coordination module interface
-└── rendering_module.cpp    # Render preparation, culling, LOD, GPU sync
+└── movement_module.cpp     # Random walk patterns, velocity physics
 ```
 
 ## Inputs & Outputs (by Component)
@@ -50,25 +50,6 @@ Self-contained ECS modules that encapsulate domain-specific systems, phases, and
 - `../gpu_entity_manager.h` - CPU→GPU synchronization
 - `../components/component.h` - Transform, MovementPattern, Velocity components
 
-### RenderingModule
-**Inputs:**
-- `VulkanRenderer*` - Main renderer instance for frame coordination
-- `GPUEntityManager*` - GPU entity buffer management
-- Camera matrices (`viewMatrix`, `projMatrix`) for culling
-- `flecs::world&` - ECS world for render system registration
-
-**Outputs:**
-- Processes entities with `Transform`, `Renderable`, `CullingData`, `LODData` components  
-- Updates model matrices from transform components
-- Performs frustum culling and LOD calculations
-- Registers systems in `RenderPreparePhase` → `CullPhase` → `LODPhase` → `GPUSyncPhase`
-- Marks dirty entities for GPU buffer updates
-- Provides render statistics (visible entities, LOD levels, timing)
-
-**Key Dependencies:**
-- `../../vulkan_renderer.h` - Main Vulkan rendering interface
-- `../gpu_entity_manager.h` - GPU buffer synchronization
-
 ## Data Flow Between Components
 
 ### ECS Module Lifecycle
@@ -84,8 +65,8 @@ InputModule (SDL events)
     ↓ (input components)
 MovementModule (physics calculations)
     ↓ (updated transforms)  
-RenderingModule (render preparation)
-    ↓ (GPU entity sync)
+RenderingService (render preparation and GPU sync)
+    ↓ (via service layer)
 VulkanRenderer (frame rendering)
 ```
 
@@ -93,8 +74,8 @@ VulkanRenderer (frame rendering)
 1. **Input**: SDL events → `InputState` components
 2. **Movement**: `Transform` + `MovementPattern` → updated positions
 3. **Physics**: `Transform` + `Velocity` → applied velocity with damping
-4. **Rendering**: `Transform` + `Renderable` → model matrices, culling data, LOD levels
-5. **GPU Sync**: Dirty entities → `GPUEntityManager` → GPU buffers
+4. **Rendering**: RenderingService handles `Transform` + `Renderable` → model matrices, culling data, LOD levels
+5. **GPU Sync**: RenderingService → `GPUEntityManager` → GPU buffers
 
 ## Peripheral Dependencies
 

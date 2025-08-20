@@ -91,7 +91,7 @@ Foundational infrastructure for Entity-Component-System architecture with servic
 ### ECS Modules (/ecs/modules/)
 - **InputModule**: SDL event processing and input state management
 - **MovementModule**: Entity movement pattern execution
-- **RenderingModule**: GPU rendering integration
+- **RenderingService**: GPU rendering integration (via service layer)
 - Loaded via WorldManager::loadModule<T>(), dependencies managed automatically
 
 ### ECS Services (/ecs/services/)

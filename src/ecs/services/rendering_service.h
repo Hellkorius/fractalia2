@@ -27,6 +27,7 @@ class VulkanRenderer;
 class GPUEntityManager;
 class CameraService;
 class FrameGraph;
+class WorldManager;
 
 // Render priority levels
 enum class RenderPriority {
@@ -132,6 +133,11 @@ public:
     bool initialize(flecs::world& world, VulkanRenderer* renderer);
     void cleanup();
     
+    // ECS integration (absorbed from RenderingModule)
+    void setupRenderingPhases();
+    void registerRenderingSystems();
+    void cleanupSystems();
+    
     // Frame processing
     void processFrame(float deltaTime);
     void beginFrame();
@@ -212,6 +218,27 @@ public:
     
     // Service access (for convenience namespaces)
     CameraService* getCameraService() const { return cameraService; }
+    
+    // Frame coordination (from RenderingModule)
+    bool shouldRender() const;
+    
+    // Render state management (from RenderingModule)
+    struct RenderState {
+        bool cullingEnabled = true;
+        bool lodEnabled = true;
+        bool frustumCullingEnabled = true;
+        float lodNearDistance = 50.0f;
+        float lodMediumDistance = 150.0f;
+        float lodFarDistance = 300.0f;
+        uint32_t maxRenderableEntities = 80000;
+    };
+    
+    void setRenderState(const RenderState& state);
+    const RenderState& getRenderState() const { return renderState_; }
+    
+    // Camera integration
+    void setCameraEntity(flecs::entity cameraEntity);
+    flecs::entity getCameraEntity() const { return cameraEntity_; }
 
 private:
     // Core data
@@ -240,6 +267,17 @@ private:
     bool debugVisualization = false;
     bool wireframeMode = false;
     bool multithreadingEnabled = false;
+    
+    // ECS system entities (from RenderingModule)
+    flecs::entity renderPrepareSystem_;
+    flecs::entity cullSystem_;
+    flecs::entity lodSystem_;
+    flecs::entity gpuSyncSystem_;
+    
+    // Render state (from RenderingModule)
+    RenderState renderState_;
+    flecs::entity cameraEntity_;
+    bool frameInProgress_ = false;
     
     // Statistics
     CullingStats cullingStats;
@@ -287,5 +325,18 @@ private:
     void renderDebugBounds();
     void renderDebugLOD();
     void renderDebugCulling();
+    
+    // ECS system callbacks (from RenderingModule)
+    static void renderPrepareSystemCallback(flecs::entity e, Transform& transform, Renderable& renderable);
+    static void cullSystemCallback(flecs::entity e, Transform& transform, Renderable& renderable, CullingData& cullingData);
+    static void lodSystemCallback(flecs::entity e, Transform& transform, Renderable& renderable, LODData& lodData);
+    static void gpuSyncSystemCallback(flecs::entity e, Transform& transform, Renderable& renderable);
+    
+    // Helper methods (from RenderingModule)
+    bool isEntityVisibleInFrustum(const Transform& transform, const Renderable& renderable, 
+                                  const glm::mat4& viewMatrix, const glm::mat4& projMatrix);
+    uint32_t calculateLODLevel(const glm::vec3& entityPosition, const glm::vec3& cameraPosition);
+    void updateEntityCullingData(flecs::entity entity, bool visible);
+    void updateEntityLODData(flecs::entity entity, uint32_t lodLevel);
 };
 

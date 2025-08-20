@@ -1,5 +1,6 @@
 #include "rendering_service.h"
 #include "camera_service.h"
+#include "../core/service_locator.h"
 #include "../gpu_entity_manager.h"
 #include "../../vulkan_renderer.h"
 #include <iostream>
@@ -7,6 +8,7 @@
 #include <chrono>
 #include <execution>
 #include <thread>
+#include <stdexcept>
 
 RenderingService::RenderingService() {
 }
@@ -43,6 +45,19 @@ bool RenderingService::initialize(flecs::world& world, VulkanRenderer* renderer)
         cameraService = &ServiceLocator::instance().requireService<CameraService>();
     }
     
+    // Setup ECS integration (from RenderingModule)
+    try {
+        setupRenderingPhases();
+        registerRenderingSystems();
+        
+        // Initialize render state
+        renderState_ = RenderState{};
+    } catch (const std::exception& e) {
+        std::cerr << "RenderingService: Failed to setup ECS integration: " << e.what() << std::endl;
+        cleanup();
+        return false;
+    }
+    
     // Reset statistics
     resetStats();
     
@@ -55,6 +70,19 @@ void RenderingService::cleanup() {
         return;
     }
     
+    try {
+        // End any frame in progress
+        if (frameInProgress_) {
+            endFrame();
+        }
+        
+        // Cleanup ECS systems
+        cleanupSystems();
+    } catch (const std::exception& e) {
+        // Log error but continue cleanup
+        std::cerr << "RenderingService: Error during cleanup: " << e.what() << std::endl;
+    }
+    
     clearRenderQueue();
     renderBatches.clear();
     entityToQueueIndex.clear();
@@ -63,6 +91,7 @@ void RenderingService::cleanup() {
     renderer = nullptr;
     gpuEntityManager = nullptr;
     cameraService = nullptr;
+    cameraEntity_ = flecs::entity();
     
     initialized = false;
 }
@@ -129,6 +158,8 @@ void RenderingService::beginFrame() {
         return;
     }
     
+    frameInProgress_ = true;
+    
     // Clear previous frame data
     clearRenderQueue();
     
@@ -141,6 +172,8 @@ void RenderingService::endFrame() {
     if (!initialized) {
         return;
     }
+    
+    frameInProgress_ = false;
     
     // Finalize statistics
     updateRenderStats();
@@ -633,5 +666,178 @@ void RenderingService::waitForGPUIdle() {
 void RenderingService::flushPendingOperations() {
     // Flush any pending GPU operations
     syncWithGPUEntityManager();
+}
+
+// ============================================================================
+// ECS Integration Methods (absorbed from RenderingModule)
+// ============================================================================
+
+void RenderingService::setupRenderingPhases() {
+    if (!world) {
+        throw std::runtime_error("World not initialized");
+    }
+    
+    // Create render preparation phase that runs after movement
+    auto renderPreparePhase = world->entity("RenderPreparePhase")
+        .add(flecs::Phase)
+        .depends_on(flecs::OnUpdate);
+        
+    // Create culling phase that runs after render preparation
+    auto cullPhase = world->entity("CullPhase")
+        .add(flecs::Phase)
+        .depends_on(renderPreparePhase);
+        
+    // Create LOD phase that runs after culling
+    auto lodPhase = world->entity("LODPhase")
+        .add(flecs::Phase)
+        .depends_on(cullPhase);
+        
+    // Create GPU sync phase that runs last
+    auto gpuSyncPhase = world->entity("GPUSyncPhase")
+        .add(flecs::Phase)
+        .depends_on(lodPhase);
+}
+
+void RenderingService::registerRenderingSystems() {
+    if (!world) {
+        throw std::runtime_error("World not initialized");
+    }
+    
+    auto renderPreparePhase = world->entity("RenderPreparePhase");
+    auto cullPhase = world->entity("CullPhase");
+    auto lodPhase = world->entity("LODPhase");
+    auto gpuSyncPhase = world->entity("GPUSyncPhase");
+    
+    // Register render preparation system
+    renderPrepareSystem_ = world->system<Transform, Renderable>()
+        .kind(renderPreparePhase)
+        .each(renderPrepareSystemCallback);
+        
+    // Register culling system
+    cullSystem_ = world->system<Transform, Renderable, CullingData>()
+        .kind(cullPhase)
+        .each(cullSystemCallback);
+        
+    // Register LOD system
+    lodSystem_ = world->system<Transform, Renderable, LODData>()
+        .kind(lodPhase)
+        .each(lodSystemCallback);
+        
+    // Register GPU synchronization system
+    gpuSyncSystem_ = world->system<Transform, Renderable>()
+        .kind(gpuSyncPhase)
+        .each(gpuSyncSystemCallback);
+        
+    if (!renderPrepareSystem_.is_valid() || !cullSystem_.is_valid() || 
+        !lodSystem_.is_valid() || !gpuSyncSystem_.is_valid()) {
+        throw std::runtime_error("Failed to register rendering systems");
+    }
+}
+
+void RenderingService::cleanupSystems() {
+    if (renderPrepareSystem_.is_valid()) {
+        renderPrepareSystem_.destruct();
+    }
+    if (cullSystem_.is_valid()) {
+        cullSystem_.destruct();
+    }
+    if (lodSystem_.is_valid()) {
+        lodSystem_.destruct();
+    }
+    if (gpuSyncSystem_.is_valid()) {
+        gpuSyncSystem_.destruct();
+    }
+}
+
+// beginFrame() and endFrame() already implemented above
+
+bool RenderingService::shouldRender() const {
+    return initialized && renderer && gpuEntityManager;
+}
+
+void RenderingService::setRenderState(const RenderState& state) {
+    renderState_ = state;
+    maxRenderableEntities = state.maxRenderableEntities;
+}
+
+void RenderingService::setCameraEntity(flecs::entity cameraEntity) {
+    cameraEntity_ = cameraEntity;
+}
+
+// ECS System Callbacks
+void RenderingService::renderPrepareSystemCallback(flecs::entity e, Transform& transform, Renderable& renderable) {
+    // Update model matrix
+    glm::mat4 translationMatrix = glm::translate(glm::mat4(1.0f), transform.position);
+    glm::mat4 rotationMatrix = glm::mat4_cast(transform.rotation);
+    glm::mat4 scaleMatrix = glm::scale(glm::mat4(1.0f), transform.scale);
+    
+    renderable.modelMatrix = translationMatrix * rotationMatrix * scaleMatrix;
+    
+    // Mark as dirty for GPU sync
+    renderable.dirty = true;
+}
+
+void RenderingService::cullSystemCallback(flecs::entity e, Transform& transform, Renderable& renderable, CullingData& cullingData) {
+    // In a full implementation, this would perform frustum culling
+    // For now, we'll just mark everything as visible
+    cullingData.visible = true;
+    cullingData.distance = glm::length(transform.position);
+}
+
+void RenderingService::lodSystemCallback(flecs::entity e, Transform& transform, Renderable& renderable, LODData& lodData) {
+    // Simple LOD calculation based on distance
+    float distance = glm::length(transform.position);
+    
+    if (distance < 50.0f) {
+        lodData.level = 0; // High detail
+    } else if (distance < 150.0f) {
+        lodData.level = 1; // Medium detail
+    } else {
+        lodData.level = 2; // Low detail
+    }
+    
+    lodData.distance = distance;
+}
+
+void RenderingService::gpuSyncSystemCallback(flecs::entity e, Transform& transform, Renderable& renderable) {
+    // This system marks entities that need GPU synchronization
+    // The actual sync happens in the service's synchronizeWithGPU method
+    if (renderable.dirty) {
+        // Mark for GPU sync (this would typically add to a sync queue)
+        renderable.dirty = false;
+    }
+}
+
+// Helper Methods
+bool RenderingService::isEntityVisibleInFrustum(const Transform& transform, const Renderable& renderable, 
+                                                const glm::mat4& viewMatrix, const glm::mat4& projMatrix) {
+    // Simple visibility check - in production this would do proper frustum culling
+    return true;
+}
+
+uint32_t RenderingService::calculateLODLevel(const glm::vec3& entityPosition, const glm::vec3& cameraPosition) {
+    float distance = glm::length(entityPosition - cameraPosition);
+    
+    if (distance < renderState_.lodNearDistance) {
+        return 0;
+    } else if (distance < renderState_.lodMediumDistance) {
+        return 1;
+    } else {
+        return 2;
+    }
+}
+
+void RenderingService::updateEntityCullingData(flecs::entity entity, bool visible) {
+    if (entity.has<CullingData>()) {
+        auto cullingData = entity.get_mut<CullingData>();
+        cullingData->visible = visible;
+    }
+}
+
+void RenderingService::updateEntityLODData(flecs::entity entity, uint32_t lodLevel) {
+    if (entity.has<LODData>()) {
+        auto lodData = entity.get_mut<LODData>();
+        lodData->level = lodLevel;
+    }
 }
 
