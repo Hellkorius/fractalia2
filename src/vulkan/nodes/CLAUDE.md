@@ -8,32 +8,39 @@ Frame graph nodes for GPU-driven entity rendering pipeline. Implements compute-g
 /home/nar/projects/fractalia2render/src/vulkan/nodes/
 ├── CLAUDE.md                      # This documentation  
 ├── changelog.md                   # Development history and gotchas
-├── entity_compute_node.{h,cpp}    # GPU movement computation
+├── entity_compute_node.{h,cpp}    # GPU velocity calculation (900 frame cycles)
+├── physics_compute_node.{h,cpp}   # GPU physics integration (velocity→position)
 ├── entity_graphics_node.{h,cpp}   # Instanced entity rendering
 └── swapchain_present_node.{h,cpp} # Final presentation
 ```
 
 ## Core Components
 
-### EntityComputeNode
+### EntityComputeNode (Movement)
 **Inputs:**
-- `entityBufferId` - GPUEntity structs (128-byte cache-optimized)
-- `positionBufferId` - Current entity positions
-- `currentPositionBufferId` - Previous frame positions for interpolation
-- `targetPositionBufferId` - Target positions for movement
-- `ComputePipelineManager*` - Compute pipeline access
-- `GPUEntityManager*` - Entity count and buffer management
-- `GPUTimeoutDetector*` - Optional timeout monitoring
+- `entityBufferId` - GPUEntity structs for velocity updates
 
 **Outputs:**
-- Modified position buffers via compute shader execution
-- Push constants: time, deltaTime, entityCount, frame counter, entity offset
+- Modified velocity in entity buffer (every 900 frames)
 
 **Data Flow:**
-1. Receives frame timing data via `updateFrameData(float, float, uint32_t)`
-2. Calculates dispatch parameters with adaptive chunking (max 65535 workgroups per chunk)
-3. Executes `movement_random.comp` shader with memory barriers
-4. Uses `executeChunkedDispatch()` for large entity counts (force chunking enabled)
+1. Executes `movement_random.comp` shader every 900 frames
+2. Sets random velocity direction and magnitude in entity buffer
+3. Entities maintain velocity until next 900-frame cycle
+
+### PhysicsComputeNode  
+**Inputs:**
+- `entityBufferId` - GPUEntity structs for velocity data
+- `currentPositionBufferId` - Current positions for integration
+
+**Outputs:**
+- `positionBufferId` - Updated positions for graphics
+- `currentPositionBufferId` - Updated current positions
+
+**Data Flow:**
+1. Executes `physics.comp` shader every frame
+2. Reads velocity from entity buffer
+3. Integrates position += velocity * deltaTime with minimal damping (0.001)
 
 ### EntityGraphicsNode  
 **Inputs:**

@@ -222,7 +222,7 @@ struct FrameState {
 1. **RenderFrameDirector::directFrame()** - Master coordination entry point
 2. **PresentationSurface::acquireNextImage()** - Swapchain image acquisition with timeout
 3. **RenderFrameDirector** configures frame graph nodes with acquired image and world reference
-4. **FrameGraph::execute()** - Generate command buffers using QueueManager command pools
+4. **FrameGraph::execute()** - Generate command buffers: Movement→Physics→Graphics pipeline
 5. **CommandSubmissionService::submitFrame()** - Submit command buffers via QueueManager queues
 6. **CommandSubmissionService** internal presentation - Present rendered frame
 

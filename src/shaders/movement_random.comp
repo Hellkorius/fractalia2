@@ -102,11 +102,12 @@ void main() {
     // Extract movement parameters
     float amplitude = movementParams.x;
     float phase = movementParams.z;
-    float initialized = runtimeState.y;
+    vec2 center = runtimeState.xy;     // center position
+    float initialized = runtimeState.w; // initialized flag is now in .w
     
     // Mark entity as initialized if not already
     if (initialized < 0.5) {
-        entities.entityData[baseOffset + 2u].y = 1.0; // Mark as initialized
+        entities.entityData[baseOffset + 2u].w = 1.0; // Mark as initialized
     }
     
     // Calculate cycle using frame number and entity offset for staggering

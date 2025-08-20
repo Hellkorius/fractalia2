@@ -65,8 +65,8 @@ src/ecs/gpu/
 **Input Transform:** ECS components → 128-byte GPU structure
 ```cpp
 // Cache Line 1 (0-63): HOT DATA for compute shaders
-glm::vec4 movementParams0;    // amplitude, frequency, phase, timeOffset
-glm::vec4 movementParams1;    // center.xyz, movementType
+glm::vec4 velocity;           // velocity.xy, damping (0.001), reserved
+glm::vec4 movementParams;     // amplitude, frequency, phase, timeOffset
 glm::vec4 runtimeState;       // totalTime, initialized, stateTimer, entityState  
 glm::vec4 color;              // RGBA from Renderable
 

@@ -35,11 +35,13 @@ GPUEntity GPUEntity::fromECS(const Transform& transform, const Renderable& rende
     
     entity.modelMatrix = transform.getMatrix();
     
+    // Set the center position for movement (use model matrix translation as center)
+    glm::vec3 centerPos = glm::vec3(entity.modelMatrix[3]); // Extract translation from model matrix
     entity.runtimeState = glm::vec4(
-        0.0f,                      // totalTime (will be updated by compute shader)
-        0.0f,                      // initialized flag (must start as 0.0 for GPU initialization)
-        stateTimerDist(rng),       // stateTimer (random staggering) - optimized RNG
-        0.0f                       // entityState (reserved)
+        centerPos.x,                   // center.x 
+        centerPos.y,                   // center.y
+        stateTimerDist(rng),           // stateTimer (random staggering) - optimized RNG
+        0.0f                           // initialized flag (must start as 0.0 for GPU initialization)
     );
     
     return entity;
@@ -131,12 +133,14 @@ void GPUEntityManager::uploadPendingEntities() {
         initialPositions.emplace_back(spawnPosition, 1.0f);
     }
     
-    // Initialize ALL ping-pong buffers so graphics can read from either one
+    // Initialize ALL position buffers so graphics and physics can read from any of them
     VkDeviceSize positionUploadSize = initialPositions.size() * sizeof(glm::vec4);
     VkDeviceSize positionOffset = activeEntityCount * sizeof(glm::vec4);
     
     bufferManager.copyDataToBuffer(bufferManager.getPositionBuffer(), initialPositions.data(), positionUploadSize, positionOffset);
     bufferManager.copyDataToBuffer(bufferManager.getPositionBufferAlternate(), initialPositions.data(), positionUploadSize, positionOffset);
+    bufferManager.copyDataToBuffer(bufferManager.getCurrentPositionBuffer(), initialPositions.data(), positionUploadSize, positionOffset);
+    bufferManager.copyDataToBuffer(bufferManager.getTargetPositionBuffer(), initialPositions.data(), positionUploadSize, positionOffset);
     
     
     activeEntityCount += stagingEntities.size();
