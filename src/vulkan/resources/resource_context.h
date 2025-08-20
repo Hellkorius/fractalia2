@@ -144,12 +144,9 @@ public:
     ResourceContext();
     ~ResourceContext();
     
-    bool initialize(const VulkanContext& context, VkCommandPool commandPool = VK_NULL_HANDLE);
     bool initialize(const VulkanContext& context, QueueManager* queueManager);
     void cleanup();
     
-    // Update command pool without reinitializing everything
-    bool updateCommandPool(VkCommandPool newCommandPool);
     
     // Cleanup method for proper destruction order
     void cleanupBeforeContextDestruction();

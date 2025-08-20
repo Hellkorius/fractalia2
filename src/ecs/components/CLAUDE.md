@@ -66,8 +66,7 @@ components/
 
 ### CPU Systems (Consumers)
 - **Services** (`../services/`): CameraService, InputService, RenderingService, ControlService
-- **Modules**: MovementModule functionality integrated into services
-- **Systems** (`../systems/`): Legacy systems being phased out for service architecture
+- **Systems** (`../systems/`): Core ECS systems for entity lifecycle and movement
 - **Utilities** (`../utilities/`): ComponentQueries for ECS data access patterns
 - **Core** (`../core/`): EntityFactory for component-based entity creation
 

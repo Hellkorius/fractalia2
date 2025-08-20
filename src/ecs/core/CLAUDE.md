@@ -88,9 +88,6 @@ Foundational infrastructure for Entity-Component-System architecture with servic
 - **Lifetime, Bounds, Velocity**: Additional entity behaviors
 - **Input components**: KeyboardInput, MouseInput, InputEvents for ECS-based input
 
-### ECS Modules (Deprecated)
-- Module functionality has been integrated into the service layer
-- Movement patterns handled by MovementSystem in conjunction with services
 
 ### ECS Services (/ecs/services/)
 - **InputService**: High-level input with action mapping and context switching

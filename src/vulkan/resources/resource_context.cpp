@@ -303,51 +303,6 @@ ResourceContext::~ResourceContext() {
     cleanup();
 }
 
-bool ResourceContext::initialize(const VulkanContext& context, VkCommandPool commandPool) {
-    this->context = &context;
-    
-    // Initialize specialized managers
-    memoryAllocator = std::make_unique<MemoryAllocator>();
-    if (!memoryAllocator->initialize(context)) {
-        std::cerr << "Failed to initialize memory allocator!" << std::endl;
-        return false;
-    }
-    
-    bufferFactory = std::make_unique<BufferFactory>();
-    if (!bufferFactory->initialize(context, memoryAllocator.get())) {
-        std::cerr << "Failed to initialize buffer factory!" << std::endl;
-        return false;
-    }
-    
-    descriptorPoolManager = std::make_unique<DescriptorPoolManager>();
-    if (!descriptorPoolManager->initialize(context)) {
-        std::cerr << "Failed to initialize descriptor pool manager!" << std::endl;
-        return false;
-    }
-    
-    graphicsResourceManager = std::make_unique<GraphicsResourceManager>();
-    if (!graphicsResourceManager->initialize(context, bufferFactory.get())) {
-        std::cerr << "Failed to initialize graphics resource manager!" << std::endl;
-        return false;
-    }
-    
-    // Initialize staging buffer (16MB for large entity uploads)
-    if (!stagingBuffer.initialize(context, STAGING_BUFFER_SIZE)) {
-        std::cerr << "Failed to initialize staging buffer!" << std::endl;
-        return false;
-    }
-    
-    // Note: Legacy initialization method - CommandExecutor will not be available
-    // Modern code should use initialize(context, queueManager) instead
-    std::cout << "ResourceContext: Initialized with legacy method - CommandExecutor not available" << std::endl;
-    
-    // Wire up dependencies
-    bufferFactory->setStagingBuffer(&stagingBuffer);
-    bufferFactory->setCommandExecutor(&executor);
-    
-    return true;
-}
-
 bool ResourceContext::initialize(const VulkanContext& context, QueueManager* queueManager) {
     this->context = &context;
     
@@ -394,25 +349,6 @@ bool ResourceContext::initialize(const VulkanContext& context, QueueManager* que
     bufferFactory->setStagingBuffer(&stagingBuffer);
     bufferFactory->setCommandExecutor(&executor);
     
-    return true;
-}
-
-bool ResourceContext::updateCommandPool(VkCommandPool newCommandPool) {
-    if (!context) {
-        std::cerr << "ResourceContext: Cannot update command pool - not initialized" << std::endl;
-        return false;
-    }
-    
-    std::cout << "ResourceContext: Updating command pool without full reinitialization" << std::endl;
-    
-    // Clean up old command executor
-    executor.cleanup();
-    
-    // Legacy command pool update not supported with modern QueueManager architecture
-    std::cerr << "ResourceContext: updateCommandPool is deprecated - use QueueManager initialization instead" << std::endl;
-    return false;
-    
-    std::cout << "ResourceContext: Successfully updated command pool" << std::endl;
     return true;
 }
 
