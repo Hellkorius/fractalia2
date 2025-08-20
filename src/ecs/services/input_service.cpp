@@ -1,6 +1,5 @@
 #include "input_service.h"
 #include "camera_service.h"
-#include "../systems/input_system.h"
 #include <iostream>
 #include <algorithm>
 #include <fstream>
@@ -20,15 +19,17 @@ bool InputService::initialize(flecs::world& world, SDL_Window* window) {
     this->world = &world;
     this->window = window;
     
-    // Create or get the input entity from InputManager
-    inputEntity = InputManager::createInputEntity(world);
+    // Create input entity directly
+    inputEntity = world.entity("InputEntity")
+        .add<InputState>()
+        .add<KeyboardInput>()
+        .add<MouseInput>()
+        .add<InputEvents>();
+    
     if (!inputEntity.is_valid()) {
         std::cerr << "InputService: Failed to create input entity" << std::endl;
         return false;
     }
-    
-    // Set window reference in InputManager
-    InputManager::setWindow(window);
     
     // Create default contexts and actions
     createDefaultContexts();
@@ -67,6 +68,9 @@ void InputService::processFrame(float deltaTime) {
     // Update action states based on current input
     updateActionStates();
     
+    // Synchronize internal state to ECS components
+    synchronizeToECSComponents();
+    
     // Execute callbacks for active actions
     for (const auto& [actionName, state] : actionStates) {
         auto callbackIt = actionCallbacks.find(actionName);
@@ -102,6 +106,12 @@ void InputService::processSDLEvents() {
         switch (event.type) {
             case SDL_EVENT_QUIT:
                 {
+                    auto* inputState = inputEntity.get_mut<InputState>();
+                    if (inputState) {
+                        inputState->quit = true;
+                    }
+                    
+                    // Also update application state for backward compatibility
                     auto* appState = world->get_mut<ApplicationState>();
                     if (appState) {
                         appState->requestQuit = true;
@@ -358,7 +368,12 @@ void InputService::resetToDefaults() {
 }
 
 bool InputService::shouldQuit() const {
-    return initialized ? InputQuery::shouldQuit(*world) : false;
+    if (!initialized || !inputEntity.is_valid()) {
+        return false;
+    }
+    
+    auto* inputState = inputEntity.get<InputState>();
+    return inputState ? inputState->quit : false;
 }
 
 std::vector<std::string> InputService::getActiveContexts() const {
@@ -685,6 +700,50 @@ InputEvents* InputService::getInputEvents() const {
         return nullptr;
     }
     return inputEntity.get_mut<InputEvents>();
+}
+
+void InputService::synchronizeToECSComponents() {
+    if (!initialized || !inputEntity.is_valid()) {
+        return;
+    }
+    
+    // Update InputState component
+    auto* inputState = inputEntity.get_mut<InputState>();
+    if (inputState) {
+        inputState->deltaTime = deltaTime;
+        inputState->frameNumber++;
+        // quit flag is already set by SDL_EVENT_QUIT handler
+    }
+    
+    // Update KeyboardInput component
+    auto* keyboardInput = inputEntity.get_mut<KeyboardInput>();
+    if (keyboardInput) {
+        // Copy internal keyboard state to ECS component
+        std::copy(keyboardState.keys, keyboardState.keys + KeyboardState::MAX_KEYS, 
+                 keyboardInput->keys);
+        std::copy(keyboardState.keysPressed, keyboardState.keysPressed + KeyboardState::MAX_KEYS,
+                 keyboardInput->keysPressed);
+        std::copy(keyboardState.keysReleased, keyboardState.keysReleased + KeyboardState::MAX_KEYS,
+                 keyboardInput->keysReleased);
+        keyboardInput->shift = keyboardState.shift;
+        keyboardInput->ctrl = keyboardState.ctrl;
+        keyboardInput->alt = keyboardState.alt;
+    }
+    
+    // Update MouseInput component  
+    auto* mouseInput = inputEntity.get_mut<MouseInput>();
+    if (mouseInput) {
+        // Copy internal mouse state to ECS component
+        std::copy(mouseState.buttons, mouseState.buttons + MouseState::MAX_BUTTONS,
+                 mouseInput->buttons);
+        std::copy(mouseState.buttonsPressed, mouseState.buttonsPressed + MouseState::MAX_BUTTONS,
+                 mouseInput->buttonsPressed);
+        std::copy(mouseState.buttonsReleased, mouseState.buttonsReleased + MouseState::MAX_BUTTONS,
+                 mouseInput->buttonsReleased);
+        mouseInput->position = mouseState.position;
+        mouseInput->deltaPosition = mouseState.delta;
+        mouseInput->wheelDelta = mouseState.wheelDelta;
+    }
 }
 
 bool InputService::hasWindowResizeEvent(int& width, int& height) const {

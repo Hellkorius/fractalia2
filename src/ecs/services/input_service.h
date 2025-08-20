@@ -2,7 +2,6 @@
 
 #include "../core/service_locator.h"
 #include "../components/component.h"
-#include "../systems/input_system.h"
 #include <SDL3/SDL.h>
 #include <flecs.h>
 #include <glm/glm.hpp>
@@ -214,6 +213,7 @@ private:
     
     // Internal methods
     void updateActionStates();
+    void synchronizeToECSComponents();
     void evaluateBinding(const InputBinding& binding, const std::string& actionName, InputActionState& state);
     bool isBindingActive(const InputBinding& binding) const;
     float getBindingAnalogValue(const InputBinding& binding) const;
