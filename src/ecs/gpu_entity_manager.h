@@ -2,6 +2,7 @@
 
 #include "components/component.h"
 #include "components/entity.h"
+#include "entity_buffer_manager.h"
 #include <vulkan/vulkan.h>
 #include <glm/glm.hpp>
 #include <vector>
@@ -45,23 +46,23 @@ public:
     void clearAllEntities();
     
     // Direct buffer access for frame graph
-    VkBuffer getEntityBuffer() const;
-    VkBuffer getPositionBuffer() const;
-    VkBuffer getPositionBufferAlternate() const; // For async compute ping-pong
-    VkBuffer getCurrentPositionBuffer() const;
-    VkBuffer getTargetPositionBuffer() const;
+    VkBuffer getEntityBuffer() const { return bufferManager.getEntityBuffer(); }
+    VkBuffer getPositionBuffer() const { return bufferManager.getPositionBuffer(); }
+    VkBuffer getPositionBufferAlternate() const { return bufferManager.getPositionBufferAlternate(); }
+    VkBuffer getCurrentPositionBuffer() const { return bufferManager.getCurrentPositionBuffer(); }
+    VkBuffer getTargetPositionBuffer() const { return bufferManager.getTargetPositionBuffer(); }
     
     // Async compute support - ping-pong between position buffers
-    VkBuffer getComputeWriteBuffer(uint32_t frameIndex) const;  // Buffer compute writes to
-    VkBuffer getGraphicsReadBuffer(uint32_t frameIndex) const;  // Buffer graphics reads from
+    VkBuffer getComputeWriteBuffer(uint32_t frameIndex) const { return bufferManager.getComputeWriteBuffer(frameIndex); }
+    VkBuffer getGraphicsReadBuffer(uint32_t frameIndex) const { return bufferManager.getGraphicsReadBuffer(frameIndex); }
     
     // Buffer properties
-    VkDeviceSize getEntityBufferSize() const { return ENTITY_BUFFER_SIZE; }
-    VkDeviceSize getPositionBufferSize() const { return POSITION_BUFFER_SIZE; }
+    VkDeviceSize getEntityBufferSize() const { return bufferManager.getEntityBufferSize(); }
+    VkDeviceSize getPositionBufferSize() const { return bufferManager.getPositionBufferSize(); }
     
     // Entity state
     uint32_t getEntityCount() const { return activeEntityCount; }
-    uint32_t getMaxEntities() const { return MAX_ENTITIES; }
+    uint32_t getMaxEntities() const { return bufferManager.getMaxEntities(); }
     bool hasPendingUploads() const { return !stagingEntities.empty(); }
     
     // Descriptor set support for frame graph
@@ -78,29 +79,14 @@ public:
 
 private:
     static constexpr uint32_t MAX_ENTITIES = 131072; // 128k entities max
-    static constexpr size_t ENTITY_BUFFER_SIZE = MAX_ENTITIES * sizeof(GPUEntity);
-    static constexpr size_t POSITION_BUFFER_SIZE = MAX_ENTITIES * sizeof(glm::vec4);
     
     // Dependencies
     const VulkanContext* context = nullptr;
     VulkanSync* sync = nullptr;
     ResourceContext* resourceContext = nullptr;
     
-    // GPU buffers (simplified - no double buffering, frame graph handles that)
-    VkBuffer entityBuffer = VK_NULL_HANDLE;
-    VkDeviceMemory entityBufferMemory = VK_NULL_HANDLE;
-    
-    VkBuffer positionBuffer = VK_NULL_HANDLE;  
-    VkDeviceMemory positionBufferMemory = VK_NULL_HANDLE;
-    
-    VkBuffer positionBufferAlternate = VK_NULL_HANDLE; // For async compute ping-pong
-    VkDeviceMemory positionBufferAlternateMemory = VK_NULL_HANDLE;
-    
-    VkBuffer currentPositionBuffer = VK_NULL_HANDLE;
-    VkDeviceMemory currentPositionBufferMemory = VK_NULL_HANDLE;
-    
-    VkBuffer targetPositionBuffer = VK_NULL_HANDLE;
-    VkDeviceMemory targetPositionBufferMemory = VK_NULL_HANDLE;
+    // Buffer management
+    EntityBufferManager bufferManager;
     
     // Staging data
     std::vector<GPUEntity> stagingEntities;
@@ -115,7 +101,5 @@ private:
     VkDescriptorSetLayout graphicsDescriptorSetLayout = VK_NULL_HANDLE;
     
     // Helper methods
-    bool createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkBuffer& buffer, VkDeviceMemory& bufferMemory);
-    void copyDataToBuffer(VkBuffer buffer, const void* data, VkDeviceSize size);
     bool createComputeDescriptorPool();
 };

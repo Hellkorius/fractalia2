@@ -56,38 +56,9 @@ bool GPUEntityManager::initialize(const VulkanContext& context, VulkanSync* sync
     this->sync = sync;
     this->resourceContext = resourceContext;
     
-    if (!createBuffer(ENTITY_BUFFER_SIZE, 
-                     VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-                     entityBuffer, entityBufferMemory)) {
-        std::cerr << "GPUEntityManager: Failed to create entity buffer" << std::endl;
-        return false;
-    }
-    
-    if (!createBuffer(POSITION_BUFFER_SIZE,
-                     VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-                     positionBuffer, positionBufferMemory)) {
-        std::cerr << "GPUEntityManager: Failed to create position buffer" << std::endl;
-        return false;
-    }
-    
-    if (!createBuffer(POSITION_BUFFER_SIZE,
-                     VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-                     positionBufferAlternate, positionBufferAlternateMemory)) {
-        std::cerr << "GPUEntityManager: Failed to create alternate position buffer" << std::endl;
-        return false;
-    }
-    
-    if (!createBuffer(POSITION_BUFFER_SIZE,
-                     VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-                     currentPositionBuffer, currentPositionBufferMemory)) {
-        std::cerr << "GPUEntityManager: Failed to create current position buffer" << std::endl;
-        return false;
-    }
-    
-    if (!createBuffer(POSITION_BUFFER_SIZE,
-                     VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-                     targetPositionBuffer, targetPositionBufferMemory)) {
-        std::cerr << "GPUEntityManager: Failed to create target position buffer" << std::endl;
+    // Initialize buffer manager
+    if (!bufferManager.initialize(context, resourceContext, MAX_ENTITIES)) {
+        std::cerr << "GPUEntityManager: Failed to initialize buffer manager" << std::endl;
         return false;
     }
     
@@ -106,6 +77,7 @@ void GPUEntityManager::cleanup() {
     const auto& loader = context->getLoader();
     VkDevice device = context->getDevice();
     
+    // Cleanup descriptor sets and layouts
     if (computeDescriptorPool != VK_NULL_HANDLE) {
         loader.vkDestroyDescriptorPool(device, computeDescriptorPool, nullptr);
         computeDescriptorPool = VK_NULL_HANDLE;
@@ -128,54 +100,12 @@ void GPUEntityManager::cleanup() {
         graphicsDescriptorSetLayout = VK_NULL_HANDLE;
     }
     
-    if (entityBuffer != VK_NULL_HANDLE) {
-        loader.vkDestroyBuffer(device, entityBuffer, nullptr);
-        entityBuffer = VK_NULL_HANDLE;
-    }
-    if (entityBufferMemory != VK_NULL_HANDLE) {
-        loader.vkFreeMemory(device, entityBufferMemory, nullptr);
-        entityBufferMemory = VK_NULL_HANDLE;
-    }
-    
-    if (positionBuffer != VK_NULL_HANDLE) {
-        loader.vkDestroyBuffer(device, positionBuffer, nullptr);
-        positionBuffer = VK_NULL_HANDLE;
-    }
-    if (positionBufferMemory != VK_NULL_HANDLE) {
-        loader.vkFreeMemory(device, positionBufferMemory, nullptr);
-        positionBufferMemory = VK_NULL_HANDLE;
-    }
-    
-    if (positionBufferAlternate != VK_NULL_HANDLE) {
-        loader.vkDestroyBuffer(device, positionBufferAlternate, nullptr);
-        positionBufferAlternate = VK_NULL_HANDLE;
-    }
-    if (positionBufferAlternateMemory != VK_NULL_HANDLE) {
-        loader.vkFreeMemory(device, positionBufferAlternateMemory, nullptr);
-        positionBufferAlternateMemory = VK_NULL_HANDLE;
-    }
-    
-    if (currentPositionBuffer != VK_NULL_HANDLE) {
-        loader.vkDestroyBuffer(device, currentPositionBuffer, nullptr);
-        currentPositionBuffer = VK_NULL_HANDLE;
-    }
-    if (currentPositionBufferMemory != VK_NULL_HANDLE) {
-        loader.vkFreeMemory(device, currentPositionBufferMemory, nullptr);
-        currentPositionBufferMemory = VK_NULL_HANDLE;
-    }
-    
-    if (targetPositionBuffer != VK_NULL_HANDLE) {
-        loader.vkDestroyBuffer(device, targetPositionBuffer, nullptr);
-        targetPositionBuffer = VK_NULL_HANDLE;
-    }
-    if (targetPositionBufferMemory != VK_NULL_HANDLE) {
-        loader.vkFreeMemory(device, targetPositionBufferMemory, nullptr);
-        targetPositionBufferMemory = VK_NULL_HANDLE;
-    }
+    // Cleanup buffer manager
+    bufferManager.cleanup();
 }
 
 void GPUEntityManager::addEntity(const GPUEntity& entity) {
-    if (activeEntityCount + stagingEntities.size() >= MAX_ENTITIES) {
+    if (activeEntityCount + stagingEntities.size() >= bufferManager.getMaxEntities()) {
         std::cerr << "GPUEntityManager: Cannot add entity, would exceed max capacity" << std::endl;
         return;
     }
@@ -209,19 +139,8 @@ void GPUEntityManager::uploadPendingEntities() {
     VkDeviceSize uploadSize = stagingEntities.size() * sizeof(GPUEntity);
     VkDeviceSize offset = activeEntityCount * sizeof(GPUEntity);
     
-    // Create ResourceHandle wrapper for entity buffer with proper memory reference
-    ResourceHandle entityBufferHandle{};
-    entityBufferHandle.buffer = vulkan_raii::make_buffer(entityBuffer, context);
-    entityBufferHandle.memory = vulkan_raii::make_device_memory(entityBufferMemory, context);
-    entityBufferHandle.size = ENTITY_BUFFER_SIZE;
-    entityBufferHandle.mappedData = nullptr; // Device-local memory is not mappable
-    
-    // Use ResourceContext to copy data via staging buffer to device-local memory
-    resourceContext->copyToBuffer(entityBufferHandle, stagingEntities.data(), uploadSize, offset);
-    
-    // Detach the handles to prevent automatic cleanup (we manage the buffer lifetime)
-    entityBufferHandle.buffer.detach();
-    entityBufferHandle.memory.detach();
+    // Use buffer manager to copy data with proper offset for appending
+    bufferManager.copyDataToBuffer(bufferManager.getEntityBuffer(), stagingEntities.data(), uploadSize, offset);
     
     activeEntityCount += stagingEntities.size();
     stagingEntities.clear();
@@ -234,65 +153,9 @@ void GPUEntityManager::clearAllEntities() {
     activeEntityCount = 0;
 }
 
-VkBuffer GPUEntityManager::getEntityBuffer() const {
-    return entityBuffer;
-}
+// Buffer access methods now delegated through header inline methods
 
-VkBuffer GPUEntityManager::getPositionBuffer() const {
-    return positionBuffer;
-}
-
-VkBuffer GPUEntityManager::getCurrentPositionBuffer() const {
-    return currentPositionBuffer;
-}
-
-VkBuffer GPUEntityManager::getTargetPositionBuffer() const {
-    return targetPositionBuffer;
-}
-
-VkBuffer GPUEntityManager::getPositionBufferAlternate() const {
-    return positionBufferAlternate;
-}
-
-VkBuffer GPUEntityManager::getComputeWriteBuffer(uint32_t frameIndex) const {
-    // Ping-pong: even frames write to positionBuffer, odd frames write to positionBufferAlternate
-    return (frameIndex % 2 == 0) ? positionBuffer : positionBufferAlternate;
-}
-
-VkBuffer GPUEntityManager::getGraphicsReadBuffer(uint32_t frameIndex) const {
-    // Graphics reads from the buffer compute wrote to in the PREVIOUS frame
-    // So if compute is writing to buffer A (frame N), graphics reads from buffer B (frame N-1)
-    return (frameIndex % 2 == 0) ? positionBufferAlternate : positionBuffer;
-}
-
-bool GPUEntityManager::createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkBuffer& buffer, VkDeviceMemory& bufferMemory) {
-    VkBufferCreateInfo bufferInfo{};
-    bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    bufferInfo.size = size;
-    bufferInfo.usage = usage;
-    bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    
-    if (context->getLoader().vkCreateBuffer(context->getDevice(), &bufferInfo, nullptr, &buffer) != VK_SUCCESS) {
-        return false;
-    }
-    
-    VkMemoryRequirements memRequirements;
-    context->getLoader().vkGetBufferMemoryRequirements(context->getDevice(), buffer, &memRequirements);
-    
-    VkMemoryAllocateInfo allocInfo{};
-    allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    allocInfo.allocationSize = memRequirements.size;
-    allocInfo.memoryTypeIndex = VulkanUtils::findMemoryType(context->getPhysicalDevice(), context->getLoader(), memRequirements.memoryTypeBits, 
-                                                            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-    
-    if (context->getLoader().vkAllocateMemory(context->getDevice(), &allocInfo, nullptr, &bufferMemory) != VK_SUCCESS) {
-        context->getLoader().vkDestroyBuffer(context->getDevice(), buffer, nullptr);
-        return false;
-    }
-    
-    context->getLoader().vkBindBufferMemory(context->getDevice(), buffer, bufferMemory, 0);
-    return true;
-}
+// Buffer creation now handled by EntityBufferManager
 
 bool GPUEntityManager::createComputeDescriptorPool() {
     VkDescriptorPoolSize poolSize{};
@@ -332,7 +195,7 @@ bool GPUEntityManager::createComputeDescriptorSets(VkDescriptorSetLayout layout)
 
     // Binding 0: Entity buffer
     VkDescriptorBufferInfo entityBufferInfo{};
-    entityBufferInfo.buffer = entityBuffer;
+    entityBufferInfo.buffer = bufferManager.getEntityBuffer();
     entityBufferInfo.offset = 0;
     entityBufferInfo.range = VK_WHOLE_SIZE;
 
@@ -346,7 +209,7 @@ bool GPUEntityManager::createComputeDescriptorSets(VkDescriptorSetLayout layout)
 
     // Binding 1: Position buffer (output)
     VkDescriptorBufferInfo positionBufferInfo{};
-    positionBufferInfo.buffer = positionBuffer;
+    positionBufferInfo.buffer = bufferManager.getPositionBuffer();
     positionBufferInfo.offset = 0;
     positionBufferInfo.range = VK_WHOLE_SIZE;
 
@@ -360,7 +223,7 @@ bool GPUEntityManager::createComputeDescriptorSets(VkDescriptorSetLayout layout)
 
     // Binding 2: Current position buffer
     VkDescriptorBufferInfo currentPosBufferInfo{};
-    currentPosBufferInfo.buffer = currentPositionBuffer;
+    currentPosBufferInfo.buffer = bufferManager.getCurrentPositionBuffer();
     currentPosBufferInfo.offset = 0;
     currentPosBufferInfo.range = VK_WHOLE_SIZE;
 
@@ -374,7 +237,7 @@ bool GPUEntityManager::createComputeDescriptorSets(VkDescriptorSetLayout layout)
 
     // Binding 3: Target position buffer
     VkDescriptorBufferInfo targetPosBufferInfo{};
-    targetPosBufferInfo.buffer = targetPositionBuffer;
+    targetPosBufferInfo.buffer = bufferManager.getTargetPositionBuffer();
     targetPosBufferInfo.offset = 0;
     targetPosBufferInfo.range = VK_WHOLE_SIZE;
 
@@ -430,7 +293,7 @@ bool GPUEntityManager::createGraphicsDescriptorSets(VkDescriptorSetLayout layout
 
     // Binding 1: Entity buffer
     VkDescriptorBufferInfo entityBufferInfo{};
-    entityBufferInfo.buffer = entityBuffer;
+    entityBufferInfo.buffer = bufferManager.getEntityBuffer();
     entityBufferInfo.offset = 0;
     entityBufferInfo.range = VK_WHOLE_SIZE;
 
@@ -444,7 +307,7 @@ bool GPUEntityManager::createGraphicsDescriptorSets(VkDescriptorSetLayout layout
 
     // Binding 2: Position buffer
     VkDescriptorBufferInfo positionBufferInfo{};
-    positionBufferInfo.buffer = positionBuffer;
+    positionBufferInfo.buffer = bufferManager.getPositionBuffer();
     positionBufferInfo.offset = 0;
     positionBufferInfo.range = VK_WHOLE_SIZE;
 
@@ -551,8 +414,8 @@ bool GPUEntityManager::recreateComputeDescriptorSets() {
     }
     
     // Validate buffers are available
-    if (entityBuffer == VK_NULL_HANDLE || positionBuffer == VK_NULL_HANDLE || 
-        currentPositionBuffer == VK_NULL_HANDLE || targetPositionBuffer == VK_NULL_HANDLE) {
+    if (bufferManager.getEntityBuffer() == VK_NULL_HANDLE || bufferManager.getPositionBuffer() == VK_NULL_HANDLE || 
+        bufferManager.getCurrentPositionBuffer() == VK_NULL_HANDLE || bufferManager.getTargetPositionBuffer() == VK_NULL_HANDLE) {
         std::cerr << "GPUEntityManager: ERROR - Cannot recreate compute descriptor sets: buffers not available" << std::endl;
         return false;
     }
@@ -585,7 +448,7 @@ bool GPUEntityManager::recreateComputeDescriptorSets() {
 
     // Binding 0: Entity buffer
     VkDescriptorBufferInfo entityBufferInfo{};
-    entityBufferInfo.buffer = entityBuffer;
+    entityBufferInfo.buffer = bufferManager.getEntityBuffer();
     entityBufferInfo.offset = 0;
     entityBufferInfo.range = VK_WHOLE_SIZE;
 
@@ -599,7 +462,7 @@ bool GPUEntityManager::recreateComputeDescriptorSets() {
 
     // Binding 1: Position buffer (output)
     VkDescriptorBufferInfo positionBufferInfo{};
-    positionBufferInfo.buffer = positionBuffer;
+    positionBufferInfo.buffer = bufferManager.getPositionBuffer();
     positionBufferInfo.offset = 0;
     positionBufferInfo.range = VK_WHOLE_SIZE;
 
@@ -613,7 +476,7 @@ bool GPUEntityManager::recreateComputeDescriptorSets() {
 
     // Binding 2: Current position buffer
     VkDescriptorBufferInfo currentPosBufferInfo{};
-    currentPosBufferInfo.buffer = currentPositionBuffer;
+    currentPosBufferInfo.buffer = bufferManager.getCurrentPositionBuffer();
     currentPosBufferInfo.offset = 0;
     currentPosBufferInfo.range = VK_WHOLE_SIZE;
 
@@ -627,7 +490,7 @@ bool GPUEntityManager::recreateComputeDescriptorSets() {
 
     // Binding 3: Target position buffer
     VkDescriptorBufferInfo targetPosBufferInfo{};
-    targetPosBufferInfo.buffer = targetPositionBuffer;
+    targetPosBufferInfo.buffer = bufferManager.getTargetPositionBuffer();
     targetPosBufferInfo.offset = 0;
     targetPosBufferInfo.range = VK_WHOLE_SIZE;
 
