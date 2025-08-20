@@ -3,7 +3,6 @@
 #include "../core/service_locator.h"
 #include "../components/component.h"
 #include "../components/camera_component.h"
-#include "../systems/camera_system.h"
 #include <flecs.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -233,6 +232,10 @@ private:
     Camera interpolateCameras(const Camera& start, const Camera& end, float t) const;
     void ensureMainCamera();
     flecs::entity createCameraEntity(const Camera& cameraData, const std::string& name);
+    
+    // Legacy CameraManager functionality moved to service
+    flecs::entity createMainCameraEntity();
+    flecs::entity getMainCameraEntity() const;
     
     // Culling helpers
     bool isInFrustum(const glm::vec3& position, const glm::vec3& bounds, const Camera& camera) const;

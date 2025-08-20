@@ -5,7 +5,6 @@
 #include "../../ecs/gpu_entity_manager.h"
 #include "../core/vulkan_context.h"
 #include "../core/vulkan_function_loader.h"
-#include "../../ecs/systems/camera_system.h"
 #include "../../ecs/components/camera_component.h"
 #include "../pipelines/descriptor_layout_manager.h"
 #include <iostream>

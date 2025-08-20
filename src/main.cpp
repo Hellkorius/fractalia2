@@ -12,7 +12,6 @@
 #include "ecs/utilities/system_scheduler.h"
 #include "ecs/systems/lifetime_system.h"
 // Removed legacy input system include - using service-based architecture
-#include "ecs/systems/camera_system.h"
 #include "ecs/components/camera_component.h"
 #include "ecs/components/component.h"
 #include "ecs/utilities/profiler.h"
@@ -160,9 +159,7 @@ int main(int argc, char* argv[]) {
     //     })
     //     .child_of(scheduler.getInputPhase());
     
-    world.system<Camera>("CameraMatrixSystem")
-        .each(camera_matrix_system)
-        .child_of(scheduler.getLogicPhase());
+    // Camera matrix system removed - matrices are computed on-demand in Camera component
         
     DEBUG_LOG("Camera systems registered");
     

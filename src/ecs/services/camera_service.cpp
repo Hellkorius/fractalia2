@@ -1,5 +1,4 @@
 #include "camera_service.h"
-#include "../systems/camera_system.h"
 #include <iostream>
 #include <algorithm>
 #include <cmath>
@@ -68,9 +67,6 @@ void CameraService::handleWindowResize(int width, int height) {
             }
         }
     }
-    
-    // Update existing camera manager
-    CameraManager::updateAspectRatio(*world, width, height);
 }
 
 CameraID CameraService::createCamera(const std::string& name) {
@@ -757,8 +753,8 @@ void CameraService::ensureMainCamera() {
         return;
     }
     
-    // Check if we already have a main camera from CameraManager
-    flecs::entity mainCamera = CameraManager::getMainCamera(*world);
+    // Check if we already have a main camera
+    flecs::entity mainCamera = getMainCameraEntity();
     if (mainCamera.is_valid()) {
         // Adopt the existing main camera
         CameraID mainID = nextCameraID++;
@@ -768,8 +764,8 @@ void CameraService::ensureMainCamera() {
             activeCameraID = mainID;
         }
     } else {
-        // Create a new main camera through CameraManager
-        mainCamera = CameraManager::createMainCamera(*world);
+        // Create a new main camera
+        mainCamera = createMainCameraEntity();
         if (mainCamera.is_valid()) {
             CameraID mainID = nextCameraID++;
             cameras[mainID] = mainCamera;
@@ -794,6 +790,38 @@ flecs::entity CameraService::createCameraEntity(const Camera& cameraData, const 
     entity.set<Camera>(cameraData);
     
     return entity;
+}
+
+flecs::entity CameraService::createMainCameraEntity() {
+    if (!world) {
+        return flecs::entity::null();
+    }
+    
+    auto camera = world->entity("MainCamera")
+        .set<Camera>({})
+        .add<KeyboardControlled>()
+        .add<MouseControlled>();
+        
+    // Set initial camera properties
+    auto* cam = camera.get_mut<Camera>();
+    if (cam) {
+        cam->setPosition(glm::vec3(10.0f, 10.0f, 0.0f));  // Position camera at entity center
+        cam->setZoom(0.3f);  // Zoom out to see all entities (spread over 8.0f radius)
+        cam->setRotation(0.0f);
+        cam->moveSpeed = 5.0f;
+        cam->zoomSpeed = 2.0f;
+        cam->rotationSpeed = 1.0f;
+    }
+    
+    std::cout << "Main camera created" << std::endl;
+    return camera;
+}
+
+flecs::entity CameraService::getMainCameraEntity() const {
+    if (!world) {
+        return flecs::entity::null();
+    }
+    return world->lookup("MainCamera");
 }
 
 bool CameraService::isInFrustum(const glm::vec3& position, const glm::vec3& bounds, const Camera& camera) const {
