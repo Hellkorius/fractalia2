@@ -188,7 +188,7 @@ RenderingService.processFrame()
 - **Priority-based initialization**: Higher priority services initialize first
 - **Dependency validation**: Services declare dependencies, validated at startup  
 - **Lifecycle management**: UNINITIALIZED → INITIALIZING → INITIALIZED → SHUTTING_DOWN → SHUTDOWN
-- **Convenience namespaces**: Global access functions (Input::, CameraSystem::, Control::, Rendering::)
+- **Convenience macro**: SERVICE(ServiceClass) for streamlined access
 
 ### Critical Integration Points:
 - **InputService** requires SDL_Window* for event processing

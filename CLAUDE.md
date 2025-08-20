@@ -100,8 +100,8 @@ serviceLocator.declareDependencies<InputService, WorldManager>();
 
 // Access services
 InputService& input = ServiceLocator::instance().requireService<InputService>();
-// Or via convenience namespace
-Input::getService().isActionJustPressed("jump");
+// Or via convenience macro
+SERVICE(InputService).isActionJustPressed("jump");
 ```
 
 ### Service Lifecycle

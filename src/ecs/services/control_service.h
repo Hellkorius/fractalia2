@@ -156,29 +156,3 @@ private:
     void actionCameraFocus();
 };
 
-// Convenience functions for global access
-namespace Control {
-    GameControlService& getService();
-    
-    // Quick state access
-    ControlState& getState();
-    const ControlState& getStateConst();
-    
-    // Quick actions
-    void toggleMovement();
-    void createEntity(const glm::vec2& position);
-    void createSwarm(size_t count = 1000);
-    void showStats();
-    void toggleDebug();
-    void resetCamera();
-    
-    // Quick queries
-    bool isDebugMode();
-    bool isWireframeMode();
-    int getCurrentMovementType();
-    
-    // Quick configuration
-    void setDebugMode(bool enabled);
-    void setWireframeMode(bool enabled);
-    void setMovementType(int type);
-}

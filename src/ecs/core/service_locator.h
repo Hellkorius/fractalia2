@@ -247,6 +247,9 @@ private:
 #define DECLARE_SERVICE(ServiceClass) \
     using ServiceTag = void
 
+// Convenience macro for streamlined service access
+#define SERVICE(ServiceClass) ServiceLocator::instance().requireService<ServiceClass>()
+
 // Fix missing method - getService should be the correct name
 #define IMPLEMENT_SERVICE(ServiceClass) \
     static_assert(Service<ServiceClass>)

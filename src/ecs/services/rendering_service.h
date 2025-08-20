@@ -289,27 +289,3 @@ private:
     void renderDebugCulling();
 };
 
-// Convenience functions for global access
-namespace Rendering {
-    RenderingService& getService();
-    
-    // Quick registration
-    void registerEntity(flecs::entity entity);
-    void unregisterEntity(flecs::entity entity);
-    
-    // Quick queries
-    bool isVisible(flecs::entity entity);
-    int getLODLevel(flecs::entity entity);
-    float getDistanceToCamera(flecs::entity entity);
-    
-    // Quick configuration
-    void setLODEnabled(bool enabled);
-    void setFrustumCullingEnabled(bool enabled);
-    void setDebugMode(bool enabled);
-    
-    // Quick statistics
-    uint32_t getVisibleEntityCount();
-    float getCullingRatio();
-    uint32_t getDrawCallCount();
-    float getRenderTime();
-}

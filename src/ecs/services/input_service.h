@@ -240,19 +240,3 @@ private:
     InputEvents* getInputEvents() const;
 };
 
-// Convenience functions for global access
-namespace Input {
-    InputService& getService();
-    
-    // Quick action queries
-    bool isActive(const std::string& actionName);
-    bool justPressed(const std::string& actionName);
-    bool justReleased(const std::string& actionName);
-    float getAnalog1D(const std::string& actionName);
-    glm::vec2 getAnalog2D(const std::string& actionName);
-    
-    // Context switching shortcuts
-    void pushContext(const std::string& contextName);
-    void popContext();
-    void setContext(const std::string& contextName, bool active);
-}

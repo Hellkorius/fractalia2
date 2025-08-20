@@ -122,26 +122,3 @@ private:
     Camera* getCameraForOperations(CameraID cameraID);
 };
 
-namespace CameraSystem {
-    CameraService& getService();
-    
-    Camera* getActiveCamera();
-    const Camera* getActiveCameraConst();
-    CameraID getActiveCameraID();
-    void setActiveCamera(CameraID cameraID);
-    
-    glm::vec2 worldToScreen(const glm::vec3& worldPos);
-    glm::vec2 screenToWorld(const glm::vec2& screenPos);
-    
-    bool isVisible(const glm::vec3& position);
-    glm::vec3 getCameraPosition();
-    float getCameraZoom();
-    
-    void moveCamera(const glm::vec3& delta);
-    void setCameraPosition(const glm::vec3& position);
-    void setCameraZoom(float zoom);
-    void focusOn(const glm::vec3& target, float zoom = 0.0f);
-    
-    void transitionTo(const glm::vec3& position, float zoom, float duration = 1.0f);
-    void transitionTo(CameraID cameraID, float duration = 1.0f);
-}
