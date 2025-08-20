@@ -44,8 +44,8 @@ Frame graph nodes for GPU-driven entity rendering pipeline. Implements compute-g
 
 ### EntityGraphicsNode  
 **Inputs:**
-- `entityBufferId` - GPUEntity data for instanced rendering
-- `positionBufferId` - Computed positions from compute node
+- `entityBufferId` - SoA entity data for instanced rendering
+- `positionBufferId` - Computed positions from physics compute node
 - `currentSwapchainImageId` - Dynamic per-frame render target (set via `setCurrentSwapchainImageId()`)
 - `GraphicsPipelineManager*` - Graphics pipeline access
 - `VulkanSwapchain*` - Render target management
@@ -62,7 +62,8 @@ Frame graph nodes for GPU-driven entity rendering pipeline. Implements compute-g
 1. Receives frame data via `updateFrameData()` and image index via `setImageIndex()`
 2. Updates uniform buffer when dirty (`markUniformBufferDirty()` forces update)
 3. Retrieves camera matrices via CameraService integration
-4. Executes instanced rendering with per-entity data from buffers
+4. Binds unified descriptor set with uniform buffer + SoA storage buffers
+5. Executes instanced rendering reading positions and movement params from SoA buffers
 
 ### SwapchainPresentNode
 **Inputs:**  

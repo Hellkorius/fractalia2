@@ -32,19 +32,19 @@ src/ecs/gpu/
 - `uploadPendingEntities()` - Batch upload to GPU buffers
 - `getEntityBuffer()/getPositionBuffer()` - Direct buffer access for frame graph
 
-### EntityBufferManager (Buffer Management)
+### EntityBufferManager (SoA Buffer Management)
 **Inputs:**
-- Buffer sizes based on max entities (128 bytes × count for entities, 16 bytes × count for positions)
-- Raw data for upload via `copyDataToBuffer()`
+- Buffer sizes based on max entities (separate buffers for each SoA component)
+- Raw SoA data for upload via `copyDataToBuffer()`
 - Frame indices for ping-pong buffer access
 
 **Outputs:**
-- 5 Vulkan buffers: entity, position, positionAlternate, currentPosition, targetPosition
+- 9 Vulkan buffers: velocities, movementParams, runtimeStates, colors, modelMatrices, position, positionAlternate, currentPosition, targetPosition
 - Ping-pong buffer access: `getComputeWriteBuffer(frameIndex)`, `getGraphicsReadBuffer(frameIndex)`
-- Buffer properties: sizes, handles, memory objects
+- SoA buffer getters: `getVelocityBuffer()`, `getMovementParamsBuffer()`, etc.
 
 **Buffer Layout:**
-- Entity buffer: `VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT`
+- SoA buffers: `VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT`
 - Position buffers: Same usage flags, enable async compute/graphics operations
 
 ### EntityDescriptorManager (Pipeline Interface)
@@ -58,23 +58,22 @@ src/ecs/gpu/
 - Swapchain recreation support via `recreateComputeDescriptorSets()`
 
 **Pipeline Bindings:**
-- Compute: Entity buffer, position input/output, additional storage buffers
-- Graphics: Uniform buffer, entity buffer, position buffer
+- Compute: 7 SoA storage buffers (velocities, movementParams, runtimeStates, positions, currentPositions, colors, modelMatrices)
+- Graphics: Unified descriptor set with uniform buffer (binding 0) + SoA storage buffers (bindings 1,2)
 
-### GPUEntity Structure (Data Format)
-**Input Transform:** ECS components → 128-byte GPU structure
+### GPUEntitySoA Structure (Data Format)
+**Input Transform:** ECS components → Structure of Arrays (SoA) format for better cache locality
 ```cpp
-// Cache Line 1 (0-63): HOT DATA for compute shaders
-glm::vec4 velocity;           // velocity.xy, damping (0.001), reserved
-glm::vec4 movementParams;     // amplitude, frequency, phase, timeOffset
-glm::vec4 runtimeState;       // totalTime, initialized, stateTimer, entityState  
-glm::vec4 color;              // RGBA from Renderable
-
-// Cache Line 2 (64-127): COLD DATA
-glm::mat4 modelMatrix;        // Transform matrix
+struct GPUEntitySoA {
+    std::vector<glm::vec4> velocities;        // velocity.xy, damping, reserved
+    std::vector<glm::vec4> movementParams;    // amplitude, frequency, phase, timeOffset
+    std::vector<glm::vec4> runtimeStates;     // totalTime, reserved, stateTimer, initialized
+    std::vector<glm::vec4> colors;            // RGBA from Renderable
+    std::vector<glm::mat4> modelMatrices;     // Transform matrices
+};
 ```
 
-**Conversion Logic:** `GPUEntity::fromECS()` with thread-local RNG for stateTimer randomization
+**Conversion Logic:** `GPUEntitySoA::addFromECS()` with thread-local RNG for stateTimer randomization
 
 ## Peripheral Dependencies
 
@@ -107,11 +106,12 @@ glm::mat4 modelMatrix;        // Transform matrix
 - **Descriptor Recreation**: Critical for swapchain resize events
 
 ### Data Flow
-1. **ECS → Staging**: `addEntitiesFromECS()` converts components to GPUEntity format
-2. **Staging → GPU**: `uploadPendingEntities()` batch uploads to Vulkan buffers  
-3. **Compute Pipeline**: Reads entity buffer, writes to ping-pong position buffers
-4. **Graphics Pipeline**: Reads entity + position buffers for instanced rendering
-5. **Buffer Rotation**: Frame-based ping-pong prevents read/write conflicts
+1. **ECS → Staging**: `addEntitiesFromECS()` converts components to SoA format
+2. **Staging → GPU**: `uploadPendingEntities()` batch uploads separate SoA buffers to Vulkan
+3. **Movement Compute**: Updates velocities in SoA velocity buffer (every 900 frames or on init)
+4. **Physics Compute**: Reads velocities, integrates positions, writes to position buffer
+5. **Graphics Pipeline**: Reads positions from SoA buffers for instanced rendering
+6. **Memory Barriers**: Compute→graphics synchronization with proper storage buffer access masks
 
 ### Critical Dependencies
 - Buffer manager must initialize before descriptor manager
