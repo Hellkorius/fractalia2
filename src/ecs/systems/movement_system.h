@@ -25,6 +25,12 @@ namespace MovementSystem {
     void setupMovementPhases(flecs::world& world);
     
     /**
+     * @brief Setup efficient stats observers for entity counting
+     * @param world The Flecs world instance
+     */
+    void setupStatsObservers(flecs::world& world);
+    
+    /**
      * @brief Reset all movement patterns to initial state
      * @param world The Flecs world instance
      */

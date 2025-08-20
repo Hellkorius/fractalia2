@@ -86,7 +86,12 @@ VkBuffer EntityBufferManager::getComputeWriteBuffer(uint32_t frameIndex) const {
 }
 
 VkBuffer EntityBufferManager::getGraphicsReadBuffer(uint32_t frameIndex) const {
-    // Graphics reads from the buffer compute wrote to in the PREVIOUS frame
+    // SIMPLE FIX: On frame 0, read from same buffer compute writes to (no "previous" frame)
+    // This prevents reading garbage data on the very first frame
+    if (frameIndex == 0) {
+        return getComputeWriteBuffer(0); // positionBuffer for frame 0
+    }
+    // Normal ping-pong: graphics reads from previous frame's compute output  
     return (frameIndex % 2 == 0) ? positionBufferAlternate : positionBuffer;
 }
 

@@ -587,17 +587,31 @@ void RenderingService::renderAllViewports() {
 
 // Private helper methods
 void RenderingService::collectRenderableEntities() {
-    if (!initialized || !world) {
+    if (!initialized || !gpuEntityManager) {
         return;
     }
     
-    // Get camera position for distance calculations
-    glm::vec3 cameraPosition(0.0f);
-    if (cameraService) {
-        cameraPosition = cameraService->getCameraPosition();
+    // GPU-DRIVEN RENDERING OPTIMIZATION:
+    // Since movement is GPU-driven, ECS Transform components are stale (never updated).
+    // Skip expensive per-entity queries. Let GPU handle all positioning and culling.
+    
+    uint32_t entityCount = gpuEntityManager->getEntityCount();
+    if (entityCount > 0) {
+        // Create single batch render entry for all GPU entities
+        RenderQueueEntry batchEntry{};
+        batchEntry.entity = flecs::entity::null(); // Batch render, no specific entity
+        batchEntry.priority = RenderPriority::NORMAL;
+        batchEntry.distanceToCamera = 0.0f; // GPU calculates distances
+        batchEntry.lodLevel = 0; // GPU handles LOD
+        batchEntry.visible = true;
+        
+        renderQueue.push_back(batchEntry);
+        
+        // Note: entityCount stored implicitly via GPU entity manager, not in queue entry
     }
     
-    // Query all renderable entities
+    // NOTE: If you need per-entity ECS rendering for debugging, re-enable this:
+    /*
     world->query<Transform, Renderable>().each([this, cameraPosition](flecs::entity entity, 
                                                               const Transform& transform, 
                                                               const Renderable& renderable) {
@@ -612,6 +626,7 @@ void RenderingService::collectRenderableEntities() {
         renderQueue.push_back(entry);
         entityToQueueIndex[entity] = renderQueue.size() - 1;
     });
+    */
 }
 
 bool RenderingService::isEntityVisible(const RenderQueueEntry& entry) const {

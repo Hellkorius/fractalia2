@@ -9,6 +9,10 @@
 #include <random>
 #include <array>
 
+// Static RNG for performance - initialized once per thread
+thread_local std::mt19937 rng{std::random_device{}()};
+thread_local std::uniform_real_distribution<float> stateTimerDist{0.0f, 600.0f};
+
 GPUEntity GPUEntity::fromECS(const Transform& transform, const Renderable& renderable, const MovementPattern& pattern) {
     GPUEntity entity{};
     
@@ -30,15 +34,11 @@ GPUEntity GPUEntity::fromECS(const Transform& transform, const Renderable& rende
     
     entity.modelMatrix = transform.getMatrix();
     
-    std::random_device rd;
-    std::mt19937 gen(rd());
-    std::uniform_real_distribution<float> dis(0.0f, 600.0f);
-    
     entity.runtimeState = glm::vec4(
-        0.0f,           // totalTime (will be updated by compute shader)
-        0.0f,           // initialized flag (must start as 0.0 for GPU initialization)
-        dis(gen),       // stateTimer (random staggering)
-        0.0f            // entityState (reserved)
+        0.0f,                      // totalTime (will be updated by compute shader)
+        0.0f,                      // initialized flag (must start as 0.0 for GPU initialization)
+        stateTimerDist(rng),       // stateTimer (random staggering) - optimized RNG
+        0.0f                       // entityState (reserved)
     );
     
     return entity;
@@ -118,6 +118,25 @@ void GPUEntityManager::uploadPendingEntities() {
     
     // Use buffer manager to copy data with proper offset for appending
     bufferManager.copyDataToBuffer(bufferManager.getEntityBuffer(), stagingEntities.data(), uploadSize, offset);
+    
+    // PERFECT PING-PONG FIX: Initialize both ping-pong buffers with spawn positions
+    // This ensures graphics always reads correct data regardless of frame timing
+    std::vector<glm::vec4> initialPositions;
+    initialPositions.reserve(stagingEntities.size());
+    
+    for (const auto& entity : stagingEntities) {
+        // Extract position from modelMatrix (4th column contains translation)
+        glm::vec3 spawnPosition = glm::vec3(entity.modelMatrix[3]);
+        initialPositions.emplace_back(spawnPosition, 1.0f);
+    }
+    
+    // Initialize ALL ping-pong buffers so graphics can read from either one
+    VkDeviceSize positionUploadSize = initialPositions.size() * sizeof(glm::vec4);
+    VkDeviceSize positionOffset = activeEntityCount * sizeof(glm::vec4);
+    
+    bufferManager.copyDataToBuffer(bufferManager.getPositionBuffer(), initialPositions.data(), positionUploadSize, positionOffset);
+    bufferManager.copyDataToBuffer(bufferManager.getPositionBufferAlternate(), initialPositions.data(), positionUploadSize, positionOffset);
+    
     
     activeEntityCount += stagingEntities.size();
     stagingEntities.clear();
