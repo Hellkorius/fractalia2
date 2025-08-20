@@ -187,16 +187,16 @@ void EntityComputeNode::execute(VkCommandBuffer commandBuffer, const FrameGraph&
             timeoutDetector->endComputeDispatch();
         }
         
-        // Memory barrier for compute→graphics synchronization
+        // Memory barrier for compute→graphics synchronization (SoA uses storage buffers)
         VkMemoryBarrier memoryBarrier{};
         memoryBarrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
         memoryBarrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-        memoryBarrier.dstAccessMask = VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT;
+        memoryBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;  // SoA reads from storage buffers, not vertex attributes
         
         vk.vkCmdPipelineBarrier(
             commandBuffer,
             VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-            VK_PIPELINE_STAGE_VERTEX_INPUT_BIT,
+            VK_PIPELINE_STAGE_VERTEX_SHADER_BIT,  // Graphics reads in vertex shader stage
             0, 1, &memoryBarrier, 0, nullptr, 0, nullptr);
     } else {
         executeChunkedDispatch(commandBuffer, context, dispatch, 
@@ -261,15 +261,15 @@ void EntityComputeNode::executeChunkedDispatch(
         chunkCount++;
     }
     
-    // Final memory barrier for compute→graphics synchronization
+    // Final memory barrier for compute→graphics synchronization (SoA uses storage buffers)
     VkMemoryBarrier finalMemoryBarrier{};
     finalMemoryBarrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
     finalMemoryBarrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-    finalMemoryBarrier.dstAccessMask = VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT;
+    finalMemoryBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;  // SoA reads from storage buffers
     
     vk.vkCmdPipelineBarrier(
         commandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-        VK_PIPELINE_STAGE_VERTEX_INPUT_BIT, 0, 1, &finalMemoryBarrier, 0, nullptr, 0, nullptr);
+        VK_PIPELINE_STAGE_VERTEX_SHADER_BIT, 0, 1, &finalMemoryBarrier, 0, nullptr, 0, nullptr);
     
     // Debug statistics logging (thread-safe)
     uint32_t chunkLogCounter = debugCounter.fetch_add(1, std::memory_order_relaxed);

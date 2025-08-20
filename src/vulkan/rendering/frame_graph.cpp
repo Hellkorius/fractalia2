@@ -1118,7 +1118,7 @@ void FrameGraph::createOptimalBarrierBatches() {
                 auto& writeInfo = writeIt->second;
                 auto writerNodeIt = nodes.find(writeInfo.writerNode);
                 
-                // Only create barriers for compute->graphics transitions
+                // Create barriers for compute->graphics AND compute->compute transitions
                 if (writerNodeIt != nodes.end() && writerNodeIt->second->needsComputeQueue()) {
                     addResourceBarrier(input.resourceId, nodeId, writeInfo.stage, input.stage, 
                                      writeInfo.access, input.access);

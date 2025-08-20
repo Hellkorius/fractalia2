@@ -12,17 +12,18 @@ layout(push_constant) uniform ComputePushConstants {
     uint entityOffset;  // For chunked dispatches
 } pc;
 
-// Input: GPUEntity buffer (read/write for velocity updates)
-layout(std430, binding = 0) buffer GPUEntityBuffer {
-    // Cache-optimized GPUEntity structure (128 bytes each):
-    // C++ struct layout matches this comment:
-    //   vec4 velocity (16 bytes) - position 0: velocity.xy, damping, reserved
-    //   vec4 movementParams (16 bytes) - position 1: amplitude, frequency, phase, timeOffset
-    //   vec4 runtimeState (16 bytes) - position 2: totalTime, initialized, stateTimer, entityState
-    //   vec4 color (16 bytes) - position 3: RGBA color
-    //   mat4 modelMatrix (64 bytes) - positions 4-7: transform matrix (graphics only)
-    vec4 entityData[];
-} entities;
+// SoA (Structure of Arrays) buffers for better cache locality and vectorization
+layout(std430, binding = 0) buffer VelocityBuffer {
+    vec4 velocities[];
+} velocityBuffer;
+
+layout(std430, binding = 1) buffer MovementParamsBuffer {
+    vec4 movementParams[];
+} movementParamsBuffer;
+
+layout(std430, binding = 2) buffer RuntimeStateBuffer {
+    vec4 runtimeStates[];
+} runtimeStateBuffer;
 
 // Position buffers are not used by movement shader - only physics shader uses them
 // This shader only updates velocity every 900 frames
@@ -91,13 +92,10 @@ void main() {
         return;
     }
     
-    // Calculate base offset for this entity (8 vec4s per entity = 128 bytes)
-    uint baseOffset = entityIndex * 8u;
-    
-    // Load entity data for velocity updates
-    vec4 velocity = entities.entityData[baseOffset];           // position 0: velocity
-    vec4 movementParams = entities.entityData[baseOffset + 1u]; // position 1: movement params
-    vec4 runtimeState = entities.entityData[baseOffset + 2u];   // position 2: runtime state
+    // Load entity data from SoA buffers - much better cache locality
+    vec4 velocity = velocityBuffer.velocities[entityIndex];
+    vec4 movementParams = movementParamsBuffer.movementParams[entityIndex];
+    vec4 runtimeState = runtimeStateBuffer.runtimeStates[entityIndex];
     
     // Extract movement parameters
     float amplitude = movementParams.x;
@@ -106,37 +104,26 @@ void main() {
     
     // Mark entity as initialized if not already
     if (initialized < 0.5) {
-        entities.entityData[baseOffset + 2u].w = 1.0; // Mark as initialized
+        runtimeStateBuffer.runtimeStates[entityIndex].w = 1.0; // Mark as initialized
     }
     
     // Calculate cycle using frame number and entity offset for staggering
     float cycle = mod(float(pc.frame + entityIndex * 37u), float(CYCLE_LENGTH));
     
-    // Generate new velocity direction every 900 frames (cycle reset)
-    if (cycle < 1.0) {
-        // Optimized random generation
-        uint cycleNumber = pc.frame / CYCLE_LENGTH;
-        uint seed = entityIndex ^ (cycleNumber << 16u) ^ uint(phase * 1000.0);
+    // Generate new velocity direction every 900 frames (cycle reset) OR on initialization
+    if (cycle < 1.0 || initialized < 0.5) {
+        // TRULY RANDOM: Use entity index and frame for random seed
+        uint seed = entityIndex * 1664525u + pc.frame * 1013904223u;
+        uint hash = fastHash(seed);
+        float randAngle = hashToFloat(hash) * TWO_PI;
         
-        // Generate random angle and speed
-        uint hash1 = fastHash(seed);
-        uint hash2 = fastHash(seed ^ 0xAAAAAAAAu);
+        float speed = 0.8;
         
-        float randAngle = hashToFloat(hash1) * TWO_PI;
-        float speed = hashToFloat(hash2) * amplitude * 0.1; // Scale down for per-frame movement
+        // Use basic trig for random direction
+        velocity.x = speed * cos(randAngle);
+        velocity.y = speed * sin(randAngle);
         
-        // Entity drift characteristic (computed once per cycle)
-        float driftiness = hashToFloat(fastHash(entityIndex ^ 0x12345678u));
-        speed *= (0.5 + driftiness * 1.5); // Variable speed: 0.5-2.0x base speed
-        
-        // Fast trigonometric calculation using lookup table
-        vec2 sinCos = fastSinCos(randAngle);
-        
-        // Set new velocity (physics shader will use this for position updates)
-        velocity.x = speed * sinCos.y; // cosine for x-velocity
-        velocity.y = speed * sinCos.x; // sine for y-velocity
-        
-        // Write updated velocity back to entity buffer
-        entities.entityData[baseOffset] = velocity;
+        // Write updated velocity back to SoA buffer
+        velocityBuffer.velocities[entityIndex] = velocity;
     }
 }

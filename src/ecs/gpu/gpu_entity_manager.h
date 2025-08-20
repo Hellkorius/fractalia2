@@ -14,20 +14,46 @@ class VulkanContext;
 class VulkanSync;
 class ResourceContext;
 
-// GPU entity structure optimized for cache efficiency
-struct GPUEntity {
-    // Cache Line 1 (bytes 0-63) - HOT DATA: All frequently accessed in compute shaders
-    glm::vec4 velocity;           // 16 bytes - velocity.xy, damping, reserved
-    glm::vec4 movementParams;     // 16 bytes - amplitude, frequency, phase, timeOffset
-    glm::vec4 runtimeState;       // 16 bytes - totalTime, initialized, stateTimer, entityState
-    glm::vec4 color;              // 16 bytes - RGBA color
+// Structure of Arrays (SoA) for GPU entities - better cache locality and vectorization
+struct GPUEntitySoA {
+    std::vector<glm::vec4> velocities;        // velocity.xy, damping, reserved
+    std::vector<glm::vec4> movementParams;    // amplitude, frequency, phase, timeOffset
+    std::vector<glm::vec4> runtimeStates;     // totalTime, initialized, stateTimer, entityState
+    std::vector<glm::vec4> colors;            // RGBA color
+    std::vector<glm::mat4> modelMatrices;     // transform matrices (cold data)
     
-    // Cache Line 2 (bytes 64-127) - COLD DATA: Rarely accessed
-    glm::mat4 modelMatrix;        // 64 bytes - transform matrix
+    void reserve(size_t capacity) {
+        velocities.reserve(capacity);
+        movementParams.reserve(capacity);
+        runtimeStates.reserve(capacity);
+        colors.reserve(capacity);
+        modelMatrices.reserve(capacity);
+    }
+    
+    void clear() {
+        velocities.clear();
+        movementParams.clear();
+        runtimeStates.clear();
+        colors.clear();
+        modelMatrices.clear();
+    }
+    
+    size_t size() const { return velocities.size(); }
+    bool empty() const { return velocities.empty(); }
+    
+    // Add entity from ECS components
+    void addFromECS(const Transform& transform, const Renderable& renderable, const MovementPattern& pattern);
+};
+
+// Legacy GPUEntity structure for backward compatibility during migration
+struct GPUEntity {
+    glm::vec4 velocity;           
+    glm::vec4 movementParams;     
+    glm::vec4 runtimeState;       
+    glm::vec4 color;              
+    glm::mat4 modelMatrix;        
     
     GPUEntity() = default;
-    
-    // Create from ECS components
     static GPUEntity fromECS(const Transform& transform, const Renderable& renderable, const MovementPattern& pattern);
 };
 
@@ -40,26 +66,44 @@ public:
     bool initialize(const VulkanContext& context, VulkanSync* sync, ResourceContext* resourceContext);
     void cleanup();
     
-    // Entity management
-    void addEntity(const GPUEntity& entity);
+    // Entity management - SoA approach
     void addEntitiesFromECS(const std::vector<flecs::entity>& entities);
     void uploadPendingEntities(); // Upload staged entities to GPU
     void clearAllEntities();
     
-    // Direct buffer access for frame graph
-    VkBuffer getEntityBuffer() const { return bufferManager.getEntityBuffer(); }
+    // Legacy support
+    void addEntity(const GPUEntity& entity);
+    
+    // Direct buffer access for frame graph - SoA buffers
+    VkBuffer getVelocityBuffer() const { return bufferManager.getVelocityBuffer(); }
+    VkBuffer getMovementParamsBuffer() const { return bufferManager.getMovementParamsBuffer(); }
+    VkBuffer getRuntimeStateBuffer() const { return bufferManager.getRuntimeStateBuffer(); }
+    VkBuffer getColorBuffer() const { return bufferManager.getColorBuffer(); }
+    VkBuffer getModelMatrixBuffer() const { return bufferManager.getModelMatrixBuffer(); }
+    
+    // Position buffers remain the same
     VkBuffer getPositionBuffer() const { return bufferManager.getPositionBuffer(); }
     VkBuffer getPositionBufferAlternate() const { return bufferManager.getPositionBufferAlternate(); }
     VkBuffer getCurrentPositionBuffer() const { return bufferManager.getCurrentPositionBuffer(); }
     VkBuffer getTargetPositionBuffer() const { return bufferManager.getTargetPositionBuffer(); }
     
+    // Legacy support - maps to velocity buffer for compatibility
+    VkBuffer getEntityBuffer() const { return bufferManager.getVelocityBuffer(); }
+    
     // Async compute support - ping-pong between position buffers
     VkBuffer getComputeWriteBuffer(uint32_t frameIndex) const { return bufferManager.getComputeWriteBuffer(frameIndex); }
     VkBuffer getGraphicsReadBuffer(uint32_t frameIndex) const { return bufferManager.getGraphicsReadBuffer(frameIndex); }
     
-    // Buffer properties
-    VkDeviceSize getEntityBufferSize() const { return bufferManager.getEntityBufferSize(); }
+    // Buffer properties - SoA approach
+    VkDeviceSize getVelocityBufferSize() const { return bufferManager.getVelocityBufferSize(); }
+    VkDeviceSize getMovementParamsBufferSize() const { return bufferManager.getMovementParamsBufferSize(); }
+    VkDeviceSize getRuntimeStateBufferSize() const { return bufferManager.getRuntimeStateBufferSize(); }
+    VkDeviceSize getColorBufferSize() const { return bufferManager.getColorBufferSize(); }
+    VkDeviceSize getModelMatrixBufferSize() const { return bufferManager.getModelMatrixBufferSize(); }
     VkDeviceSize getPositionBufferSize() const { return bufferManager.getPositionBufferSize(); }
+    
+    // Legacy support
+    VkDeviceSize getEntityBufferSize() const { return bufferManager.getVelocityBufferSize(); }
     
     // Entity state
     uint32_t getEntityCount() const { return activeEntityCount; }
@@ -82,7 +126,7 @@ private:
     EntityBufferManager bufferManager;
     EntityDescriptorManager descriptorManager;
     
-    // Staging data
-    std::vector<GPUEntity> stagingEntities;
+    // Staging data - SoA approach
+    GPUEntitySoA stagingEntities;
     uint32_t activeEntityCount = 0;
 };

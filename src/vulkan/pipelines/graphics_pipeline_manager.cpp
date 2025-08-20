@@ -246,11 +246,8 @@ namespace GraphicsPipelinePresets {
         vertexBinding.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
         state.vertexBindings.push_back(vertexBinding);
         
-        VkVertexInputBindingDescription instanceBinding{};
-        instanceBinding.binding = 1;
-        instanceBinding.stride = 128;
-        instanceBinding.inputRate = VK_VERTEX_INPUT_RATE_INSTANCE;
-        state.vertexBindings.push_back(instanceBinding);
+        // SoA approach: No instance binding for entity data (using storage buffers instead)
+        // Only keep vertex position attribute (geometry data)
         
         VkVertexInputAttributeDescription posAttr{};
         posAttr.binding = 0;
@@ -265,20 +262,6 @@ namespace GraphicsPipelinePresets {
         colorAttr.format = VK_FORMAT_R32G32B32_SFLOAT;
         colorAttr.offset = sizeof(glm::vec3);
         state.vertexAttributes.push_back(colorAttr);
-        
-        VkVertexInputAttributeDescription moveParams0Attr{};
-        moveParams0Attr.binding = 1;
-        moveParams0Attr.location = 7;
-        moveParams0Attr.format = VK_FORMAT_R32G32B32A32_SFLOAT;
-        moveParams0Attr.offset = 0;  // movementParams0 is at start of GPUEntity
-        state.vertexAttributes.push_back(moveParams0Attr);
-        
-        VkVertexInputAttributeDescription moveParams1Attr{};
-        moveParams1Attr.binding = 1;
-        moveParams1Attr.location = 8;
-        moveParams1Attr.format = VK_FORMAT_R32G32B32A32_SFLOAT;
-        moveParams1Attr.offset = 16; // movementParams1 is at 16 bytes in GPUEntity
-        state.vertexAttributes.push_back(moveParams1Attr);
         
         VkPipelineColorBlendAttachmentState colorBlendAttachment{};
         colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | 

@@ -12,32 +12,23 @@ layout(push_constant) uniform PhysicsPushConstants {
     uint entityOffset;  // For chunked dispatches
 } pc;
 
-// Input: GPUEntity buffer (read-only for velocity, read-write for position tracking)
-layout(std430, binding = 0) buffer GPUEntityBuffer {
-    // Cache-optimized GPUEntity structure (128 bytes each):
-    // C++ struct layout:
-    //   vec4 velocity (16 bytes) - position 0: velocity.xy, damping, reserved
-    //   vec4 movementParams (16 bytes) - position 1: amplitude, frequency, phase, timeOffset
-    //   vec4 runtimeState (16 bytes) - position 2: totalTime, initialized, stateTimer, entityState
-    //   vec4 color (16 bytes) - position 3: RGBA color
-    //   mat4 modelMatrix (64 bytes) - positions 4-7: transform matrix (graphics only)
-    vec4 entityData[];
-} entities;
+// Unified SoA binding layout (shared with movement shader)
+layout(std430, binding = 0) buffer VelocityBuffer {
+    vec4 velocities[];  // R/W: velocity.xy, damping, reserved
+} velocityBuffer;
 
-// Output: Computed positions (write-only)
-layout(std430, binding = 1) writeonly buffer PositionBuffer {
-    vec4 positions[]; // xyz position + w unused
+layout(std430, binding = 2) buffer RuntimeStateBuffer {
+    vec4 runtimeStates[];  // R/W: totalTime, reserved, stateTimer, initialized
+} runtimeStateBuffer;
+
+// Physics-specific buffers
+layout(std430, binding = 3) buffer PositionBuffer {
+    vec4 positions[]; // RW: computed positions for graphics
 } outPositions;
 
-// Current positions for physics integration (read/write)
-layout(std430, binding = 2) buffer CurrentPositionBuffer {
-    vec4 currentPositions[]; // xyz current position + w unused
+layout(std430, binding = 4) buffer CurrentPositionBuffer {
+    vec4 currentPositions[]; // R/W: physics integration state
 } currentPos;
-
-// Target positions buffer (unused in physics, kept for compatibility)
-layout(std430, binding = 3) buffer TargetPositionBuffer {
-    vec4 targetPositions[]; // xyz target position + w unused
-} targetPos;
 
 void main() {
     // Get current entity index with chunk offset
@@ -48,12 +39,9 @@ void main() {
         return;
     }
     
-    // Calculate base offset for this entity (8 vec4s per entity = 128 bytes)
-    uint baseOffset = entityIndex * 8u;
-    
-    // Load entity data
-    vec4 velocity = entities.entityData[baseOffset];           // position 0: velocity
-    vec4 runtimeState = entities.entityData[baseOffset + 2u];   // position 2: runtime state
+    // Load entity data from SoA buffers - better cache locality
+    vec4 velocity = velocityBuffer.velocities[entityIndex];
+    vec4 runtimeState = runtimeStateBuffer.runtimeStates[entityIndex];
     
     float initialized = runtimeState.w; // initialized flag is in .w
     
@@ -61,26 +49,29 @@ void main() {
     vec2 vel = velocity.xy;
     float damping = velocity.z;
     
-    // Load current position (should be initialized by GPU upload)
-    vec3 currentPosition = currentPos.currentPositions[entityIndex].xyz;
+    // SIMPLIFIED: Read position directly from output buffer, integrate velocity
+    vec3 currentPosition = outPositions.positions[entityIndex].xyz;
     
-    // Mark as initialized if not already (GPU upload should have set position)
-    if (initialized < 0.5) {
-        entities.entityData[baseOffset + 2u].w = 1.0;
+    // On first frame, initialize position if it's zero
+    if (length(currentPosition) < 0.01) {
+        // Use spawn position from entity index (simple grid)
+        currentPosition = vec3(
+            float(entityIndex % 10) * 0.8 - 4.0,
+            float(entityIndex / 10) * 0.8 - 4.0, 
+            0.0
+        );
     }
     
-    // Physics integration: position += velocity * deltaTime
-    currentPosition.x += vel.x * pc.deltaTime * 60.0; // Scale for 60fps target
-    currentPosition.y += vel.y * pc.deltaTime * 60.0;
+    // Physics integration: position += velocity * deltaTime (only if velocity is non-zero)
+    if (length(vel) > 0.01) {
+        currentPosition.x += vel.x * pc.deltaTime * 10.0;
+        currentPosition.y += vel.y * pc.deltaTime * 10.0;
+    }
     
-    // Apply damping to velocity (reduce over time)
-    vel *= (1.0 - damping);
+    // Apply very light damping to velocity (much less damping)
+    vel *= 0.999;
     
-    // Write updated velocity back to entity buffer
-    entities.entityData[baseOffset].xy = vel;
-    
-    // Write updated position to both position buffers
-    vec4 newPosition = vec4(currentPosition, 1.0);
-    currentPos.currentPositions[entityIndex] = newPosition;
-    outPositions.positions[entityIndex] = newPosition;
+    // Write back velocity and position
+    velocityBuffer.velocities[entityIndex].xy = vel;
+    outPositions.positions[entityIndex] = vec4(currentPosition, 1.0);
 }

@@ -14,14 +14,14 @@ layout(push_constant) uniform PC {
 // Input vertex geometry
 layout(location = 0) in vec3 inPos;
 
-// Instance data from GPUEntity buffer
-layout(location = 7) in vec4 ampFreqPhaseOff;  // amplitude, frequency, phase, timeOffset
-layout(location = 8) in vec4 centerType;       // center.xyz, movementType (always 0 for random walk)
-
-// Pre-computed positions from compute shader (binding = 2 matches graphics descriptor binding)
-layout(std430, binding = 2) readonly buffer ComputedPositions {
+// Temporarily simplified for debugging
+layout(std430, binding = 1) readonly buffer ComputedPositions {
     vec4 computedPos[];
 };
+
+layout(std430, binding = 2) readonly buffer MovementParamsBuffer {
+    vec4 movementParams[];  // amplitude, frequency, phase, timeOffset
+} movementParamsBuffer;
 
 
 layout(location = 0) out vec3 color;
@@ -44,12 +44,13 @@ vec3 hsv2rgb(float h, float s, float v) {
 }
 
 void main() {
-    // All entities use random walk with pre-computed positions from compute shader
+    // Read computed positions from physics shader output
     vec3 worldPos = computedPos[gl_InstanceIndex].xyz;
     
-    // Extract movement parameters for color calculation
-    float phase = ampFreqPhaseOff.z;
-    float timeOffset = ampFreqPhaseOff.w;
+    // Extract movement parameters for color calculation from SoA buffers
+    vec4 entityMovementParams = movementParamsBuffer.movementParams[gl_InstanceIndex];
+    float phase = entityMovementParams.z;
+    float timeOffset = entityMovementParams.w;
     float entityTime = pc.time + timeOffset;
     
     // Calculate dynamic color based on movement parameters with strong per-entity individualization

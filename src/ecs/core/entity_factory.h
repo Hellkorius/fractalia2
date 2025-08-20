@@ -152,11 +152,15 @@ private:
         // Create variation based on entity index
         float t = static_cast<float>(index) / static_cast<float>(totalCount);
         
+        // Random phase to avoid clustering bias
+        std::uniform_real_distribution<float> phaseDist(0.0f, 6.28318530718f);
+        std::uniform_real_distribution<float> offsetDist(0.0f, 10.0f);
+        
         // Simple parameters for active movement
         pattern.amplitude = 12.0f + 8.0f * t; // Larger radius for more active movement
         pattern.frequency = 0.8f + 1.2f * t; // Higher frequency for more dynamic behavior
-        pattern.phase = t * 6.28318530718f * 2.0f; // Phase variation
-        pattern.timeOffset = t * 10.0f; // Stagger timing
+        pattern.phase = phaseDist(rng); // Truly random phase
+        pattern.timeOffset = offsetDist(rng); // Random timing offset
         
         return pattern;
     }

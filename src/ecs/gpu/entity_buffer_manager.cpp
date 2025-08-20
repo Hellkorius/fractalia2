@@ -22,15 +22,39 @@ bool EntityBufferManager::initialize(const VulkanContext& context, ResourceConte
     this->resourceContext = resourceContext;
     this->maxEntities = maxEntities;
     
-    // Calculate buffer sizes
-    entityBufferSize = maxEntities * sizeof(GPUEntity);
+    // Calculate SoA buffer sizes
+    velocityBufferSize = maxEntities * sizeof(glm::vec4);
+    movementParamsBufferSize = maxEntities * sizeof(glm::vec4);
+    runtimeStateBufferSize = maxEntities * sizeof(glm::vec4);
+    colorBufferSize = maxEntities * sizeof(glm::vec4);
+    modelMatrixBufferSize = maxEntities * sizeof(glm::mat4);
     positionBufferSize = maxEntities * sizeof(glm::vec4);
     
-    // Create entity buffer
-    if (!createBuffer(entityBufferSize, 
-                     VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-                     entityBuffer, entityBufferMemory)) {
-        std::cerr << "EntityBufferManager: Failed to create entity buffer" << std::endl;
+    // Create SoA buffers
+    const VkBufferUsageFlags soaUsage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    
+    if (!createBuffer(velocityBufferSize, soaUsage, velocityBuffer, velocityBufferMemory)) {
+        std::cerr << "EntityBufferManager: Failed to create velocity buffer" << std::endl;
+        return false;
+    }
+    
+    if (!createBuffer(movementParamsBufferSize, soaUsage, movementParamsBuffer, movementParamsBufferMemory)) {
+        std::cerr << "EntityBufferManager: Failed to create movement params buffer" << std::endl;
+        return false;
+    }
+    
+    if (!createBuffer(runtimeStateBufferSize, soaUsage, runtimeStateBuffer, runtimeStateBufferMemory)) {
+        std::cerr << "EntityBufferManager: Failed to create runtime state buffer" << std::endl;
+        return false;
+    }
+    
+    if (!createBuffer(colorBufferSize, soaUsage, colorBuffer, colorBufferMemory)) {
+        std::cerr << "EntityBufferManager: Failed to create color buffer" << std::endl;
+        return false;
+    }
+    
+    if (!createBuffer(modelMatrixBufferSize, soaUsage, modelMatrixBuffer, modelMatrixBufferMemory)) {
+        std::cerr << "EntityBufferManager: Failed to create model matrix buffer" << std::endl;
         return false;
     }
     
@@ -70,11 +94,18 @@ bool EntityBufferManager::initialize(const VulkanContext& context, ResourceConte
 void EntityBufferManager::cleanup() {
     if (!context) return;
     
+    // Cleanup position buffers
     destroyBuffer(targetPositionBuffer, targetPositionBufferMemory);
     destroyBuffer(currentPositionBuffer, currentPositionBufferMemory);
     destroyBuffer(positionBufferAlternate, positionBufferAlternateMemory);
     destroyBuffer(positionBuffer, positionBufferMemory);
-    destroyBuffer(entityBuffer, entityBufferMemory);
+    
+    // Cleanup SoA buffers
+    destroyBuffer(modelMatrixBuffer, modelMatrixBufferMemory);
+    destroyBuffer(colorBuffer, colorBufferMemory);
+    destroyBuffer(runtimeStateBuffer, runtimeStateBufferMemory);
+    destroyBuffer(movementParamsBuffer, movementParamsBufferMemory);
+    destroyBuffer(velocityBuffer, velocityBufferMemory);
     
     context = nullptr;
     resourceContext = nullptr;
@@ -99,7 +130,22 @@ void EntityBufferManager::copyDataToBuffer(VkBuffer buffer, const void* data, Vk
     // Create temporary ResourceHandle for existing buffer
     ResourceHandle handle{};
     handle.buffer = vulkan_raii::make_buffer(buffer, context);
-    handle.size = entityBufferSize;  // Use full buffer size, not just copy size
+    
+    // Determine full buffer size based on which buffer is being used
+    if (buffer == velocityBuffer) {
+        handle.size = velocityBufferSize;
+    } else if (buffer == movementParamsBuffer) {
+        handle.size = movementParamsBufferSize;
+    } else if (buffer == runtimeStateBuffer) {
+        handle.size = runtimeStateBufferSize;
+    } else if (buffer == colorBuffer) {
+        handle.size = colorBufferSize;
+    } else if (buffer == modelMatrixBuffer) {
+        handle.size = modelMatrixBufferSize;
+    } else {
+        // Position buffers or other buffers
+        handle.size = positionBufferSize;
+    }
     
     // Use ResourceContext's built-in staging infrastructure with offset
     resourceContext->copyToBuffer(handle, data, size, offset);

@@ -189,6 +189,15 @@ bool VulkanRenderer::initialize(SDL_Window* window) {
         return false;
     }
     
+    // Create graphics descriptor sets for entity rendering with unified layout
+    auto graphicsLayoutSpec = DescriptorLayoutPresets::createEntityGraphicsLayout();
+    VkDescriptorSetLayout graphicsDescriptorLayout = pipelineSystem->getLayoutManager()->getLayout(graphicsLayoutSpec);
+    if (!gpuEntityManager->getDescriptorManager().createGraphicsDescriptorSets(graphicsDescriptorLayout)) {
+        std::cerr << "Failed to create entity graphics descriptor sets" << std::endl;
+        cleanup();
+        return false;
+    }
+    
     // Phase 7: Modular architecture (depends on all previous components)
     if (!initializeModularArchitecture()) {
         std::cerr << "Failed to initialize modular architecture" << std::endl;

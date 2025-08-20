@@ -87,7 +87,7 @@ void EntityGraphicsNode::execute(VkCommandBuffer commandBuffer, const FrameGraph
         return;
     }
     
-    // Update uniform buffer with camera matrices
+    // Update uniform buffer with camera matrices (now handled by EntityDescriptorManager)
     updateUniformBuffer();
     
     // Create graphics pipeline state for entity rendering - use same layout as ResourceContext
@@ -167,17 +167,20 @@ void EntityGraphicsNode::execute(VkCommandBuffer commandBuffer, const FrameGraph
         pipeline
     );
     
-    // Bind descriptor sets from ResourceContext (includes uniform buffer + position buffer)
-    const auto& resourceDescriptorSets = resourceContext->getGraphicsDescriptorSets();
-    if (!resourceDescriptorSets.empty() && currentFrameIndex < resourceDescriptorSets.size()) {
-        VkDescriptorSet descriptorSet = resourceDescriptorSets[currentFrameIndex];
+    // Bind single descriptor set with unified layout (uniform + storage buffers)
+    VkDescriptorSet entityDescriptorSet = gpuEntityManager->getDescriptorManager().getGraphicsDescriptorSet();
+    
+    if (entityDescriptorSet != VK_NULL_HANDLE) {
         vk.vkCmdBindDescriptorSets(
             commandBuffer,
             VK_PIPELINE_BIND_POINT_GRAPHICS,
             pipelineLayout,
-            0, 1, &descriptorSet,
+            0, 1, &entityDescriptorSet,
             0, nullptr
         );
+    } else {
+        std::cerr << "EntityGraphicsNode: ERROR - Missing graphics descriptor set!" << std::endl;
+        return;
     }
 
     // Push constants for vertex shader
@@ -201,13 +204,12 @@ void EntityGraphicsNode::execute(VkCommandBuffer commandBuffer, const FrameGraph
 
     // Draw entities
     if (entityCount > 0) {
-        // Bind vertex buffers: geometry vertices + entity instance data
+        // Bind vertex buffer: only geometry vertices (SoA uses storage buffers for entity data)
         VkBuffer vertexBuffers[] = {
-            resourceContext->getVertexBuffer(),     // Vertex positions for triangle geometry
-            gpuEntityManager->getEntityBuffer()     // Per-instance entity data
+            resourceContext->getVertexBuffer()      // Vertex positions for triangle geometry
         };
-        VkDeviceSize offsets[] = {0, 0};
-        vk.vkCmdBindVertexBuffers(commandBuffer, 0, 2, vertexBuffers, offsets);
+        VkDeviceSize offsets[] = {0};
+        vk.vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
         
         // Bind index buffer for triangle geometry
         vk.vkCmdBindIndexBuffer(

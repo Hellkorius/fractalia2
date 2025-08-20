@@ -19,21 +19,37 @@ public:
     bool initialize(const VulkanContext& context, ResourceContext* resourceContext, uint32_t maxEntities);
     void cleanup();
     
-    // Buffer access
-    VkBuffer getEntityBuffer() const { return entityBuffer; }
+    // SoA buffer access
+    VkBuffer getVelocityBuffer() const { return velocityBuffer; }
+    VkBuffer getMovementParamsBuffer() const { return movementParamsBuffer; }
+    VkBuffer getRuntimeStateBuffer() const { return runtimeStateBuffer; }
+    VkBuffer getColorBuffer() const { return colorBuffer; }
+    VkBuffer getModelMatrixBuffer() const { return modelMatrixBuffer; }
+    
+    // Position buffers
     VkBuffer getPositionBuffer() const { return positionBuffer; }
     VkBuffer getPositionBufferAlternate() const { return positionBufferAlternate; }
     VkBuffer getCurrentPositionBuffer() const { return currentPositionBuffer; }
     VkBuffer getTargetPositionBuffer() const { return targetPositionBuffer; }
     
+    // Legacy support
+    VkBuffer getEntityBuffer() const { return velocityBuffer; }
+    
     // Ping-pong buffer access for async compute
     VkBuffer getComputeWriteBuffer(uint32_t frameIndex) const;
     VkBuffer getGraphicsReadBuffer(uint32_t frameIndex) const;
     
-    // Buffer properties
-    VkDeviceSize getEntityBufferSize() const { return entityBufferSize; }
+    // Buffer properties - SoA approach
+    VkDeviceSize getVelocityBufferSize() const { return velocityBufferSize; }
+    VkDeviceSize getMovementParamsBufferSize() const { return movementParamsBufferSize; }
+    VkDeviceSize getRuntimeStateBufferSize() const { return runtimeStateBufferSize; }
+    VkDeviceSize getColorBufferSize() const { return colorBufferSize; }
+    VkDeviceSize getModelMatrixBufferSize() const { return modelMatrixBufferSize; }
     VkDeviceSize getPositionBufferSize() const { return positionBufferSize; }
     uint32_t getMaxEntities() const { return maxEntities; }
+    
+    // Legacy support
+    VkDeviceSize getEntityBufferSize() const { return velocityBufferSize; }
     
     // Data upload
     void copyDataToBuffer(VkBuffer buffer, const void* data, VkDeviceSize size, VkDeviceSize offset = 0);
@@ -45,12 +61,28 @@ private:
     
     // Buffer configuration
     uint32_t maxEntities = 0;
-    VkDeviceSize entityBufferSize = 0;
+    VkDeviceSize velocityBufferSize = 0;
+    VkDeviceSize movementParamsBufferSize = 0;
+    VkDeviceSize runtimeStateBufferSize = 0;
+    VkDeviceSize colorBufferSize = 0;
+    VkDeviceSize modelMatrixBufferSize = 0;
     VkDeviceSize positionBufferSize = 0;
     
-    // GPU buffers
-    VkBuffer entityBuffer = VK_NULL_HANDLE;
-    VkDeviceMemory entityBufferMemory = VK_NULL_HANDLE;
+    // SoA GPU buffers
+    VkBuffer velocityBuffer = VK_NULL_HANDLE;
+    VkDeviceMemory velocityBufferMemory = VK_NULL_HANDLE;
+    
+    VkBuffer movementParamsBuffer = VK_NULL_HANDLE;
+    VkDeviceMemory movementParamsBufferMemory = VK_NULL_HANDLE;
+    
+    VkBuffer runtimeStateBuffer = VK_NULL_HANDLE;
+    VkDeviceMemory runtimeStateBufferMemory = VK_NULL_HANDLE;
+    
+    VkBuffer colorBuffer = VK_NULL_HANDLE;
+    VkDeviceMemory colorBufferMemory = VK_NULL_HANDLE;
+    
+    VkBuffer modelMatrixBuffer = VK_NULL_HANDLE;
+    VkDeviceMemory modelMatrixBufferMemory = VK_NULL_HANDLE;
     
     VkBuffer positionBuffer = VK_NULL_HANDLE;  
     VkDeviceMemory positionBufferMemory = VK_NULL_HANDLE;
