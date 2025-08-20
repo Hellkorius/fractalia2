@@ -38,6 +38,11 @@ bool RenderingService::initialize(flecs::world& world, VulkanRenderer* renderer)
     renderQueue.reserve(maxRenderableEntities);
     renderBatches.reserve(100); // Reasonable default for batches
     
+    // Cache service dependencies
+    if (ServiceLocator::instance().hasService<CameraService>()) {
+        cameraService = &ServiceLocator::instance().requireService<CameraService>();
+    }
+    
     // Reset statistics
     resetStats();
     
@@ -57,6 +62,7 @@ void RenderingService::cleanup() {
     world = nullptr;
     renderer = nullptr;
     gpuEntityManager = nullptr;
+    cameraService = nullptr;
     
     initialized = false;
 }
@@ -262,11 +268,7 @@ void RenderingService::performCulling() {
     
     auto startTime = std::chrono::high_resolution_clock::now();
     
-    // Get camera service for frustum culling
-    CameraService* cameraService = nullptr;
-    if (ServiceLocator::instance().hasService<CameraService>()) {
-        cameraService = &ServiceLocator::instance().requireService<CameraService>();
-    }
+    // Use cached camera service for frustum culling
     
     uint32_t visibleCount = 0;
     uint32_t frustumCulledCount = 0;
@@ -541,9 +543,8 @@ void RenderingService::renderViewport(const std::string& viewportName) {
 
 void RenderingService::renderAllViewports() {
     // Get all active viewports from CameraService and render each one
-    if (ServiceLocator::instance().hasService<CameraService>()) {
-        auto& cameraService = ServiceLocator::instance().requireService<CameraService>();
-        auto activeViewports = cameraService.getActiveViewports();
+    if (cameraService) {
+        auto activeViewports = cameraService->getActiveViewports();
         
         for (const auto* viewport : activeViewports) {
             renderViewport(viewport->name);
@@ -559,9 +560,8 @@ void RenderingService::collectRenderableEntities() {
     
     // Get camera position for distance calculations
     glm::vec3 cameraPosition(0.0f);
-    if (ServiceLocator::instance().hasService<CameraService>()) {
-        auto& cameraService = ServiceLocator::instance().requireService<CameraService>();
-        cameraPosition = cameraService.getCameraPosition();
+    if (cameraService) {
+        cameraPosition = cameraService->getCameraPosition();
     }
     
     // Query all renderable entities
@@ -663,9 +663,9 @@ namespace Rendering {
         
         // Get camera position
         glm::vec3 cameraPos(0.0f);
-        if (ServiceLocator::instance().hasService<CameraService>()) {
-            auto& cameraService = ServiceLocator::instance().requireService<CameraService>();
-            cameraPos = cameraService.getCameraPosition();
+        auto& renderingService = getService();
+        if (renderingService.getCameraService()) {
+            cameraPos = renderingService.getCameraService()->getCameraPosition();
         }
         
         const Transform* transform = entity.get<Transform>();
@@ -679,9 +679,9 @@ namespace Rendering {
         
         // Get camera position
         glm::vec3 cameraPos(0.0f);
-        if (ServiceLocator::instance().hasService<CameraService>()) {
-            auto& cameraService = ServiceLocator::instance().requireService<CameraService>();
-            cameraPos = cameraService.getCameraPosition();
+        auto& renderingService = getService();
+        if (renderingService.getCameraService()) {
+            cameraPos = renderingService.getCameraService()->getCameraPosition();
         }
         
         const Transform* transform = entity.get<Transform>();

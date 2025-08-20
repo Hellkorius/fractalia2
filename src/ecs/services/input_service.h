@@ -15,6 +15,7 @@
 struct InputBinding;
 struct InputAction;
 struct InputContext;
+class CameraService;
 
 // Input action types
 enum class InputActionType {
@@ -169,6 +170,9 @@ private:
     flecs::world* world = nullptr;
     SDL_Window* window = nullptr;
     flecs::entity inputEntity;
+    
+    // Service dependencies (cached references)
+    CameraService* cameraService = nullptr;
     
     // Context management
     std::unordered_map<std::string, InputContextDefinition> contexts;

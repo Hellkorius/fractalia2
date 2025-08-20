@@ -209,6 +209,9 @@ public:
     const std::string& getActiveViewport() const { return activeViewportName; }
     void renderViewport(const std::string& viewportName);
     void renderAllViewports();
+    
+    // Service access (for convenience namespaces)
+    CameraService* getCameraService() const { return cameraService; }
 
 private:
     // Core data
@@ -216,6 +219,9 @@ private:
     VulkanRenderer* renderer = nullptr;
     GPUEntityManager* gpuEntityManager = nullptr;
     bool initialized = false;
+    
+    // Service dependencies (cached references)
+    CameraService* cameraService = nullptr;
     
     // Render queue
     std::vector<RenderQueueEntry> renderQueue;

@@ -35,6 +35,11 @@ bool InputService::initialize(flecs::world& world, SDL_Window* window) {
     createDefaultContexts();
     createDefaultActions();
     
+    // Cache service dependencies
+    if (ServiceLocator::instance().hasService<CameraService>()) {
+        cameraService = &ServiceLocator::instance().requireService<CameraService>();
+    }
+    
     initialized = true;
     return true;
 }
@@ -53,6 +58,7 @@ void InputService::cleanup() {
     world = nullptr;
     window = nullptr;
     inputEntity = flecs::entity::null();
+    cameraService = nullptr;
     initialized = false;
 }
 
@@ -308,19 +314,12 @@ glm::vec2 InputService::getMouseWorldPosition() const {
     }
     
     // Try to get CameraService for screen-to-world conversion
-    try {
-        auto& cameraService = ServiceLocator::instance().requireService<CameraService>();
-        
+    if (cameraService && window) {
         // Get window size from SDL
         int windowWidth, windowHeight;
-        if (window) {
-            SDL_GetWindowSize(window, &windowWidth, &windowHeight);
-            glm::vec2 screenSize(static_cast<float>(windowWidth), static_cast<float>(windowHeight));
-            return cameraService.screenToWorld(mouseState.position, screenSize);
-        }
-    } catch (const std::exception& e) {
-        // CameraService not available, fall back to screen coordinates
-        std::cerr << "InputService: Could not convert to world coordinates: " << e.what() << std::endl;
+        SDL_GetWindowSize(window, &windowWidth, &windowHeight);
+        glm::vec2 screenSize(static_cast<float>(windowWidth), static_cast<float>(windowHeight));
+        return cameraService->screenToWorld(mouseState.position, screenSize);
     }
     
     // Fallback to raw screen position
