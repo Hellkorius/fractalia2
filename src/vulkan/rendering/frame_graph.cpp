@@ -4,6 +4,7 @@
 #include "../core/vulkan_utils.h"
 #include "../core/queue_manager.h"
 #include "../nodes/entity_compute_node.h"
+#include "../nodes/physics_compute_node.h"
 #include "../nodes/entity_graphics_node.h"
 #include "../monitoring/gpu_memory_monitor.h"
 #include "../monitoring/gpu_timeout_detector.h"
@@ -342,6 +343,12 @@ void FrameGraph::updateFrameData(float time, float deltaTime, uint32_t frameCoun
         auto* computeNode = dynamic_cast<EntityComputeNode*>(node.get());
         if (computeNode) {
             computeNode->updateFrameData(time, deltaTime, frameCounter);
+        }
+        
+        // Check if this is a PhysicsComputeNode and update it
+        auto* physicsNode = dynamic_cast<PhysicsComputeNode*>(node.get());
+        if (physicsNode) {
+            physicsNode->updateFrameData(time, deltaTime, frameCounter);
         }
         
         // Check if this is an EntityGraphicsNode and update it  

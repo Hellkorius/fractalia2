@@ -17,8 +17,8 @@ class ResourceContext;
 // GPU entity structure optimized for cache efficiency
 struct GPUEntity {
     // Cache Line 1 (bytes 0-63) - HOT DATA: All frequently accessed in compute shaders
-    glm::vec4 movementParams0;    // 16 bytes - amplitude, frequency, phase, timeOffset
-    glm::vec4 movementParams1;    // 16 bytes - center.xyz, movementType
+    glm::vec4 velocity;           // 16 bytes - velocity.xy, damping, reserved
+    glm::vec4 movementParams;     // 16 bytes - amplitude, frequency, phase, timeOffset
     glm::vec4 runtimeState;       // 16 bytes - totalTime, initialized, stateTimer, entityState
     glm::vec4 color;              // 16 bytes - RGBA color
     

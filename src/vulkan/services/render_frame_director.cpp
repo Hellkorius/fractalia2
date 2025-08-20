@@ -6,6 +6,7 @@
 #include "../core/vulkan_sync.h"
 #include "../resources/resource_context.h"
 #include "../nodes/entity_compute_node.h"
+#include "../nodes/physics_compute_node.h"
 #include "../nodes/entity_graphics_node.h"
 #include "../nodes/swapchain_present_node.h"
 #include "../../ecs/gpu/gpu_entity_manager.h"
@@ -124,7 +125,18 @@ void RenderFrameDirector::setupFrameGraph(uint32_t imageIndex) {
     
     // Add nodes to frame graph only once during initialization
     if (needsInitialization) {
+        // Movement compute node (sets velocity every 900 frames)
         computeNodeId = frameGraph->addNode<EntityComputeNode>(
+            entityBufferId,
+            positionBufferId,
+            currentPositionBufferId,
+            targetPositionBufferId,
+            pipelineSystem->getComputeManager(),
+            gpuEntityManager
+        );
+        
+        // Physics compute node (updates positions based on velocity every frame)
+        physicsNodeId = frameGraph->addNode<PhysicsComputeNode>(
             entityBufferId,
             positionBufferId,
             currentPositionBufferId,
@@ -153,7 +165,8 @@ void RenderFrameDirector::setupFrameGraph(uint32_t imageIndex) {
         // Mark as initialized after nodes are added
         frameGraphInitialized = true;
         std::cout << "RenderFrameDirector: Created nodes - Compute:" << computeNodeId 
-                  << " Graphics:" << graphicsNodeId << " Present:" << presentNodeId << std::endl;
+                  << " Physics:" << physicsNodeId << " Graphics:" << graphicsNodeId 
+                  << " Present:" << presentNodeId << std::endl;
     }
     
     // Configure nodes with frame-specific data will be done externally

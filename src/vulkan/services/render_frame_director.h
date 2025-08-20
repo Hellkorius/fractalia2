@@ -87,6 +87,7 @@ private:
     
     // Node IDs for configuration
     FrameGraphTypes::NodeId computeNodeId = 0;
+    FrameGraphTypes::NodeId physicsNodeId = 0;
     FrameGraphTypes::NodeId graphicsNodeId = 0;
     FrameGraphTypes::NodeId presentNodeId = 0;
 

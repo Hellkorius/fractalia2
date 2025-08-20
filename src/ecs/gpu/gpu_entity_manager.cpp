@@ -16,18 +16,19 @@ thread_local std::uniform_real_distribution<float> stateTimerDist{0.0f, 600.0f};
 GPUEntity GPUEntity::fromECS(const Transform& transform, const Renderable& renderable, const MovementPattern& pattern) {
     GPUEntity entity{};
     
-    entity.movementParams0 = glm::vec4(
+    // Initialize velocity to zero (will be set by movement compute shader)
+    entity.velocity = glm::vec4(
+        0.0f,                      // velocity.x
+        0.0f,                      // velocity.y  
+        0.001f,                    // damping factor (very small amount of drag)
+        0.0f                       // reserved
+    );
+    
+    entity.movementParams = glm::vec4(
         pattern.amplitude,
         pattern.frequency, 
         pattern.phase,
         pattern.timeOffset
-    );
-    
-    entity.movementParams1 = glm::vec4(
-        pattern.center.x,
-        pattern.center.y, 
-        pattern.center.z,
-        static_cast<float>(pattern.type)
     );
     
     entity.color = renderable.color;

@@ -157,6 +157,9 @@ namespace ComputePipelinePresets {
     // Entity movement computation (for your use case)
     ComputePipelineState createEntityMovementState(VkDescriptorSetLayout descriptorLayout);
     
+    // Physics computation (velocity-based position updates)
+    ComputePipelineState createPhysicsState(VkDescriptorSetLayout descriptorLayout);
+    
     // Particle system update
     ComputePipelineState createParticleUpdateState(VkDescriptorSetLayout descriptorLayout);
     

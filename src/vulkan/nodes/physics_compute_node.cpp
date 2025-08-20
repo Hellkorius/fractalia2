@@ -1,4 +1,4 @@
-#include "entity_compute_node.h"
+#include "physics_compute_node.h"
 #include "../pipelines/compute_pipeline_manager.h"
 #include "../../ecs/gpu/gpu_entity_manager.h"
 #include "../core/vulkan_context.h"
@@ -13,8 +13,6 @@
 #include <memory>
 
 namespace {
-    // Removed DebugLogger class - using thread-safe atomic counters instead
-    
     struct DispatchParams {
         uint32_t totalWorkgroups;
         uint32_t maxWorkgroupsPerChunk;
@@ -31,7 +29,7 @@ namespace {
     }
 }
 
-EntityComputeNode::EntityComputeNode(
+PhysicsComputeNode::PhysicsComputeNode(
     FrameGraphTypes::ResourceId entityBuffer, 
     FrameGraphTypes::ResourceId positionBuffer,
     FrameGraphTypes::ResourceId currentPositionBuffer,
@@ -49,31 +47,33 @@ EntityComputeNode::EntityComputeNode(
     
     // Validate dependencies during construction for fail-fast behavior
     if (!computeManager) {
-        throw std::invalid_argument("EntityComputeNode: computeManager cannot be null");
+        throw std::invalid_argument("PhysicsComputeNode: computeManager cannot be null");
     }
     if (!gpuEntityManager) {
-        throw std::invalid_argument("EntityComputeNode: gpuEntityManager cannot be null");
+        throw std::invalid_argument("PhysicsComputeNode: gpuEntityManager cannot be null");
     }
 }
 
-std::vector<ResourceDependency> EntityComputeNode::getInputs() const {
+std::vector<ResourceDependency> PhysicsComputeNode::getInputs() const {
     return {
         {entityBufferId, ResourceAccess::ReadWrite, PipelineStage::ComputeShader},
+        {currentPositionBufferId, ResourceAccess::ReadWrite, PipelineStage::ComputeShader},
     };
 }
 
-std::vector<ResourceDependency> EntityComputeNode::getOutputs() const {
+std::vector<ResourceDependency> PhysicsComputeNode::getOutputs() const {
     return {
-        {entityBufferId, ResourceAccess::Write, PipelineStage::ComputeShader},
+        {positionBufferId, ResourceAccess::Write, PipelineStage::ComputeShader},
+        {currentPositionBufferId, ResourceAccess::Write, PipelineStage::ComputeShader},
     };
 }
 
-void EntityComputeNode::execute(VkCommandBuffer commandBuffer, const FrameGraph& frameGraph) {
+void PhysicsComputeNode::execute(VkCommandBuffer commandBuffer, const FrameGraph& frameGraph) {
     frameCounter.fetch_add(1, std::memory_order_relaxed);
     
     // Validate dependencies are still valid
     if (!computeManager || !gpuEntityManager) {
-        std::cerr << "EntityComputeNode: Critical error - dependencies became null during execution" << std::endl;
+        std::cerr << "PhysicsComputeNode: Critical error - dependencies became null during execution" << std::endl;
         return;
     }
     
@@ -81,24 +81,23 @@ void EntityComputeNode::execute(VkCommandBuffer commandBuffer, const FrameGraph&
     if (entityCount == 0) {
         uint32_t counter = debugCounter.fetch_add(1, std::memory_order_relaxed);
         if (counter % 60 == 0) {
-            std::cout << "EntityComputeNode: No entities to process" << std::endl;
+            std::cout << "PhysicsComputeNode: No entities to process" << std::endl;
         }
         return;
     }
     
-    // Create compute pipeline state for entity movement
+    // Create compute pipeline state for physics
     auto layoutSpec = DescriptorLayoutPresets::createEntityComputeLayout();
     VkDescriptorSetLayout descriptorLayout = computeManager->getLayoutManager()->getLayout(layoutSpec);
-    ComputePipelineState pipelineState = ComputePipelinePresets::createEntityMovementState(descriptorLayout);
+    ComputePipelineState pipelineState = ComputePipelinePresets::createPhysicsState(descriptorLayout);
     
     // Create compute dispatch
     ComputeDispatch dispatch{};
     dispatch.pipeline = computeManager->getPipeline(pipelineState);
-    
     dispatch.layout = computeManager->getPipelineLayout(pipelineState);
     
     if (dispatch.pipeline == VK_NULL_HANDLE || dispatch.layout == VK_NULL_HANDLE) {
-        std::cerr << "EntityComputeNode: Failed to get compute pipeline or layout" << std::endl;
+        std::cerr << "PhysicsComputeNode: Failed to get physics compute pipeline or layout" << std::endl;
         return;
     }
     
@@ -108,14 +107,14 @@ void EntityComputeNode::execute(VkCommandBuffer commandBuffer, const FrameGraph&
     if (computeDescriptorSet != VK_NULL_HANDLE) {
         dispatch.descriptorSets.push_back(computeDescriptorSet);
     } else {
-        std::cerr << "EntityComputeNode: ERROR - Missing compute descriptor set!" << std::endl;
+        std::cerr << "PhysicsComputeNode: ERROR - Missing compute descriptor set!" << std::endl;
         return;
     }
     
     // Configure push constants and dispatch
     pushConstants.entityCount = entityCount;
     dispatch.pushConstantData = &pushConstants;
-    dispatch.pushConstantSize = sizeof(ComputePushConstants);
+    dispatch.pushConstantSize = sizeof(PhysicsPushConstants);
     dispatch.pushConstantStages = VK_SHADER_STAGE_COMPUTE_BIT;
     dispatch.calculateOptimalDispatch(entityCount, glm::uvec3(THREADS_PER_WORKGROUP, 1, 1));
     
@@ -132,7 +131,7 @@ void EntityComputeNode::execute(VkCommandBuffer commandBuffer, const FrameGraph&
             shouldForceChunking = true;
         }
         if (!timeoutDetector->isGPUHealthy()) {
-            std::cerr << "EntityComputeNode: GPU not healthy, reducing workload" << std::endl;
+            std::cerr << "PhysicsComputeNode: GPU not healthy, reducing workload" << std::endl;
             maxWorkgroupsPerDispatch = std::min(maxWorkgroupsPerDispatch, 512u);
         }
     }
@@ -149,14 +148,14 @@ void EntityComputeNode::execute(VkCommandBuffer commandBuffer, const FrameGraph&
     // Debug logging (thread-safe) - more frequent for debugging
     uint32_t logCounter = debugCounter.fetch_add(1, std::memory_order_relaxed);
     if (logCounter % 60 == 0) {
-        std::cout << "EntityComputeNode (Movement): " << entityCount << " entities → " << 
+        std::cout << "PhysicsComputeNode: " << entityCount << " entities → " << 
                      dispatchParams.totalWorkgroups << " workgroups (frame " << 
                      frameCounter.load(std::memory_order_relaxed) << ")" << std::endl;
     }
     
     const VulkanContext* context = frameGraph.getContext();
     if (!context) {
-        std::cerr << "EntityComputeNode: Cannot get Vulkan context" << std::endl;
+        std::cerr << "PhysicsComputeNode: Cannot get Vulkan context" << std::endl;
         return;
     }
     
@@ -172,14 +171,14 @@ void EntityComputeNode::execute(VkCommandBuffer commandBuffer, const FrameGraph&
     
     if (!dispatchParams.useChunking) {
         // Single dispatch execution
-        std::cout << "EntityComputeNode: Starting single dispatch execution..." << std::endl;
+        std::cout << "PhysicsComputeNode: Starting single dispatch execution..." << std::endl;
         if (timeoutDetector) {
-            timeoutDetector->beginComputeDispatch("EntityMovement", dispatchParams.totalWorkgroups);
+            timeoutDetector->beginComputeDispatch("Physics", dispatchParams.totalWorkgroups);
         }
         
         vk.vkCmdPushConstants(
             commandBuffer, dispatch.layout, VK_SHADER_STAGE_COMPUTE_BIT,
-            0, sizeof(ComputePushConstants), &pushConstants);
+            0, sizeof(PhysicsPushConstants), &pushConstants);
         
         vk.vkCmdDispatch(commandBuffer, dispatchParams.totalWorkgroups, 1, 1);
         
@@ -202,10 +201,9 @@ void EntityComputeNode::execute(VkCommandBuffer commandBuffer, const FrameGraph&
         executeChunkedDispatch(commandBuffer, context, dispatch, 
                               dispatchParams.totalWorkgroups, dispatchParams.maxWorkgroupsPerChunk, entityCount);
     }
-    
 }
 
-void EntityComputeNode::executeChunkedDispatch(
+void PhysicsComputeNode::executeChunkedDispatch(
     VkCommandBuffer commandBuffer, 
     const VulkanContext* context, 
     const ComputeDispatch& dispatch,
@@ -227,17 +225,17 @@ void EntityComputeNode::executeChunkedDispatch(
         
         // Monitor chunk execution
         if (timeoutDetector) {
-            std::string chunkName = "EntityMovement_Chunk" + std::to_string(chunkCount);
+            std::string chunkName = "Physics_Chunk" + std::to_string(chunkCount);
             timeoutDetector->beginComputeDispatch(chunkName.c_str(), currentChunkSize);
         }
         
         // Update push constants for this chunk
-        ComputePushConstants chunkPushConstants = pushConstants;
+        PhysicsPushConstants chunkPushConstants = pushConstants;
         chunkPushConstants.entityOffset = baseEntityOffset;
         
         vk.vkCmdPushConstants(
             commandBuffer, dispatch.layout, VK_SHADER_STAGE_COMPUTE_BIT,
-            0, sizeof(ComputePushConstants), &chunkPushConstants);
+            0, sizeof(PhysicsPushConstants), &chunkPushConstants);
         
         vk.vkCmdDispatch(commandBuffer, currentChunkSize, 1, 1);
         
@@ -274,7 +272,7 @@ void EntityComputeNode::executeChunkedDispatch(
     // Debug statistics logging (thread-safe)
     uint32_t chunkLogCounter = debugCounter.fetch_add(1, std::memory_order_relaxed);
     if (chunkLogCounter % 300 == 0) {
-        std::string message = "EntityComputeNode: Split dispatch into " + std::to_string(chunkCount) + 
+        std::string message = "PhysicsComputeNode: Split dispatch into " + std::to_string(chunkCount) + 
                              " chunks (" + std::to_string(maxWorkgroupsPerChunk) + " max) for " + 
                              std::to_string(entityCount) + " entities";
         std::cout << message << std::endl;
@@ -289,9 +287,8 @@ void EntityComputeNode::executeChunkedDispatch(
     }
 }
 
-void EntityComputeNode::updateFrameData(float time, float deltaTime, uint32_t frameCounter) {
+void PhysicsComputeNode::updateFrameData(float time, float deltaTime, uint32_t frameCounter) {
     pushConstants.time = time;
     pushConstants.deltaTime = deltaTime;
     pushConstants.frame = frameCounter;
 }
-
