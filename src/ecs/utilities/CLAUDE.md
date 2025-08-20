@@ -1,90 +1,119 @@
 # ECS Utilities Directory Reference
 
 ## Purpose
-Core utility library for Flecs-based Entity Component System operations. Provides debugging tools, profiling capabilities, and system constants.
+Core utility library for Flecs-based Entity Component System operations. Provides debugging tools, high-resolution profiling, and system-wide constants for the 80,000+ entity GPU-driven rendering pipeline.
 
 ## File Hierarchy
 ```
 src/ecs/utilities/
-├── constants.h             # System-wide ECS constants and batch sizes
-├── debug.h                 # Unified debug output macros
-└── profiler.h              # High-resolution profiling with scope-based timing
+├── constants.h             # SystemConstants namespace with compile-time ECS constants
+├── debug.h                 # DEBUG_LOG macro for conditional debug output
+├── profiler.h              # ProfileTimer, ProfileScope, Profiler singleton with thread-safe timing
+└── CLAUDE.md               # This reference file
 ```
 
 ## Inputs & Outputs by Component
 
 ### constants.h
-**Inputs:** None (compile-time constants)
+**Inputs:** None (compile-time constants only)
 
 **Outputs:**
-- `DEFAULT_ENTITY_BATCH_SIZE = 1000` - Standard entity processing batch size
-- `MIN_ENTITY_RESERVE_COUNT = 1000` - Minimum entity pool reservation
-- `MOVEMENT_TYPE_RANDOM_WALK = 0` - GPU shader movement type constant
+- `SystemConstants::DEFAULT_ENTITY_BATCH_SIZE = 1000` - Entity processing batch size
+- `SystemConstants::MIN_ENTITY_RESERVE_COUNT = 1000` - Minimum entity pool reservation  
+- `SystemConstants::MOVEMENT_TYPE_RANDOM_WALK = 0` - GPU shader movement type identifier
 
-### debug.h
+**Integration:** Used in systems_common.h, entity factories, and GPU buffer management
+
+### debug.h  
 **Inputs:**
-- Debug messages via `DEBUG_LOG(x)` macro
-- Compile-time flag `NDEBUG` for conditional compilation
+- Debug messages via `DEBUG_LOG(message)` macro
+- Compile flag `NDEBUG` controls compilation behavior
 
 **Outputs:**
-- Console output stream (`std::cout`) in debug builds
-- No-op in release builds (optimized away)
+- `std::cout << message << std::endl` in debug builds
+- Complete no-op (optimized away) in release builds
+
+**Integration:** Used extensively in control_service.cpp, systems_common.h, main.cpp for conditional logging
 
 ### profiler.h
+**Classes:**
+- `ProfileTimer`: High-resolution timer with start/stop/getMilliseconds/getMicroseconds
+- `ProfileScope`: RAII wrapper for automatic scope-based timing  
+- `Profiler`: Thread-safe singleton for performance data collection and reporting
+
 **Inputs:**
-- Profiling scope names (`std::string`)
-- Manual timing via `ProfileTimer` start/stop
-- Memory usage updates (`updateMemoryUsage()`)
-- Frame timing data
+- Scope names (`std::string`) for categorized timing
+- Memory usage bytes via `updateMemoryUsage(size_t)`
+- Frame timing via `beginFrame()/endFrame()` calls
+- Manual timing via `ProfileTimer` start/stop operations
 
 **Outputs:**
-- `ProfileReport` structures with timing statistics
-- Singleton profiler instance access
-- RAII scope profiling via `ProfileScope`
-- Performance warnings for slow frames
-- CSV export of profiling data
-- Console performance reports
+- `ProfileReport` structures with min/max/average/recent timing data
+- Console performance reports with timing tables and percentages
+- CSV export capabilities for external analysis
+- Performance warnings for frames exceeding target (16.67ms default)
+- Memory usage tracking (current/peak in MB)
+- Frame count statistics
 
 **Data Flow:**
-Scope entry → Timer start → Code execution → Timer stop → Statistics aggregation → Report generation
+```
+Scope creation → Timer start → Code execution → Scope destruction → 
+Timer stop → Statistics aggregation → Report generation (on demand)
+```
 
-## Peripheral Dependencies
+**API Surface:**
+- `PROFILE_SCOPE(name)` - RAII scope profiling
+- `PROFILE_FUNCTION()` - Profile current function
+- `PROFILE_BEGIN_FRAME()/PROFILE_END_FRAME()` - Frame timing
+- `Profiler::getInstance().printReport()` - Console output
+- `Profiler::getInstance().exportToCSV(filename)` - File export
 
-### Core ECS Components (../components/)
-- **Transform**: Position, rotation, scale with cached matrix calculation
-- **Renderable**: Rendering data with color, layer, visibility flags
-- **MovementPattern**: GPU-compatible movement parameters
-- **Velocity**: Linear and angular velocity vectors
-- **Camera**: 2D orthographic camera with zoom and rotation
-- **Input Components**: Keyboard, mouse, and event handling
-- **Lifetime**: Entity lifecycle management
-- **Tag Components**: Static, Dynamic, KeyboardControlled markers
+## Peripheral Dependencies & Integration
 
-### Service Layer (../services/)
-- **ServiceLocator**: Dependency injection for system-service integration
-- **InputService**, **CameraService**, **RenderingService**: High-level game services
+### Active Integration Points
+**main.cpp**: Uses DEBUG_LOG and Profiler for application-level logging and frame timing
+**control_service.cpp**: Heavy DEBUG_LOG usage, Profiler for performance stats display
+**systems_common.h**: Imports all three utilities as common headers for ECS systems
 
-### Flecs ECS Framework
-- World management and entity lifecycle
-- Component storage and retrieval
-- System registration and execution phases
-- Query and iteration APIs
+### ECS Service Layer (../services/)
+- **ServiceLocator**: Dependency injection - profiler used for service initialization timing
+- **ControlService**: Uses DEBUG_LOG extensively, Profiler for performance statistics display
+- **CameraService, RenderingService**: Potential profiling integration points (not yet implemented)
+
+### ECS Systems (../systems/)
+- **systems_common.h**: Provides utilities as shared headers for system implementations
+- **Movement/Lifetime Systems**: Use constants for batch sizes and entity processing limits
+
+### GPU Pipeline (../gpu/)
+- **GPUEntityManager**: Uses constants for buffer sizing and batch processing
+- **EntityBufferManager**: Batch size constants for GPU upload operations
+
+### Flecs Integration
+- World entity counting for profiler statistics
+- Component queries for performance analysis
+- System execution timing via ProfileScope integration
 
 ## Key Notes & Conventions
 
-### Performance Considerations
-- **Profiling Overhead**: Performance tools add ~5-10% overhead when enabled; disable in production
-- **Debug Logging**: DEBUG_LOG macros are compiled out in release builds for zero overhead
+### Performance Impact
+- **Profiling Overhead**: ~5-10% performance cost when enabled; disable for production
+- **Debug Logging**: Zero overhead in release builds (NDEBUG optimization)
+- **Constants**: Zero runtime cost (compile-time substitution)
 
-### System Architecture Integration
-- **Constants**: Use defined constants for consistent batch sizes and entity limits
-- **Debug Output**: Use DEBUG_LOG for conditional debug messages
-- **Profiling Integration**: Wrap expensive operations with `PROFILE_SYSTEM` or `ProfileScope`
+### Usage Patterns
+- **Debug Logging**: `DEBUG_LOG("Message: " << variable)` - stream-style logging
+- **Scope Profiling**: `PROFILE_SCOPE("SystemName")` at function entry
+- **Constants**: `SystemConstants::DEFAULT_ENTITY_BATCH_SIZE` for consistent sizing
 
 ### Thread Safety
-- **Profiler**: Thread-safe via mutex protection for multi-threaded profiling scenarios
-- **Debug logging**: Not thread-safe; use from main thread only
-- **Constants**: Thread-safe (compile-time constants)
+- **Profiler**: Mutex-protected for multi-threaded timing scenarios
+- **Debug Macros**: Main thread only (std::cout not thread-safe)
+- **Constants**: Thread-safe (immutable compile-time values)
+
+### Memory Management
+- **Profiler**: Automatic cleanup via singleton pattern
+- **ProfileScope**: RAII ensures timer cleanup on scope exit
+- **Debug Macros**: No dynamic allocation
 
 ---
-**Note**: If any referenced components, services, or Flecs APIs change, this documentation must be updated to maintain accuracy.
+**Note**: If ECS components, service APIs, Flecs integration patterns, or GPU pipeline architecture change, this documentation must be updated to maintain accuracy.

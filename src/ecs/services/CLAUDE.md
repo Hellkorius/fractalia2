@@ -1,225 +1,235 @@
 # ECS Services Directory - AI Agent Context
 
 ## Purpose
-Service-based architecture layer providing high-level game systems with dependency injection, lifecycle management, and clean separation of concerns. Services bridge between low-level ECS components/systems and external subsystems (Vulkan, SDL3, etc).
+High-level game services implementing service-based architecture with dependency injection for input management, camera control, rendering coordination, and game logic. These services bridge between the ECS world and external systems (SDL, Vulkan, etc.) with priority-based initialization and lifecycle management.
 
 ## File/Folder Hierarchy
 ```
 src/ecs/services/
-├── camera/                       # Modularized camera subsystems
-│   ├── camera_culling.h/cpp      # Frustum culling and visibility testing
-│   ├── camera_manager.h/cpp      # Camera entity lifecycle management
-│   ├── camera_transforms.h/cpp   # View/projection matrix calculations
-│   ├── camera_transition_system.h/cpp # Smooth camera transitions and interpolation
-│   └── viewport_manager.h/cpp    # Split-screen viewport support
-├── camera_service.h/cpp          # Multi-camera management orchestration
-├── input_service.h/cpp           # Action-based input system with context switching
-├── control_service.h/cpp         # Game control logic coordination (GameControlService)
-└── rendering_service.h/cpp       # Render queue management with culling/batching
+├── camera_service.h/cpp         # Multi-camera management, transitions, viewports, culling
+├── input_service.h/cpp          # Action-based input with SDL integration
+├── rendering_service.h/cpp      # ECS-Vulkan bridge, render queue, culling, LOD
+├── control_service.h/cpp        # Game control logic and service coordination
+├── camera/                      # Camera subsystem modules
+│   ├── camera_manager.h/cpp          # Camera entity lifecycle and management
+│   ├── camera_culling.h/cpp          # Frustum culling and LOD calculations
+│   ├── camera_transforms.h/cpp       # World/screen coordinate transformations
+│   ├── camera_transition_system.h/cpp # Smooth camera transitions with easing
+│   ├── viewport_manager.h/cpp        # Multi-viewport management for split-screen
+│   └── camera.md                     # Camera subsystem documentation
+└── input/                       # Input subsystem modules
+    ├── input_action_system.h/cpp     # Action binding, mapping, callbacks
+    ├── input_event_processor.h/cpp   # SDL event handling, raw input state
+    ├── input_context_manager.h/cpp   # Context switching, priority management
+    ├── input_config_manager.h/cpp    # Configuration loading/saving, defaults
+    ├── input_ecs_bridge.h/cpp        # ECS component synchronization
+    ├── input_types.h                 # Core input type definitions and enums
+    └── Input.md                      # Input subsystem documentation
 ```
 
-## Inputs & Outputs (by Component)
+## Inputs & Outputs (by Service)
 
 ### CameraService
 **Inputs:**
 - `flecs::world&` - ECS world for camera entity management
-- Window resize events (width/height) from external window system
-- Delta time for transition updates
-- Camera component data from ECS entities
-- Transform/Bounds data for culling operations
+- Window resize events (width, height) for aspect ratio updates
+- Camera creation requests (name, position, zoom, rotation)
+- Transition requests (target camera, easing type, duration)
+- Viewport definitions (name, camera assignment, screen regions)
+- Entity transform/bounds arrays for culling operations
 
 **Outputs:**
-- Camera entities with Camera components in ECS world
-- View/Projection/ViewProjection matrices for rendering
-- Viewport definitions for split-screen support
-- Culling results (CullingInfo structs) with visibility/LOD data
-- Camera transitions and interpolated camera states
-- World/screen coordinate transformations
+- `CameraID` - Unique camera identifiers for management
+- `glm::mat4` - View, projection, view-projection matrices for rendering
+- `std::vector<CullingInfo>` - Frustum culling results with visibility/LOD data
+- `glm::vec2` - Coordinate transformations (world↔screen, viewport↔world)
+- Camera state changes through smooth transitions
+- Active camera tracking and viewport management
 
 **Key APIs:**
-- `createCamera()` → CameraID
-- `getActiveCameraData()` → Camera*
-- `transitionToCamera()` - smooth camera transitions with CameraTransition
-- `handleWindowResize()` - viewport updates
-- `update()` - transition processing and matrix updates
+- `createCamera()` → CameraID, `getCamera()` → Camera*
+- `setActiveCamera()`, `transitionToCamera()` - camera management
+- `performFrustumCulling()` → vector<CullingInfo> - batch culling
+- `worldToScreen()`, `screenToWorld()` → glm::vec2 - coordinate conversion
+- `createViewport()`, `getActiveViewports()` - multi-view support
 
-**Modular Components:**
-- **CameraManager**: Entity lifecycle, creation/removal
-- **CameraTransitionSystem**: Smooth interpolation between camera states
-- **ViewportManager**: Split-screen viewport calculations
-- **CameraCulling**: Frustum culling and visibility testing
-- **CameraTransforms**: View/projection matrix generation
-
-### InputService (Modularized)
-**Architecture:** Orchestrates five specialized input modules for clean separation of concerns
-
+### InputService
 **Inputs:**
-- `flecs::world&` - ECS world for input entity management  
-- `SDL_Window*` - SDL window for event processing
-- Delta time for frame-coherent processing
+- `SDL_Event` structs from SDL event queue
+- `SDL_Window*` for window-relative input queries
+- `flecs::world&` for ECS component synchronization
+- Input configuration files (JSON/custom format)
+- Action definitions and key bindings
+- Context switch requests and priority management
 
 **Outputs:**
-- Complete input system functionality via modular delegation
-- Action state mappings and raw input queries
-- ECS component synchronization
-- Configuration management
+- `InputActionState` - Action states (digital/analog, just pressed/released)
+- Raw input queries (key/mouse states, positions, deltas)
+- `KeyboardInput`, `MouseInput`, `InputState` ECS components
+- Action callback execution for registered handlers
+- Context-filtered input binding resolution
+- Window event notifications (resize, quit)
 
 **Key APIs:**
-- `processFrame()` - coordinates all input modules per frame
-- `processSDLEvents()` - delegates to InputEventProcessor
-- All public APIs delegate to appropriate specialized modules
-
-**Modular Components:**
-- **InputEventProcessor** - SDL event handling, raw input state
-- **InputActionSystem** - Action binding, mapping, callbacks  
-- **InputContextManager** - Context switching, priority, stack management
-- **InputConfigManager** - Configuration loading/saving, defaults
-- **InputECSBridge** - ECS component synchronization
-
-**Integration Pattern:**
-```cpp
-// Frame processing flow
-InputService::processFrame() 
-  → InputActionSystem::updateActionStates()
-  → InputActionSystem::executeCallbacks() 
-  → InputECSBridge::synchronizeToECSComponents()
-```
-
-### GameControlService (control_service.h/cpp)
-**Inputs:**
-- `flecs::world&` - ECS world reference
-- `VulkanRenderer*` - renderer for graphics tests/debug
-- `EntityFactory*` - entity creation operations
-- Service dependencies: InputService, CameraService, RenderingService
-- Delta time for cooldown management
-
-**Outputs:**
-- Control actions execution (entity creation, camera control, etc.)
-- Performance statistics requests
-- Graphics test execution
-- Debug mode state changes
-- Entity creation at specified positions
-- Swarm creation with parameters (count, center, radius)
-
-**Key APIs:**
-- `processFrame()` - main control logic loop
-- `handleInput()` - processes input actions
-- `createEntity()`, `createSwarm()` - entity management
-- `toggleDebugMode()`, `showPerformanceStats()` - debug operations
+- `isActionActive()`, `isActionJustPressed()` → bool - action queries
+- `getActionAnalog1D/2D()` → float/glm::vec2 - analog input
+- `getMousePosition()`, `getMouseWorldPosition()` → glm::vec2
+- `registerAction()`, `bindAction()` - action configuration
+- `setContextActive()`, `pushContext()` - context management
 
 ### RenderingService
 **Inputs:**
-- `flecs::world&` - ECS world for renderable entity queries
-- `VulkanRenderer*` - Vulkan rendering subsystem
-- Entity data: Transform, Renderable, Bounds components
-- Camera data from CameraService for culling
-- Delta time for performance timing
+- `flecs::world&` - ECS world with renderable entities
+- `VulkanRenderer*` - Vulkan renderer instance for GPU submission
+- Entity queries (Transform, Renderable, Bounds components)
+- Camera culling results from CameraService
+- `LODConfig` - Level-of-detail configuration
+- Render priority assignments and batching parameters
 
 **Outputs:**
-- RenderQueue entries sorted by priority/distance/state
-- RenderBatch structures for GPU submission
-- LOD calculations and visibility culling results
-- Vulkan command buffer submissions via renderer
-- Render statistics (draw calls, triangles, timing)
-- GPU entity data synchronization
+- `std::vector<RenderQueueEntry>` - Sorted render queue with culling/LOD data
+- `std::vector<RenderBatch>` - Optimized render batches for GPU submission
+- `CullingStats`, `RenderStats` - Performance monitoring data
+- ECS system registrations for rendering phases
+- GPU data synchronization through GPUEntityManager
+- Frame coordination signals and render state management
 
 **Key APIs:**
-- `buildRenderQueue()` - collects renderable entities
-- `performCulling()` - frustum/occlusion culling
-- `submitRenderQueue()` - submits to GPU via VulkanRenderer
-- `calculateLOD()` → int (LOD level)
+- `buildRenderQueue()`, `sortRenderQueue()` - render preparation
+- `performCulling()`, `calculateLOD()` - visibility optimization
+- `createRenderBatches()`, `submitRenderQueue()` - GPU submission
+- `registerRenderableEntity()` - entity management
+- `setLODConfig()`, `setFrustumCullingEnabled()` - configuration
+
+### GameControlService (Control Service)
+**Inputs:**
+- `flecs::world&` - ECS world for entity operations
+- `VulkanRenderer*`, `EntityFactory*` - external system references
+- User input actions from InputService
+- Frame delta time for timing-based operations
+- Control action definitions and cooldown parameters
+
+**Outputs:**
+- `ControlState` - Game control state with request flags
+- Entity creation/swarm generation requests
+- Camera control commands (movement, transitions, focus)
+- Performance monitoring toggles and debug mode changes
+- Graphics test execution and wireframe mode toggles
+- Control action execution with cooldown management
+
+**Key APIs:**
+- `processFrame()`, `handleInput()` - frame processing
+- `createEntity()`, `createSwarm()` - entity generation
+- `toggleMovementType()`, `showPerformanceStats()` - game actions
+- `handleCameraControls()`, `resetCamera()` - camera integration
+- `registerAction()`, `executeAction()` - action management
 
 
-## Data Flow Between Components
+## Data Flow Between Services
 
-### Service Integration Pattern:
-1. **ServiceLocator** manages all service instances with dependency injection
-2. **Initialization Order**: Services initialize by priority (higher first)
-3. **Cross-Service Communication**: Direct service references via ServiceLocator
-4. **ECS Integration**: Services create/query entities, read/write components
+### Service Initialization Order (by Priority):
+1. **WorldManager** (Priority: 100) - ECS world and module loading
+2. **InputService** (Priority: 90) - SDL event processing setup
+3. **CameraService** (Priority: 80) - Camera management initialization
+4. **RenderingService** (Priority: 70) - Render queue and GPU bridge setup
+5. **GameControlService** (Priority: 60) - Game logic and control integration
 
-### Typical Frame Flow:
+### Frame Processing Flow:
 ```
-InputService.processFrame() 
-  → processes SDL events
-  → updates action states
-  → notifies callbacks
-
 GameControlService.processFrame()
-  → reads InputService actions
-  → executes game logic
-  → requests camera/rendering changes
-
-CameraService.update()
-  → processes transitions
-  → updates camera matrices
-  → provides culling data
-
-RenderingService.processFrame()
-  → queries ECS for renderable entities
-  → performs culling using CameraService data
-  → submits render queue to VulkanRenderer
+  → InputService.processFrame() (SDL events, action states)
+  → CameraService.update() (transitions, active camera)
+  → RenderingService.processFrame()
+    → buildRenderQueue() (collect entities)
+    → performCulling() (frustum + occlusion using CameraService)
+    → calculateLOD() (level-of-detail optimization)
+    → createRenderBatches() (GPU-optimized batches)
+    → submitRenderQueue() (to VulkanRenderer)
+  → Service.cleanup() (frame completion)
 ```
+
+### Inter-Service Communication:
+- **InputService** → **CameraService**: Mouse world coordinates, viewport hit testing
+- **CameraService** → **RenderingService**: View matrices, culling results, active camera
+- **RenderingService** → **GPUEntityManager**: Render queue, culling data, entity transforms
+- **GameControlService** → All services: Control commands, state changes, debug toggles
+- **ServiceLocator**: Dependency injection, lifecycle management, priority ordering
 
 ## Peripheral Dependencies
 
 ### Core ECS Infrastructure:
-- `../core/service_locator.h` - Dependency injection, lifecycle management
-- `../core/world_manager.h` - Flecs world management and modules
-- `../core/entity_factory.h` - Entity creation utilities
+- `../core/service_locator.h` - Service pattern, dependency injection, lifecycle management
+- `../core/world_manager.h` - ECS world management and Flecs module loading
+- `../core/entity_factory.h` - Entity creation and component assignment
+- `../components/component.h` - Transform, Renderable, Bounds, Camera components
 
-### ECS Data:
-- `../components/component.h` - Transform, Renderable, Camera, Input components
+### External System Integration:
+- `VulkanRenderer` - GPU rendering pipeline and Vulkan API abstraction
+- `GPUEntityManager` - CPU→GPU data bridge for entity transforms/states
+- `SDL3/SDL.h` - Window management, event processing, input handling
+- `flecs.h` - ECS world, entity management, component queries, system registration
 
-### External Subsystems:
-- `../../vulkan_renderer.h` - VulkanRenderer for GPU operations
-- `../gpu_entity_manager.h` - CPU→GPU data bridge
-- `SDL3/SDL.h` - Input event processing, window management
-- `flecs.h` - ECS world, entity, component operations
-- `glm/` - 3D math operations (matrices, vectors, quaternions)
+### Math and Utilities:
+- `glm/` - Vector math, matrix operations, coordinate transformations
+- Standard containers (vector, unordered_map, queue) for state management
+- `<functional>` - Callbacks and action handlers
+- `<mutex>` - Thread-safe service access
 
-### Rendering Pipeline:
-- Services → VulkanRenderer → GPU Entity Manager → Vulkan nodes
-- RenderingService builds queue → VulkanRenderer submits → EntityGraphicsNode renders
+### GPU Pipeline Integration:
+- Services coordinate CPU-side ECS data with GPU compute/graphics shaders
+- RenderingService provides culling results to optimize GPU workload
+- CameraService matrices flow directly to vertex shaders for world→clip transformation
+- Entity transform data synchronized through GPUEntityManager buffer updates
 
 ## Key Notes
 
-### Service Architecture Conventions:
-- **DECLARE_SERVICE(ServiceName)** macro for service pattern compliance
+### Service Architecture Pattern:
+- **DECLARE_SERVICE** macro compliance for standardized service interface
 - **Priority-based initialization**: Higher priority services initialize first
-- **Dependency validation**: Services declare dependencies, validated at startup  
-- **Lifecycle management**: UNINITIALIZED → INITIALIZING → INITIALIZED → SHUTTING_DOWN → SHUTDOWN
-- **Convenience macro**: SERVICE(ServiceClass) for streamlined access
+- **Dependency injection**: Services access dependencies through ServiceLocator
+- **Lifecycle tracking**: UNINITIALIZED → INITIALIZING → INITIALIZED → SHUTTING_DOWN → SHUTDOWN
+- **Frame-coherent execution**: All services update once per frame in priority order
 
-### Critical Integration Points:
-- **InputService** requires SDL_Window* for event processing
-- **GameControlService** requires VulkanRenderer* and EntityFactory* for operations
-- **RenderingService** requires VulkanRenderer* for GPU submission
-- **All services** require flecs::world& for ECS integration
+### Performance Optimizations:
+- **Cached service references**: Avoid repeated ServiceLocator lookups
+- **Batch processing**: CameraService culling operates on entity arrays
+- **GPU-optimized render batches**: RenderingService minimizes draw calls
+- **Early frame termination**: Skip rendering when no entities are visible
+- **LOD system**: Distance-based level-of-detail reduces GPU workload
 
-### Performance Considerations:
-- RenderingService supports multithreading (`processRenderingMT()`)
-- Render queue pre-allocated for maxRenderableEntities (default: 100,000)
-- LOD system with configurable distance thresholds
-- Frustum/occlusion culling to reduce GPU load
-- Input system uses direct state arrays for performance
+### Multi-Threading Considerations:
+- **Service access is thread-safe** through ServiceLocator mutex protection
+- **Frame processing is single-threaded** for data coherency
+- **GPU operations are asynchronous** with proper synchronization
+- **Input processing may occur on separate thread** with state synchronization
 
-### Service Communication:
-- Services access each other via ServiceLocator dependency injection
-- No direct coupling - services declare dependencies explicitly
-- Frame-coherent execution - services process in defined order
-- State sharing through ECS components where appropriate
+### Memory Management:
+- **RAII service lifecycle**: Automatic cleanup in destruction order
+- **Shared pointers for service instances**: Reference counting for safety
+- **Pre-allocated containers**: Render queues and input arrays avoid allocations
+- **Component pooling**: ECS entities reuse components for efficiency
 
-### Debug/Monitoring Features:
-- All services provide statistics and debug output
-- Performance monitoring integration
-- Debug visualization modes (wireframe, bounds, LOD levels)
-- Console output for service state inspection
+### Integration Patterns:
+- **Services delegate to submodules**: CameraService → camera/*, InputService → input/*
+- **Bidirectional service communication**: Services can query each other's state
+- **Event-driven updates**: Window resize, input events trigger service updates
+- **State change notification**: Services notify dependent systems of changes
+
+### Edge Cases & Gotchas:
+- **Service initialization failure**: Returns false from initialize(), others may depend on it
+- **Circular dependencies**: ServiceLocator validation prevents dependency loops
+- **Frame timing consistency**: All services must complete within frame budget
+- **GPU synchronization**: RenderingService must wait for previous frame completion
+- **Context switching**: InputService context changes affect active key bindings
+- **Camera transition interruption**: New transitions override active ones in CameraService
 
 ---
 **⚠️ Update Requirement**: This file must be updated whenever:
 - New services are added to the directory
-- Service APIs change (inputs/outputs)
-- Dependencies are added/removed between services  
-- External subsystem integrations change (VulkanRenderer, SDL3, etc.)
-- ECS component/system dependencies change
+- Service APIs change (inputs/outputs, public interface methods)
+- Inter-service communication patterns change
+- Service initialization order or priorities change
+- Integration with external systems (SDL, Vulkan, ECS) changes
+- Service lifecycle or dependency management changes
+- Performance optimization strategies change
+- New subsystem modules are added to camera/ or input/ directories

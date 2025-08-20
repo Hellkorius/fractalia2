@@ -86,8 +86,7 @@ Foundational infrastructure for Entity-Component-System architecture with servic
 - **Renderable**: Color, layer, visibility with GPU upload tracking
 - **MovementPattern**: GPU compute parameters for entity movement
 - **Lifetime, Bounds, Velocity**: Additional entity behaviors
-- **Input components**: KeyboardInput, MouseInput, InputEvents for ECS-based input
-
+- **Static/Dynamic/Pooled tags**: Entity classification for optimization
 
 ### ECS Services (/ecs/services/)
 - **InputService**: High-level input with action mapping and context switching
@@ -96,7 +95,11 @@ Foundational infrastructure for Entity-Component-System architecture with servic
 - **ControlService**: Game control logic coordination
 - All registered via ServiceLocator with priority-based initialization
 
-### GPU Bridge (/ecs/gpu_entity_manager.*)
+### ECS Systems (/ecs/systems/)
+- **MovementSystem**: Movement pattern calculations and registration
+- Systems registered via WorldManager::registerSystems()
+
+### GPU Bridge (/ecs/gpu/)
 - **GPUEntityManager**: CPU→GPU synchronization for 80k+ entities
 - **GPUEntity**: Cache-optimized 128-byte structure for GPU compute
 - Transforms ECS components into GPU-ready data structures

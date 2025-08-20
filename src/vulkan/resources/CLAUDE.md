@@ -1,249 +1,210 @@
-# Vulkan Resources Module - Modular Memory Management & Resource Allocation
+# Vulkan Resources Module - GPU Resource Management & Memory Allocation
 
 ## Purpose
-Modular Vulkan resource management system providing memory allocation, buffer/image creation, descriptor management, and command execution through specialized components for the GPU-driven rendering pipeline.
+Modular Vulkan resource management providing memory allocation, buffer/image creation, descriptor management, and command execution for the GPU-driven rendering pipeline. Serves as the bridge between high-level services and low-level Vulkan operations.
 
 ## File Hierarchy
 ```
 vulkan/resources/
-├── CLAUDE.md                           # This documentation
-├── resource_context.h/cpp              # Master coordinator - delegates to specialized managers
-├── memory_allocator.h/cpp              # VMA-compatible memory allocation with pressure monitoring
-├── buffer_factory.h/cpp                # Buffer/image creation and transfer operations
-├── command_executor.h/cpp              # Queue-optimal command execution using QueueManager
-├── descriptor_pool_manager.h/cpp       # Descriptor pool creation and management
-├── graphics_resource_manager.h/cpp     # Graphics pipeline specific resources
-├── resource_handle.h                   # RAII resource wrapper with vulkan_raii types
-└── resource_utils.h/cpp                # Utility functions for common resource operations
+├── CLAUDE.md                         # This documentation
+├── resource_context.h/cpp            # Master coordinator - delegates to specialized managers
+├── resource_handle.h                 # RAII resource wrapper with vulkan_raii types
+├── memory_allocator.h/cpp            # VMA-compatible memory allocation + pressure monitoring
+├── buffer_factory.h/cpp              # Buffer/image creation + transfer operations
+├── command_executor.h/cpp            # Queue-optimal command execution via QueueManager
+├── descriptor_pool_manager.h/cpp     # Descriptor pool creation + management
+├── graphics_resource_manager.h/cpp   # Graphics pipeline specific resources
+└── resource_utils.h/cpp              # Utility functions for common resource operations
 ```
 
-## Core Components
+## Core Input/Output Documentation
 
 ### ResourceContext (Master Coordinator)
-**Purpose**: High-level facade that delegates to specialized managers
-
-**Inputs**:
-- `VulkanContext&` - Vulkan device, physical device, function loader
-- `QueueManager*` - Modern queue management for optimal transfers
-- Buffer/image creation parameters
+**Input:**
+- `VulkanContext&` - Device, physical device, function loader
+- `QueueManager*` - Queue management for transfer optimization
+- Buffer/image creation parameters (size, usage, properties)
 - Raw data for staging operations
 
-**Outputs**:
-- `ResourceHandle` - RAII wrapper with vulkan_raii types
+**Output:**
+- `ResourceHandle` - RAII wrapper with automatic cleanup
 - Staging regions for CPU→GPU transfers
-- Graphics pipeline resources (uniform/vertex/index buffers)
-- Descriptor pools and sets
-- Memory statistics and pressure monitoring
+- Memory statistics and pressure monitoring data
+- Graphics pipeline resources (UBO/vertex/index buffers)
 
-**Architecture**: Composition-based delegation to:
-- `MemoryAllocator` - Memory allocation and pressure monitoring
-- `BufferFactory` - Buffer/image creation and transfer operations
-- `CommandExecutor` - Queue-optimal command execution
-- `DescriptorPoolManager` - Descriptor pool management
-- `GraphicsResourceManager` - Graphics pipeline specific resources
+**Data Flow:** Delegates to specialized managers → Returns unified ResourceHandle
 
-### ResourceHandle (RAII Resource Wrapper)
-**Data Structure**:
+### ResourceHandle (RAII Wrapper)
+**Structure:**
 ```cpp
 struct ResourceHandle {
-    vulkan_raii::Buffer buffer;        // RAII Vulkan buffer handle
-    vulkan_raii::Image image;          // RAII Vulkan image handle  
-    vulkan_raii::ImageView imageView;  // RAII image view for sampling
-    vulkan_raii::DeviceMemory memory;  // RAII memory allocation
-    void* mappedData = nullptr;        // CPU-mapped pointer (if host-visible)
+    vulkan_raii::Buffer buffer;        // Auto-cleanup Vulkan buffer
+    vulkan_raii::Image image;          // Auto-cleanup Vulkan image  
+    vulkan_raii::ImageView imageView;  // Auto-cleanup image view
+    vulkan_raii::DeviceMemory memory;  // Auto-cleanup memory
+    void* mappedData = nullptr;        // CPU-mapped pointer
     VkDeviceSize size = 0;             // Allocation size
-    
     bool isValid() const;              // Validity check
 };
 ```
+**Key:** Move-only semantics, automatic cleanup, integrated validity checking
 
-**Features**:
-- Automatic cleanup via RAII vulkan_raii wrappers
-- Move-only semantics prevent accidental copies
-- Integrated validity checking
-
-### MemoryAllocator (Memory Management)
-**Purpose**: VMA-compatible allocator with custom implementation and memory pressure monitoring
-
-**Inputs**:
+### MemoryAllocator
+**Input:**
 - `VkMemoryRequirements` - Memory requirements from Vulkan objects
-- `VkMemoryPropertyFlags` - Memory property requirements
+- `VkMemoryPropertyFlags` - Memory property requirements (device-local, host-visible, etc.)
 
-**Outputs**:
+**Output:**
 - `AllocationInfo` - Memory allocation with metadata
-- `DeviceMemoryBudget` - Memory pressure monitoring
+- `DeviceMemoryBudget` - Memory pressure monitoring data
 - `MemoryStats` - Allocation statistics and fragmentation tracking
 
-**Key Features**:
-- Custom VmaAllocator_Impl without external VMA dependency
-- Memory pressure detection with recovery mechanisms
-- Automatic memory type selection
-- Fragmentation tracking and mitigation
+**Features:** Custom VMA implementation, pressure detection, fragmentation mitigation
 
-### CommandExecutor (Queue-Optimal Command Execution)
-**Purpose**: Modern command executor using QueueManager for optimal queue selection
+### BufferFactory
+**Input:**
+- Buffer size, usage flags, memory properties
+- Image dimensions, format, usage flags
+- Raw data for copying operations
 
-**Inputs**:
+**Output:**
+- `ResourceHandle` for buffers/images
+- Completed transfer operations
+- Resource destruction coordination
+
+**Dependencies:** Requires MemoryAllocator, StagingRingBuffer, CommandExecutor
+
+### CommandExecutor
+**Input:**
 - `QueueManager*` - Queue management for transfer optimization
 - Source/destination buffers for copy operations
 - Transfer sizes and offsets
 
-**Outputs**:
+**Output:**
 - Synchronous transfers (graphics queue)
-- `AsyncTransfer` - Asynchronous transfers (dedicated transfer queue when available)
+- `AsyncTransfer` - Asynchronous transfers (dedicated transfer queue)
 - Transfer completion tracking
 
-**Data Structures**:
-```cpp
-using AsyncTransfer = QueueManager::TransferCommand;
-```
+**Queue Selection:** Dedicated transfer → Graphics fallback, automatic optimization
 
-**Key Features**:
-- Automatic queue selection (dedicated transfer → graphics fallback)
-- Async transfer operations with completion tracking
-- Integration with QueueManager's telemetry system
-
-### StagingRingBuffer (CPU→GPU Transfer Buffer)
-**Purpose**: Persistent ring buffer for efficient CPU→GPU data transfers
-
-**Inputs**:
+### StagingRingBuffer (CPU→GPU Transfer)
+**Input:**
 - Raw data pointers and sizes
-- Alignment requirements for GPU structures
+- Alignment requirements
 
-**Outputs**:
+**Output:**
 - `StagingRegion` - CPU-writable memory regions
-- `StagingRegionGuard` - RAII wrapper for automatic region management
+- `StagingRegionGuard` - RAII wrapper for automatic management
 
-**Data Structure**:
+**Key Structure:**
 ```cpp
 struct StagingRegion {
     void* mappedData;           // Direct CPU write access
-    VkBuffer buffer;            // Source buffer for transfers
-    VkDeviceSize offset;        // Offset in ring buffer
-    VkDeviceSize size;          // Region size
-    bool isValid() const;       // Validity check
+    VkBuffer buffer;            // Source for transfers
+    VkDeviceSize offset, size;  // Ring buffer position
+    bool isValid() const;
 };
 ```
 
-**Advanced Features**:
-- Fragmentation detection and recovery
-- Ring buffer wrap-around with usage tracking
-- Memory pressure integration
+### DescriptorPoolManager
+**Input:**
+- `DescriptorPoolConfig` - Pool size configuration
+- Descriptor set layout requirements
 
-### GPUBufferRing (Managed GPU Buffer)
-**Purpose**: GPU buffer with integrated staging support for compute operations
+**Output:**
+- `vulkan_raii::DescriptorPool` - RAII descriptor pools
+- Pool destruction coordination
 
-**Inputs**:
-- Buffer size, usage flags, memory properties
-- Raw data for batch uploads
+**Default Config:** 1024 max sets, uniform/storage buffers, images, samplers
 
-**Outputs**:
-- Device-local or host-visible VkBuffer
-- Staging operations for efficient uploads
-- Direct CPU-mapped access for host-visible buffers
+### GraphicsResourceManager
+**Input:**
+- `BufferFactory*` - For resource creation
+- Descriptor set layouts
+- Entity/position buffer handles for updates
 
-**Features**:
-- Automatic staging detection for device-local buffers
-- Batch upload optimization
-- Integration with ResourceContext's staging buffer
-
-### Graphics Pipeline Managers
-
-#### DescriptorPoolManager
-**Purpose**: Centralized descriptor pool creation and management
-
-**Configuration**:
-```cpp
-struct DescriptorPoolConfig {
-    uint32_t maxSets = 1024;
-    uint32_t uniformBuffers = 1024;
-    uint32_t storageBuffers = 1024;
-    uint32_t sampledImages = 1024;
-    uint32_t storageImages = 512;
-    uint32_t samplers = 512;
-    bool allowFreeDescriptorSets = true;
-    bool bindlessReady = false;
-};
-```
-
-#### GraphicsResourceManager
-**Purpose**: Graphics pipeline specific resource management
-
-**Resources**:
+**Output:**
 - Uniform buffers (per-frame UBO data)
-- Triangle vertex/index buffers (entity rendering)
+- Triangle vertex/index buffers
 - Graphics descriptor pools and sets
-- Dynamic descriptor updates for compute integration
+- Descriptor set updates for compute→graphics binding
 
-## Data Flow Patterns
+### ResourceUtils (Static Utilities)
+**Input:**
+- Vulkan device/loader contexts
+- Buffer/descriptor parameters
+- Memory requirements
 
-### Resource Creation Flow
+**Output:**
+- Common buffer creation patterns
+- Descriptor pool/set utilities
+- Memory mapping/unmapping operations
+- Debug name setting
+
+## Key Data Flow Patterns
+
+### Resource Creation:
 1. `ResourceContext::createBuffer()` → `BufferFactory::createBuffer()`
-2. `MemoryAllocator::allocateMemory()` → Memory type selection and allocation
-3. Buffer binding and optional CPU mapping
-4. `ResourceHandle` returned with RAII wrappers
+2. `MemoryAllocator::allocateMemory()` → Memory allocation
+3. Buffer binding + optional mapping → `ResourceHandle` returned
 
-### Staging Transfer Flow
-1. `StagingRingBuffer::allocateGuarded()` → CPU-writable staging region
-2. Direct CPU write to `mappedData` pointer
-3. `CommandExecutor::copyBufferToBufferAsync()` → QueueManager transfer optimization
-4. Async completion tracking via QueueManager's fence management
+### Staging Transfer:
+1. `StagingRingBuffer::allocateGuarded()` → CPU-writable region
+2. Direct CPU write to `mappedData`
+3. `CommandExecutor::copyBufferToBufferAsync()` → Optimal queue transfer
+4. Async completion via QueueManager fence management
 
-### Graphics Pipeline Integration
-1. `GraphicsResourceManager::createUniformBuffers()` → Per-frame uniform data
-2. `GraphicsResourceManager::createTriangleBuffers()` → Entity rendering geometry
-3. `DescriptorPoolManager::createDescriptorPool()` → Descriptor resource allocation
-4. `updateDescriptorSetsWithEntityAndPositionBuffers()` → Compute→Graphics binding
+### Graphics Integration:
+1. `GraphicsResourceManager::createUniformBuffers()` → Per-frame UBO
+2. `createTriangleBuffers()` → Entity rendering geometry
+3. `updateDescriptorSetsWithEntityAndPositionBuffers()` → Compute→Graphics binding
 
 ## External Dependencies
 
-### Core Vulkan Infrastructure
-- **vulkan/core/vulkan_context.h** - Device, physical device, function loader
-- **vulkan/core/vulkan_raii.h** - RAII wrapper types for automatic cleanup
-- **vulkan/core/queue_manager.h** - Modern queue management and transfer optimization
-- **vulkan/core/vulkan_function_loader.h** - Vulkan API function pointers
+### Core Infrastructure:
+- `vulkan/core/vulkan_context.h` - Device access and function loader
+- `vulkan/core/vulkan_raii.h` - RAII wrapper types for automatic cleanup
+- `vulkan/core/queue_manager.h` - Transfer queue optimization
+- `vulkan/core/vulkan_constants.h` - Default pool sizes and limits
 
-### External Integration Points
-- **ecs/gpu_entity_manager.h** - GPU entity buffer allocation and staging
-- **vulkan_renderer.h** - Master renderer resource context ownership
-- **vulkan/nodes/entity_graphics_node.h** - Graphics pipeline resource binding
-- **vulkan/rendering/frame_graph_resource_registry.h** - Frame graph resource registration
+### Integration Points:
+- `ecs/gpu_entity_manager.h` - Entity buffer allocation and staging
+- `vulkan_renderer.h` - Master renderer resource context ownership
+- `vulkan/nodes/entity_graphics_node.h` - Graphics pipeline binding
+- `vulkan/rendering/frame_graph_resource_registry.h` - Frame graph resource registration
 
-### Dependencies
-- **PolygonFactory.h** - Vertex/index data generation for triangle rendering
-- **GLM** - Vector/matrix math for uniform buffer data
-- **Vulkan SDK** - Core Vulkan types and validation
+## Key Notes & Gotchas
 
-## Key Architecture Notes
+### Memory Pressure Handling:
+- Automatic detection with >80% memory usage threshold
+- Recovery mechanisms include cache eviction and fragmentation mitigation
+- Critical fragmentation detection (>50% wasted space)
 
-### Modular Design Benefits
-- **Single Responsibility**: Each manager handles one specific concern
-- **Testability**: Components can be unit tested independently
-- **Maintainability**: Changes to memory allocation don't affect descriptor management
-- **Performance**: Specialized optimizations per manager type
+### Queue Optimization:
+- Dedicated transfer queues used when available for async operations
+- Graphics queue fallback ensures compatibility
+- Transfer completion tracked via QueueManager's fence system
 
-### Memory Pressure Handling
-- Automatic detection of memory pressure conditions
-- Recovery mechanisms with cache eviction
-- Integration with frame graph timeout systems
-- Fragmentation monitoring and mitigation
+### RAII Management:
+- All Vulkan objects use vulkan_raii wrappers for automatic cleanup
+- Move-only semantics prevent accidental resource duplication
+- Explicit `cleanupBeforeContextDestruction()` prevents use-after-free
 
-### Queue Optimization
-- Dedicated transfer queue utilization when available
-- Automatic fallback to graphics queue for compatibility
-- Async transfer operations with proper synchronization
-- Integration with QueueManager's telemetry system
+### Ring Buffer Edge Cases:
+- Wrap-around handling with fragmentation detection
+- Alignment requirements enforced for GPU structures
+- Memory pressure integration triggers defragmentation
 
-### RAII Resource Management
-- All Vulkan objects wrapped in vulkan_raii types
-- Automatic cleanup prevents resource leaks
-- Move-only semantics prevent accidental copies
-- Explicit cleanup order control for proper destruction
+### Descriptor Pool Limits:
+- Default pools sized for 1024 descriptor sets
+- Pool exhaustion triggers automatic recreation
+- Bindless-ready configuration available but not enabled
 
-### Update Requirements
+## Update Requirements
 This documentation must be updated if:
-- QueueManager interface changes (affects CommandExecutor)
-- vulkan_raii wrapper types change (affects ResourceHandle)
-- Memory pressure algorithms change (affects MemoryAllocator)
-- Frame graph resource lifetime management changes (affects integration)
-- Graphics pipeline descriptor layout changes (affects GraphicsResourceManager)
+- QueueManager interface changes (affects CommandExecutor async operations)
+- vulkan_raii wrapper types change (affects ResourceHandle structure)
+- Memory pressure thresholds change (affects MemoryAllocator behavior)
+- Frame graph resource lifetime changes (affects integration patterns)
+- Graphics pipeline descriptor layouts change (affects GraphicsResourceManager updates)
+- VMA implementation changes (affects MemoryAllocator allocation patterns)
