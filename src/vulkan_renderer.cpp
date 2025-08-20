@@ -183,7 +183,7 @@ bool VulkanRenderer::initialize(SDL_Window* window) {
         return false;
     }
     
-    if (!gpuEntityManager->createComputeDescriptorSets(computeDescriptorLayout)) {
+    if (!gpuEntityManager->getDescriptorManager().createComputeDescriptorSets(computeDescriptorLayout)) {
         std::cerr << "Failed to create compute descriptor sets" << std::endl;
         cleanup();
         return false;

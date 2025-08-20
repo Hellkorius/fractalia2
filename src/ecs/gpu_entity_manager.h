@@ -3,6 +3,7 @@
 #include "components/component.h"
 #include "components/entity.h"
 #include "entity_buffer_manager.h"
+#include "entity_descriptor_manager.h"
 #include <vulkan/vulkan.h>
 #include <glm/glm.hpp>
 #include <vector>
@@ -65,17 +66,9 @@ public:
     uint32_t getMaxEntities() const { return bufferManager.getMaxEntities(); }
     bool hasPendingUploads() const { return !stagingEntities.empty(); }
     
-    // Descriptor set support for frame graph
-    bool createComputeDescriptorSets(VkDescriptorSetLayout layout);
-    bool createGraphicsDescriptorSets(VkDescriptorSetLayout layout);
-    bool recreateComputeDescriptorSets(); // CRITICAL FIX: Recreate compute descriptor sets during swapchain recreation
-    VkDescriptorSet getComputeDescriptorSet() const { return computeDescriptorSet; }
-    VkDescriptorSet getGraphicsDescriptorSet() const { return graphicsDescriptorSet; }
-    
-    // Descriptor set layout creation for pipeline system integration
-    VkDescriptorSetLayout getComputeDescriptorSetLayout() const { return computeDescriptorSetLayout; }
-    VkDescriptorSetLayout getGraphicsDescriptorSetLayout() const { return graphicsDescriptorSetLayout; }
-    bool createDescriptorSetLayouts();
+    // Descriptor management delegation
+    EntityDescriptorManager& getDescriptorManager() { return descriptorManager; }
+    const EntityDescriptorManager& getDescriptorManager() const { return descriptorManager; }
 
 private:
     static constexpr uint32_t MAX_ENTITIES = 131072; // 128k entities max
@@ -85,21 +78,11 @@ private:
     VulkanSync* sync = nullptr;
     ResourceContext* resourceContext = nullptr;
     
-    // Buffer management
+    // Core components
     EntityBufferManager bufferManager;
+    EntityDescriptorManager descriptorManager;
     
     // Staging data
     std::vector<GPUEntity> stagingEntities;
     uint32_t activeEntityCount = 0;
-    
-    // Descriptor sets and layouts
-    VkDescriptorPool computeDescriptorPool = VK_NULL_HANDLE;
-    VkDescriptorPool graphicsDescriptorPool = VK_NULL_HANDLE;
-    VkDescriptorSet computeDescriptorSet = VK_NULL_HANDLE;
-    VkDescriptorSet graphicsDescriptorSet = VK_NULL_HANDLE;
-    VkDescriptorSetLayout computeDescriptorSetLayout = VK_NULL_HANDLE;
-    VkDescriptorSetLayout graphicsDescriptorSetLayout = VK_NULL_HANDLE;
-    
-    // Helper methods
-    bool createComputeDescriptorPool();
 };

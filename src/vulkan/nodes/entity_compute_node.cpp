@@ -105,7 +105,7 @@ void EntityComputeNode::execute(VkCommandBuffer commandBuffer, const FrameGraph&
     }
     
     // Set up descriptor sets
-    VkDescriptorSet computeDescriptorSet = gpuEntityManager->getComputeDescriptorSet();
+    VkDescriptorSet computeDescriptorSet = gpuEntityManager->getDescriptorManager().getComputeDescriptorSet();
     
     if (computeDescriptorSet != VK_NULL_HANDLE) {
         dispatch.descriptorSets.push_back(computeDescriptorSet);
