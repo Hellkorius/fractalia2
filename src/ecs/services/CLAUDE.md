@@ -6,7 +6,13 @@ Service-based architecture layer providing high-level game systems with dependen
 ## File/Folder Hierarchy
 ```
 src/ecs/services/
-├── camera_service.h/cpp          # Multi-camera management with transitions, viewports, culling
+├── camera/                       # Modularized camera subsystems
+│   ├── camera_culling.h/cpp      # Frustum culling and visibility testing
+│   ├── camera_manager.h/cpp      # Camera entity lifecycle management
+│   ├── camera_transforms.h/cpp   # View/projection matrix calculations
+│   ├── camera_transition_system.h/cpp # Smooth camera transitions and interpolation
+│   └── viewport_manager.h/cpp    # Split-screen viewport support
+├── camera_service.h/cpp          # Multi-camera management orchestration
 ├── input_service.h/cpp           # Action-based input system with context switching
 ├── control_service.h/cpp         # Game control logic coordination (GameControlService)
 ├── control_service_minimal.h     # Test service (TestControlService) - minimal implementation
@@ -33,10 +39,17 @@ src/ecs/services/
 
 **Key APIs:**
 - `createCamera()` → CameraID
-- `getViewProjectionMatrix()` → glm::mat4
-- `performFrustumCulling()` → vector<CullingInfo>
-- `transitionToCamera()` - smooth camera transitions
-- `createViewport()` - split-screen support
+- `getActiveCameraData()` → Camera*
+- `transitionToCamera()` - smooth camera transitions with CameraTransition
+- `handleWindowResize()` - viewport updates
+- `update()` - transition processing and matrix updates
+
+**Modular Components:**
+- **CameraManager**: Entity lifecycle, creation/removal
+- **CameraTransitionSystem**: Smooth interpolation between camera states
+- **ViewportManager**: Split-screen viewport calculations
+- **CameraCulling**: Frustum culling and visibility testing
+- **CameraTransforms**: View/projection matrix generation
 
 ### InputService
 **Inputs:**
@@ -156,8 +169,6 @@ RenderingService.processFrame()
 
 ### ECS Data:
 - `../components/component.h` - Transform, Renderable, Camera, Input components
-- `../systems/input_system.h` - InputManager integration, component management
-- `../systems/camera_system.h` - Camera component utilities
 
 ### External Subsystems:
 - `../../vulkan_renderer.h` - VulkanRenderer for GPU operations
