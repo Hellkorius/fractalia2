@@ -186,6 +186,32 @@ private:
     bool inputConsumed = false;
     float deltaTime = 0.0f;
     
+    // Window event state
+    bool hasWindowResize = false;
+    int windowResizeWidth = 0;
+    int windowResizeHeight = 0;
+    
+    // Direct input state (not ECS components)
+    struct KeyboardState {
+        static constexpr size_t MAX_KEYS = 512;
+        bool keys[MAX_KEYS] = {false};
+        bool keysPressed[MAX_KEYS] = {false};
+        bool keysReleased[MAX_KEYS] = {false};
+        bool shift = false;
+        bool ctrl = false;
+        bool alt = false;
+    } keyboardState;
+    
+    struct MouseState {
+        static constexpr size_t MAX_BUTTONS = 8;
+        bool buttons[MAX_BUTTONS] = {false};
+        bool buttonsPressed[MAX_BUTTONS] = {false};
+        bool buttonsReleased[MAX_BUTTONS] = {false};
+        glm::vec2 position{0.0f};
+        glm::vec2 delta{0.0f};
+        glm::vec2 wheelDelta{0.0f};
+    } mouseState;
+    
     // Internal methods
     void updateActionStates();
     void evaluateBinding(const InputBinding& binding, const std::string& actionName, InputActionState& state);
@@ -195,6 +221,13 @@ private:
     
     void createDefaultContexts();
     void createDefaultActions();
+    
+    // SDL event handling
+    void handleKeyboardEvent(const SDL_Event& event);
+    void handleMouseButtonEvent(const SDL_Event& event);
+    void handleMouseMotionEvent(const SDL_Event& event);
+    void handleMouseWheelEvent(const SDL_Event& event);
+    void handleWindowEvent(const SDL_Event& event);
     
     // ECS integration helpers
     KeyboardInput* getKeyboardInput() const;

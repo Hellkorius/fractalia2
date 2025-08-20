@@ -13,7 +13,6 @@
 #include "ecs/systems/lifetime_system.h"
 #include "ecs/systems/input_system.h"
 #include "ecs/systems/camera_system.h"
-#include "ecs/systems/simple_control_system.h"
 #include "ecs/movement_command_system.h"
 #include "ecs/camera_component.h"
 #include "ecs/component.h"
@@ -26,6 +25,8 @@
 #include "ecs/services/input_service.h"
 #include "ecs/services/camera_service.h"
 #include "ecs/services/rendering_service.h"
+// TESTING RENAMED CONTROL SERVICE
+#include "ecs/services/control_service.h"
 
 int main(int argc, char* argv[]) {
     constexpr int TARGET_FPS = 60;
@@ -69,37 +70,84 @@ int main(int argc, char* argv[]) {
         return -1;
     }
 
-    // Initialize service-based architecture
-    auto worldManager = ServiceLocator::instance().createAndRegister<WorldManager>();
-    auto inputService = ServiceLocator::instance().createAndRegister<InputService>();
-    auto cameraService = ServiceLocator::instance().createAndRegister<CameraService>();
-    auto renderingService = ServiceLocator::instance().createAndRegister<RenderingService>();
+    // Initialize service-based architecture with proper priorities
+    auto& serviceLocator = ServiceLocator::instance();
     
-    // Initialize services in proper order
+    auto worldManager = serviceLocator.createAndRegister<WorldManager>("WorldManager", 100);
+    auto inputService = serviceLocator.createAndRegister<InputService>("InputService", 90);
+    auto cameraService = serviceLocator.createAndRegister<CameraService>("CameraService", 80);
+    auto renderingService = serviceLocator.createAndRegister<RenderingService>("RenderingService", 70);
+    // TESTING RENAMED CONTROL SERVICE
+    auto controlService = serviceLocator.createAndRegister<GameControlService>("GameControlService", 60);
+    
+    // Initialize world manager first to get the world reference
     if (!worldManager->initialize()) {
         std::cerr << "Failed to initialize WorldManager" << std::endl;
         return -1;
     }
     
-    if (!cameraService->initialize(worldManager->getWorld())) {
-        std::cerr << "Failed to initialize CameraService" << std::endl;
-        return -1;
-    }
-    
-    if (!inputService->initialize(worldManager->getWorld(), window)) {
-        std::cerr << "Failed to initialize InputService" << std::endl;
-        return -1;
-    }
-    
-    if (!renderingService->initialize(worldManager->getWorld(), &renderer)) {
-        std::cerr << "Failed to initialize RenderingService" << std::endl;
-        return -1;
-    }
-    
-    // Get world reference for backward compatibility
+    // Create EntityFactory early as it's needed by ControlService
     flecs::world& world = worldManager->getWorld();
-    
     EntityFactory entityFactory(world);
+    
+    // Declare service dependencies
+    serviceLocator.declareDependencies<InputService, WorldManager>();
+    serviceLocator.declareDependencies<CameraService, WorldManager>();
+    serviceLocator.declareDependencies<RenderingService, WorldManager>();
+    // RESTORED WITH NEW NAME
+    serviceLocator.declareDependencies<GameControlService, WorldManager, InputService, CameraService, RenderingService>();
+    
+    // Validate service dependencies
+    if (!serviceLocator.validateDependencies()) {
+        std::cerr << "Service dependency validation failed" << std::endl;
+        return -1;
+    }
+    
+    // Initialize services in dependency order with comprehensive error handling
+    try {
+        // WorldManager already initialized above
+        serviceLocator.setServiceLifecycle<WorldManager>(ServiceLifecycle::INITIALIZED);
+        
+        serviceLocator.setServiceLifecycle<CameraService>(ServiceLifecycle::INITIALIZING);
+        if (!cameraService->initialize(worldManager->getWorld())) {
+            throw std::runtime_error("Failed to initialize CameraService");
+        }
+        serviceLocator.setServiceLifecycle<CameraService>(ServiceLifecycle::INITIALIZED);
+        
+        serviceLocator.setServiceLifecycle<InputService>(ServiceLifecycle::INITIALIZING);
+        if (!inputService->initialize(worldManager->getWorld(), window)) {
+            throw std::runtime_error("Failed to initialize InputService");
+        }
+        serviceLocator.setServiceLifecycle<InputService>(ServiceLifecycle::INITIALIZED);
+        
+        serviceLocator.setServiceLifecycle<RenderingService>(ServiceLifecycle::INITIALIZING);
+        if (!renderingService->initialize(worldManager->getWorld(), &renderer)) {
+            throw std::runtime_error("Failed to initialize RenderingService");
+        }
+        serviceLocator.setServiceLifecycle<RenderingService>(ServiceLifecycle::INITIALIZED);
+        
+        // RESTORED WITH NEW NAME
+        serviceLocator.setServiceLifecycle<GameControlService>(ServiceLifecycle::INITIALIZING);
+        if (!controlService->initialize(worldManager->getWorld(), &renderer, &entityFactory)) {
+            throw std::runtime_error("Failed to initialize GameControlService");
+        }
+        serviceLocator.setServiceLifecycle<GameControlService>(ServiceLifecycle::INITIALIZED);
+        
+        // Final service validation
+        if (!serviceLocator.initializeAllServices()) {
+            throw std::runtime_error("Service initialization validation failed");
+        }
+        
+        DEBUG_LOG("All services initialized successfully");
+        serviceLocator.printServiceStatus();
+        
+    } catch (const std::exception& e) {
+        std::cerr << "Service initialization error: " << e.what() << std::endl;
+        serviceLocator.clear();
+        return -1;
+    }
+    
+    // EntityFactory already created above for service initialization
     SystemScheduler scheduler(world);
     
     scheduler.initialize();
@@ -144,11 +192,11 @@ int main(int argc, char* argv[]) {
     gpuEntityManager->uploadPendingEntities();
     
     DEBUG_LOG("Created " << swarmEntities.size() << " GPU entities!");
+    DEBUG_LOG("Total services active: " << ServiceLocator::instance().getServiceCount());
     
     bool running = true;
-    SimpleControlSystem::initialize(world);
     
-    DEBUG_LOG("\n🚀 Simple Flecs systems ready\n");
+    DEBUG_LOG("\n🚀 Service-based architecture ready\n");
     int frameCount = 0;
     auto lastFrameTime = std::chrono::high_resolution_clock::now();
     
@@ -168,7 +216,12 @@ int main(int argc, char* argv[]) {
         
         renderer.setDeltaTime(deltaTime);
         
-        SimpleControlSystem::processControlActions(world, renderer, entityFactory);
+        // RESTORED WITH NEW NAME - DEBUG CHECK
+        if (controlService) {
+            controlService->processFrame(deltaTime);
+        } else {
+            std::cout << "ERROR: controlService is null!" << std::endl;
+        }
         
         // Handle window resize for camera aspect ratio
         int width, height;
@@ -188,18 +241,8 @@ int main(int argc, char* argv[]) {
         
         {
             PROFILE_SCOPE("Input Cleanup");
-            // Input cleanup is handled by InputService internally during processFrame
-            // This ensures proper service encapsulation
-            // Note: Frame state clearing is still needed for backward compatibility
-            auto inputEntity = world.lookup("InputManager");
-            if (inputEntity.is_valid()) {
-                auto* keyboard = inputEntity.get_mut<KeyboardInput>();
-                auto* mouse = inputEntity.get_mut<MouseInput>();
-                auto* events = inputEntity.get_mut<InputEvents>();
-                if (keyboard) keyboard->clearFrameStates();
-                if (mouse) mouse->clearFrameStates();
-                if (events) events->clear();
-            }
+            // Input cleanup is handled by services - no manual cleanup needed
+            // Service-based architecture handles frame state management internally
         }
 
         {
@@ -241,8 +284,10 @@ int main(int argc, char* argv[]) {
 
     renderer.cleanup();
     
-    // Cleanup services
+    // Cleanup services in proper order
+    DEBUG_LOG("Shutting down services...");
     ServiceLocator::instance().clear();
+    DEBUG_LOG("All services shut down successfully");
     
     SDL_DestroyWindow(window);
     SDL_Quit();

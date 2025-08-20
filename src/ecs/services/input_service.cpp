@@ -61,8 +61,7 @@ void InputService::processFrame(float deltaTime) {
     
     this->deltaTime = deltaTime;
     
-    // Process SDL events through InputManager
-    InputManager::processSDLEvents(*world);
+    // Process SDL events directly (removed legacy InputManager call)
     
     // Update action states based on current input
     updateActionStates();
@@ -85,7 +84,56 @@ void InputService::processSDLEvents() {
         return;
     }
     
-    InputManager::processSDLEvents(*world);
+    // Clear frame-based input states from previous frame (updated)
+    std::fill(keyboardState.keysPressed, keyboardState.keysPressed + KeyboardState::MAX_KEYS, false);
+    std::fill(keyboardState.keysReleased, keyboardState.keysReleased + KeyboardState::MAX_KEYS, false);
+    std::fill(mouseState.buttonsPressed, mouseState.buttonsPressed + MouseState::MAX_BUTTONS, false);
+    std::fill(mouseState.buttonsReleased, mouseState.buttonsReleased + MouseState::MAX_BUTTONS, false);
+    mouseState.delta = glm::vec2(0.0f);
+    mouseState.wheelDelta = glm::vec2(0.0f);
+    
+    // Clear window events from previous frame
+    hasWindowResize = false;
+    
+    // Process SDL events directly
+    SDL_Event event;
+    while (SDL_PollEvent(&event)) {
+        switch (event.type) {
+            case SDL_EVENT_QUIT:
+                {
+                    auto* appState = world->get_mut<ApplicationState>();
+                    if (appState) {
+                        appState->requestQuit = true;
+                    }
+                }
+                break;
+                
+            case SDL_EVENT_KEY_DOWN:
+            case SDL_EVENT_KEY_UP:
+                handleKeyboardEvent(event);
+                break;
+                
+            case SDL_EVENT_MOUSE_BUTTON_DOWN:
+            case SDL_EVENT_MOUSE_BUTTON_UP:
+                handleMouseButtonEvent(event);
+                break;
+                
+            case SDL_EVENT_MOUSE_MOTION:
+                handleMouseMotionEvent(event);
+                break;
+                
+            case SDL_EVENT_MOUSE_WHEEL:
+                handleMouseWheelEvent(event);
+                break;
+                
+            case SDL_EVENT_WINDOW_RESIZED:
+                handleWindowEvent(event);
+                break;
+                
+            default:
+                break;
+        }
+    }
 }
 
 void InputService::registerContext(const std::string& name, int priority) {
@@ -194,45 +242,64 @@ float InputService::getActionDuration(const std::string& actionName) const {
     return it != actionStates.end() ? it->second.duration : 0.0f;
 }
 
-// Raw input queries - delegate to InputQuery
+// Raw input queries - use direct input state
 bool InputService::isKeyDown(int scancode) const {
-    return initialized ? InputQuery::isKeyDown(*world, scancode) : false;
+    if (!initialized || scancode < 0 || scancode >= static_cast<int>(KeyboardState::MAX_KEYS)) {
+        return false;
+    }
+    return keyboardState.keys[scancode];
 }
 
 bool InputService::isKeyPressed(int scancode) const {
-    return initialized ? InputQuery::isKeyPressed(*world, scancode) : false;
+    if (!initialized || scancode < 0 || scancode >= static_cast<int>(KeyboardState::MAX_KEYS)) {
+        return false;
+    }
+    return keyboardState.keysPressed[scancode];
 }
 
 bool InputService::isKeyReleased(int scancode) const {
-    return initialized ? InputQuery::isKeyReleased(*world, scancode) : false;
+    if (!initialized || scancode < 0 || scancode >= static_cast<int>(KeyboardState::MAX_KEYS)) {
+        return false;
+    }
+    return keyboardState.keysReleased[scancode];
 }
 
 bool InputService::isMouseButtonDown(int button) const {
-    return initialized ? InputQuery::isMouseButtonDown(*world, button) : false;
+    if (!initialized || button < 0 || button >= static_cast<int>(MouseState::MAX_BUTTONS)) {
+        return false;
+    }
+    return mouseState.buttons[button];
 }
 
 bool InputService::isMouseButtonPressed(int button) const {
-    return initialized ? InputQuery::isMouseButtonPressed(*world, button) : false;
+    if (!initialized || button < 0 || button >= static_cast<int>(MouseState::MAX_BUTTONS)) {
+        return false;
+    }
+    return mouseState.buttonsPressed[button];
 }
 
 bool InputService::isMouseButtonReleased(int button) const {
-    return initialized ? InputQuery::isMouseButtonReleased(*world, button) : false;
+    if (!initialized || button < 0 || button >= static_cast<int>(MouseState::MAX_BUTTONS)) {
+        return false;
+    }
+    return mouseState.buttonsReleased[button];
 }
 
 glm::vec2 InputService::getMousePosition() const {
-    return initialized ? InputQuery::getMousePosition(*world) : glm::vec2(0.0f);
+    return initialized ? mouseState.position : glm::vec2(0.0f);
 }
 
 glm::vec2 InputService::getMouseWorldPosition() const {
-    return initialized ? InputQuery::getMouseWorldPosition(*world) : glm::vec2(0.0f);
+    // TODO: Convert screen position to world position using camera service
+    return initialized ? mouseState.position : glm::vec2(0.0f);
 }
 
 glm::vec2 InputService::getMouseDelta() const {
-    return initialized ? InputQuery::getMouseDelta(*world) : glm::vec2(0.0f);
+    return initialized ? mouseState.delta : glm::vec2(0.0f);
 }
 
 glm::vec2 InputService::getMouseWheelDelta() const {
-    return initialized ? InputQuery::getMouseWheelDelta(*world) : glm::vec2(0.0f);
+    return initialized ? mouseState.wheelDelta : glm::vec2(0.0f);
 }
 
 void InputService::registerActionCallback(const std::string& actionName, InputCallback callback) {
@@ -600,21 +667,70 @@ InputEvents* InputService::getInputEvents() const {
 }
 
 bool InputService::hasWindowResizeEvent(int& width, int& height) const {
-    auto* events = getInputEvents();
-    if (!events) {
-        return false;
-    }
-    
-    for (size_t i = 0; i < events->eventCount; i++) {
-        const auto& event = events->events[i];
-        if (event.type == InputEvents::Event::WINDOW_RESIZE) {
-            width = event.windowResizeEvent.width;
-            height = event.windowResizeEvent.height;
-            return true;
-        }
+    if (hasWindowResize) {
+        width = windowResizeWidth;
+        height = windowResizeHeight;
+        return true;
     }
     return false;
 }
+
+// SDL event handling implementations
+void InputService::handleKeyboardEvent(const SDL_Event& event) {
+    int scancode = event.key.scancode;
+    bool pressed = (event.type == SDL_EVENT_KEY_DOWN);
+    
+    if (scancode >= 0 && scancode < static_cast<int>(KeyboardState::MAX_KEYS)) {
+        if (pressed && !keyboardState.keys[scancode]) {
+            keyboardState.keysPressed[scancode] = true;
+            std::cout << "Key scancode " << scancode << " pressed!" << std::endl;
+        } else if (!pressed && keyboardState.keys[scancode]) {
+            keyboardState.keysReleased[scancode] = true;
+        }
+        keyboardState.keys[scancode] = pressed;
+    }
+    
+    // Update modifier states
+    keyboardState.shift = (SDL_GetModState() & (SDL_KMOD_LSHIFT | SDL_KMOD_RSHIFT)) != 0;
+    keyboardState.ctrl = (SDL_GetModState() & (SDL_KMOD_LCTRL | SDL_KMOD_RCTRL)) != 0;
+    keyboardState.alt = (SDL_GetModState() & (SDL_KMOD_LALT | SDL_KMOD_RALT)) != 0;
+}
+
+void InputService::handleMouseButtonEvent(const SDL_Event& event) {
+    int button = event.button.button - 1; // SDL uses 1-based indexing
+    bool pressed = (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN);
+    
+    if (button >= 0 && button < static_cast<int>(MouseState::MAX_BUTTONS)) {
+        if (pressed && !mouseState.buttons[button]) {
+            mouseState.buttonsPressed[button] = true;
+            std::cout << "Mouse button " << button << " pressed!" << std::endl;
+        } else if (!pressed && mouseState.buttons[button]) {
+            mouseState.buttonsReleased[button] = true;
+        }
+        mouseState.buttons[button] = pressed;
+    }
+}
+
+void InputService::handleMouseMotionEvent(const SDL_Event& event) {
+    mouseState.position.x = static_cast<float>(event.motion.x);
+    mouseState.position.y = static_cast<float>(event.motion.y);
+    mouseState.delta.x = static_cast<float>(event.motion.xrel);
+    mouseState.delta.y = static_cast<float>(event.motion.yrel);
+}
+
+void InputService::handleMouseWheelEvent(const SDL_Event& event) {
+    mouseState.wheelDelta.x = static_cast<float>(event.wheel.x);
+    mouseState.wheelDelta.y = static_cast<float>(event.wheel.y);
+}
+
+void InputService::handleWindowEvent(const SDL_Event& event) {
+    if (event.type == SDL_EVENT_WINDOW_RESIZED) {
+        hasWindowResize = true;
+        windowResizeWidth = event.window.data1;
+        windowResizeHeight = event.window.data2;
+    }
+}
+
 
 // Convenience namespace implementation
 namespace Input {
