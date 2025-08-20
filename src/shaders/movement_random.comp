@@ -102,8 +102,7 @@ void main() {
     // Extract movement parameters
     float amplitude = movementParams.x;
     float phase = movementParams.z;
-    vec2 center = runtimeState.xy;     // center position
-    float initialized = runtimeState.w; // initialized flag is now in .w
+    float initialized = runtimeState.w; // initialized flag is in .w
     
     // Mark entity as initialized if not already
     if (initialized < 0.5) {

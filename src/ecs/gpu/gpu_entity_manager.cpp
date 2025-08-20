@@ -35,11 +35,9 @@ GPUEntity GPUEntity::fromECS(const Transform& transform, const Renderable& rende
     
     entity.modelMatrix = transform.getMatrix();
     
-    // Set the center position for movement (use model matrix translation as center)
-    glm::vec3 centerPos = glm::vec3(entity.modelMatrix[3]); // Extract translation from model matrix
     entity.runtimeState = glm::vec4(
-        centerPos.x,                   // center.x 
-        centerPos.y,                   // center.y
+        0.0f,                          // totalTime (will be updated by compute shader)
+        0.0f,                          // reserved 
         stateTimerDist(rng),           // stateTimer (random staggering) - optimized RNG
         0.0f                           // initialized flag (must start as 0.0 for GPU initialization)
     );

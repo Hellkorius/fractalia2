@@ -55,24 +55,18 @@ void main() {
     vec4 velocity = entities.entityData[baseOffset];           // position 0: velocity
     vec4 runtimeState = entities.entityData[baseOffset + 2u];   // position 2: runtime state
     
-    vec2 center = runtimeState.xy;     // center position
-    float initialized = runtimeState.w; // initialized flag is now in .w
+    float initialized = runtimeState.w; // initialized flag is in .w
     
     // Extract velocity and damping
     vec2 vel = velocity.xy;
     float damping = velocity.z;
     
-    // Load or initialize current position
-    vec3 currentPosition;
+    // Load current position (should be initialized by GPU upload)
+    vec3 currentPosition = currentPos.currentPositions[entityIndex].xyz;
+    
+    // Mark as initialized if not already (GPU upload should have set position)
     if (initialized < 0.5) {
-        // Initialize new entity at center position
-        currentPosition = vec3(center, 0.0);
-        currentPos.currentPositions[entityIndex] = vec4(currentPosition, 1.0);
-        // Mark as initialized in physics (movement shader may have already done this)
         entities.entityData[baseOffset + 2u].w = 1.0;
-    } else {
-        // Load existing position
-        currentPosition = currentPos.currentPositions[entityIndex].xyz;
     }
     
     // Physics integration: position += velocity * deltaTime
