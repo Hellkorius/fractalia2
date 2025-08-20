@@ -43,12 +43,25 @@ src/
 ├── ecs/                        # ECS components, systems, and services
 │   ├── core/                   # Core service infrastructure
 │   │   ├── service_locator.*   # Service dependency injection
-│   │   └── world_manager.*     # ECS world management with modules
+│   │   ├── world_manager.*     # ECS world management with modules
+│   │   └── entity_factory.*    # Entity creation and management
 │   ├── services/               # High-level game services
 │   │   ├── input_service.*     # Advanced input with action mapping
 │   │   ├── camera_service.*    # Multi-camera with transitions
 │   │   ├── rendering_service.* # Render queue with culling/batching
 │   │   └── control_service.*   # Game control logic coordination
+│   ├── events/                 # Event system architecture
+│   │   ├── event_bus.*         # Central event dispatching
+│   │   ├── event_types.*       # Event type definitions
+│   │   └── event_listeners.*   # Event handler interfaces
+│   ├── modules/                # Flecs module implementations
+│   │   ├── movement_module.*   # Entity movement logic
+│   │   └── rendering_module.*  # Rendering integration
+│   ├── utilities/              # ECS utility functions
+│   │   ├── component_queries.* # Component query helpers
+│   │   ├── performance_tools.* # Profiling and monitoring
+│   │   ├── memory_manager.*    # Memory allocation utilities
+│   │   └── system_scheduler.*  # System execution coordination
 │   ├── gpu_entity_manager.*    # CPU→GPU bridge
 │   ├── systems/                # ECS systems (legacy, being phased out)
 │   └── components/             # Component definitions
