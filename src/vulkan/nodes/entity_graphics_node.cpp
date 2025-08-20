@@ -246,7 +246,7 @@ void EntityGraphicsNode::updateUniformBuffer() {
     } newUBO{};
 
     // Get camera matrices from service
-    auto cameraService = ServiceLocator::instance().requireService<CameraService>();
+    auto& cameraService = ServiceLocator::instance().requireService<CameraService>();
     newUBO.view = cameraService.getViewMatrix();
     newUBO.proj = cameraService.getProjectionMatrix();
     

@@ -36,9 +36,9 @@ bool GameControlService::initialize(flecs::world& world, VulkanRenderer* rendere
     // Get service dependencies from ServiceLocator
     auto& locator = ServiceLocator::instance();
     
-    inputService = locator.getService<InputService>().get();
-    cameraService = locator.getService<CameraService>().get();
-    renderingService = locator.getService<RenderingService>().get();
+    inputService = &locator.requireService<InputService>();
+    cameraService = &locator.requireService<CameraService>();
+    renderingService = &locator.requireService<RenderingService>();
     
     if (!inputService) {
         std::cerr << "ControlService: InputService not found in ServiceLocator" << std::endl;

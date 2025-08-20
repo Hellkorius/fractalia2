@@ -12,7 +12,6 @@ src/ecs/utilities/
 ├── memory_manager.h        # ECS memory statistics and reporting
 ├── performance_tools.h     # Frame timing, performance monitoring, profiling
 ├── profiler.h              # High-resolution profiling with scope-based timing
-├── system_helpers.h        # System builders, management, and service integration
 └── system_scheduler.h      # Flecs phase management and execution pipeline
 ```
 
@@ -101,24 +100,6 @@ System execution → Timing capture → Statistical analysis → Report generati
 **Data Flow:**
 Scope entry → Timer start → Code execution → Timer stop → Statistics aggregation → Report generation
 
-### system_helpers.h
-**Inputs:**
-- `flecs::world&` - ECS world for system registration
-- System names (`std::string`)
-- Phase entities from Flecs
-- Component types via templates
-- Service types via `ServiceLocator`
-- Lambda functions for system logic
-
-**Outputs:**
-- `SystemBuilder<Components...>` - Fluent system creation interface
-- `SystemManager` - System lifecycle management (enable/disable/remove)
-- `PerformanceProfiler` - System-specific timing analysis
-- `ServiceSystemBuilder<Service>` - Service-integrated system creation
-- Pre-built common systems (transform update, lifetime management, velocity integration)
-
-**Data Flow:**
-System definition → Builder configuration → Flecs registration → Phase assignment → Execution management
 
 ### system_scheduler.h
 **Inputs:**
@@ -174,7 +155,6 @@ Phase creation → System ordering → Frame execution → Global state updates 
 
 ### System Architecture Integration
 - **Phase Dependencies**: Systems must respect phase ordering: PreInput → Input → Logic → Physics → Render → PostRender
-- **Service Integration**: Use `ServiceSystemBuilder` for systems requiring service dependencies
 - **Error Handling**: System failures are logged but don't halt frame execution
 - **Profiling Integration**: Wrap expensive systems with `PROFILE_SYSTEM` macro for automatic timing
 
