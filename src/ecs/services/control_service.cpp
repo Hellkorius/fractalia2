@@ -546,24 +546,29 @@ void GameControlService::toggleWireframeMode() {
 void GameControlService::handleCameraControls() {
     if (!cameraService || !inputService) return;
     
-    const float moveSpeed = 10.0f; // units per second
+    const float baseMoveSpeed = 30.0f; // base units per second at 1.0x zoom (increased)
+    const float maxMoveSpeed = 100.0f; // cap speed when zoomed way out
     const float zoomSensitivity = 0.05f;  // zoom sensitivity per wheel tick (smoother)
+    
+    // Get current zoom level to adjust movement speed
+    float currentZoom = cameraService->getCameraZoom(cameraService->getActiveCameraID());
+    float zoomAdjustedMoveSpeed = std::min(maxMoveSpeed, baseMoveSpeed / currentZoom); // Inverse relationship with cap
     
     glm::vec3 movement(0.0f);
     float zoomDelta = 0.0f;
     
-    // Calculate movement based on input - using isActionActive for continuous movement
+    // Calculate movement based on input - zoom-adjusted for fine control when zoomed in
     if (inputService->isActionActive("camera_move_forward")) {
-        movement.y += moveSpeed * deltaTime;
+        movement.y += zoomAdjustedMoveSpeed * deltaTime;
     }
     if (inputService->isActionActive("camera_move_backward")) {
-        movement.y -= moveSpeed * deltaTime;
+        movement.y -= zoomAdjustedMoveSpeed * deltaTime;
     }
     if (inputService->isActionActive("camera_move_left")) {
-        movement.x -= moveSpeed * deltaTime;
+        movement.x -= zoomAdjustedMoveSpeed * deltaTime;
     }
     if (inputService->isActionActive("camera_move_right")) {
-        movement.x += moveSpeed * deltaTime;
+        movement.x += zoomAdjustedMoveSpeed * deltaTime;
     }
     
     // Calculate zoom from mouse wheel (positive = zoom in, negative = zoom out)
