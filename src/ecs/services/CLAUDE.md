@@ -51,28 +51,40 @@ src/ecs/services/
 - **CameraCulling**: Frustum culling and visibility testing
 - **CameraTransforms**: View/projection matrix generation
 
-### InputService
+### InputService (Modularized)
+**Architecture:** Orchestrates five specialized input modules for clean separation of concerns
+
 **Inputs:**
-- `flecs::world&` - ECS world for input entity management
+- `flecs::world&` - ECS world for input entity management  
 - `SDL_Window*` - SDL window for event processing
-- SDL events (keyboard, mouse, window events)
-- Delta time for input state duration tracking
-- Input configuration files (JSON/custom format)
+- Delta time for frame-coherent processing
 
 **Outputs:**
-- Input entity with KeyboardInput/MouseInput/InputState components
-- Action state mappings (digital/analog values)
-- Context-switched input bindings
-- Raw input state arrays (keys, mouse buttons)
-- Input callbacks and event notifications
-- Window event state (resize, quit requests)
+- Complete input system functionality via modular delegation
+- Action state mappings and raw input queries
+- ECS component synchronization
+- Configuration management
 
 **Key APIs:**
-- `processSDLEvents()` - consumes SDL event queue
-- `isActionActive()`, `isActionJustPressed()` → bool
-- `getActionAnalog1D/2D()` → float/glm::vec2
-- `setContextActive()` - switches input context
-- `getMouseWorldPosition()` → glm::vec2
+- `processFrame()` - coordinates all input modules per frame
+- `processSDLEvents()` - delegates to InputEventProcessor
+- All public APIs delegate to appropriate specialized modules
+
+**Modular Components:**
+- **InputEventProcessor** - SDL event handling, raw input state
+- **InputActionSystem** - Action binding, mapping, callbacks  
+- **InputContextManager** - Context switching, priority, stack management
+- **InputConfigManager** - Configuration loading/saving, defaults
+- **InputECSBridge** - ECS component synchronization
+
+**Integration Pattern:**
+```cpp
+// Frame processing flow
+InputService::processFrame() 
+  → InputActionSystem::updateActionStates()
+  → InputActionSystem::executeCallbacks() 
+  → InputECSBridge::synchronizeToECSComponents()
+```
 
 ### GameControlService (control_service.h/cpp)
 **Inputs:**
