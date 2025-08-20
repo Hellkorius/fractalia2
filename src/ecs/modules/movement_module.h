@@ -1,7 +1,7 @@
 #pragma once
 
 #include "../core/world_manager.h"
-#include "../gpu_entity_manager.h"
+#include "../gpu/gpu_entity_manager.h"
 #include "../components/component.h"
 #include <flecs.h>
 #include <memory>

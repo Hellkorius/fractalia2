@@ -1,11 +1,11 @@
 #include "entity_buffer_manager.h"
-#include "../vulkan/core/vulkan_context.h"
-#include "../vulkan/resources/resource_context.h"
-#include "../vulkan/resources/resource_handle.h"
-#include "../vulkan/core/vulkan_raii.h"
-#include "../vulkan/core/vulkan_function_loader.h"
-#include "../vulkan/core/vulkan_utils.h"
-#include "components/component.h"
+#include "../../vulkan/core/vulkan_context.h"
+#include "../../vulkan/resources/resource_context.h"
+#include "../../vulkan/resources/resource_handle.h"
+#include "../../vulkan/core/vulkan_raii.h"
+#include "../../vulkan/core/vulkan_function_loader.h"
+#include "../../vulkan/core/vulkan_utils.h"
+#include "../components/component.h"
 #include "gpu_entity_manager.h"  // For GPUEntity definition
 #include <iostream>
 #include <cstring>

@@ -2,7 +2,7 @@
 #include "../pipelines/graphics_pipeline_manager.h"
 #include "../core/vulkan_swapchain.h"
 #include "../resources/resource_context.h"
-#include "../../ecs/gpu_entity_manager.h"
+#include "../../ecs/gpu/gpu_entity_manager.h"
 #include "../core/vulkan_context.h"
 #include "../core/vulkan_function_loader.h"
 #include "../../ecs/components/camera_component.h"

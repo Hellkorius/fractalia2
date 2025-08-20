@@ -15,7 +15,7 @@
 #include "ecs/components/camera_component.h"
 #include "ecs/components/component.h"
 #include "ecs/utilities/profiler.h"
-#include "ecs/gpu_entity_manager.h"
+#include "ecs/gpu/gpu_entity_manager.h"
 
 // New service-based architecture includes
 #include "ecs/core/world_manager.h"

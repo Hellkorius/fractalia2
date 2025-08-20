@@ -1,6 +1,6 @@
 #include "entity_compute_node.h"
 #include "../pipelines/compute_pipeline_manager.h"
-#include "../../ecs/gpu_entity_manager.h"
+#include "../../ecs/gpu/gpu_entity_manager.h"
 #include "../core/vulkan_context.h"
 #include "../core/vulkan_function_loader.h"
 #include "../core/vulkan_constants.h"

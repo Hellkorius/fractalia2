@@ -8,7 +8,7 @@
 #include "../nodes/entity_compute_node.h"
 #include "../nodes/entity_graphics_node.h"
 #include "../nodes/swapchain_present_node.h"
-#include "../../ecs/gpu_entity_manager.h"
+#include "../../ecs/gpu/gpu_entity_manager.h"
 #include <iostream>
 
 RenderFrameDirector::RenderFrameDirector() {

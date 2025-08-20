@@ -1,7 +1,7 @@
 #include "rendering_service.h"
 #include "camera_service.h"
 #include "../core/service_locator.h"
-#include "../gpu_entity_manager.h"
+#include "../gpu/gpu_entity_manager.h"
 #include "../../vulkan_renderer.h"
 #include <iostream>
 #include <algorithm>

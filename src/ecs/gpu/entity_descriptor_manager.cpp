@@ -1,7 +1,7 @@
 #include "entity_descriptor_manager.h"
 #include "entity_buffer_manager.h"
-#include "../vulkan/core/vulkan_context.h"
-#include "../vulkan/core/vulkan_function_loader.h"
+#include "../../vulkan/core/vulkan_context.h"
+#include "../../vulkan/core/vulkan_function_loader.h"
 #include <iostream>
 #include <array>
 

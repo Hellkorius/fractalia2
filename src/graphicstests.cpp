@@ -1,6 +1,6 @@
 #include "graphicstests.h"
 #include "vulkan_renderer.h"
-#include "ecs/gpu_entity_manager.h"
+#include "ecs/gpu/gpu_entity_manager.h"
 #include <iostream>
 
 namespace GraphicsTests {

@@ -4,7 +4,7 @@
 #include "rendering_service.h"
 #include "../../vulkan_renderer.h"
 #include "../core/entity_factory.h"
-#include "../gpu_entity_manager.h"
+#include "../gpu/gpu_entity_manager.h"
 #include "../utilities/debug.h"
 #include "../utilities/profiler.h"
 #include <iostream>

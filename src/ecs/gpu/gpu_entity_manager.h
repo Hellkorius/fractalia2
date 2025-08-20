@@ -1,7 +1,7 @@
 #pragma once
 
-#include "components/component.h"
-#include "components/entity.h"
+#include "../components/component.h"
+#include "../components/entity.h"
 #include "entity_buffer_manager.h"
 #include "entity_descriptor_manager.h"
 #include <vulkan/vulkan.h>

@@ -9,5 +9,5 @@
 #include "../utilities/debug.h"
 #include "../../vulkan_renderer.h"
 #include "../core/entity_factory.h"
-#include "../gpu_entity_manager.h"
+#include "../gpu/gpu_entity_manager.h"
 #include "../utilities/profiler.h"
