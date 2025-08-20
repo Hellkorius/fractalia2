@@ -22,7 +22,7 @@
 #include "ecs/systems/camera_system.h"
 #include "ecs/camera_component.h"
 #include "ecs/movement_command_system.h"
-#include "ecs/systems/simple_control_system.h"
+// Removed legacy simple control system include - using service-based architecture
 #include <iostream>
 #include <array>
 #include <chrono>

@@ -127,12 +127,16 @@ void GameControlService::handleInput() {
         std::cout << "GameControlService: create_entity action triggered!" << std::endl;
         controlState.entityCreationPos = inputService->getMouseWorldPosition();
         executeAction("create_entity");
+    } else if (inputService->isActionActive("create_entity")) {
+        std::cout << "GameControlService: create_entity is active but not just pressed" << std::endl;
     }
     
-    // Swarm creation
+    // Swarm creation  
     if (inputService->isActionJustPressed("create_swarm")) {
         std::cout << "GameControlService: create_swarm action triggered!" << std::endl;
         executeAction("create_swarm");
+    } else if (inputService->isActionActive("create_swarm")) {
+        std::cout << "GameControlService: create_swarm is active but not just pressed" << std::endl;
     }
     
     // Performance stats
@@ -158,6 +162,9 @@ void GameControlService::handleInput() {
     if (inputService->isActionJustPressed("camera_focus")) {
         executeAction("camera_focus");
     }
+    
+    // Handle continuous camera movement (analog actions)
+    handleCameraControls();
 }
 
 void GameControlService::executeActions() {
@@ -270,6 +277,7 @@ bool GameControlService::checkActionCooldown(const std::string& actionName) cons
 
 void GameControlService::executePendingRequests() {
     if (controlState.requestEntityCreation) {
+        std::cout << "GameControlService::executePendingRequests() - Creating entity at (" << controlState.entityCreationPos.x << ", " << controlState.entityCreationPos.y << ")" << std::endl;
         createEntity(controlState.entityCreationPos);
     }
     
@@ -341,6 +349,42 @@ void GameControlService::integrateWithInputService() {
         "Focus camera on entities",
         {InputBinding(InputBinding::InputType::KEYBOARD_KEY, SDL_SCANCODE_F)}
     });
+    
+    // WASD camera movement controls - using DIGITAL for keyboard keys
+    inputService->registerAction({
+        "camera_move_forward",
+        InputActionType::DIGITAL,
+        "Move camera forward",
+        {InputBinding(InputBinding::InputType::KEYBOARD_KEY, SDL_SCANCODE_W)}
+    });
+    
+    inputService->registerAction({
+        "camera_move_backward",
+        InputActionType::DIGITAL,
+        "Move camera backward",
+        {InputBinding(InputBinding::InputType::KEYBOARD_KEY, SDL_SCANCODE_S)}
+    });
+    
+    inputService->registerAction({
+        "camera_move_left",
+        InputActionType::DIGITAL,
+        "Move camera left",
+        {InputBinding(InputBinding::InputType::KEYBOARD_KEY, SDL_SCANCODE_A)}
+    });
+    
+    inputService->registerAction({
+        "camera_move_right",
+        InputActionType::DIGITAL,
+        "Move camera right",
+        {InputBinding(InputBinding::InputType::KEYBOARD_KEY, SDL_SCANCODE_D)}
+    });
+    
+    inputService->registerAction({
+        "camera_zoom",
+        InputActionType::ANALOG_1D,
+        "Zoom camera with mouse wheel",
+        {InputBinding(InputBinding::InputType::MOUSE_WHEEL_Y, 0)}
+    });
 }
 
 void GameControlService::integrateWithCameraService() {
@@ -363,6 +407,7 @@ void GameControlService::actionToggleMovement() {
 }
 
 void GameControlService::actionCreateEntity() {
+    std::cout << "GameControlService::actionCreateEntity() - Setting request flag" << std::endl;
     controlState.requestEntityCreation = true;
 }
 
@@ -397,15 +442,28 @@ void GameControlService::toggleMovementType() {
 }
 
 void GameControlService::createEntity(const glm::vec2& position) {
-    if (!entityFactory || !renderer) return;
+    std::cout << "GameControlService::createEntity() - Called with position (" << position.x << ", " << position.y << ")" << std::endl;
+    
+    if (!entityFactory) {
+        std::cout << "ERROR: entityFactory is null!" << std::endl;
+        return;
+    }
+    if (!renderer) {
+        std::cout << "ERROR: renderer is null!" << std::endl;
+        return;
+    }
     
     glm::vec3 pos3d(position.x, position.y, 0.0f);
     auto entities = entityFactory->createSwarm(1, pos3d, 0.1f);
+    std::cout << "Created " << entities.size() << " entities from EntityFactory" << std::endl;
     
     auto* gpuEntityManager = renderer->getGPUEntityManager();
     if (gpuEntityManager) {
         gpuEntityManager->addEntitiesFromECS(entities);
         gpuEntityManager->uploadPendingEntities();
+        std::cout << "Added entities to GPU manager and uploaded" << std::endl;
+    } else {
+        std::cout << "ERROR: gpuEntityManager is null!" << std::endl;
     }
     
     DEBUG_LOG("Created entity at (" << position.x << ", " << position.y << ")");
@@ -483,6 +541,56 @@ void GameControlService::toggleWireframeMode() {
     }
     
     DEBUG_LOG("Wireframe mode: " << (controlState.wireframeMode ? "ON" : "OFF"));
+}
+
+void GameControlService::handleCameraControls() {
+    if (!cameraService || !inputService) return;
+    
+    const float moveSpeed = 10.0f; // units per second
+    const float zoomSensitivity = 0.05f;  // zoom sensitivity per wheel tick (smoother)
+    
+    glm::vec3 movement(0.0f);
+    float zoomDelta = 0.0f;
+    
+    // Calculate movement based on input - using isActionActive for continuous movement
+    if (inputService->isActionActive("camera_move_forward")) {
+        movement.y += moveSpeed * deltaTime;
+    }
+    if (inputService->isActionActive("camera_move_backward")) {
+        movement.y -= moveSpeed * deltaTime;
+    }
+    if (inputService->isActionActive("camera_move_left")) {
+        movement.x -= moveSpeed * deltaTime;
+    }
+    if (inputService->isActionActive("camera_move_right")) {
+        movement.x += moveSpeed * deltaTime;
+    }
+    
+    // Calculate zoom from mouse wheel (positive = zoom in, negative = zoom out)
+    float wheelDelta = inputService->getActionAnalog1D("camera_zoom");
+    if (std::abs(wheelDelta) > 0.01f) {
+        std::cout << "Wheel delta: " << wheelDelta << std::endl;
+        zoomDelta = wheelDelta * zoomSensitivity; // Much smaller sensitivity for fine control
+    }
+    
+    // Apply movement if any
+    if (movement.x != 0.0f || movement.y != 0.0f || movement.z != 0.0f) {
+        glm::vec3 currentPos = cameraService->getCameraPosition(cameraService->getActiveCameraID());
+        cameraService->setCameraPosition(cameraService->getActiveCameraID(), currentPos + movement);
+    }
+    
+    // Apply zoom if any
+    if (zoomDelta != 0.0f) {
+        float currentZoom = cameraService->getCameraZoom(cameraService->getActiveCameraID());
+        
+        // Use exponential zoom for smoother feel (like most applications)
+        // Positive delta = zoom in (multiply by >1), negative = zoom out (multiply by <1)
+        float zoomMultiplier = std::pow(1.1f, zoomDelta * 10.0f); // 1.1^(delta*10) for smooth exponential scaling
+        float newZoom = std::max(0.05f, std::min(20.0f, currentZoom * zoomMultiplier)); // Wider range: 0.05x to 20x
+        
+        std::cout << "Zoom: " << currentZoom << " -> " << newZoom << " (multiplier: " << zoomMultiplier << ")" << std::endl;
+        cameraService->setCameraZoom(cameraService->getActiveCameraID(), newZoom);
+    }
 }
 
 void GameControlService::resetCamera() {

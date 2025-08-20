@@ -11,7 +11,7 @@
 #include "ecs/entity_factory.h"
 #include "ecs/system_scheduler.h"
 #include "ecs/systems/lifetime_system.h"
-#include "ecs/systems/input_system.h"
+// Removed legacy input system include - using service-based architecture
 #include "ecs/systems/camera_system.h"
 #include "ecs/movement_command_system.h"
 #include "ecs/camera_component.h"
@@ -154,12 +154,12 @@ int main(int argc, char* argv[]) {
     
     // Direct Flecs system registration with phases
     
-    // Camera systems - registered with input phase for proper ordering
-    world.system<Camera>("CameraControlSystem")
-        .each([](flecs::entity e, Camera& camera) {
-            camera_control_system(e, camera, e.world().delta_time());
-        })
-        .child_of(scheduler.getInputPhase());
+    // Camera systems - disabled legacy system, using service-based architecture
+    // world.system<Camera>("CameraControlSystem")
+    //     .each([](flecs::entity e, Camera& camera) {
+    //         camera_control_system(e, camera, e.world().delta_time());
+    //     })
+    //     .child_of(scheduler.getInputPhase());
     
     world.system<Camera>("CameraMatrixSystem")
         .each(camera_matrix_system)
@@ -208,6 +208,8 @@ int main(int argc, char* argv[]) {
         deltaTime = std::min(deltaTime, 1.0f / 30.0f);
         
         inputService->processSDLEvents();
+        // Frame cleanup for input (clear justPressed flags, etc.)
+        inputService->processFrame(deltaTime);
         
         auto* appState = world.get<ApplicationState>();
         if (appState && (appState->requestQuit || !appState->running)) {

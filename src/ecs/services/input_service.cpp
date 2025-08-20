@@ -134,6 +134,8 @@ void InputService::processSDLEvents() {
                 break;
         }
     }
+    
+    // Action states will be updated in processFrame() - don't double-update
 }
 
 void InputService::registerContext(const std::string& name, int priority) {
@@ -265,24 +267,24 @@ bool InputService::isKeyReleased(int scancode) const {
 }
 
 bool InputService::isMouseButtonDown(int button) const {
-    if (!initialized || button < 0 || button >= static_cast<int>(MouseState::MAX_BUTTONS)) {
+    if (!initialized || button <= 0 || (button - 1) >= static_cast<int>(MouseState::MAX_BUTTONS)) {
         return false;
     }
-    return mouseState.buttons[button];
+    return mouseState.buttons[button - 1]; // Convert SDL 1-based to 0-based array index
 }
 
 bool InputService::isMouseButtonPressed(int button) const {
-    if (!initialized || button < 0 || button >= static_cast<int>(MouseState::MAX_BUTTONS)) {
+    if (!initialized || button <= 0 || (button - 1) >= static_cast<int>(MouseState::MAX_BUTTONS)) {
         return false;
     }
-    return mouseState.buttonsPressed[button];
+    return mouseState.buttonsPressed[button - 1]; // Convert SDL 1-based to 0-based array index
 }
 
 bool InputService::isMouseButtonReleased(int button) const {
-    if (!initialized || button < 0 || button >= static_cast<int>(MouseState::MAX_BUTTONS)) {
+    if (!initialized || button <= 0 || (button - 1) >= static_cast<int>(MouseState::MAX_BUTTONS)) {
         return false;
     }
-    return mouseState.buttonsReleased[button];
+    return mouseState.buttonsReleased[button - 1]; // Convert SDL 1-based to 0-based array index
 }
 
 glm::vec2 InputService::getMousePosition() const {
@@ -397,12 +399,14 @@ void InputService::printInputState() const {
 }
 
 // Private methods
+
 void InputService::updateActionStates() {
     if (!initialized) {
         return;
     }
     
-    // Clear frame-based states
+    // Clear frame-based states (justPressed/justReleased flags are cleared here)
+    // Note: digitalValue states are updated immediately in event handlers for tight response
     for (auto& [actionName, state] : actionStates) {
         state.justPressed = false;
         state.justReleased = false;
@@ -540,14 +544,10 @@ bool InputService::checkModifiers(const InputBinding& binding) const {
         return false;
     }
     
-    const auto* keyboard = getKeyboardInput();
-    if (!keyboard) {
-        return false;
-    }
-    
-    if (binding.requiresShift && !keyboard->shift) return false;
-    if (binding.requiresCtrl && !keyboard->ctrl) return false;
-    if (binding.requiresAlt && !keyboard->alt) return false;
+    // Use direct input state instead of ECS components
+    if (binding.requiresShift && !keyboardState.shift) return false;
+    if (binding.requiresCtrl && !keyboardState.ctrl) return false;
+    if (binding.requiresAlt && !keyboardState.alt) return false;
     
     return true;
 }
@@ -683,7 +683,7 @@ void InputService::handleKeyboardEvent(const SDL_Event& event) {
     if (scancode >= 0 && scancode < static_cast<int>(KeyboardState::MAX_KEYS)) {
         if (pressed && !keyboardState.keys[scancode]) {
             keyboardState.keysPressed[scancode] = true;
-            std::cout << "Key scancode " << scancode << " pressed!" << std::endl;
+            std::cout << "Key scancode " << scancode << " pressed! (SDL_SCANCODE_EQUALS=" << SDL_SCANCODE_EQUALS << ")" << std::endl;
         } else if (!pressed && keyboardState.keys[scancode]) {
             keyboardState.keysReleased[scancode] = true;
         }
@@ -697,13 +697,13 @@ void InputService::handleKeyboardEvent(const SDL_Event& event) {
 }
 
 void InputService::handleMouseButtonEvent(const SDL_Event& event) {
-    int button = event.button.button - 1; // SDL uses 1-based indexing
+    int button = event.button.button - 1; // SDL uses 1-based indexing, convert to 0-based for array
     bool pressed = (event.type == SDL_EVENT_MOUSE_BUTTON_DOWN);
     
     if (button >= 0 && button < static_cast<int>(MouseState::MAX_BUTTONS)) {
         if (pressed && !mouseState.buttons[button]) {
             mouseState.buttonsPressed[button] = true;
-            std::cout << "Mouse button " << button << " pressed!" << std::endl;
+            std::cout << "Mouse button " << (button + 1) << " (SDL_BUTTON_" << (button + 1) << ") pressed!" << std::endl;
         } else if (!pressed && mouseState.buttons[button]) {
             mouseState.buttonsReleased[button] = true;
         }
