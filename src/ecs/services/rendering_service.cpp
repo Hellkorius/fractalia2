@@ -688,80 +688,18 @@ void RenderingService::flushPendingOperations() {
 // ============================================================================
 
 void RenderingService::setupRenderingPhases() {
-    if (!world) {
-        throw std::runtime_error("World not initialized");
-    }
-    
-    // Create render preparation phase that runs after movement
-    auto renderPreparePhase = world->entity("RenderPreparePhase")
-        .add(flecs::Phase)
-        .depends_on(flecs::OnUpdate);
-        
-    // Create culling phase that runs after render preparation
-    auto cullPhase = world->entity("CullPhase")
-        .add(flecs::Phase)
-        .depends_on(renderPreparePhase);
-        
-    // Create LOD phase that runs after culling
-    auto lodPhase = world->entity("LODPhase")
-        .add(flecs::Phase)
-        .depends_on(cullPhase);
-        
-    // Create GPU sync phase that runs last
-    world->entity("GPUSyncPhase")
-        .add(flecs::Phase)
-        .depends_on(lodPhase);
+    // GPU-DRIVEN PIPELINE: Rendering phases removed for performance
+    // All entity processing handled by GPU compute shaders, no CPU-side phases needed
 }
 
 void RenderingService::registerRenderingSystems() {
-    if (!world) {
-        throw std::runtime_error("World not initialized");
-    }
-    
-    auto renderPreparePhase = world->entity("RenderPreparePhase");
-    auto cullPhase = world->entity("CullPhase");
-    auto lodPhase = world->entity("LODPhase");
-    auto gpuSyncPhase = world->entity("GPUSyncPhase");
-    
-    // Register render preparation system
-    renderPrepareSystem_ = world->system<Transform, Renderable>()
-        .kind(renderPreparePhase)
-        .each(renderPrepareSystemCallback);
-        
-    // Register culling system
-    cullSystem_ = world->system<Transform, Renderable, CullingData>()
-        .kind(cullPhase)
-        .each(cullSystemCallback);
-        
-    // Register LOD system
-    lodSystem_ = world->system<Transform, Renderable, LODData>()
-        .kind(lodPhase)
-        .each(lodSystemCallback);
-        
-    // Register GPU synchronization system
-    gpuSyncSystem_ = world->system<Transform, Renderable>()
-        .kind(gpuSyncPhase)
-        .each(gpuSyncSystemCallback);
-        
-    if (!renderPrepareSystem_.is_valid() || !cullSystem_.is_valid() || 
-        !lodSystem_.is_valid() || !gpuSyncSystem_.is_valid()) {
-        throw std::runtime_error("Failed to register rendering systems");
-    }
+    // GPU-DRIVEN PIPELINE: CPU-side ECS systems removed for performance
+    // All entity processing (transforms, culling, LOD) handled by GPU compute shaders
+    // This eliminates 320k function calls per frame (4 systems × 80k entities)
 }
 
 void RenderingService::cleanupSystems() {
-    if (renderPrepareSystem_.is_valid()) {
-        renderPrepareSystem_.destruct();
-    }
-    if (cullSystem_.is_valid()) {
-        cullSystem_.destruct();
-    }
-    if (lodSystem_.is_valid()) {
-        lodSystem_.destruct();
-    }
-    if (gpuSyncSystem_.is_valid()) {
-        gpuSyncSystem_.destruct();
-    }
+    // GPU-DRIVEN PIPELINE: No CPU-side ECS systems to clean up
 }
 
 // beginFrame() and endFrame() already implemented above
@@ -780,48 +718,9 @@ void RenderingService::setCameraEntity(flecs::entity cameraEntity) {
 }
 
 // ECS System Callbacks
-void RenderingService::renderPrepareSystemCallback(flecs::entity e, Transform& transform, Renderable& renderable) {
-    // Update model matrix
-    glm::mat4 translationMatrix = glm::translate(glm::mat4(1.0f), transform.position);
-    glm::mat4 rotationMatrix = glm::mat4_cast(transform.rotation);
-    glm::mat4 scaleMatrix = glm::scale(glm::mat4(1.0f), transform.scale);
-    
-    renderable.modelMatrix = translationMatrix * rotationMatrix * scaleMatrix;
-    
-    // Mark as dirty for GPU sync
-    renderable.dirty = true;
-}
-
-void RenderingService::cullSystemCallback(flecs::entity e, Transform& transform, Renderable& renderable, CullingData& cullingData) {
-    // In a full implementation, this would perform frustum culling
-    // For now, we'll just mark everything as visible
-    cullingData.visible = true;
-    cullingData.distance = glm::length(transform.position);
-}
-
-void RenderingService::lodSystemCallback(flecs::entity e, Transform& transform, Renderable& renderable, LODData& lodData) {
-    // Simple LOD calculation based on distance
-    float distance = glm::length(transform.position);
-    
-    if (distance < 50.0f) {
-        lodData.level = 0; // High detail
-    } else if (distance < 150.0f) {
-        lodData.level = 1; // Medium detail
-    } else {
-        lodData.level = 2; // Low detail
-    }
-    
-    lodData.distance = distance;
-}
-
-void RenderingService::gpuSyncSystemCallback(flecs::entity e, Transform& transform, Renderable& renderable) {
-    // This system marks entities that need GPU synchronization
-    // The actual sync happens in the service's synchronizeWithGPU method
-    if (renderable.dirty) {
-        // Mark for GPU sync (this would typically add to a sync queue)
-        renderable.dirty = false;
-    }
-}
+// GPU-DRIVEN PIPELINE: System callbacks removed
+// All entity processing (transforms, culling, LOD, sync) handled by GPU compute shaders
+// This eliminates 19.2 million function calls per second (320k calls/frame × 60 FPS)
 
 // Helper Methods
 bool RenderingService::isEntityVisibleInFrustum(const Transform& transform, const Renderable& renderable, 

@@ -268,11 +268,7 @@ private:
     bool wireframeMode = false;
     bool multithreadingEnabled = false;
     
-    // ECS system entities
-    flecs::entity renderPrepareSystem_;
-    flecs::entity cullSystem_;
-    flecs::entity lodSystem_;
-    flecs::entity gpuSyncSystem_;
+    // GPU-DRIVEN PIPELINE: ECS system entities removed for performance
     
     // Render state
     RenderState renderState_;
@@ -326,11 +322,7 @@ private:
     void renderDebugLOD();
     void renderDebugCulling();
     
-    // ECS system callbacks
-    static void renderPrepareSystemCallback(flecs::entity e, Transform& transform, Renderable& renderable);
-    static void cullSystemCallback(flecs::entity e, Transform& transform, Renderable& renderable, CullingData& cullingData);
-    static void lodSystemCallback(flecs::entity e, Transform& transform, Renderable& renderable, LODData& lodData);
-    static void gpuSyncSystemCallback(flecs::entity e, Transform& transform, Renderable& renderable);
+    // GPU-DRIVEN PIPELINE: ECS system callbacks removed for performance
     
     // Helper methods
     bool isEntityVisibleInFrustum(const Transform& transform, const Renderable& renderable, 
