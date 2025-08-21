@@ -3,18 +3,19 @@
 #include "systems_common.h"
 
 /**
- * @brief Movement systems for entity movement patterns and physics
+ * @brief Movement system infrastructure for ECS phases and statistics
  * 
- * Provides functions to register movement-related systems with Flecs world:
- * - Movement pattern updates (random walk)
- * - Physics integration (velocity application)
- * - Movement synchronization
+ * Provides functions to register movement-related infrastructure with Flecs world:
+ * - ECS execution phases (Movement, Physics, Sync)
+ * - Statistics tracking for movement components
+ * 
+ * Note: Actual movement computation is handled by GPU compute shaders.
  */
 namespace MovementSystem {
     /**
-     * @brief Register all movement systems with the Flecs world
+     * @brief Register movement infrastructure with the Flecs world
      * @param world The Flecs world instance
-     * @param gpuManager Optional GPU entity manager for synchronization
+     * @param gpuManager Unused parameter (kept for API compatibility)
      */
     void registerSystems(flecs::world& world, GPUEntityManager* gpuManager = nullptr);
     
@@ -31,7 +32,7 @@ namespace MovementSystem {
     void setupStatsObservers(flecs::world& world);
     
     /**
-     * @brief Reset all movement patterns to initial state
+     * @brief Reset movement pattern timing to initial state
      * @param world The Flecs world instance
      */
     void resetAllMovementPatterns(flecs::world& world);

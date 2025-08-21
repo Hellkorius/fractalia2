@@ -6,8 +6,8 @@ namespace MovementSystem {
     // Stats tracking
     static MovementStats stats_;
     
-    // CPU movement system functions removed - movement is GPU-driven via compute shaders
-    // GPU reads GPUEntity data and calculates positions directly
+    // Movement computation is handled by GPU compute shaders
+    // This file only provides ECS phases and statistics tracking
     
     void setupMovementPhases(flecs::world& world) {
         // Create movement update phase that runs after input but before rendering
@@ -57,23 +57,11 @@ namespace MovementSystem {
         // Reset stats on registration
         resetStats();
         
-        // Setup phases first (still needed for potential future systems)
+        // Setup ECS execution phases for component organization
         setupMovementPhases(world);
         
-        // CPU movement systems DISABLED - movement is handled on GPU via compute shaders
-        // The GPU compute shader reads GPUEntity data and updates positions directly
-        // CPU-side Transform components are only used for initial setup
-        
-        // NOTE: If you need to re-enable CPU movement for debugging:
-        // world.system<Transform, MovementPattern>("MovementPatternSystem")
-        //     .kind(movementPhase)
-        //     .each(movementPatternUpdateSystem);
-        // world.system<Transform, Velocity>("PhysicsSystem")  
-        //     .kind(physicsPhase)
-        //     .each(physicsUpdateSystem);
-        // world.system<Transform, Renderable, MovementPattern>("MovementSyncSystem")
-        //     .kind(movementSyncPhase)
-        //     .each(movementSyncSystem);
+        // Movement computation is handled by GPU compute shaders
+        // CPU-side Transform components are only used for initial entity setup
             
         // Register efficient stats tracking system using observers
         setupStatsObservers(world);

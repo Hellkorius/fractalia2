@@ -1,139 +1,113 @@
 # Vulkan Core Infrastructure
 
-**Purpose**: Foundational Vulkan infrastructure providing device management, function loading, queue abstraction, RAII resource management, and utilities for the Fractalia2 engine.
+**Purpose**: Foundation layer providing device management, function loading, queue abstraction, RAII resource management, and utilities for all Vulkan operations in Fractalia2.
 
-## File/Folder Hierarchy
+## Architecture Overview
 
 ```
-vulkan/core/
-├── vulkan_constants.h          # System constants and limits
-├── vulkan_function_loader.*    # Vulkan API function pointer management
-├── vulkan_context.*            # Instance, device, and queue family detection
-├── queue_manager.*             # Centralized queue and command pool abstraction
-├── vulkan_manager_base.h       # Base class with cached function access
-├── vulkan_raii.*               # RAII wrappers for automatic resource cleanup
-├── vulkan_utils.*              # Utility functions for common Vulkan operations
-├── vulkan_sync.*               # Synchronization object management
-├── vulkan_swapchain.*          # Swapchain and framebuffer management
-└── QUEUE_SYSTEM_OVERVIEW.md    # Queue system implementation documentation
+VulkanFunctionLoader → VulkanContext → QueueManager → VulkanSync/VulkanSwapchain
+         ↓                ↓              ↓
+    All API calls    Device/Queues   Command Buffers
 ```
 
-## Inputs & Outputs (by component)
+**Core Pattern**: Progressive initialization with dependency injection through VulkanContext.
 
-### vulkan_constants.h
-- **Input**: None (compile-time constants)
-- **Output**: `MAX_FRAMES_IN_FLIGHT=2`, timeout constants, GPU entity size, cache limits, memory thresholds
-- **Usage**: System-wide constants for buffer sizing, timeouts, and configuration
+## Key Components
 
-### vulkan_function_loader.*
-- **Input**: SDL_Window*, VkInstance, VkDevice, VkPhysicalDevice
-- **Output**: Loaded Vulkan function pointers organized by loading phase
-- **API Surface**: `initialize()`, `setInstance()`, `setDevice()`, `loadPostInstanceFunctions()`, `loadPostDeviceFunctions()`
-- **Function Groups**: Instance management, device operations, memory, pipelines, synchronization, commands
-- **Loading Phases**: pre-instance → post-instance → post-device
+### VulkanContext - Central Hub
+- **Role**: Master coordinator owning instance, device, queues, and function loader
+- **Initialization Chain**: SDL window → instance → device → queues → function loading
+- **Queue Detection**: Graphics (required), Present (required), Compute (required), Transfer (optional fallback)
+- **API**: `getInstance()`, `getDevice()`, `getGraphicsQueue()`, `getLoader()`, `hasDedicatedComputeQueue()`
 
-### vulkan_context.*
-- **Input**: SDL_Window* (for surface creation)
-- **Output**: VkInstance, VkSurfaceKHR, VkPhysicalDevice, VkDevice, queue handles, QueueFamilyIndices
-- **API Surface**: `initialize()`, getters for all Vulkan objects, `findQueueFamilies()`, capability queries
-- **Queue Detection**: Graphics (required), Present (required), Compute (required), Transfer (optional with fallback)
-- **Dependencies**: VulkanFunctionLoader (internal), SDL3
+### VulkanFunctionLoader - API Gateway
+- **Role**: Centralized Vulkan function pointer management with progressive loading
+- **Loading Phases**: Pre-instance → Post-instance → Post-device (180+ functions)
+- **Function Groups**: Instance, device, memory, buffers, images, pipelines, synchronization, commands
+- **Usage Pattern**: `const auto& vk = context->getLoader(); vk.vkCreateBuffer(...)`
 
-### queue_manager.*
-- **Input**: VulkanContext
-- **Output**: Specialized command pools, frame command buffers, transfer commands with RAII lifecycle
-- **API Surface**: Queue access, command pool access, command buffer allocation, transfer command management
-- **Command Pool Types**: Graphics (persistent+reset), Compute (transient), Transfer (one-time)
-- **Telemetry**: Submission counts, transfer command lifecycle tracking, peak usage monitoring
-- **Transfer Commands**: RAII TransferCommand struct with fence and automatic cleanup
+### QueueManager - Command Execution
+- **Role**: Queue abstraction with specialized command pools and optimal command buffer allocation
+- **Command Pool Types**:
+  - Graphics: Persistent buffers with reset capability
+  - Compute: Transient buffers for short dispatches
+  - Transfer: One-time buffers with RAII lifecycle
+- **Frame Management**: Pre-allocated graphics/compute buffers per frame (MAX_FRAMES_IN_FLIGHT=2)
+- **Transfer Commands**: RAII TransferCommand with fence and automatic cleanup
 
-### vulkan_manager_base.h
-- **Input**: VulkanContext*
-- **Output**: Cached wrapper methods for common Vulkan operations
-- **API Surface**: Pipeline creation wrappers, command recording helpers, resource destruction
-- **Pattern**: Eliminates repetitive `context->getLoader().vkFunction()` calls
-- **Usage**: Base class for pipeline managers in vulkan/pipelines/
+### RAII System (vulkan_raii.h)
+- **Role**: Automatic resource cleanup with move semantics for all Vulkan objects
+- **Template Pattern**: `VulkanHandle<VkType, Deleter>` with VulkanContext* for cleanup
+- **Safety**: `cleanupBeforeContextDestruction()` prevents use-after-free
+- **Covered Types**: Pipeline, Buffer, Image, Semaphore, Fence, DescriptorSet, etc.
 
-### vulkan_raii.*
-- **Input**: VkHandle, VulkanContext*
-- **Output**: RAII-wrapped Vulkan objects with automatic cleanup
-- **Resource Types**: ShaderModule, Pipeline, PipelineLayout, DescriptorSetLayout, DescriptorPool, RenderPass, Semaphore, Fence, CommandPool, Buffer, Image, ImageView, DeviceMemory, Framebuffer, PipelineCache, QueryPool, Instance, Device, SurfaceKHR, DebugUtilsMessengerEXT
-- **API Pattern**: `vulkan_raii::Type`, factory functions `make_type()`, `create_type()`, `get()`, `release()`, `reset()`
-- **Cleanup Safety**: Explicit `cleanupBeforeContextDestruction()` methods prevent use-after-free
+### VulkanManagerBase - Pipeline Base Class
+- **Role**: Base class for pipeline managers eliminating repetitive function calls
+- **Cached Access**: Stores loader and device references for performance
+- **Convenience Methods**: `createGraphicsPipelines()`, `cmdBindPipeline()`, `cmdDispatch()`
+- **Used By**: All pipeline managers in vulkan/pipelines/
 
-### vulkan_utils.*
-- **Input**: VulkanFunctionLoader, device handles, resource specifications
-- **Output**: Created Vulkan resources, utility operation results
-- **Functions**: Memory type finding, buffer/image creation, shader modules, command buffer helpers, image transitions, buffer copies, descriptor set updates, synchronization helpers, command submission
-- **Cross-Domain Usage**: Used by services/, resources/, monitoring/, pipelines/
+## Data Flow Patterns
 
-### vulkan_sync.*
-- **Input**: VulkanContext, MAX_FRAMES_IN_FLIGHT
-- **Output**: RAII-managed synchronization objects for frame overlap
-- **Objects**: Image available semaphores, render finished semaphores, compute finished semaphores, in-flight fences, compute fences
-- **Responsibility**: Pure synchronization management (no command buffers - handled by QueueManager)
-- **Frame Support**: Supports 2-frame overlap with proper synchronization
+### Initialization Sequence
+1. **VulkanFunctionLoader** loads base functions
+2. **VulkanContext** creates instance → loads instance functions → creates device → loads device functions
+3. **QueueManager** detects queue families → creates command pools → allocates frame buffers
+4. **VulkanSync/VulkanSwapchain** create synchronization and presentation resources
 
-### vulkan_swapchain.*
-- **Input**: VulkanContext, SDL_Window*, VkRenderPass
-- **Output**: VkSwapchainKHR, swapchain images/views, MSAA resources, framebuffers
-- **API Surface**: `initialize()`, `recreate()`, `createFramebuffers()`, getters for all swapchain resources
-- **MSAA Support**: Pre-allocated MSAA color attachment with automatic memory management
-- **Recreation**: Handles window resize and surface invalidation
+### Runtime Operation
+- **Function Access**: `context->getLoader().vkFunction()` or VulkanManagerBase wrappers
+- **Command Buffers**: QueueManager provides optimal allocation (graphics/compute per-frame, transfer on-demand)
+- **Resource Management**: RAII wrappers ensure automatic cleanup with proper destruction order
+- **Queue Selection**: QueueManager handles fallback (transfer → graphics) and dedicated queue detection
 
-## Peripheral Dependencies
+## Critical Architecture Patterns
+
+### Local Caching Pattern (Performance)
+```cpp
+const auto& vk = context->getLoader();
+const VkDevice device = context->getDevice();
+// Multiple vk.vkFunction() calls without repeated context lookups
+```
+
+### RAII Factory Pattern (Safety)
+```cpp
+auto buffer = vulkan_raii::make_buffer(bufferHandle, context);
+// Automatic cleanup on scope exit, move semantics supported
+```
+
+### Queue Abstraction Pattern (Flexibility)
+```cpp
+VkQueue queue = queueManager->getTransferQueue(); // Automatic fallback to graphics
+if (queueManager->hasDedicatedTransferQueue()) { /* optimize */ }
+```
+
+### Progressive Function Loading (Initialization)
+```cpp
+loader->initialize(window);           // Base functions
+context->createInstance();            // → loadPostInstanceFunctions()
+context->createDevice();              // → loadPostDeviceFunctions()
+```
+
+## Integration Points
 
 ### Upstream Dependencies
 - **SDL3**: Window management and surface creation
-- **Vulkan SDK**: Core Vulkan API
-- **System**: Platform-specific Vulkan loader
+- **Vulkan SDK**: API headers and validation layers
 
 ### Downstream Consumers
-- **vulkan/pipelines/**: Pipeline managers inherit from VulkanManagerBase, use VulkanContext
-- **vulkan/services/**: High-level services access queues via QueueManager, use VulkanSync
-- **vulkan/resources/**: Memory managers use VulkanUtils, ResourceContext wraps VulkanContext
-- **vulkan/rendering/**: FrameGraph uses QueueManager command buffers and VulkanSync objects
-- **vulkan/nodes/**: Render nodes access context and synchronization through services
-- **vulkan/monitoring/**: Performance monitoring uses context and utilities
+- **vulkan/pipelines/**: Pipeline managers inherit VulkanManagerBase
+- **vulkan/services/**: High-level services access queues and synchronization
+- **vulkan/resources/**: Memory managers use VulkanUtils and RAII wrappers
+- **vulkan/rendering/**: Frame graph uses QueueManager command buffers
 
-## Data Flow
+## Performance Considerations
 
-### Initialization Chain
-1. **VulkanFunctionLoader** → loads base functions → enables instance creation
-2. **VulkanContext** → creates instance → loads instance functions → creates device → loads device functions
-3. **QueueManager** → detects queue families → creates specialized command pools → allocates frame buffers
-4. **VulkanSync** → creates synchronization objects for frame overlap
-5. **VulkanSwapchain** → creates swapchain → image views → MSAA resources
-
-### Runtime Operation
-- **QueueManager** provides optimal queue selection and command buffer access
-- **VulkanSync** provides frame synchronization objects
-- **VulkanUtils** handles resource creation and common operations
-- **VulkanSwapchain** manages presentation and handles recreation
-
-## Key Notes
-
-### Performance Optimizations
-- **Queue Abstraction**: QueueManager provides optimal queue selection with automatic dedicated queue detection and fallback
-- **Command Pool Specialization**: Graphics (persistent), Compute (transient), Transfer (one-time) optimized for usage patterns
-- **RAII Resource Management**: Zero-cost abstractions with automatic cleanup prevent leaks
-- **Cached Function References**: VulkanManagerBase eliminates repeated loader lookups
-
-### Architecture Patterns
-- **Separation of Concerns**: VulkanSync handles only synchronization; QueueManager handles command buffers
-- **RAII Everywhere**: Comprehensive RAII coverage for all Vulkan resources
-- **Hardware Utilization**: Dedicated transfer queue support, async compute ready
-- **Service Foundation**: Core provides infrastructure for higher-level service architecture
-
-### Error Handling
-- **Validation**: Debug layers and validation enabled in debug builds
-- **Resource Safety**: RAII prevents resource leaks even during exceptions
-- **Initialization Ordering**: Clear dependency chain ensures proper cleanup order
-
-### Future Extensibility
-- **Timeline Semaphores**: Architecture ready for timeline semaphore integration
-- **Multiple Queues**: Can extend to multiple queues per family
-- **Hardware Capabilities**: Runtime detection enables optimal hardware utilization
+- **Queue Optimization**: Dedicated compute/transfer queues when available, automatic fallback
+- **Command Pool Specialization**: Different pool configurations optimize for usage patterns
+- **Function Caching**: VulkanManagerBase eliminates repeated loader access
+- **RAII Zero-Cost**: Template-based wrappers with move semantics, no runtime overhead
+- **Frame Overlap**: Pre-allocated command buffers support MAX_FRAMES_IN_FLIGHT=2
 
 ---
-**Note**: When core infrastructure, queue management, or RAII patterns change, this document must be updated to reflect the modifications.
+**Note**: Core infrastructure changes require updates to all downstream Vulkan modules. Always verify RAII cleanup order and queue fallback behavior.

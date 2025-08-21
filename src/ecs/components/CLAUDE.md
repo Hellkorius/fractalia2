@@ -1,151 +1,97 @@
 # ECS Components Directory
 
 ## Purpose
-Core ECS component definitions for the Fractalia2 engine. This directory contains all data structures that define entity properties and behaviors within the Flecs ECS system, serving as the foundation for CPU-GPU data flow and service interactions.
+Core ECS component definitions for 80,000+ entity GPU-driven rendering. These components bridge the CPU (Flecs ECS) and GPU (Vulkan compute/graphics) through optimized data structures and lazy computation patterns.
 
-## File/Folder Hierarchy
-```
-components/
-├── component.h          # Core component definitions (Transform, Renderable, Movement, Input, etc.)
-├── camera_component.h   # Camera component for 2D view control
-├── entity.h            # Entity handles and GPU bridge structures
-└── CLAUDE.md           # This documentation file
-```
+## Files
+- **component.h** - All component definitions (Transform, Renderable, MovementPattern, Input, etc.)
+- **camera_component.h** - Camera component with 2D view control and coordinate transformations
+- **entity.h** - Entity handles and GPU synchronization bridge structures
 
-## Inputs & Outputs
+## Core Architecture Patterns
 
-### component.h
-**Inputs:**
-- GLM math library types (vec3, vec4, mat4, quat) for transforms and colors
-- Raw SDL input data (keyboard scancodes, mouse positions/buttons, wheel events)
-- Frame timing information (deltaTime, frameCount) from main loop
-- Movement parameters (amplitude, frequency, phase) for GPU compute shaders
-
-**Outputs:**
-- **Transform**: Position/rotation/scale data → GPU model matrices via getMatrix()
-- **Renderable**: Color/visibility/layer data → GPU fragment shaders
-- **MovementPattern**: Movement parameters → GPU compute shaders (movement_random.comp)
-- **KeyboardInput/MouseInput**: Input states → InputService/ControlService
-- **CullingData/LODData**: Optimization hints → RenderingService culling systems
-- **Tag components** (Static/Dynamic/Pooled) → Entity lifecycle and filtering systems
-
-**Key Components Data Flow:**
-- **Transform**: TRS matrix with dirty flag optimization → lazy matrix computation → GPU upload
-- **Renderable**: Color/layer/visibility with version tracking → batch rendering system
-- **MovementPattern**: RandomWalk parameters → GPUEntity structure → compute shader uniforms
-- **KeyboardInput/MouseInput**: Frame-based states → service layer action mapping
-- **Lifetime**: Entity age tracking → automatic cleanup systems
-- **Application/GPU sync components**: Global state coordination
-
-### camera_component.h
-**Inputs:**
-- Camera movement commands (WASD movement, zoom controls, rotation)
-- Screen dimensions for aspect ratio and viewport calculations
-- World positions for screen-to-world coordinate transformations
-
-**Outputs:**
-- **View matrix** → Vulkan uniform buffers (GPU rendering pipeline)
-- **Projection matrix** → Vulkan uniform buffers (Y-flipped for Vulkan coordinate system)
-- **Frustum data** → CameraService and culling systems
-- **Screen-to-world coordinates** → Input handling and mouse interaction systems
-
-**Features:**
-- Lazy matrix computation with dirty flags for performance optimization
-- Unbounded zoom support for large-scale entity visualization
-- Screen-to-world coordinate conversion for precise mouse interaction
-
-### entity.h
-**Inputs:**
-- Flecs entity references from ECS world
-- ECS component data (Transform, Renderable, MovementPattern) via has<>() and get<>()
-
-**Outputs:**
-- **EntityHandle**: Type alias for flecs::entity → service layer entity management
-- **GPUEntityData**: Bridge structure for CPU→GPU synchronization via GPUEntityManager
-
-## Peripheral Dependencies
-
-### CPU Systems Integration (Primary Consumers)
-- **Services** (`../services/`): CameraService, InputService, RenderingService, ControlService consume component data
-- **Core** (`../core/`): EntityFactory uses components for entity creation patterns
-- **Utilities** (`../utilities/`): ComponentQueries access component data for performance monitoring
-- **Systems** (`../systems/`): MovementSystem, LifetimeSystem process component updates
-
-### GPU Pipeline Integration (Data Transform Chain)
-1. **GPUEntityManager** (`../gpu/gpu_entity_manager.*`): Converts ECS components → SoA (Structure of Arrays) buffers
-2. **SoA Buffer Layout**: Separate specialized buffers for optimal GPU access
-   - VelocityBuffer: Movement velocity data for compute shaders
-   - MovementParamsBuffer: Movement parameters (amplitude, frequency, phase, timeOffset)
-   - RuntimeStateBuffer: Entity runtime state (totalTime, stateTimer, initialization flags)
-   - ColorBuffer: RGBA color data for fragment shaders
-   - ModelMatrixBuffer: Transform matrices for vertex shaders
-   - PositionBuffer: Current/target positions for compute-graphics pipeline
-3. **Vulkan Compute Pipeline**: Processes SoA data in `movement_random.comp` and `physics.comp` shaders
-4. **Vulkan Graphics Pipeline**: Renders entities using instanced drawing from specialized SoA buffers
-
-### External Dependencies
-- **Flecs ECS**: Core entity-component system framework
-- **GLM**: Mathematics library for vectors, matrices, quaternions
-- **SDL3**: Input event handling (keyboard/mouse state management)
-- **Vulkan**: GPU rendering and compute operations target
-
-## Data Flow Architecture
-
-```
-ECS Components → GPUEntityManager → SoA Vulkan Buffers → GPU Shaders
-     ↓                ↓                      ↓               ↓
-Input Systems    Service Layer          Buffer Sync      Compute/Graphics
-     ↓                ↓                      ↓               ↓
-Frame Logic     Culling/LOD            GPU Upload       Instanced Rendering
+### Dirty Flag Optimization
+Critical components use lazy computation to avoid expensive operations:
+```cpp
+// Transform matrix calculation
+const glm::mat4& getMatrix() const {
+    if (dirty) {
+        matrix = translationMatrix * rotationMatrix * scaleMatrix;
+        dirty = false;
+    }
+    return matrix;
+}
 ```
 
-### Component Lifecycle
-1. **Creation**: EntityFactory creates entities with component combinations
-2. **Processing**: Services/Systems read/modify component data each frame
-3. **GPU Sync**: GPUEntityManager::addEntitiesFromECS() converts components to SoA format
-4. **Upload**: Staged entities uploaded to specialized GPU buffers via uploadPendingEntities()
-5. **Rendering**: Vulkan pipeline consumes specialized SoA buffers for instanced draws
-6. **Cleanup**: LifetimeSystem manages entity destruction based on Lifetime component
+### GPU Data Bridge
+Components map directly to GPU structures for efficient CPU→GPU transfer:
+- **Transform** → GPU model matrices via getMatrix()
+- **MovementPattern** → Compute shader uniforms (amplitude, frequency, phase, timeOffset)
+- **Renderable** → Fragment shader color/visibility data
 
-## Key Notes & Conventions
+## Essential Components
 
-### Performance Optimizations
-- **Dirty Flags**: Transform and Camera use lazy computation to avoid redundant matrix calculations
-- **Version Tracking**: Renderable components track changes (markDirty()) for efficient GPU uploads
-- **SoA Buffer Layout**: Structure of Arrays optimizes GPU memory access patterns and cache efficiency
-- **POD Design**: All components are Plain Old Data for ECS memory efficiency
+### Transform
+- **Purpose**: TRS (Translation/Rotation/Scale) with cached matrix computation
+- **GPU Flow**: getMatrix() → GPU uniform buffers → vertex shaders
+- **Pattern**: Dirty flag optimization for expensive matrix calculations
 
-### GPU Synchronization Patterns
-- **Component → SoA Conversion**: Components must be mappable to specialized SoA buffer layouts
-- **Movement Parameters**: Direct mapping to compute shader uniforms (movementParams buffer)
-- **Transform Matrices**: Cached via getMatrix() and uploaded to ModelMatrixBuffer for GPU
-- **Color Data**: Direct vec4 passthrough to ColorBuffer for fragment shaders
+### MovementPattern
+- **Purpose**: Random walk parameters for GPU compute shaders
+- **GPU Flow**: Parameters → compute shader uniforms → position calculations
+- **Critical**: Must align with movement_random.comp shader interface
 
-### Input System Architecture
-- **Frame-Based States**: Distinction between current frame (pressed/released) vs. continuous (held)
-- **SDL Scancode Integration**: Raw scancodes used for keyboard input processing
-- **Coordinate Systems**: Mouse coordinates tracked in both screen and world space
-- **Event Buffering**: InputEvents component buffers SDL events for ECS processing
+### Renderable
+- **Purpose**: Color, visibility, layer data for rendering pipeline
+- **GPU Flow**: Color → fragment shaders, layer → depth sorting
+- **Pattern**: Version tracking with markDirty() for efficient GPU uploads
 
-### Component Design Patterns
-- **Tag Components**: Empty structs for entity filtering (Static, Dynamic, Pooled)
-- **Singleton Components**: Global state (ApplicationState, GPUEntitySync, InputState)
-- **Marker Components**: Processing state tracking (InputProcessed, ControlsProcessed)
-- **Dirty Flag Pattern**: Transform and Camera optimize expensive computations
+### Camera
+- **Purpose**: 2D view control with unbounded zoom support
+- **GPU Flow**: View/projection matrices → GPU uniform buffers
+- **Features**: Screen-to-world coordinate conversion, frustum visibility checks
 
-### Critical Integration Points
-- **MovementPattern ↔ Compute Shader**: Parameters must align with movement_random.comp shader uniforms
-- **Transform Matrix**: Must match GPU vertex shader matrix multiplication order
-- **Input Components ↔ SDL**: Layout must align with SDL event structure for efficient processing
-- **SoA Buffer Conversion**: All referenced components must remain ABI-stable for specialized GPU buffer upload
+### Input Components (KeyboardInput, MouseInput, InputEvents)
+- **Purpose**: Frame-based input state management
+- **Pattern**: Pressed/released states cleared each frame, held states persist
+- **Integration**: SDL events → ECS components → Service layer
+
+## Data Flow
+```
+ECS Components → GPUEntityManager (SoA conversion) → GPU Buffers → Shaders
+     ↓                    ↓                           ↓            ↓
+Input/Logic         Service Layer               Buffer Upload   Rendering
+```
+
+## Key Integrations
+
+### GPU Synchronization
+- **GPUEntityData**: Bridge structure for ECS→GPU entity conversion
+- **SoA Buffers**: Components converted to Structure-of-Arrays for GPU optimization
+- **Upload Pattern**: Staged → GPU buffer upload via specialized managers
+
+### Service Architecture
+- **InputService**: Consumes Input components for action mapping
+- **CameraService**: Manages Camera components with smooth transitions
+- **RenderingService**: Processes Renderable/CullingData for batched rendering
+- **ControlService**: Coordinates component updates across services
+
+## Critical Conventions
+
+### Performance
+- All components are POD (Plain Old Data) for ECS memory efficiency
+- Lazy computation (dirty flags) for Transform and Camera matrices
+- Version tracking for change detection and selective GPU uploads
+
+### GPU Compatibility
+- MovementPattern parameters must match compute shader uniforms exactly
+- Transform matrices use correct multiplication order for GPU shaders
+- Color data as vec4 for direct fragment shader passthrough
+
+### Input Processing
+- Frame-based distinction: pressed/released (single frame) vs held (continuous)
+- SDL scancode compatibility for keyboard processing
+- World/screen coordinate dual tracking for mouse interaction
 
 ---
-
-**⚠️ Update Requirements**: This file must be updated when:
-- New components are added to any header file
-- Component structure changes (especially MovementPattern/Transform matrix computation)
-- SoA buffer layout modifications affecting component conversion
-- Service architecture changes affecting component consumption patterns
-- Input handling modifications requiring component structure updates
-- Shader interface changes requiring component parameter adjustments
-- GPU synchronization patterns change affecting component→SoA data flow
+**Update Triggers**: Component structure changes, GPU shader interface modifications, service integration patterns, or performance optimization requirements.

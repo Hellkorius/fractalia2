@@ -1,147 +1,123 @@
-# Input Services Directory - AI Agent Context
+# ECS Input Services
 
-## Purpose
-Modular input subsystem providing action-based input management, SDL event processing, context switching, and ECS integration for the Fractalia2 engine. Contains specialized components orchestrated by parent InputService.
+## Overview
+Action-based input system providing configurable key bindings, context switching, and seamless ECS integration for the Fractalia2 engine.
 
-## File/Folder Hierarchy
+## Architecture
+
+### Core Pattern: Action → Binding → Context
 ```
-src/ecs/services/input/
-├── CLAUDE.md                      # This file - AI agent context
-├── Input.md                       # Detailed system documentation
-├── input_types.h                  # Core data structures and enums
-├── input_action_system.h/cpp      # Action binding, mapping, callbacks
-├── input_event_processor.h/cpp    # SDL event handling, raw input state  
-├── input_context_manager.h/cpp    # Context switching, priority, stack management
-├── input_config_manager.h/cpp     # Configuration loading/saving, defaults
-└── input_ecs_bridge.h/cpp         # ECS component synchronization
-
-Parent Integration:
-../input_service.h/cpp             # Orchestration layer, service interface
+Physical Input (SDL) → InputBinding → InputAction → ECS Components
+                         ↓               ↓            ↓
+                    Raw events      Logical actions  Game state
 ```
 
-## Core Data Flow Architecture
+### Key Classes
 
-### Processing Pipeline (Per Frame):
-```
-SDL Events → InputEventProcessor → KeyboardState/MouseState
-                ↓
-InputContextManager → Active context bindings
-                ↓  
-InputActionSystem ← (raw states + context bindings) → InputActionState
-                ↓
-InputECSBridge ← (processed input data) → ECS Components
-```
+**InputActionSystem** - Core action management
+- Maps physical inputs to logical actions (move, jump, shoot)
+- Supports digital (on/off), analog 1D (triggers), analog 2D (mouse/stick)
+- Action queries: `isActionJustPressed()`, `getActionAnalog2D()`
+- Callback registration for immediate response
 
-### Module Dependencies:
-- **InputEventProcessor**: No dependencies (foundation layer)
-- **InputContextManager**: No dependencies (context definitions)
-- **InputConfigManager**: Reads from InputContextManager, writes to InputActionSystem
-- **InputActionSystem**: Reads from InputEventProcessor + InputContextManager
-- **InputECSBridge**: Reads from InputEventProcessor + InputActionSystem
+**InputContextManager** - Context switching with priority
+- Groups bindings by context (menu, gameplay, debug)
+- Priority-based resolution (higher priority overrides lower)
+- Context stack for temporary mode switching
+- Example: Menu context blocks gameplay actions
 
-## Input/Output Specifications
+**InputEventProcessor** - SDL event handling
+- Raw keyboard/mouse state tracking
+- Frame-based pressed/released detection
+- Window event processing (resize, quit)
+- Input consumption for UI systems
 
-### InputEventProcessor
-**Consumes:** SDL_Event structs, SDL_Window* reference
-**Produces:** KeyboardState/MouseState structs, window events (resize, quit)
-**API Surface:** Raw input queries (isKeyDown, getMousePosition, etc.)
+**InputConfigManager** - Configuration persistence
+- Load/save key bindings from files
+- Default action/context setup
+- Runtime binding modification
 
-### InputActionSystem  
-**Consumes:** KeyboardState/MouseState, active context bindings, InputActionDefinition
-**Produces:** InputActionState structs, callback execution results
-**API Surface:** Action queries (isActionActive, getActionAnalog1D/2D), callback registration
+**InputECSBridge** - ECS integration
+- Synchronizes input state to ECS components
+- World coordinate conversion for mouse
+- Frame tracking for consistent updates
 
-### InputContextManager
-**Consumes:** InputContextDefinition, context activation requests
-**Produces:** Active context priority resolution, filtered binding lists
-**API Surface:** Context management (setContextActive, pushContext, getCurrentContext)
+### Data Flow
 
-### InputConfigManager
-**Consumes:** Config files (JSON), default definitions
-**Produces:** Loaded InputActionDefinition/InputContextDefinition, saved config files
-**API Surface:** Config operations (loadInputConfig, saveInputConfig, resetToDefaults)
+1. **Event Processing**: SDL events → `InputEventProcessor` → Raw state
+2. **Action Evaluation**: Raw state + Context bindings → `InputActionSystem` → Action states
+3. **ECS Sync**: Action states → `InputECSBridge` → ECS components
+4. **Game Logic**: ECS systems query components or use action callbacks
 
-### InputECSBridge
-**Consumes:** KeyboardState/MouseState, flecs::world reference
-**Produces:** KeyboardInput/MouseInput/InputState/InputEvents ECS components
-**API Surface:** ECS synchronization (synchronizeToECSComponents), component access
+### Input Types & Binding
 
-## Key Data Structures
-
-### Core Types (input_types.h):
 ```cpp
-enum class InputActionType { DIGITAL, ANALOG_1D, ANALOG_2D };
-struct InputBinding { InputType, keycode/mouseButton, modifiers, sensitivity };
-struct InputActionState { type, digitalValue, analogValue1D/2D, justPressed/Released, duration };
-struct InputActionDefinition { name, type, description, defaultBindings };
+// Action types
+InputActionType::DIGITAL     // Keys, buttons (true/false)
+InputActionType::ANALOG_1D   // Mouse wheel, triggers (float)
+InputActionType::ANALOG_2D   // Mouse position, sticks (vec2)
+
+// Binding structure
+InputBinding {
+    InputType inputType;     // KEYBOARD_KEY, MOUSE_BUTTON, etc.
+    int keycode/mouseButton; // Physical input identifier
+    float sensitivity;       // Analog scaling
+    bool requiresShift/Ctrl; // Modifier requirements
+}
 ```
 
-### Internal State:
+### Context System
+
+**Priority Resolution**: Higher priority contexts override lower ones
+- Menu (100) > Debug (50) > Gameplay (0)
+- Action bindings resolved in priority order
+
+**Context Stack**: Temporary activation
 ```cpp
-struct KeyboardState { keys[512], keysPressed[512], keysReleased[512], modifiers };
-struct MouseState { buttons[8], position, delta, wheelDelta };
+contextManager.pushContext("debug");    // Activate debug mode
+// ... debug actions available
+contextManager.popContext();           // Return to previous
+```
+
+### Essential Usage Patterns
+
+**Action Registration**:
+```cpp
+InputActionDefinition moveAction {
+    .name = "move_forward",
+    .type = InputActionType::DIGITAL,
+    .defaultBindings = { InputBinding(KEYBOARD_KEY, SDLK_W) }
+};
+actionSystem.registerAction(moveAction);
+```
+
+**Action Queries**:
+```cpp
+if (actionSystem.isActionJustPressed("jump")) { /* handle jump */ }
+glm::vec2 moveDir = actionSystem.getActionAnalog2D("mouse_look");
+```
+
+**Context Management**:
+```cpp
+// Setup contexts with priority
+contextManager.registerContext("gameplay", 0);
+contextManager.registerContext("menu", 100);
+
+// Bind actions to contexts
+contextManager.bindAction("gameplay", "move_forward", keyBinding);
+contextManager.setContextActive("menu", true);  // Activates menu, blocks gameplay
 ```
 
 ## Integration Points
 
-### Parent InputService Orchestration:
-- **Delegation Pattern**: InputService.h delegates all API calls to appropriate modules
-- **Initialization Order**: EventProcessor → ContextManager → ConfigManager → ActionSystem → ECSBridge
-- **Service Dependencies**: CameraService* (cached), flecs::world&, SDL_Window*
+- **Service Pattern**: Integrates with ServiceLocator for dependency injection
+- **ECS Bridge**: Synchronizes to ECS components for system queries
+- **Camera Service**: Mouse world coordinate conversion
+- **UI Systems**: Input consumption to prevent game action bleeding
 
-### External Dependencies:
-- **SDL3**: Event processing, window management
-- **Flecs ECS**: Component synchronization, entity management  
-- **GLM**: Vector math for mouse coordinates and analog inputs
-- **CameraService**: World coordinate transformations for mouse position
+## Performance Notes
 
-### ECS Component Bridge:
-- Creates single input entity with KeyboardInput, MouseInput, InputState, InputEvents components
-- Synchronizes raw input state to ECS components each frame
-- Provides component access for other ECS systems
-
-## Performance Characteristics
-- **Zero-allocation input processing**: Uses fixed-size arrays for raw input state
-- **Efficient binding evaluation**: Early termination for inactive contexts
-- **Frame-coherent updates**: All modules process once per frame in sequence
-- **Cached service references**: Avoids repeated ServiceLocator lookups
-
-## Integration Patterns
-
-### Service Access Pattern:
-```cpp
-// From parent InputService - delegates to modules
-inputService.isActionJustPressed("jump") → actionSystem->isActionJustPressed("jump")
-inputService.getMousePosition() → eventProcessor->getMousePosition()
-```
-
-### Module Communication:
-```cpp
-// ActionSystem queries other modules for current state
-actionSystem.updateActionStates(eventProcessor.getKeyboardState(), 
-                               eventProcessor.getMouseState(),
-                               contextManager, deltaTime);
-```
-
-### ECS Integration:
-```cpp
-// ECSBridge synchronizes processed data to components
-ecsBridge.synchronizeToECSComponents(keyboardState, mouseState, deltaTime);
-// Other systems access via component queries
-```
-
-## Key Implementation Notes
-- **Context Priority**: Higher priority contexts override lower priority bindings
-- **Modifier Support**: Shift/Ctrl/Alt requirements checked per binding
-- **Analog Processing**: Deadzone, sensitivity, and axis inversion applied per binding
-- **Callback System**: Action callbacks executed after state updates each frame
-- **Input Consumption**: UI systems can mark input as consumed to prevent game processing
-
----
-**⚠️ Update Requirement**: This file must be updated when:
-- Module APIs change (input/output contracts)
-- New modules added or removed  
-- Integration patterns with InputService change
-- ECS component structure modifications
-- Parent service dependencies change
-- Data flow architecture modifications
+- Frame-based state tracking prevents missed inputs
+- Context resolution cached per frame
+- Action callbacks for immediate response without polling
+- Minimal allocation during runtime (setup-time only)
