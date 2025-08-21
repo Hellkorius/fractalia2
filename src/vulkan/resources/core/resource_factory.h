@@ -17,6 +17,9 @@ public:
     bool initialize(const VulkanContext& context, MemoryAllocator* memoryAllocator);
     void cleanup();
     
+    // Cleanup method for proper destruction order
+    void cleanupBeforeContextDestruction();
+    
     // Core resource creation operations
     ResourceHandle createBuffer(VkDeviceSize size, 
                                VkBufferUsageFlags usage,

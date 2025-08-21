@@ -72,12 +72,16 @@ components/
 - **Systems** (`../systems/`): MovementSystem, LifetimeSystem process component updates
 
 ### GPU Pipeline Integration (Data Transform Chain)
-1. **GPUEntityManager** (`../gpu/gpu_entity_manager.*`): Converts ECS components → GPUEntity structs
-2. **GPUEntity Structure**: 128-byte cache-optimized layout
-   - Cache Line 1 (0-63 bytes): Hot data (movement params, runtime state, color)
-   - Cache Line 2 (64-127 bytes): Cold data (model matrix)
-3. **Vulkan Compute Pipeline**: Processes GPUEntity data in `movement_random.comp` shader
-4. **Vulkan Graphics Pipeline**: Renders entities using instanced drawing from entity/position buffers
+1. **GPUEntityManager** (`../gpu/gpu_entity_manager.*`): Converts ECS components → SoA (Structure of Arrays) buffers
+2. **SoA Buffer Layout**: Separate specialized buffers for optimal GPU access
+   - VelocityBuffer: Movement velocity data for compute shaders
+   - MovementParamsBuffer: Movement parameters (amplitude, frequency, phase, timeOffset)
+   - RuntimeStateBuffer: Entity runtime state (totalTime, stateTimer, initialization flags)
+   - ColorBuffer: RGBA color data for fragment shaders
+   - ModelMatrixBuffer: Transform matrices for vertex shaders
+   - PositionBuffer: Current/target positions for compute-graphics pipeline
+3. **Vulkan Compute Pipeline**: Processes SoA data in `movement_random.comp` and `physics.comp` shaders
+4. **Vulkan Graphics Pipeline**: Renders entities using instanced drawing from specialized SoA buffers
 
 ### External Dependencies
 - **Flecs ECS**: Core entity-component system framework
@@ -88,19 +92,19 @@ components/
 ## Data Flow Architecture
 
 ```
-ECS Components → GPUEntityManager → Vulkan Buffers → GPU Shaders
-     ↓                ↓                    ↓             ↓
-Input Systems    Service Layer        Buffer Sync    Compute/Graphics
-     ↓                ↓                    ↓             ↓
-Frame Logic     Culling/LOD          GPU Upload     Instanced Rendering
+ECS Components → GPUEntityManager → SoA Vulkan Buffers → GPU Shaders
+     ↓                ↓                      ↓               ↓
+Input Systems    Service Layer          Buffer Sync      Compute/Graphics
+     ↓                ↓                      ↓               ↓
+Frame Logic     Culling/LOD            GPU Upload       Instanced Rendering
 ```
 
 ### Component Lifecycle
 1. **Creation**: EntityFactory creates entities with component combinations
 2. **Processing**: Services/Systems read/modify component data each frame
-3. **GPU Sync**: GPUEntityManager::fromECS() converts components to GPU format
-4. **Upload**: Staged entities uploaded to GPU buffers via uploadPendingEntities()
-5. **Rendering**: Vulkan pipeline consumes entity/position buffers for instanced draws
+3. **GPU Sync**: GPUEntityManager::addEntitiesFromECS() converts components to SoA format
+4. **Upload**: Staged entities uploaded to specialized GPU buffers via uploadPendingEntities()
+5. **Rendering**: Vulkan pipeline consumes specialized SoA buffers for instanced draws
 6. **Cleanup**: LifetimeSystem manages entity destruction based on Lifetime component
 
 ## Key Notes & Conventions
@@ -108,14 +112,14 @@ Frame Logic     Culling/LOD          GPU Upload     Instanced Rendering
 ### Performance Optimizations
 - **Dirty Flags**: Transform and Camera use lazy computation to avoid redundant matrix calculations
 - **Version Tracking**: Renderable components track changes (markDirty()) for efficient GPU uploads
-- **Cache Alignment**: GPUEntity structure optimized for GPU cache lines (128 bytes total)
+- **SoA Buffer Layout**: Structure of Arrays optimizes GPU memory access patterns and cache efficiency
 - **POD Design**: All components are Plain Old Data for ECS memory efficiency
 
 ### GPU Synchronization Patterns
-- **Component → GPUEntity Conversion**: Components must be mappable to GPUEntity layout
-- **Movement Parameters**: Direct mapping to compute shader uniforms (movementParams0/1)
-- **Transform Matrices**: Cached via getMatrix() and uploaded as modelMatrix to GPU
-- **Color Data**: Direct vec4 passthrough to fragment shaders
+- **Component → SoA Conversion**: Components must be mappable to specialized SoA buffer layouts
+- **Movement Parameters**: Direct mapping to compute shader uniforms (movementParams buffer)
+- **Transform Matrices**: Cached via getMatrix() and uploaded to ModelMatrixBuffer for GPU
+- **Color Data**: Direct vec4 passthrough to ColorBuffer for fragment shaders
 
 ### Input System Architecture
 - **Frame-Based States**: Distinction between current frame (pressed/released) vs. continuous (held)
@@ -133,15 +137,15 @@ Frame Logic     Culling/LOD          GPU Upload     Instanced Rendering
 - **MovementPattern ↔ Compute Shader**: Parameters must align with movement_random.comp shader uniforms
 - **Transform Matrix**: Must match GPU vertex shader matrix multiplication order
 - **Input Components ↔ SDL**: Layout must align with SDL event structure for efficient processing
-- **GPUEntity Conversion**: All referenced components must remain ABI-stable for GPU upload
+- **SoA Buffer Conversion**: All referenced components must remain ABI-stable for specialized GPU buffer upload
 
 ---
 
 **⚠️ Update Requirements**: This file must be updated when:
 - New components are added to any header file
 - Component structure changes (especially MovementPattern/Transform matrix computation)
-- GPUEntity data layout modifications affecting component conversion
+- SoA buffer layout modifications affecting component conversion
 - Service architecture changes affecting component consumption patterns
 - Input handling modifications requiring component structure updates
 - Shader interface changes requiring component parameter adjustments
-- GPU synchronization patterns change affecting component→GPU data flow
+- GPU synchronization patterns change affecting component→SoA data flow

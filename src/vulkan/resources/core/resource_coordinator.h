@@ -69,10 +69,6 @@ public:
     CommandExecutor* getCommandExecutor() { return &executor; }
     const CommandExecutor* getCommandExecutor() const { return &executor; }
     
-    // Legacy compatibility - staging buffer direct access
-    StagingBufferPool& getStagingBuffer();
-    const StagingBufferPool& getStagingBuffer() const;
-    
     // Graphics resource convenience methods
     const std::vector<VkBuffer>& getUniformBuffers() const;
     const std::vector<void*>& getUniformBuffersMapped() const;

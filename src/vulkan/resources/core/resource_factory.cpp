@@ -20,12 +20,18 @@ bool ResourceFactory::initialize(const VulkanContext& context, MemoryAllocator* 
 }
 
 void ResourceFactory::cleanup() {
+    cleanupBeforeContextDestruction();
     if (bufferFactory) {
-        bufferFactory->cleanup();
         delete bufferFactory;
         bufferFactory = nullptr;
     }
     initialized = false;
+}
+
+void ResourceFactory::cleanupBeforeContextDestruction() {
+    if (bufferFactory) {
+        bufferFactory->cleanupBeforeContextDestruction();
+    }
 }
 
 ResourceHandle ResourceFactory::createBuffer(VkDeviceSize size, 

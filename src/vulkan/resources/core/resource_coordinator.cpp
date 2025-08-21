@@ -52,16 +52,12 @@ void ResourceCoordinator::cleanup() {
 }
 
 void ResourceCoordinator::cleanupBeforeContextDestruction() {
-    if (memoryAllocator) {
-        // TODO: Add cleanupBeforeContextDestruction to MemoryAllocator if needed
-    }
     if (resourceFactory) {
-        // TODO: Add cleanupBeforeContextDestruction to ResourceFactory if needed
+        resourceFactory->cleanupBeforeContextDestruction();
     }
-    // TODO: Fix BufferManager integration
-    // if (bufferManager) {
-    //     bufferManager->cleanup(); // Use cleanup instead
-    // }
+    if (bufferManager) {
+        bufferManager->cleanup();
+    }
 }
 
 ResourceHandle ResourceCoordinator::createBuffer(VkDeviceSize size, 
@@ -169,20 +165,6 @@ GraphicsResourceManager* ResourceCoordinator::getGraphicsManager() const {
 
 BufferManager* ResourceCoordinator::getBufferManager() const {
     return bufferManager.get();
-}
-
-StagingBufferPool& ResourceCoordinator::getStagingBuffer() {
-    if (!bufferManager) {
-        throw std::runtime_error("BufferManager not initialized");
-    }
-    return bufferManager->getPrimaryStagingBuffer();
-}
-
-const StagingBufferPool& ResourceCoordinator::getStagingBuffer() const {
-    if (!bufferManager) {
-        throw std::runtime_error("BufferManager not initialized");
-    }
-    return bufferManager->getPrimaryStagingBuffer();
 }
 
 bool ResourceCoordinator::isUnderMemoryPressure() const {
