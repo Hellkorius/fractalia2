@@ -315,3 +315,39 @@ void EntityGraphicsNode::updateUniformBuffer() {
         }
     }
 }
+
+// Node lifecycle implementation
+bool EntityGraphicsNode::initializeNode(const FrameGraph& frameGraph) {
+    // One-time initialization - validate dependencies
+    if (!graphicsManager) {
+        std::cerr << "EntityGraphicsNode: GraphicsPipelineManager is null" << std::endl;
+        return false;
+    }
+    if (!swapchain) {
+        std::cerr << "EntityGraphicsNode: VulkanSwapchain is null" << std::endl;
+        return false;
+    }
+    if (!resourceContext) {
+        std::cerr << "EntityGraphicsNode: ResourceContext is null" << std::endl;
+        return false;
+    }
+    if (!gpuEntityManager) {
+        std::cerr << "EntityGraphicsNode: GPUEntityManager is null" << std::endl;
+        return false;
+    }
+    return true;
+}
+
+void EntityGraphicsNode::prepareFrame(uint32_t frameIndex) {
+    // Per-frame preparation - update frame timing and mark uniform buffer dirty if needed
+    currentFrameIndex = frameIndex;
+    
+    // Check if uniform buffer needs updating
+    if (uniformBufferDirty || lastUpdatedFrameIndex != frameIndex) {
+        updateUniformBuffer();
+    }
+}
+
+void EntityGraphicsNode::releaseFrame(uint32_t frameIndex) {
+    // Per-frame cleanup - nothing to clean up for graphics node
+}

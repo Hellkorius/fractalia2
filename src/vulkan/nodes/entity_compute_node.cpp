@@ -289,7 +289,35 @@ void EntityComputeNode::executeChunkedDispatch(
     }
 }
 
+// Node lifecycle implementation
+bool EntityComputeNode::initializeNode(const FrameGraph& frameGraph) {
+    // One-time initialization - validate dependencies
+    if (!computeManager) {
+        std::cerr << "EntityComputeNode: ComputePipelineManager is null" << std::endl;
+        return false;
+    }
+    if (!gpuEntityManager) {
+        std::cerr << "EntityComputeNode: GPUEntityManager is null" << std::endl;
+        return false;
+    }
+    return true;
+}
+
+void EntityComputeNode::prepareFrame(uint32_t frameIndex) {
+    // Per-frame preparation - don't overwrite timing data from updateFrameData()
+    // The frameCounter set by updateFrameData() is correct for compute nodes
+}
+
+void EntityComputeNode::releaseFrame(uint32_t frameIndex) {
+    // Per-frame cleanup - nothing to clean up for compute node
+}
+
 void EntityComputeNode::updateFrameData(float time, float deltaTime, uint32_t frameCounter) {
+    // Store timing data for new lifecycle
+    currentTime = time;
+    currentDeltaTime = deltaTime;
+    
+    // Backward compatibility - still update push constants directly
     pushConstants.time = time;
     pushConstants.deltaTime = deltaTime;
     pushConstants.frame = frameCounter;

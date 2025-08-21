@@ -22,12 +22,17 @@ public:
     virtual std::vector<ResourceDependency> getInputs() const = 0;
     virtual std::vector<ResourceDependency> getOutputs() const = 0;
     
+    // Node lifecycle - standardized pattern for all nodes
+    virtual bool initializeNode(const FrameGraph& frameGraph) { return true; }  // One-time setup
+    virtual void prepareFrame(uint32_t frameIndex) {}                           // Per-frame preparation  
+    virtual void releaseFrame(uint32_t frameIndex) {}                           // Per-frame cleanup
+    
     // Execution
-    virtual void setup(const FrameGraph& frameGraph) {}
+    virtual void setup(const FrameGraph& frameGraph) {}  // DEPRECATED: Use initializeNode instead
     virtual void execute(VkCommandBuffer commandBuffer, const FrameGraph& frameGraph) = 0;
     virtual void cleanup() {}
     
-    // Frame state updates
+    // Frame state updates - DEPRECATED: Use prepareFrame instead
     virtual void updateFrameData(float time, float deltaTime, uint32_t frameIndex) {}
     
     // Synchronization hints

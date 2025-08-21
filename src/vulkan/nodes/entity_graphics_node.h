@@ -44,7 +44,12 @@ public:
     // Set current frame's swapchain image resource ID (called each frame)
     void setCurrentSwapchainImageId(FrameGraphTypes::ResourceId currentImageId) { this->currentSwapchainImageId = currentImageId; }
     
-    // Update frame data for vertex shader push constants and uniform buffers
+    // Node lifecycle - standardized pattern
+    bool initializeNode(const FrameGraph& frameGraph) override;
+    void prepareFrame(uint32_t frameIndex) override;
+    void releaseFrame(uint32_t frameIndex) override;
+    
+    // Update frame data for vertex shader push constants and uniform buffers - DEPRECATED
     void updateFrameData(float time, float deltaTime, uint32_t frameIndex) override { 
         this->frameTime = time; 
         this->frameDeltaTime = deltaTime; 

@@ -78,3 +78,26 @@ void SwapchainPresentNode::execute(VkCommandBuffer commandBuffer, const FrameGra
     
     // Presentation dependency successfully established
 }
+
+// Node lifecycle implementation
+bool SwapchainPresentNode::initializeNode(const FrameGraph& frameGraph) {
+    // One-time initialization - validate dependencies
+    if (!swapchain) {
+        std::cerr << "SwapchainPresentNode: VulkanSwapchain is null" << std::endl;
+        return false;
+    }
+    return true;
+}
+
+void SwapchainPresentNode::prepareFrame(uint32_t frameIndex) {
+    // Per-frame preparation - validate image index
+    uint32_t imageCount = swapchain ? swapchain->getImages().size() : 0;
+    if (imageIndex >= imageCount) {
+        std::cerr << "SwapchainPresentNode: Invalid image index " << imageIndex 
+                  << " (max: " << imageCount << ")" << std::endl;
+    }
+}
+
+void SwapchainPresentNode::releaseFrame(uint32_t frameIndex) {
+    // Per-frame cleanup - nothing to clean up for present node
+}

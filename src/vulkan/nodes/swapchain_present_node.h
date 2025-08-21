@@ -22,6 +22,11 @@ public:
     std::vector<ResourceDependency> getOutputs() const override;
     void execute(VkCommandBuffer commandBuffer, const FrameGraph& frameGraph) override;
     
+    // Node lifecycle - standardized pattern
+    bool initializeNode(const FrameGraph& frameGraph) override;
+    void prepareFrame(uint32_t frameIndex) override;
+    void releaseFrame(uint32_t frameIndex) override;
+    
     // Queue requirements - presentation happens on graphics queue
     bool needsComputeQueue() const override { return false; }
     bool needsGraphicsQueue() const override { return true; }

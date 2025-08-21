@@ -564,41 +564,51 @@ namespace DescriptorLayoutPresets {
     
     DescriptorLayoutSpec createEntityComputeLayout() {
         DescriptorLayoutSpec spec;
-        spec.layoutName = "EntityCompute";
+        spec.layoutName = "EntityComputeSoA";
         
-        // Entity data buffer
-        DescriptorBinding entityBinding{};
-        entityBinding.binding = 0;
-        entityBinding.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-        entityBinding.descriptorCount = 1;
-        entityBinding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
-        entityBinding.debugName = "entityBuffer";
+        // SoA Structure of Arrays layout matching compute shaders
         
-        // Position output buffer (compute shader writes computed positions here)
+        // Binding 0: VelocityBuffer (velocity.xy, damping, reserved)
+        DescriptorBinding velocityBinding{};
+        velocityBinding.binding = 0;
+        velocityBinding.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        velocityBinding.descriptorCount = 1;
+        velocityBinding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+        velocityBinding.debugName = "velocityBuffer";
+        
+        // Binding 1: MovementParamsBuffer (amplitude, frequency, phase, timeOffset)
+        DescriptorBinding movementParamsBinding{};
+        movementParamsBinding.binding = 1;
+        movementParamsBinding.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        movementParamsBinding.descriptorCount = 1;
+        movementParamsBinding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+        movementParamsBinding.debugName = "movementParamsBuffer";
+        
+        // Binding 2: RuntimeStateBuffer (totalTime, initialized, stateTimer, entityState)
+        DescriptorBinding runtimeStateBinding{};
+        runtimeStateBinding.binding = 2;
+        runtimeStateBinding.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        runtimeStateBinding.descriptorCount = 1;
+        runtimeStateBinding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+        runtimeStateBinding.debugName = "runtimeStateBuffer";
+        
+        // Binding 3: PositionBuffer (output positions for graphics)
         DescriptorBinding positionOutputBinding{};
-        positionOutputBinding.binding = 1;
+        positionOutputBinding.binding = 3;
         positionOutputBinding.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         positionOutputBinding.descriptorCount = 1;
         positionOutputBinding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
         positionOutputBinding.debugName = "positionOutputBuffer";
         
-        // Current position buffer
+        // Binding 4: CurrentPositionBuffer (physics integration state)
         DescriptorBinding currentPosBinding{};
-        currentPosBinding.binding = 2;
+        currentPosBinding.binding = 4;
         currentPosBinding.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         currentPosBinding.descriptorCount = 1;
         currentPosBinding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
         currentPosBinding.debugName = "currentPositionBuffer";
         
-        // Target position buffer
-        DescriptorBinding targetPosBinding{};
-        targetPosBinding.binding = 3;
-        targetPosBinding.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-        targetPosBinding.descriptorCount = 1;
-        targetPosBinding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
-        targetPosBinding.debugName = "targetPositionBuffer";
-        
-        spec.bindings = {entityBinding, positionOutputBinding, currentPosBinding, targetPosBinding};
+        spec.bindings = {velocityBinding, movementParamsBinding, runtimeStateBinding, positionOutputBinding, currentPosBinding};
         return spec;
     }
 }

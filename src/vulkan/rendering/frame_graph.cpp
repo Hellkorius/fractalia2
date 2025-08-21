@@ -193,10 +193,16 @@ bool FrameGraph::compile() {
             barrierManager_.analyzeBarrierRequirements(executionOrder_, nodes_);
             barrierManager_.createOptimalBarrierBatches(executionOrder_, nodes_);
             
-            // Setup valid nodes only
+            // Initialize valid nodes only with new standardized lifecycle
             for (auto nodeId : executionOrder_) {
                 auto it = nodes_.find(nodeId);
                 if (it != nodes_.end()) {
+                    if (!it->second->initializeNode(*this)) {
+                        std::cerr << "FrameGraph: Node initialization failed for node " << nodeId << " in partial compilation" << std::endl;
+                        compiler_.restoreState(executionOrder_, compiled_);
+                        return false;
+                    }
+                    // Maintain backward compatibility with setup()
                     it->second->setup(*this);
                 }
             }
@@ -214,10 +220,15 @@ bool FrameGraph::compile() {
     barrierManager_.analyzeBarrierRequirements(executionOrder_, nodes_);
     barrierManager_.createOptimalBarrierBatches(executionOrder_, nodes_);
     
-    // Setup nodes
+    // Initialize nodes with new standardized lifecycle
     for (auto nodeId : executionOrder_) {
         auto it = nodes_.find(nodeId);
         if (it != nodes_.end()) {
+            if (!it->second->initializeNode(*this)) {
+                std::cerr << "FrameGraph: Node initialization failed for node " << nodeId << std::endl;
+                return false;
+            }
+            // Maintain backward compatibility with setup()
             it->second->setup(*this);
         }
     }
@@ -363,6 +374,9 @@ void FrameGraph::executeNodesInOrder(uint32_t frameIndex, bool& computeExecuted)
         
         auto& node = it->second;
         
+        // Prepare frame with new standardized lifecycle
+        node->prepareFrame(frameIndex);
+        
         // Insert barriers for this node using the barrier manager
         barrierManager_.insertBarriersForNode(nodeId, currentGraphicsCmd, computeExecuted, node->needsGraphicsQueue());
         
@@ -373,6 +387,9 @@ void FrameGraph::executeNodesInOrder(uint32_t frameIndex, bool& computeExecuted)
         }
         
         node->execute(cmdBuffer, *this);
+        
+        // Release frame with new standardized lifecycle
+        node->releaseFrame(frameIndex);
     }
 }
 
@@ -391,6 +408,9 @@ bool FrameGraph::executeWithTimeoutMonitoring(uint32_t frameIndex, bool& compute
             std::cerr << "[FrameGraph] GPU unhealthy, aborting execution" << std::endl;
             return false;
         }
+        
+        // Prepare frame with new standardized lifecycle
+        node->prepareFrame(frameIndex);
         
         // Insert barriers for this node using the barrier manager
         barrierManager_.insertBarriersForNode(nodeId, currentGraphicsCmd, computeExecuted, node->needsGraphicsQueue());
@@ -424,6 +444,9 @@ bool FrameGraph::executeWithTimeoutMonitoring(uint32_t frameIndex, bool& compute
             std::cerr << "[FrameGraph] GPU became unhealthy after node execution" << std::endl;
             return false;
         }
+        
+        // Release frame with new standardized lifecycle
+        node->releaseFrame(frameIndex);
     }
     
     return true;

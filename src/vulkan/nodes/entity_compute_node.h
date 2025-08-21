@@ -35,7 +35,12 @@ public:
     bool needsComputeQueue() const override { return true; }
     bool needsGraphicsQueue() const override { return false; }
     
-    // Frame state updates
+    // Node lifecycle - standardized pattern
+    bool initializeNode(const FrameGraph& frameGraph) override;
+    void prepareFrame(uint32_t frameIndex) override;
+    void releaseFrame(uint32_t frameIndex) override;
+    
+    // Frame state updates - DEPRECATED: maintained for backward compatibility
     void updateFrameData(float time, float deltaTime, uint32_t frameCounter) override;
 
 private:
@@ -72,6 +77,10 @@ private:
     // Thread-safe debug counter
     mutable std::atomic<uint32_t> debugCounter{0};
     mutable std::atomic<uint32_t> frameCounter{0};
+    
+    // Frame timing data for new lifecycle
+    float currentTime = 0.0f;
+    float currentDeltaTime = 0.0f;
     
     // Frame data for compute shader
     struct ComputePushConstants {
