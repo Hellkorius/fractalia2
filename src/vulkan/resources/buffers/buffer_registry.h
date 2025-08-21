@@ -5,16 +5,17 @@
 #include <memory>
 #include <vector>
 #include "../core/resource_handle.h"
-#include "../core/resource_context_interface.h"
+#include "../core/resource_coordinator.h"
 class BufferFactory;
 class GPUBuffer;
+class ResourceCoordinator;
 
 class BufferRegistry {
 public:
     BufferRegistry() = default;
     ~BufferRegistry();
     
-    bool initialize(IResourceContext* resourceContext, BufferFactory* bufferFactory);
+    bool initialize(ResourceCoordinator* coordinator, BufferFactory* bufferFactory);
     void cleanup();
     
     std::unique_ptr<GPUBuffer> createBuffer(VkDeviceSize size,
@@ -36,11 +37,11 @@ public:
     bool hasPendingOperations() const;
     std::vector<GPUBuffer*> getBuffersWithPendingData() const;
     
-    IResourceContext* getResourceContext() const { return resourceContext; }
+    ResourceCoordinator* getResourceCoordinator() const { return coordinator; }
     BufferFactory* getBufferFactory() const { return bufferFactory; }
     
 private:
-    IResourceContext* resourceContext = nullptr;
+    ResourceCoordinator* coordinator = nullptr;
     BufferFactory* bufferFactory = nullptr;
     std::vector<GPUBuffer*> managedBuffers;
 };

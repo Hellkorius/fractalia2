@@ -1,6 +1,7 @@
 #include "buffer_manager.h"
 #include "gpu_buffer.h"
-#include "../core/resource_context_interface.h"
+#include "../core/resource_coordinator.h"
+#include "../core/resource_factory.h"
 #include "buffer_factory.h"
 #include <iostream>
 #include <cstring>
@@ -16,27 +17,25 @@ BufferManager::~BufferManager() {
     cleanup();
 }
 
-bool BufferManager::initialize(IResourceContext* resourceContext, 
-                              BufferFactory* bufferFactory,
-                              CommandExecutor* executor,
+bool BufferManager::initialize(ResourceCoordinator* coordinator,
                               VkDeviceSize stagingSize) {
-    this->resourceContext = resourceContext;
-    this->bufferFactory = bufferFactory;
-    this->executor = executor;
+    this->coordinator = coordinator;
+    this->bufferFactory = coordinator->getResourceFactory()->getBufferFactory();
+    this->executor = coordinator->getCommandExecutor();
     
-    if (!resourceContext || !bufferFactory) {
-        std::cerr << "BufferManager: Invalid dependencies provided!" << std::endl;
+    if (!coordinator) {
+        std::cerr << "BufferManager: Invalid coordinator provided!" << std::endl;
         return false;
     }
     
     // Initialize staging pool
-    if (!stagingPool->initialize(*resourceContext->getContext(), stagingSize)) {
+    if (!stagingPool->initialize(*coordinator->getContext(), stagingSize)) {
         std::cerr << "Failed to initialize staging buffer pool!" << std::endl;
         return false;
     }
     
     // Initialize buffer registry
-    if (!bufferRegistry->initialize(resourceContext, bufferFactory)) {
+    if (!bufferRegistry->initialize(coordinator, bufferFactory)) {
         std::cerr << "Failed to initialize buffer registry!" << std::endl;
         return false;
     }
@@ -70,13 +69,13 @@ void BufferManager::cleanup() {
         stagingPool->cleanup();
     }
     
-    resourceContext = nullptr;
+    coordinator = nullptr;
     bufferFactory = nullptr;
     executor = nullptr;
 }
 
-IResourceContext* BufferManager::getResourceContext() const {
-    return resourceContext;
+ResourceCoordinator* BufferManager::getResourceCoordinator() const {
+    return coordinator;
 }
 
 BufferFactory* BufferManager::getBufferFactory() const {
@@ -112,7 +111,7 @@ std::unique_ptr<GPUBuffer> BufferManager::createBuffer(VkDeviceSize size,
                                                       VkMemoryPropertyFlags properties) {
     auto buffer = std::make_unique<GPUBuffer>();
     
-    if (!buffer->initialize(resourceContext, this, size, usage, properties)) {
+    if (!buffer->initialize(coordinator, this, size, usage, properties)) {
         return nullptr;
     }
     

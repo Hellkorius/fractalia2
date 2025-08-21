@@ -3,7 +3,7 @@
 #include "transfer_manager.h"
 #include "memory_allocator.h"
 #include "validation_utils.h"
-#include "resource_context_bridge.h"
+// Bridge no longer needed - BufferManager uses coordinator directly
 #include "../managers/descriptor_pool_manager.h"
 #include "../managers/graphics_resource_manager.h"
 #include "../buffers/buffer_manager.h"
@@ -238,12 +238,9 @@ bool ResourceCoordinator::initializeManagers(QueueManager* queueManager) {
         return false;
     }
     
-    // 3. Create bridge for BufferManager (breaks circular dependency)
-    contextBridge = std::make_unique<ResourceContextBridge>(this, &executor);
-    
-    // 4. BufferManager (uses bridge to avoid circular dependency)
+    // 3. BufferManager (no longer needs bridge - uses coordinator directly)
     bufferManager = std::make_unique<BufferManager>();
-    if (!bufferManager->initialize(contextBridge.get(), resourceFactory->getBufferFactory(), &executor, 16 * 1024 * 1024)) {
+    if (!bufferManager->initialize(this, 16 * 1024 * 1024)) {
         return false;
     }
     
@@ -286,7 +283,6 @@ void ResourceCoordinator::cleanupManagers() {
     descriptorPoolManager.reset();
     transferManager.reset();
     bufferManager.reset();
-    contextBridge.reset();
     resourceFactory.reset();
     memoryAllocator.reset();
 }

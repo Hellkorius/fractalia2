@@ -4,15 +4,16 @@
 #include <vulkan/vulkan.h>
 #include <memory>
 #include "../core/resource_handle.h"
-#include "../core/resource_context_interface.h"
+#include "../core/resource_coordinator.h"
 class BufferManager;
+class ResourceCoordinator;
 
 class GPUBuffer {
 public:
     GPUBuffer() = default;
     ~GPUBuffer();
     
-    bool initialize(IResourceContext* resourceContext, BufferManager* bufferManager, VkDeviceSize size,
+    bool initialize(ResourceCoordinator* coordinator, BufferManager* bufferManager, VkDeviceSize size,
                    VkBufferUsageFlags usage, VkMemoryPropertyFlags properties);
     void cleanup();
     
@@ -33,7 +34,7 @@ public:
     
 private:
     std::unique_ptr<ResourceHandle> storageHandle;
-    IResourceContext* resourceContext = nullptr;
+    ResourceCoordinator* coordinator = nullptr;
     BufferManager* bufferManager = nullptr;
     VkDeviceSize bufferSize = 0;
     

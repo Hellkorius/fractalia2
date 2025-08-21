@@ -3,7 +3,7 @@
 #include "buffer_registry.h"
 #include "gpu_buffer.h"
 #include "buffer_factory.h"
-#include "../core/resource_context_interface.h"
+// No longer needed - TransferOrchestrator doesn't use IResourceContext
 #include "../core/validation_utils.h"
 #include "../core/buffer_operation_utils.h"
 #include "../../core/vulkan_raii.h"
@@ -217,7 +217,7 @@ bool TransferOrchestrator::copyStagedToBuffer(const ResourceHandle& dst, const v
     
     // Create a temporary ResourceHandle for the staging buffer region
     ResourceHandle stagingHandle;
-    stagingHandle.buffer = vulkan_raii::make_buffer(stagingRegion.buffer, bufferRegistry->getResourceContext()->getContext());
+    stagingHandle.buffer = vulkan_raii::make_buffer(stagingRegion.buffer, bufferRegistry->getResourceCoordinator()->getContext());
     stagingHandle.size = stagingPool->getTotalSize(); // Use total staging buffer size
     stagingHandle.mappedData = nullptr; // Staging buffer is already mapped, but we don't expose that here
     

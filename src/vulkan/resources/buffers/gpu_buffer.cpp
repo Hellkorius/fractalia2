@@ -1,6 +1,6 @@
 #include "gpu_buffer.h"
 #include "buffer_manager.h"
-#include "../core/resource_context_interface.h"
+#include "../core/resource_coordinator.h"
 #include "../../core/vulkan_raii.h"
 #include <cstring>
 #include <iostream>
@@ -9,9 +9,9 @@ GPUBuffer::~GPUBuffer() {
     cleanup();
 }
 
-bool GPUBuffer::initialize(IResourceContext* resourceContext, BufferManager* bufferManager, VkDeviceSize size,
+bool GPUBuffer::initialize(ResourceCoordinator* coordinator, BufferManager* bufferManager, VkDeviceSize size,
                           VkBufferUsageFlags usage, VkMemoryPropertyFlags properties) {
-    this->resourceContext = resourceContext;
+    this->coordinator = coordinator;
     this->bufferManager = bufferManager;
     this->bufferSize = size;
     this->isDeviceLocal = (properties & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) != 0;
@@ -22,11 +22,11 @@ bool GPUBuffer::initialize(IResourceContext* resourceContext, BufferManager* buf
     
     if (properties & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) {
         storageHandle = std::make_unique<ResourceHandle>(
-            resourceContext->createMappedBuffer(size, usage, properties)
+            coordinator->createMappedBuffer(size, usage, properties)
         );
     } else {
         storageHandle = std::make_unique<ResourceHandle>(
-            resourceContext->createBuffer(size, usage, properties)
+            coordinator->createBuffer(size, usage, properties)
         );
     }
     
@@ -39,8 +39,8 @@ bool GPUBuffer::initialize(IResourceContext* resourceContext, BufferManager* buf
 }
 
 void GPUBuffer::cleanup() {
-    if (storageHandle && resourceContext) {
-        resourceContext->destroyResource(*storageHandle);
+    if (storageHandle && coordinator) {
+        coordinator->destroyResource(*storageHandle);
         storageHandle.reset();
     }
     
@@ -58,7 +58,7 @@ bool GPUBuffer::addData(const void* data, VkDeviceSize size, VkDeviceSize alignm
         return true;
     }
     
-    if (!isDeviceLocal || !resourceContext) return false;
+    if (!isDeviceLocal || !coordinator) return false;
     
     if (!bufferManager) return false;
     
@@ -94,10 +94,10 @@ void GPUBuffer::flushToGPU(VkDeviceSize dstOffset) {
     auto& stagingBuffer = bufferManager->getPrimaryStagingBuffer();
     
     ResourceHandle stagingHandle;
-    stagingHandle.buffer = vulkan_raii::make_buffer(stagingBuffer.getBuffer(), resourceContext->getContext());
+    stagingHandle.buffer = vulkan_raii::make_buffer(stagingBuffer.getBuffer(), coordinator->getContext());
     stagingHandle.buffer.detach();
     
-    resourceContext->copyBufferToBuffer(
+    coordinator->copyBufferToBuffer(
         stagingHandle,
         *storageHandle,
         stagingBytesWritten,

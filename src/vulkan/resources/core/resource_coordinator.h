@@ -6,7 +6,7 @@
 #include <vector>
 #include "resource_handle.h"
 #include "command_executor.h"
-#include "resource_context_bridge.h"
+// Bridge no longer needed - BufferManager uses coordinator directly
 
 class VulkanContext;
 class QueueManager;
@@ -93,8 +93,7 @@ private:
     const VulkanContext* context = nullptr;
     CommandExecutor executor;
     
-    // Bridge for breaking circular dependencies
-    std::unique_ptr<ResourceContextBridge> contextBridge;
+    // Bridge no longer needed - BufferManager uses coordinator directly
     
     // Focused managers
     std::unique_ptr<MemoryAllocator> memoryAllocator;

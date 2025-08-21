@@ -5,13 +5,14 @@
 #include <memory>
 #include "../core/resource_handle.h"
 #include "../core/command_executor.h"
-#include "../core/resource_context_interface.h"
+#include "../core/resource_coordinator.h"
 #include "staging_buffer_pool.h"
 #include "buffer_registry.h"
 #include "transfer_orchestrator.h"
 #include "buffer_statistics_collector.h"
 class BufferFactory;
 class GPUBuffer;
+class ResourceCoordinator;
 
 // Facade coordinating specialized buffer management components
 class BufferManager {
@@ -19,14 +20,12 @@ public:
     BufferManager();
     ~BufferManager();
     
-    bool initialize(IResourceContext* resourceContext, 
-                   BufferFactory* bufferFactory,
-                   CommandExecutor* executor,
+    bool initialize(ResourceCoordinator* coordinator,
                    VkDeviceSize stagingSize = 16 * 1024 * 1024);
     void cleanup();
     
-    // Context access
-    IResourceContext* getResourceContext() const;
+    // Coordinator access
+    ResourceCoordinator* getResourceCoordinator() const;
     BufferFactory* getBufferFactory() const;
     CommandExecutor* getCommandExecutor() const;
     
@@ -84,7 +83,7 @@ private:
     std::unique_ptr<TransferOrchestrator> transferOrchestrator;
     std::unique_ptr<BufferStatisticsCollector> statisticsCollector;
     
-    IResourceContext* resourceContext = nullptr;
+    ResourceCoordinator* coordinator = nullptr;
     BufferFactory* bufferFactory = nullptr;
     CommandExecutor* executor = nullptr;
 };

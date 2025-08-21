@@ -3,6 +3,16 @@
 ## Overview
 Cross-compiled (Linux→Windows) engine for 80,000+ entities at 60 FPS using GPU-driven instanced rendering.
 
+This project strictly adheres to established software engineering principles:
+
+- **SRP (Single Responsibility Principle)**:  
+  Each class, function, or module should have one well-defined responsibility.  
+  Avoid mixing concerns.
+
+- **DRY (Don’t Repeat Yourself)**:  
+  Eliminate code duplication by abstracting common functionality into shared helpers,  
+  utilities, or modules.
+
 ## Stack
 - SDL3, Vulkan, Flecs ECS, GLM, MinGW
 - Service-based architecture with dependency injection

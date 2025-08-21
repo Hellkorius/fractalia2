@@ -1,6 +1,6 @@
 #include "buffer_registry.h"
 #include "gpu_buffer.h"
-#include "../core/resource_context_interface.h"
+#include "../core/resource_coordinator.h"
 #include "buffer_factory.h"
 #include <algorithm>
 
@@ -8,12 +8,12 @@ BufferRegistry::~BufferRegistry() {
     cleanup();
 }
 
-bool BufferRegistry::initialize(IResourceContext* resourceContext, BufferFactory* bufferFactory) {
-    if (!resourceContext || !bufferFactory) {
+bool BufferRegistry::initialize(ResourceCoordinator* coordinator, BufferFactory* bufferFactory) {
+    if (!coordinator || !bufferFactory) {
         return false;
     }
     
-    this->resourceContext = resourceContext;
+    this->coordinator = coordinator;
     this->bufferFactory = bufferFactory;
     
     return true;
@@ -21,7 +21,7 @@ bool BufferRegistry::initialize(IResourceContext* resourceContext, BufferFactory
 
 void BufferRegistry::cleanup() {
     managedBuffers.clear();
-    resourceContext = nullptr;
+    coordinator = nullptr;
     bufferFactory = nullptr;
 }
 
