@@ -45,17 +45,6 @@ struct GPUEntitySoA {
     void addFromECS(const Transform& transform, const Renderable& renderable, const MovementPattern& pattern);
 };
 
-// Legacy GPUEntity structure for backward compatibility during migration
-struct GPUEntity {
-    glm::vec4 velocity;           
-    glm::vec4 movementParams;     
-    glm::vec4 runtimeState;       
-    glm::vec4 color;              
-    glm::mat4 modelMatrix;        
-    
-    GPUEntity() = default;
-    static GPUEntity fromECS(const Transform& transform, const Renderable& renderable, const MovementPattern& pattern);
-};
 
 // Modular GPU Entity Manager for AAA Frame Graph Architecture
 class GPUEntityManager {
@@ -71,8 +60,6 @@ public:
     void uploadPendingEntities(); // Upload staged entities to GPU
     void clearAllEntities();
     
-    // Legacy support
-    void addEntity(const GPUEntity& entity);
     
     // Direct buffer access for frame graph - SoA buffers
     VkBuffer getVelocityBuffer() const { return bufferManager.getVelocityBuffer(); }
@@ -87,8 +74,6 @@ public:
     VkBuffer getCurrentPositionBuffer() const { return bufferManager.getCurrentPositionBuffer(); }
     VkBuffer getTargetPositionBuffer() const { return bufferManager.getTargetPositionBuffer(); }
     
-    // Legacy support - maps to velocity buffer for compatibility
-    VkBuffer getEntityBuffer() const { return bufferManager.getVelocityBuffer(); }
     
     // Async compute support - ping-pong between position buffers
     VkBuffer getComputeWriteBuffer(uint32_t frameIndex) const { return bufferManager.getComputeWriteBuffer(frameIndex); }
@@ -102,8 +87,6 @@ public:
     VkDeviceSize getModelMatrixBufferSize() const { return bufferManager.getModelMatrixBufferSize(); }
     VkDeviceSize getPositionBufferSize() const { return bufferManager.getPositionBufferSize(); }
     
-    // Legacy support
-    VkDeviceSize getEntityBufferSize() const { return bufferManager.getVelocityBufferSize(); }
     
     // Entity state
     uint32_t getEntityCount() const { return activeEntityCount; }

@@ -45,37 +45,6 @@ void GPUEntitySoA::addFromECS(const Transform& transform, const Renderable& rend
     modelMatrices.emplace_back(transform.getMatrix());
 }
 
-GPUEntity GPUEntity::fromECS(const Transform& transform, const Renderable& renderable, const MovementPattern& pattern) {
-    GPUEntity entity{};
-    
-    // Initialize velocity to zero (will be set by movement compute shader)
-    entity.velocity = glm::vec4(
-        0.0f,                      // velocity.x
-        0.0f,                      // velocity.y  
-        0.001f,                    // damping factor (very small amount of drag)
-        0.0f                       // reserved
-    );
-    
-    entity.movementParams = glm::vec4(
-        pattern.amplitude,
-        pattern.frequency, 
-        pattern.phase,
-        pattern.timeOffset
-    );
-    
-    entity.color = renderable.color;
-    
-    entity.modelMatrix = transform.getMatrix();
-    
-    entity.runtimeState = glm::vec4(
-        0.0f,                          // totalTime (will be updated by compute shader)
-        0.0f,                          // reserved 
-        stateTimerDist(rng),           // stateTimer (random staggering) - optimized RNG
-        0.0f                           // initialized flag (must start as 0.0 for GPU initialization)
-    );
-    
-    return entity;
-}
 
 GPUEntityManager::GPUEntityManager() {
 }
@@ -114,19 +83,6 @@ void GPUEntityManager::cleanup() {
     bufferManager.cleanup();
 }
 
-void GPUEntityManager::addEntity(const GPUEntity& entity) {
-    if (activeEntityCount + stagingEntities.size() >= bufferManager.getMaxEntities()) {
-        std::cerr << "GPUEntityManager: Cannot add entity, would exceed max capacity" << std::endl;
-        return;
-    }
-    
-    // Convert legacy GPUEntity to SoA format
-    stagingEntities.velocities.emplace_back(entity.velocity);
-    stagingEntities.movementParams.emplace_back(entity.movementParams);
-    stagingEntities.runtimeStates.emplace_back(entity.runtimeState);
-    stagingEntities.colors.emplace_back(entity.color);
-    stagingEntities.modelMatrices.emplace_back(entity.modelMatrix);
-}
 
 void GPUEntityManager::addEntitiesFromECS(const std::vector<flecs::entity>& entities) {
     for (const auto& entity : entities) {

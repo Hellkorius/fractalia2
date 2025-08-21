@@ -29,8 +29,8 @@ bool FrameGraphResourceRegistry::importEntityResources() {
     // Import entity buffer
     entityBufferId = frameGraph->importExternalBuffer(
         "EntityBuffer",
-        gpuEntityManager->getEntityBuffer(),
-        gpuEntityManager->getMaxEntities() * sizeof(GPUEntity),
+        gpuEntityManager->getVelocityBuffer(),
+        gpuEntityManager->getVelocityBufferSize(),
         VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT
     );
 
@@ -38,7 +38,7 @@ bool FrameGraphResourceRegistry::importEntityResources() {
     positionBufferId = frameGraph->importExternalBuffer(
         "PositionBuffer",
         gpuEntityManager->getPositionBuffer(),
-        gpuEntityManager->getMaxEntities() * sizeof(glm::vec4),
+        gpuEntityManager->getPositionBufferSize(),
         VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT
     );
 
@@ -46,7 +46,7 @@ bool FrameGraphResourceRegistry::importEntityResources() {
     currentPositionBufferId = frameGraph->importExternalBuffer(
         "CurrentPositionBuffer",
         gpuEntityManager->getCurrentPositionBuffer(),
-        gpuEntityManager->getMaxEntities() * sizeof(glm::vec4),
+        gpuEntityManager->getPositionBufferSize(),
         VK_BUFFER_USAGE_STORAGE_BUFFER_BIT
     );
 
@@ -54,7 +54,7 @@ bool FrameGraphResourceRegistry::importEntityResources() {
     targetPositionBufferId = frameGraph->importExternalBuffer(
         "TargetPositionBuffer",
         gpuEntityManager->getTargetPositionBuffer(),
-        gpuEntityManager->getMaxEntities() * sizeof(glm::vec4),
+        gpuEntityManager->getPositionBufferSize(),
         VK_BUFFER_USAGE_STORAGE_BUFFER_BIT
     );
 

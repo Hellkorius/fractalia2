@@ -218,11 +218,11 @@ void RenderFrameDirector::resetSwapchainCache() {
     // 4. CRITICAL FIX: Update BOTH graphics AND compute descriptor sets after swapchain recreation
     // This fixes the second window resize crash by ensuring all descriptor sets have valid buffer bindings
     if (gpuEntityManager && resourceCoordinator) {
-        VkBuffer entityBuffer = gpuEntityManager->getEntityBuffer();
+        VkBuffer movementParamsBuffer = gpuEntityManager->getMovementParamsBuffer();
         VkBuffer positionBuffer = gpuEntityManager->getPositionBuffer();
         
-        if (entityBuffer != VK_NULL_HANDLE && positionBuffer != VK_NULL_HANDLE) {
-            bool graphicsSuccess = resourceCoordinator->getGraphicsManager()->updateDescriptorSetsWithEntityAndPositionBuffers(entityBuffer, positionBuffer);
+        if (movementParamsBuffer != VK_NULL_HANDLE && positionBuffer != VK_NULL_HANDLE) {
+            bool graphicsSuccess = resourceCoordinator->getGraphicsManager()->updateDescriptorSetsWithEntityAndPositionBuffers(movementParamsBuffer, positionBuffer);
             bool computeSuccess = gpuEntityManager->getDescriptorManager().recreateComputeDescriptorSets();
             
             if (graphicsSuccess && computeSuccess) {
@@ -234,7 +234,7 @@ void RenderFrameDirector::resetSwapchainCache() {
             }
         } else {
             std::cerr << "RenderFrameDirector: WARNING - Invalid entity or position buffer during swapchain recreation" << std::endl;
-            std::cerr << "  Entity buffer: " << (entityBuffer != VK_NULL_HANDLE ? "VALID" : "NULL") << std::endl;
+            std::cerr << "  Movement params buffer: " << (movementParamsBuffer != VK_NULL_HANDLE ? "VALID" : "NULL") << std::endl;
             std::cerr << "  Position buffer: " << (positionBuffer != VK_NULL_HANDLE ? "VALID" : "NULL") << std::endl;
         }
     } else {

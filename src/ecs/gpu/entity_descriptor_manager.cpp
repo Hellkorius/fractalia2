@@ -431,7 +431,7 @@ bool EntityDescriptorManager::recreateComputeDescriptorSets() {
     }
     
     // Validate buffers are available
-    if (!bufferManager || bufferManager->getEntityBuffer() == VK_NULL_HANDLE || 
+    if (!bufferManager || bufferManager->getVelocityBuffer() == VK_NULL_HANDLE || 
         bufferManager->getPositionBuffer() == VK_NULL_HANDLE || 
         bufferManager->getCurrentPositionBuffer() == VK_NULL_HANDLE || 
         bufferManager->getTargetPositionBuffer() == VK_NULL_HANDLE) {

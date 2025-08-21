@@ -35,8 +35,6 @@ public:
     VkBuffer getCurrentPositionBuffer() const { return positionCoordinator.getCurrentBuffer(); }
     VkBuffer getTargetPositionBuffer() const { return positionCoordinator.getTargetBuffer(); }
     
-    // Legacy support
-    VkBuffer getEntityBuffer() const { return velocityBuffer.getBuffer(); }
     
     // Ping-pong buffer access - delegated to coordinator
     VkBuffer getComputeWriteBuffer(uint32_t frameIndex) const { return positionCoordinator.getComputeWriteBuffer(frameIndex); }
@@ -51,8 +49,6 @@ public:
     VkDeviceSize getPositionBufferSize() const { return positionCoordinator.getBufferSize(); }
     uint32_t getMaxEntities() const { return maxEntities; }
     
-    // Legacy support
-    VkDeviceSize getEntityBufferSize() const { return velocityBuffer.getSize(); }
     
     // Data upload - using shared upload service
     void copyDataToBuffer(VkBuffer buffer, const void* data, VkDeviceSize size, VkDeviceSize offset = 0);
@@ -86,5 +82,3 @@ private:
     IBufferOperations* findBufferByHandle(VkBuffer handle);
 };
 
-// Legacy typedef for backward compatibility
-using EntityBufferManagerLegacy = EntityBufferManager;

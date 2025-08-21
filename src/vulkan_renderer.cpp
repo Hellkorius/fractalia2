@@ -155,14 +155,14 @@ bool VulkanRenderer::initialize(SDL_Window* window) {
     }
     
     // Validate entity manager buffers before using them
-    if (!gpuEntityManager->getEntityBuffer() || !gpuEntityManager->getPositionBuffer()) {
+    if (!gpuEntityManager->getMovementParamsBuffer() || !gpuEntityManager->getPositionBuffer()) {
         std::cerr << "GPU entity manager missing required buffers" << std::endl;
         cleanup();
         return false;
     }
     
     if (!resourceCoordinator->getGraphicsManager()->updateDescriptorSetsWithEntityAndPositionBuffers(
-            gpuEntityManager->getEntityBuffer(),
+            gpuEntityManager->getMovementParamsBuffer(),
             gpuEntityManager->getPositionBuffer())) {
         std::cerr << "Failed to update descriptor sets with entity and position buffers" << std::endl;
         cleanup();
