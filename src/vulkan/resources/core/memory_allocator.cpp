@@ -1,4 +1,6 @@
 #include "memory_allocator.h"
+#include "resource_handle.h"
+#include "validation_utils.h"
 #include "../../core/vulkan_context.h"
 #include "../../core/vulkan_function_loader.h"
 #include <iostream>
@@ -149,6 +151,63 @@ void MemoryAllocator::unmapMemory(const AllocationInfo& allocation) {
     if (context && allocation.memory != VK_NULL_HANDLE) {
         context->getLoader().vkUnmapMemory(context->getDevice(), allocation.memory);
     }
+}
+
+bool MemoryAllocator::mapResourceMemory(ResourceHandle& handle) {
+    if (!ValidationUtils::validateDependencies("MemoryAllocator::mapResourceMemory", context, &handle)) {
+        return false;
+    }
+    
+    if (!handle.isValid()) {
+        ValidationUtils::logValidationFailure("MemoryAllocator::mapResourceMemory", 
+                                             "resource handle", "invalid handle");
+        return false;
+    }
+    
+    if (handle.mappedData) {
+        // Already mapped
+        return true;
+    }
+    
+    if (!handle.memory.get()) {
+        ValidationUtils::logValidationFailure("MemoryAllocator::mapResourceMemory",
+                                             "resource memory", "null memory handle");
+        return false;
+    }
+    
+    AllocationInfo allocation;
+    allocation.memory = handle.memory.get();
+    allocation.size = handle.size;
+    allocation.offset = 0; // Assuming full resource mapping
+    
+    return mapMemory(allocation, &handle.mappedData);
+}
+
+void MemoryAllocator::unmapResourceMemory(ResourceHandle& handle) {
+    if (!context || !handle.isValid() || !handle.mappedData) {
+        return;
+    }
+    
+    if (handle.memory.get()) {
+        context->getLoader().vkUnmapMemory(context->getDevice(), handle.memory.get());
+        handle.mappedData = nullptr;
+    }
+}
+
+MemoryAllocator::AllocationInfo MemoryAllocator::allocateMappedMemory(VkMemoryRequirements requirements,
+                                                                     VkMemoryPropertyFlags properties) {
+    AllocationInfo allocation = allocateMemory(requirements, properties);
+    
+    if (allocation.memory != VK_NULL_HANDLE && (properties & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)) {
+        if (!mapMemory(allocation, &allocation.mappedData)) {
+            ValidationUtils::logError("MemoryAllocator", "allocateMappedMemory", 
+                                     "failed to map allocated memory");
+            freeMemory(allocation);
+            return {};
+        }
+    }
+    
+    return allocation;
 }
 
 uint32_t MemoryAllocator::findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties) {

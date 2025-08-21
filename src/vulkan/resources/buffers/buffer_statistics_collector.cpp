@@ -2,11 +2,13 @@
 #include "staging_buffer_pool.h"
 #include "buffer_registry.h"
 #include "transfer_orchestrator.h"
+#include "../core/validation_utils.h"
 
 bool BufferStatisticsCollector::initialize(StagingBufferPool* stagingPool,
                                           BufferRegistry* bufferRegistry,
                                           TransferOrchestrator* transferOrchestrator) {
-    if (!stagingPool || !bufferRegistry || !transferOrchestrator) {
+    if (!ValidationUtils::validateDependencies("BufferStatisticsCollector::initialize",
+                                               stagingPool, bufferRegistry, transferOrchestrator)) {
         return false;
     }
     
@@ -25,21 +27,23 @@ void BufferStatisticsCollector::cleanup() {
 
 BufferStatisticsCollector::BufferStats BufferStatisticsCollector::getStats() const {
     BufferStats stats;
+    stats.markValid();
     
     if (!stagingPool || !bufferRegistry || !transferOrchestrator) {
+        stats.markInvalid();
         return stats;
     }
     
-    // Staging buffer stats
-    auto poolStats = stagingPool->getStats();
-    stats.stagingTotalSize = poolStats.totalSize;
-    stats.stagingFragmentedBytes = poolStats.fragmentedBytes;
-    stats.stagingFragmentationRatio = poolStats.fragmentationRatio;
-    stats.stagingFragmentationCritical = poolStats.fragmentationCritical;
-    stats.stagingAllocations = poolStats.allocations;
-    stats.stagingFailedAllocations = poolStats.failedAllocations;
+    // Collect staging buffer stats
+    auto stagingStats = stagingPool->getStats();
+    stats.stagingTotalSize = stagingStats.totalSize;
+    stats.stagingFragmentedBytes = stagingStats.fragmentedBytes;
+    stats.stagingFragmentationRatio = stagingStats.fragmentationRatio;
+    stats.stagingFragmentationCritical = stagingStats.fragmentationCritical;
+    stats.stagingAllocations = stagingStats.allocations;
+    stats.stagingFailedAllocations = stagingStats.failedAllocations;
     
-    // GPU buffer stats
+    // Collect buffer registry stats
     auto registryStats = bufferRegistry->getStats();
     stats.totalBuffers = registryStats.totalBuffers;
     stats.deviceLocalBuffers = registryStats.deviceLocalBuffers;
@@ -47,7 +51,7 @@ BufferStatisticsCollector::BufferStats BufferStatisticsCollector::getStats() con
     stats.totalBufferSize = registryStats.totalBufferSize;
     stats.buffersWithPendingData = registryStats.buffersWithPendingData;
     
-    // Transfer stats
+    // Collect transfer stats
     auto transferStats = transferOrchestrator->getStats();
     stats.totalTransfers = transferStats.totalTransfers;
     stats.asyncTransfers = transferStats.asyncTransfers;
@@ -59,25 +63,25 @@ BufferStatisticsCollector::BufferStats BufferStatisticsCollector::getStats() con
 }
 
 bool BufferStatisticsCollector::isUnderMemoryPressure() const {
-    if (!stagingPool || !bufferRegistry) {
-        return false;
-    }
+    if (!stagingPool) return false;
     
-    return stagingPool->isUnderPressure();
+    auto stats = stagingPool->getStats();
+    return stats.fragmentationCritical || (stats.fragmentationRatio > 0.8f);
 }
 
 bool BufferStatisticsCollector::hasPendingStagingOperations() const {
-    if (!bufferRegistry) {
-        return false;
-    }
+    if (!stagingPool) return false;
     
-    return bufferRegistry->hasPendingOperations();
+    auto stats = stagingPool->getStats();
+    return stats.allocations > 0;
 }
 
 bool BufferStatisticsCollector::tryOptimizeMemory() {
-    if (!stagingPool) {
-        return false;
+    bool success = true;
+    
+    if (stagingPool) {
+        success &= stagingPool->tryDefragment();
     }
     
-    return stagingPool->tryDefragment();
+    return success;
 }

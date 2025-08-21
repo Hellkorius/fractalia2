@@ -4,6 +4,8 @@
 #include "gpu_buffer.h"
 #include "buffer_factory.h"
 #include "../managers/resource_context.h"
+#include "../core/validation_utils.h"
+#include "../core/buffer_operation_utils.h"
 #include "../../core/vulkan_raii.h"
 #include <cstring>
 
@@ -35,8 +37,8 @@ bool TransferOrchestrator::copyToBuffer(const ResourceHandle& dst, const void* d
     
     bool success = false;
     
-    if (isBufferHostVisible(dst)) {
-        success = copyDirectToMappedBuffer(dst, data, size, offset);
+    if (BufferOperationUtils::isBufferHostVisible(dst)) {
+        success = BufferOperationUtils::copyDirectToMappedBuffer(dst, data, size, offset);
     } else {
         success = copyStagedToBuffer(dst, data, size, offset);
     }
@@ -50,11 +52,11 @@ bool TransferOrchestrator::copyToBuffer(const ResourceHandle& dst, const void* d
 
 bool TransferOrchestrator::copyBufferToBuffer(const ResourceHandle& src, const ResourceHandle& dst,
                                              VkDeviceSize size, VkDeviceSize srcOffset, VkDeviceSize dstOffset) {
-    if (!src.isValid() || !dst.isValid() || size == 0 || !bufferRegistry->getBufferFactory()) {
+    // Use centralized buffer operation utilities
+    if (!BufferOperationUtils::copyBufferToBuffer(executor, src, dst, size, srcOffset, dstOffset)) {
         return false;
     }
     
-    bufferRegistry->getBufferFactory()->copyBufferToBuffer(src, dst, size, srcOffset, dstOffset);
     updateTransferStats(size);
     return true;
 }
@@ -67,8 +69,8 @@ CommandExecutor::AsyncTransfer TransferOrchestrator::copyToBufferAsync(const Res
     
     CommandExecutor::AsyncTransfer result;
     
-    if (isBufferHostVisible(dst)) {
-        bool success = copyDirectToMappedBuffer(dst, data, size, offset);
+    if (BufferOperationUtils::isBufferHostVisible(dst)) {
+        bool success = BufferOperationUtils::copyDirectToMappedBuffer(dst, data, size, offset);
         if (success) {
             updateTransferStats(size, true);
         }
@@ -155,10 +157,10 @@ bool TransferOrchestrator::mapAndCopyToBuffer(const ResourceHandle& dst, const v
     }
     
     if (dst.mappedData) {
-        return copyDirectToMappedBuffer(dst, data, size, offset);
+        return BufferOperationUtils::copyDirectToMappedBuffer(dst, data, size, offset);
     }
     
-    if (isBufferHostVisible(dst)) {
+    if (BufferOperationUtils::isBufferHostVisible(dst)) {
         return copyToBuffer(dst, data, size, offset);
     }
     
@@ -193,25 +195,8 @@ TransferOrchestrator::TransferStats TransferOrchestrator::getStats() const {
     return stats;
 }
 
-bool TransferOrchestrator::isBufferHostVisible(const ResourceHandle& buffer) const {
-    return buffer.mappedData != nullptr;
-}
-
 bool TransferOrchestrator::requiresStaging(const ResourceHandle& buffer) const {
-    return !isBufferHostVisible(buffer);
-}
-
-bool TransferOrchestrator::copyDirectToMappedBuffer(const ResourceHandle& dst, const void* data, VkDeviceSize size, VkDeviceSize offset) {
-    if (!dst.mappedData || !data || size == 0) {
-        return false;
-    }
-    
-    if (offset + size > dst.size) {
-        return false;
-    }
-    
-    memcpy(static_cast<char*>(dst.mappedData) + offset, data, size);
-    return true;
+    return BufferOperationUtils::requiresStaging(buffer);
 }
 
 bool TransferOrchestrator::copyStagedToBuffer(const ResourceHandle& dst, const void* data, VkDeviceSize size, VkDeviceSize offset) {

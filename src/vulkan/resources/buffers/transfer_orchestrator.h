@@ -78,9 +78,7 @@ private:
         VkDeviceSize totalBytesTransferred = 0;
     } transferStats;
     
-    bool isBufferHostVisible(const ResourceHandle& buffer) const;
     bool requiresStaging(const ResourceHandle& buffer) const;
-    bool copyDirectToMappedBuffer(const ResourceHandle& dst, const void* data, VkDeviceSize size, VkDeviceSize offset);
     bool copyStagedToBuffer(const ResourceHandle& dst, const void* data, VkDeviceSize size, VkDeviceSize offset);
     CommandExecutor::AsyncTransfer copyStagedToBufferAsync(const ResourceHandle& dst, const void* data, VkDeviceSize size, VkDeviceSize offset);
     

@@ -4,6 +4,8 @@
 #include "../../core/vulkan_constants.h"
 #include "staging_buffer_pool.h"
 #include "../core/command_executor.h"
+#include "../core/validation_utils.h"
+#include "../core/buffer_operation_utils.h"
 #include <iostream>
 #include <cstring>
 
@@ -83,8 +85,9 @@ ResourceHandle BufferFactory::createMappedBuffer(VkDeviceSize size,
     ResourceHandle handle = createBuffer(size, usage, properties);
     
     if (handle.isValid() && (properties & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)) {
-        if (context->getLoader().vkMapMemory(context->getDevice(), handle.memory.get(), 0, size, 0, &handle.mappedData) != VK_SUCCESS) {
-            std::cerr << "Failed to map buffer memory!" << std::endl;
+        // Use centralized memory mapping logic
+        if (!memoryAllocator->mapResourceMemory(handle)) {
+            ValidationUtils::logError("BufferFactory", "createMappedBuffer", "failed to map buffer memory");
             destroyResource(handle);
             return {};
         }
@@ -251,19 +254,8 @@ void BufferFactory::copyToBuffer(const ResourceHandle& dst, const void* data, Vk
 }
 
 void BufferFactory::copyBufferToBuffer(const ResourceHandle& src, const ResourceHandle& dst, VkDeviceSize size, VkDeviceSize srcOffset, VkDeviceSize dstOffset) {
-    if (!src.isValid() || !dst.isValid()) {
-        std::cerr << "BufferFactory::copyBufferToBuffer: Invalid resource handles!" << std::endl;
-        return;
-    }
-    
-    if (!src.buffer || !dst.buffer) {
-        std::cerr << "BufferFactory::copyBufferToBuffer: Invalid buffer handles!" << std::endl;
-        return;
-    }
-    
-    if (executor) {
-        executor->copyBufferToBuffer(src.buffer.get(), dst.buffer.get(), size, srcOffset, dstOffset);
-    } else {
-        std::cerr << "BufferFactory::copyBufferToBuffer: No command executor available!" << std::endl;
+    // Use centralized buffer operation utilities
+    if (!BufferOperationUtils::copyBufferToBuffer(executor, src, dst, size, srcOffset, dstOffset)) {
+        ValidationUtils::logError("BufferFactory", "copyBufferToBuffer", "operation failed");
     }
 }

@@ -37,9 +37,17 @@ public:
                                   VkMemoryPropertyFlags properties);
     void freeMemory(const AllocationInfo& allocation);
     
-    // Memory mapping
+    // Memory mapping - centralized for all resource types
     bool mapMemory(const AllocationInfo& allocation, void** data);
     void unmapMemory(const AllocationInfo& allocation);
+    
+    // Resource handle memory mapping (centralized to eliminate duplication)
+    bool mapResourceMemory(class ResourceHandle& handle);
+    void unmapResourceMemory(class ResourceHandle& handle);
+    
+    // Utility for creating pre-mapped allocations
+    AllocationInfo allocateMappedMemory(VkMemoryRequirements requirements,
+                                       VkMemoryPropertyFlags properties = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
     
     // Memory type utilities
     uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties);

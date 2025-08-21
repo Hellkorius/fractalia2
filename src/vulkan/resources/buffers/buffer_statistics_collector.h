@@ -2,6 +2,7 @@
 
 #define VK_NO_PROTOTYPES
 #include <vulkan/vulkan.h>
+#include "../core/statistics_provider.h"
 
 class StagingBufferPool;
 class BufferRegistry;
@@ -17,7 +18,7 @@ public:
                    TransferOrchestrator* transferOrchestrator);
     void cleanup();
     
-    struct BufferStats {
+    struct BufferStats : BaseStats {
         // Staging buffer stats
         VkDeviceSize stagingTotalSize = 0;
         VkDeviceSize stagingFragmentedBytes = 0;
@@ -41,7 +42,10 @@ public:
         float averageTransferSize = 0.0f;
     };
     
+    // Statistics interface
     BufferStats getStats() const;
+    
+    // Specialized buffer statistics methods
     bool isUnderMemoryPressure() const;
     bool hasPendingStagingOperations() const;
     bool tryOptimizeMemory();
