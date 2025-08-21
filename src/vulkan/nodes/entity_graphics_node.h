@@ -46,15 +46,8 @@ public:
     
     // Node lifecycle - standardized pattern
     bool initializeNode(const FrameGraph& frameGraph) override;
-    void prepareFrame(uint32_t frameIndex) override;
+    void prepareFrame(uint32_t frameIndex, float time, float deltaTime) override;
     void releaseFrame(uint32_t frameIndex) override;
-    
-    // Update frame data for vertex shader push constants and uniform buffers - DEPRECATED
-    void updateFrameData(float time, float deltaTime, uint32_t frameIndex) override { 
-        this->frameTime = time; 
-        this->frameDeltaTime = deltaTime; 
-        this->currentFrameIndex = frameIndex;
-    }
     
     // Set world reference for camera matrix access
     void setWorld(flecs::world* world) { this->world = world; }

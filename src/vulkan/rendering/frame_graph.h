@@ -70,14 +70,13 @@ public:
     // Graph compilation and execution
     bool compile();
     bool isCompiled() const { return compiled_; }
-    void updateFrameData(float time, float deltaTime, uint32_t frameCounter, uint32_t currentFrameIndex);
     
     // Execution result to indicate which command buffers were used
     struct ExecutionResult {
         bool computeCommandBufferUsed = false;
         bool graphicsCommandBufferUsed = false;
     };
-    ExecutionResult execute(uint32_t frameIndex);
+    ExecutionResult execute(uint32_t frameIndex, float time, float deltaTime);
     void reset(); // Clear for next frame
     void removeSwapchainResources(); // Remove swapchain images during recreation
     
@@ -125,10 +124,10 @@ private:
     std::pair<bool, bool> analyzeQueueRequirements() const;
     void beginCommandBuffers(bool useCompute, bool useGraphics, uint32_t frameIndex);
     void endCommandBuffers(bool useCompute, bool useGraphics, uint32_t frameIndex);
-    void executeNodesInOrder(uint32_t frameIndex, bool& computeExecuted);
+    void executeNodesInOrder(uint32_t frameIndex, float time, float deltaTime, bool& computeExecuted);
     
     // Timeout-aware execution
-    bool executeWithTimeoutMonitoring(uint32_t frameIndex, bool& computeExecuted);
+    bool executeWithTimeoutMonitoring(uint32_t frameIndex, float time, float deltaTime, bool& computeExecuted);
     void handleExecutionTimeout();
 };
 

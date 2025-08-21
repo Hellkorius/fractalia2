@@ -75,8 +75,8 @@ RenderFrameResult RenderFrameDirector::directFrame(
     // 4. Configure frame graph nodes with world reference after swapchain acquisition
     configureFrameGraphNodes(result.imageIndex, world);
 
-    // 5. Execute frame graph
-    result.executionResult = frameGraph->execute(currentFrame);
+    // 5. Execute frame graph with timing data
+    result.executionResult = frameGraph->execute(currentFrame, totalTime, deltaTime);
     result.success = true;
 
     return result;
@@ -253,8 +253,7 @@ bool RenderFrameDirector::compileFrameGraph(uint32_t currentFrame, float totalTi
     // Command buffer reset is now handled by QueueManager during frame execution
     // No manual reset needed here
     
-    // Update frame data in nodes (AAA pattern: frame graph manages per-frame data)
-    frameGraph->updateFrameData(totalTime, deltaTime, frameCounter, currentFrame);
+    // Timing data is now passed directly to frame graph execution via prepareFrame
     
     return true;
 }

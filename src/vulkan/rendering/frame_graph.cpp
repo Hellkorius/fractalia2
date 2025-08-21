@@ -239,20 +239,8 @@ bool FrameGraph::compile() {
     return true;
 }
 
-void FrameGraph::updateFrameData(float time, float deltaTime, uint32_t frameCounter, uint32_t currentFrameIndex) {
-    // Update frame data for all nodes via virtual interface
-    for (auto& [nodeId, node] : nodes_) {
-        // Use frameCounter for compute nodes, currentFrameIndex for graphics nodes
-        // This maintains backward compatibility while using the proper interface
-        if (node->needsComputeQueue()) {
-            node->updateFrameData(time, deltaTime, frameCounter);
-        } else {
-            node->updateFrameData(time, deltaTime, currentFrameIndex);
-        }
-    }
-}
 
-FrameGraph::ExecutionResult FrameGraph::execute(uint32_t frameIndex) {
+FrameGraph::ExecutionResult FrameGraph::execute(uint32_t frameIndex, float time, float deltaTime) {
     ExecutionResult result;
     if (!compiled_) {
         std::cerr << "FrameGraph: Cannot execute, not compiled" << std::endl;
@@ -285,14 +273,14 @@ FrameGraph::ExecutionResult FrameGraph::execute(uint32_t frameIndex) {
     // Execute nodes with timeout monitoring if available
     bool computeExecuted = false;
     if (timeoutDetector_) {
-        if (!executeWithTimeoutMonitoring(frameIndex, computeExecuted)) {
+        if (!executeWithTimeoutMonitoring(frameIndex, time, deltaTime, computeExecuted)) {
             // Timeout occurred, end command buffers and return early
             endCommandBuffers(computeNeeded, graphicsNeeded, frameIndex);
             handleExecutionTimeout();
             return result;
         }
     } else {
-        executeNodesInOrder(frameIndex, computeExecuted);
+        executeNodesInOrder(frameIndex, time, deltaTime, computeExecuted);
     }
     
     // End only the command buffers that were begun
@@ -364,7 +352,7 @@ void FrameGraph::endCommandBuffers(bool useCompute, bool useGraphics, uint32_t f
     }
 }
 
-void FrameGraph::executeNodesInOrder(uint32_t frameIndex, bool& computeExecuted) {
+void FrameGraph::executeNodesInOrder(uint32_t frameIndex, float time, float deltaTime, bool& computeExecuted) {
     VkCommandBuffer currentComputeCmd = queueManager_->getComputeCommandBuffer(frameIndex);
     VkCommandBuffer currentGraphicsCmd = queueManager_->getGraphicsCommandBuffer(frameIndex);
     
@@ -375,7 +363,7 @@ void FrameGraph::executeNodesInOrder(uint32_t frameIndex, bool& computeExecuted)
         auto& node = it->second;
         
         // Prepare frame with new standardized lifecycle
-        node->prepareFrame(frameIndex);
+        node->prepareFrame(frameIndex, time, deltaTime);
         
         // Insert barriers for this node using the barrier manager
         barrierManager_.insertBarriersForNode(nodeId, currentGraphicsCmd, computeExecuted, node->needsGraphicsQueue());
@@ -393,7 +381,7 @@ void FrameGraph::executeNodesInOrder(uint32_t frameIndex, bool& computeExecuted)
     }
 }
 
-bool FrameGraph::executeWithTimeoutMonitoring(uint32_t frameIndex, bool& computeExecuted) {
+bool FrameGraph::executeWithTimeoutMonitoring(uint32_t frameIndex, float time, float deltaTime, bool& computeExecuted) {
     VkCommandBuffer currentComputeCmd = queueManager_->getComputeCommandBuffer(frameIndex);
     VkCommandBuffer currentGraphicsCmd = queueManager_->getGraphicsCommandBuffer(frameIndex);
     
@@ -410,7 +398,7 @@ bool FrameGraph::executeWithTimeoutMonitoring(uint32_t frameIndex, bool& compute
         }
         
         // Prepare frame with new standardized lifecycle
-        node->prepareFrame(frameIndex);
+        node->prepareFrame(frameIndex, time, deltaTime);
         
         // Insert barriers for this node using the barrier manager
         barrierManager_.insertBarriersForNode(nodeId, currentGraphicsCmd, computeExecuted, node->needsGraphicsQueue());

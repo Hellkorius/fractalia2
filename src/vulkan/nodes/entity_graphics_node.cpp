@@ -338,8 +338,10 @@ bool EntityGraphicsNode::initializeNode(const FrameGraph& frameGraph) {
     return true;
 }
 
-void EntityGraphicsNode::prepareFrame(uint32_t frameIndex) {
-    // Per-frame preparation - update frame timing and mark uniform buffer dirty if needed
+void EntityGraphicsNode::prepareFrame(uint32_t frameIndex, float time, float deltaTime) {
+    // Store timing data
+    frameTime = time;
+    frameDeltaTime = deltaTime;
     currentFrameIndex = frameIndex;
     
     // Check if uniform buffer needs updating

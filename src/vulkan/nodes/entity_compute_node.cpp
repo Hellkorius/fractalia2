@@ -303,23 +303,19 @@ bool EntityComputeNode::initializeNode(const FrameGraph& frameGraph) {
     return true;
 }
 
-void EntityComputeNode::prepareFrame(uint32_t frameIndex) {
-    // Per-frame preparation - don't overwrite timing data from updateFrameData()
-    // The frameCounter set by updateFrameData() is correct for compute nodes
+void EntityComputeNode::prepareFrame(uint32_t frameIndex, float time, float deltaTime) {
+    // Store timing data for execution
+    currentTime = time;
+    currentDeltaTime = deltaTime;
+    
+    // Update push constants with timing data
+    pushConstants.time = time;
+    pushConstants.deltaTime = deltaTime;
+    pushConstants.frame = frameCounter.load();  // Use counter for compute nodes
 }
 
 void EntityComputeNode::releaseFrame(uint32_t frameIndex) {
     // Per-frame cleanup - nothing to clean up for compute node
 }
 
-void EntityComputeNode::updateFrameData(float time, float deltaTime, uint32_t frameCounter) {
-    // Store timing data for new lifecycle
-    currentTime = time;
-    currentDeltaTime = deltaTime;
-    
-    // Backward compatibility - still update push constants directly
-    pushConstants.time = time;
-    pushConstants.deltaTime = deltaTime;
-    pushConstants.frame = frameCounter;
-}
 

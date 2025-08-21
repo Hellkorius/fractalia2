@@ -37,11 +37,8 @@ public:
     
     // Node lifecycle - standardized pattern
     bool initializeNode(const FrameGraph& frameGraph) override;
-    void prepareFrame(uint32_t frameIndex) override;
+    void prepareFrame(uint32_t frameIndex, float time, float deltaTime) override;
     void releaseFrame(uint32_t frameIndex) override;
-    
-    // Frame state updates - DEPRECATED: maintained for backward compatibility
-    void updateFrameData(float time, float deltaTime, uint32_t frameCounter) override;
 
 private:
     // Helper method for chunked dispatch execution

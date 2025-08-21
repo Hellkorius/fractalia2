@@ -89,8 +89,8 @@ bool SwapchainPresentNode::initializeNode(const FrameGraph& frameGraph) {
     return true;
 }
 
-void SwapchainPresentNode::prepareFrame(uint32_t frameIndex) {
-    // Per-frame preparation - validate image index
+void SwapchainPresentNode::prepareFrame(uint32_t frameIndex, float time, float deltaTime) {
+    // Per-frame preparation - validate image index (timing data not needed for present node)
     uint32_t imageCount = swapchain ? swapchain->getImages().size() : 0;
     if (imageIndex >= imageCount) {
         std::cerr << "SwapchainPresentNode: Invalid image index " << imageIndex 
