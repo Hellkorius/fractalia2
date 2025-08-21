@@ -20,7 +20,6 @@ class StagingBufferManager;
 class StagingRingBuffer;
 class GPUBufferManager;
 class TransferManager;
-class GraphicsResourceFacade;
 
 #include "resource_handle.h"
 #include "command_executor.h"
@@ -76,7 +75,7 @@ public:
                                                                uint32_t uniformBufferCount = 1024,
                                                                uint32_t storageBufferCount = 1024);
     
-    // Graphics resources (delegated to GraphicsResourceFacade)
+    // Graphics resources (delegated to GraphicsResourceManager)
     bool createGraphicsResources();
     bool recreateGraphicsResources();
     bool updateGraphicsDescriptors(VkBuffer entityBuffer, VkBuffer positionBuffer);
@@ -100,7 +99,7 @@ public:
     StagingBufferManager* getStagingManager() const { return stagingManager.get(); }
     GPUBufferManager* getGPUBufferManager() const { return gpuBufferManager.get(); }
     TransferManager* getTransferManager() const { return transferManager.get(); }
-    GraphicsResourceFacade* getGraphicsFacade() const { return graphicsFacade.get(); }
+    GraphicsResourceManager* getGraphicsManager() const { return graphicsResourceManager.get(); }
     
     // Legacy compatibility - staging buffer direct access
     StagingRingBuffer& getStagingBuffer();
@@ -142,7 +141,6 @@ private:
     std::unique_ptr<StagingBufferManager> stagingManager;
     std::unique_ptr<GPUBufferManager> gpuBufferManager;
     std::unique_ptr<TransferManager> transferManager;
-    std::unique_ptr<GraphicsResourceFacade> graphicsFacade;
     
     // Resource tracking
     std::vector<std::function<void()>> cleanupCallbacks;

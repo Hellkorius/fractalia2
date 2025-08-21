@@ -25,6 +25,7 @@ void GraphicsResourceManager::cleanup() {
     cleanupBeforeContextDestruction();
     context = nullptr;
     bufferFactory = nullptr;
+    resourcesNeedRecreation = false;
 }
 
 void GraphicsResourceManager::cleanupBeforeContextDestruction() {
@@ -47,6 +48,7 @@ void GraphicsResourceManager::cleanupBeforeContextDestruction() {
     
     // RAII wrapper will handle cleanup automatically
     graphicsDescriptorPool.reset();
+    markForRecreation();
 }
 
 bool GraphicsResourceManager::createUniformBuffers() {
@@ -416,4 +418,71 @@ bool GraphicsResourceManager::updateDescriptorSetsWithEntityAndPositionBuffers(V
     }
     
     return true;
+}
+
+// High-level resource operations (consolidated from facade)
+bool GraphicsResourceManager::createAllGraphicsResources() {
+    if (!context || !bufferFactory) {
+        return false;
+    }
+    
+    // Create resources in proper order
+    bool success = true;
+    
+    success &= createUniformBuffers();
+    success &= createTriangleBuffers();
+    
+    if (success) {
+        clearRecreationFlag();
+    }
+    
+    return success;
+}
+
+bool GraphicsResourceManager::recreateGraphicsResources() {
+    bool success = recreateGraphicsDescriptors();
+    
+    if (success) {
+        clearRecreationFlag();
+    }
+    
+    return success;
+}
+
+// Resource state queries (from facade)
+bool GraphicsResourceManager::areResourcesCreated() const {
+    return !uniformBufferHandles.empty() && 
+           vertexBufferHandle.isValid() && 
+           indexBufferHandle.isValid();
+}
+
+bool GraphicsResourceManager::areDescriptorsCreated() const {
+    return graphicsDescriptorPool && !graphicsDescriptorSets.empty();
+}
+
+// Memory optimization (from facade)
+bool GraphicsResourceManager::optimizeGraphicsMemoryUsage() {
+    // Basic optimization - could be expanded
+    return bufferFactory != nullptr;
+}
+
+VkDeviceSize GraphicsResourceManager::getGraphicsMemoryFootprint() const {
+    VkDeviceSize total = 0;
+    
+    // Add uniform buffer sizes
+    for (const auto& handle : uniformBufferHandles) {
+        if (handle.isValid()) {
+            total += sizeof(glm::mat4) * 2; // Known size
+        }
+    }
+    
+    // Add vertex/index buffer sizes (approximation)
+    if (vertexBufferHandle.isValid()) {
+        total += sizeof(Vertex) * 3; // Triangle vertices
+    }
+    if (indexBufferHandle.isValid()) {
+        total += sizeof(uint16_t) * 3; // Triangle indices  
+    }
+    
+    return total;
 }

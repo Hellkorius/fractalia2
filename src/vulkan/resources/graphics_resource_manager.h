@@ -10,7 +10,8 @@
 class VulkanContext;
 class BufferFactory;
 
-// Graphics pipeline-specific resource management
+// Consolidated graphics pipeline resource management
+// Merged from GraphicsResourceFacade for simplified architecture
 class GraphicsResourceManager {
 public:
     GraphicsResourceManager();
@@ -22,7 +23,11 @@ public:
     // Context access
     const VulkanContext* getContext() const { return context; }
     
-    // Graphics resource creation
+    // High-level resource operations (consolidated from facade)
+    bool createAllGraphicsResources();
+    bool recreateGraphicsResources();
+    
+    // Individual resource creation
     bool createUniformBuffers();
     bool createTriangleBuffers();
     bool createGraphicsDescriptorPool(VkDescriptorSetLayout descriptorSetLayout);
@@ -42,8 +47,17 @@ public:
     VkBuffer getVertexBuffer() const { return vertexBufferHandle.buffer.get(); }
     VkBuffer getIndexBuffer() const { return indexBufferHandle.buffer.get(); }
     uint32_t getIndexCount() const { return indexCount; }
-    VkDescriptorPool getGraphicsDescriptorPool() const { return graphicsDescriptorPool.get(); }
-    const std::vector<VkDescriptorSet>& getGraphicsDescriptorSets() const { return graphicsDescriptorSets; }
+    VkDescriptorPool getDescriptorPool() const { return graphicsDescriptorPool.get(); }
+    const std::vector<VkDescriptorSet>& getDescriptorSets() const { return graphicsDescriptorSets; }
+    
+    // Resource state queries (from facade)
+    bool areResourcesCreated() const;
+    bool areDescriptorsCreated() const;
+    bool needsRecreation() const { return resourcesNeedRecreation; }
+    
+    // Memory optimization (from facade)
+    bool optimizeGraphicsMemoryUsage();
+    VkDeviceSize getGraphicsMemoryFootprint() const;
     
     // Cleanup before context destruction
     void cleanupBeforeContextDestruction();
@@ -66,4 +80,11 @@ private:
     
     // Track descriptor layout for recreation
     VkDescriptorSetLayout cachedDescriptorLayout = VK_NULL_HANDLE;
+    
+    // State tracking (from facade)
+    bool resourcesNeedRecreation = false;
+    
+    // Internal helpers
+    void markForRecreation() { resourcesNeedRecreation = true; }
+    void clearRecreationFlag() { resourcesNeedRecreation = false; }
 };

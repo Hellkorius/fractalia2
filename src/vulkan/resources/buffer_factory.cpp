@@ -21,10 +21,16 @@ bool BufferFactory::initialize(const VulkanContext& context, MemoryAllocator* me
 }
 
 void BufferFactory::cleanup() {
+    cleanupBeforeContextDestruction();
     context = nullptr;
     memoryAllocator = nullptr;
     stagingBuffer = nullptr;
     executor = nullptr;
+}
+
+void BufferFactory::cleanupBeforeContextDestruction() {
+    // BufferFactory doesn't hold RAII resources directly
+    // Individual ResourceHandle objects are cleaned up by their owners
 }
 
 ResourceHandle BufferFactory::createBuffer(VkDeviceSize size, 

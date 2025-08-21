@@ -10,7 +10,6 @@
 #include "staging_buffer_manager.h"
 #include "gpu_buffer_manager.h"
 #include "transfer_manager.h"
-#include "graphics_resource_facade.h"
 
 // Define the forward declared types for proper compilation
 namespace {
@@ -67,10 +66,38 @@ void ResourceContext::cleanup() {
 }
 
 void ResourceContext::cleanupBeforeContextDestruction() {
-    // Delegate to graphics facade for proper cleanup ordering
-    if (graphicsFacade) {
-        graphicsFacade->cleanupGraphicsResources();
+    // Cleanup RAII resources in reverse order of initialization
+    if (graphicsResourceManager) {
+        graphicsResourceManager->cleanupBeforeContextDestruction();
     }
+    
+    if (transferManager) {
+        // No RAII cleanup needed in TransferManager currently
+    }
+    
+    if (gpuBufferManager) {
+        // No RAII cleanup needed in GPUBufferManager currently
+    }
+    
+    if (stagingManager) {
+        // No RAII cleanup needed in StagingBufferManager currently
+    }
+    
+    
+    if (descriptorPoolManager) {
+        // No RAII cleanup needed in DescriptorPoolManager currently
+    }
+    
+    if (bufferFactory) {
+        bufferFactory->cleanupBeforeContextDestruction();
+    }
+    
+    if (memoryAllocator) {
+        // No RAII cleanup needed in MemoryAllocator currently
+    }
+    
+    // Cleanup command executor RAII resources
+    executor.cleanupBeforeContextDestruction();
 }
 
 // Core resource creation (delegated to BufferFactory)
@@ -145,22 +172,22 @@ void ResourceContext::destroyDescriptorPool(VkDescriptorPool pool) {
     }
 }
 
-// Graphics resources (delegated to GraphicsResourceFacade)
+// Graphics resources (delegated to GraphicsResourceManager)
 bool ResourceContext::createGraphicsResources() {
-    return graphicsFacade ? graphicsFacade->createAllGraphicsResources() : false;
+    return graphicsResourceManager ? graphicsResourceManager->createAllGraphicsResources() : false;
 }
 
 bool ResourceContext::recreateGraphicsResources() {
-    return graphicsFacade ? graphicsFacade->recreateGraphicsResources() : false;
+    return graphicsResourceManager ? graphicsResourceManager->recreateGraphicsResources() : false;
 }
 
 bool ResourceContext::updateGraphicsDescriptors(VkBuffer entityBuffer, VkBuffer positionBuffer) {
-    return graphicsFacade ? graphicsFacade->updateDescriptorSetsForEntityRendering(entityBuffer, positionBuffer) : false;
+    return graphicsResourceManager ? graphicsResourceManager->updateDescriptorSetsWithEntityAndPositionBuffers(entityBuffer, positionBuffer) : false;
 }
 
 // Individual graphics resource creation (for legacy compatibility)
 bool ResourceContext::createGraphicsDescriptorPool(VkDescriptorSetLayout descriptorSetLayout) {
-    return graphicsFacade ? graphicsFacade->createDescriptorResources(descriptorSetLayout) : false;
+    return graphicsResourceManager ? graphicsResourceManager->createGraphicsDescriptorPool(descriptorSetLayout) : false;
 }
 
 bool ResourceContext::createGraphicsDescriptorSets(VkDescriptorSetLayout descriptorSetLayout) {
@@ -171,33 +198,33 @@ bool ResourceContext::createGraphicsDescriptorSets(VkDescriptorSetLayout descrip
 
 const std::vector<VkBuffer>& ResourceContext::getUniformBuffers() const {
     static const std::vector<VkBuffer> empty;
-    return graphicsFacade ? graphicsFacade->getUniformBuffers() : empty;
+    return graphicsResourceManager ? graphicsResourceManager->getUniformBuffers() : empty;
 }
 
 const std::vector<void*>& ResourceContext::getUniformBuffersMapped() const {
     static const std::vector<void*> empty;
-    return graphicsFacade ? graphicsFacade->getUniformBuffersMapped() : empty;
+    return graphicsResourceManager ? graphicsResourceManager->getUniformBuffersMapped() : empty;
 }
 
 VkBuffer ResourceContext::getVertexBuffer() const {
-    return graphicsFacade ? graphicsFacade->getVertexBuffer() : VK_NULL_HANDLE;
+    return graphicsResourceManager ? graphicsResourceManager->getVertexBuffer() : VK_NULL_HANDLE;
 }
 
 VkBuffer ResourceContext::getIndexBuffer() const {
-    return graphicsFacade ? graphicsFacade->getIndexBuffer() : VK_NULL_HANDLE;
+    return graphicsResourceManager ? graphicsResourceManager->getIndexBuffer() : VK_NULL_HANDLE;
 }
 
 uint32_t ResourceContext::getIndexCount() const {
-    return graphicsFacade ? graphicsFacade->getIndexCount() : 0;
+    return graphicsResourceManager ? graphicsResourceManager->getIndexCount() : 0;
 }
 
 VkDescriptorPool ResourceContext::getGraphicsDescriptorPool() const {
-    return graphicsFacade ? graphicsFacade->getDescriptorPool() : VK_NULL_HANDLE;
+    return graphicsResourceManager ? graphicsResourceManager->getDescriptorPool() : VK_NULL_HANDLE;
 }
 
 const std::vector<VkDescriptorSet>& ResourceContext::getGraphicsDescriptorSets() const {
     static const std::vector<VkDescriptorSet> empty;
-    return graphicsFacade ? graphicsFacade->getDescriptorSets() : empty;
+    return graphicsResourceManager ? graphicsResourceManager->getDescriptorSets() : empty;
 }
 
 // Legacy compatibility - staging buffer direct access
@@ -271,8 +298,8 @@ bool ResourceContext::optimizeResources() {
         success &= transferManager->tryOptimizeTransfers();
     }
     
-    if (graphicsFacade) {
-        success &= graphicsFacade->optimizeGraphicsMemoryUsage();
+    if (graphicsResourceManager) {
+        success &= graphicsResourceManager->optimizeGraphicsMemoryUsage();
     }
     
     return success;
@@ -331,12 +358,6 @@ bool ResourceContext::initializeManagers(QueueManager* queueManager) {
         return false;
     }
     
-    // 8. Graphics facade (high-level coordination)
-    graphicsFacade = std::make_unique<GraphicsResourceFacade>();
-    if (!graphicsFacade->initialize(this, graphicsResourceManager.get())) {
-        std::cerr << "Failed to initialize graphics resource facade!" << std::endl;
-        return false;
-    }
     
     return true;
 }
@@ -351,7 +372,6 @@ void ResourceContext::setupManagerDependencies() {
 
 void ResourceContext::cleanupManagers() {
     // Cleanup in reverse order of initialization
-    graphicsFacade.reset();
     transferManager.reset();
     gpuBufferManager.reset();
     stagingManager.reset();

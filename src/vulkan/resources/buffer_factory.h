@@ -19,6 +19,9 @@ public:
     bool initialize(const VulkanContext& context, MemoryAllocator* memoryAllocator);
     void cleanup();
     
+    // Cleanup method for proper destruction order
+    void cleanupBeforeContextDestruction();
+    
     // Context access
     const VulkanContext* getContext() const { return context; }
     

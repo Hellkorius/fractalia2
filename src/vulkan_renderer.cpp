@@ -246,6 +246,15 @@ void VulkanRenderer::cleanup() {
         }
     }
     
+    // Cleanup ResourceContext RAII resources before destroying dependencies
+    if (resourceContext) {
+        try {
+            resourceContext->cleanupBeforeContextDestruction();
+        } catch (const std::exception& e) {
+            std::cerr << "Exception during resource context cleanup: " << e.what() << std::endl;
+        }
+    }
+    
     // Reset components in reverse dependency order
     
     if (gpuEntityManager) {
