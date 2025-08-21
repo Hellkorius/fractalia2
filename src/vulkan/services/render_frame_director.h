@@ -2,6 +2,7 @@
 
 #include <memory>
 #include <vector>
+#include <atomic>
 #include <glm/glm.hpp>
 #include <flecs.h>
 #include "../core/vulkan_constants.h"
@@ -84,6 +85,9 @@ private:
     // State management
     bool frameGraphInitialized = false;
     std::vector<FrameGraphTypes::ResourceId> swapchainImageIds; // Cached per swapchain image
+    
+    // Global frame counter for compute shader consistency
+    std::atomic<uint32_t> globalFrameCounter_{0};
     
     // Node IDs for configuration
     FrameGraphTypes::NodeId computeNodeId = 0;

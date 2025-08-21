@@ -69,8 +69,6 @@ std::vector<ResourceDependency> PhysicsComputeNode::getOutputs() const {
 }
 
 void PhysicsComputeNode::execute(VkCommandBuffer commandBuffer, const FrameGraph& frameGraph) {
-    frameCounter.fetch_add(1, std::memory_order_relaxed);
-    
     // Validate dependencies are still valid
     if (!computeManager || !gpuEntityManager) {
         std::cerr << "PhysicsComputeNode: Critical error - dependencies became null during execution" << std::endl;
@@ -90,6 +88,9 @@ void PhysicsComputeNode::execute(VkCommandBuffer commandBuffer, const FrameGraph
     auto layoutSpec = DescriptorLayoutPresets::createEntityComputeLayout();
     VkDescriptorSetLayout descriptorLayout = computeManager->getLayoutManager()->getLayout(layoutSpec);
     ComputePipelineState pipelineState = ComputePipelinePresets::createPhysicsState(descriptorLayout);
+    
+    // Set frame counter from FrameGraph for compute shader consistency
+    pushConstants.frame = frameGraph.getGlobalFrameCounter();
     
     // Create compute dispatch
     ComputeDispatch dispatch{};
@@ -149,8 +150,7 @@ void PhysicsComputeNode::execute(VkCommandBuffer commandBuffer, const FrameGraph
     uint32_t logCounter = debugCounter.fetch_add(1, std::memory_order_relaxed);
     if (logCounter % 60 == 0) {
         std::cout << "PhysicsComputeNode: " << entityCount << " entities → " << 
-                     dispatchParams.totalWorkgroups << " workgroups (frame " << 
-                     frameCounter.load(std::memory_order_relaxed) << ")" << std::endl;
+                     dispatchParams.totalWorkgroups << " workgroups" << std::endl;
     }
     
     const VulkanContext* context = frameGraph.getContext();
@@ -306,10 +306,9 @@ void PhysicsComputeNode::prepareFrame(uint32_t frameIndex, float time, float del
     currentTime = time;
     currentDeltaTime = deltaTime;
     
-    // Update push constants with timing data
+    // Update push constants with timing data - frame counter will be set in execute()
     pushConstants.time = time;
     pushConstants.deltaTime = deltaTime;
-    pushConstants.frame = frameCounter.load();  // Use counter for compute nodes
 }
 
 void PhysicsComputeNode::releaseFrame(uint32_t frameIndex) {

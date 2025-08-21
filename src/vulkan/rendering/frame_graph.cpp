@@ -240,12 +240,15 @@ bool FrameGraph::compile() {
 }
 
 
-FrameGraph::ExecutionResult FrameGraph::execute(uint32_t frameIndex, float time, float deltaTime) {
+FrameGraph::ExecutionResult FrameGraph::execute(uint32_t frameIndex, float time, float deltaTime, uint32_t globalFrame) {
     ExecutionResult result;
     if (!compiled_) {
         std::cerr << "FrameGraph: Cannot execute, not compiled" << std::endl;
         return result;
     }
+    
+    // Store global frame for node access
+    currentGlobalFrame_ = globalFrame;
     
     if (!sync_) {
         std::cerr << "FrameGraph: Cannot execute, no sync object" << std::endl;
@@ -273,14 +276,14 @@ FrameGraph::ExecutionResult FrameGraph::execute(uint32_t frameIndex, float time,
     // Execute nodes with timeout monitoring if available
     bool computeExecuted = false;
     if (timeoutDetector_) {
-        if (!executeWithTimeoutMonitoring(frameIndex, time, deltaTime, computeExecuted)) {
+        if (!executeWithTimeoutMonitoring(frameIndex, time, deltaTime, globalFrame, computeExecuted)) {
             // Timeout occurred, end command buffers and return early
             endCommandBuffers(computeNeeded, graphicsNeeded, frameIndex);
             handleExecutionTimeout();
             return result;
         }
     } else {
-        executeNodesInOrder(frameIndex, time, deltaTime, computeExecuted);
+        executeNodesInOrder(frameIndex, time, deltaTime, globalFrame, computeExecuted);
     }
     
     // End only the command buffers that were begun
@@ -352,7 +355,7 @@ void FrameGraph::endCommandBuffers(bool useCompute, bool useGraphics, uint32_t f
     }
 }
 
-void FrameGraph::executeNodesInOrder(uint32_t frameIndex, float time, float deltaTime, bool& computeExecuted) {
+void FrameGraph::executeNodesInOrder(uint32_t frameIndex, float time, float deltaTime, uint32_t globalFrame, bool& computeExecuted) {
     VkCommandBuffer currentComputeCmd = queueManager_->getComputeCommandBuffer(frameIndex);
     VkCommandBuffer currentGraphicsCmd = queueManager_->getGraphicsCommandBuffer(frameIndex);
     
@@ -381,7 +384,7 @@ void FrameGraph::executeNodesInOrder(uint32_t frameIndex, float time, float delt
     }
 }
 
-bool FrameGraph::executeWithTimeoutMonitoring(uint32_t frameIndex, float time, float deltaTime, bool& computeExecuted) {
+bool FrameGraph::executeWithTimeoutMonitoring(uint32_t frameIndex, float time, float deltaTime, uint32_t globalFrame, bool& computeExecuted) {
     VkCommandBuffer currentComputeCmd = queueManager_->getComputeCommandBuffer(frameIndex);
     VkCommandBuffer currentGraphicsCmd = queueManager_->getGraphicsCommandBuffer(frameIndex);
     

@@ -66,7 +66,6 @@ private:
     
     // Thread-safe debug counter
     mutable std::atomic<uint32_t> debugCounter{0};
-    mutable std::atomic<uint32_t> frameCounter{0};
     
     // Frame timing data for new lifecycle
     float currentTime = 0.0f;

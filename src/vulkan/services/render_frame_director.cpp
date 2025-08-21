@@ -75,8 +75,9 @@ RenderFrameResult RenderFrameDirector::directFrame(
     // 4. Configure frame graph nodes with world reference after swapchain acquisition
     configureFrameGraphNodes(result.imageIndex, world);
 
-    // 5. Execute frame graph with timing data
-    result.executionResult = frameGraph->execute(currentFrame, totalTime, deltaTime);
+    // 5. Execute frame graph with timing data and global frame counter
+    uint32_t globalFrame = globalFrameCounter_.fetch_add(1, std::memory_order_relaxed);
+    result.executionResult = frameGraph->execute(currentFrame, totalTime, deltaTime, globalFrame);
     result.success = true;
 
     return result;

@@ -76,7 +76,7 @@ public:
         bool computeCommandBufferUsed = false;
         bool graphicsCommandBufferUsed = false;
     };
-    ExecutionResult execute(uint32_t frameIndex, float time, float deltaTime);
+    ExecutionResult execute(uint32_t frameIndex, float time, float deltaTime, uint32_t globalFrame);
     void reset(); // Clear for next frame
     void removeSwapchainResources(); // Remove swapchain images during recreation
     
@@ -98,6 +98,9 @@ public:
     
     // Context access for nodes
     const VulkanContext* getContext() const { return context_; }
+    
+    // Global frame counter access for compute shaders (passed as parameter)
+    uint32_t getGlobalFrameCounter() const { return currentGlobalFrame_; }
 
 private:
     // Core state
@@ -120,14 +123,17 @@ private:
     std::vector<FrameGraphTypes::NodeId> executionOrder_;
     bool compiled_ = false;
     
+    // Current global frame counter (set during execution for node access)
+    mutable uint32_t currentGlobalFrame_ = 0;
+    
     // Execution helpers
     std::pair<bool, bool> analyzeQueueRequirements() const;
     void beginCommandBuffers(bool useCompute, bool useGraphics, uint32_t frameIndex);
     void endCommandBuffers(bool useCompute, bool useGraphics, uint32_t frameIndex);
-    void executeNodesInOrder(uint32_t frameIndex, float time, float deltaTime, bool& computeExecuted);
+    void executeNodesInOrder(uint32_t frameIndex, float time, float deltaTime, uint32_t globalFrame, bool& computeExecuted);
     
     // Timeout-aware execution
-    bool executeWithTimeoutMonitoring(uint32_t frameIndex, float time, float deltaTime, bool& computeExecuted);
+    bool executeWithTimeoutMonitoring(uint32_t frameIndex, float time, float deltaTime, uint32_t globalFrame, bool& computeExecuted);
     void handleExecutionTimeout();
 };
 

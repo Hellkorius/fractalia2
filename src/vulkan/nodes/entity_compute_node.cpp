@@ -69,8 +69,6 @@ std::vector<ResourceDependency> EntityComputeNode::getOutputs() const {
 }
 
 void EntityComputeNode::execute(VkCommandBuffer commandBuffer, const FrameGraph& frameGraph) {
-    frameCounter.fetch_add(1, std::memory_order_relaxed);
-    
     // Validate dependencies are still valid
     if (!computeManager || !gpuEntityManager) {
         std::cerr << "EntityComputeNode: Critical error - dependencies became null during execution" << std::endl;
@@ -90,6 +88,9 @@ void EntityComputeNode::execute(VkCommandBuffer commandBuffer, const FrameGraph&
     auto layoutSpec = DescriptorLayoutPresets::createEntityComputeLayout();
     VkDescriptorSetLayout descriptorLayout = computeManager->getLayoutManager()->getLayout(layoutSpec);
     ComputePipelineState pipelineState = ComputePipelinePresets::createEntityMovementState(descriptorLayout);
+    
+    // Set frame counter from FrameGraph for compute shader consistency
+    pushConstants.frame = frameGraph.getGlobalFrameCounter();
     
     // Create compute dispatch
     ComputeDispatch dispatch{};
@@ -150,8 +151,7 @@ void EntityComputeNode::execute(VkCommandBuffer commandBuffer, const FrameGraph&
     uint32_t logCounter = debugCounter.fetch_add(1, std::memory_order_relaxed);
     if (logCounter % 60 == 0) {
         std::cout << "EntityComputeNode (Movement): " << entityCount << " entities → " << 
-                     dispatchParams.totalWorkgroups << " workgroups (frame " << 
-                     frameCounter.load(std::memory_order_relaxed) << ")" << std::endl;
+                     dispatchParams.totalWorkgroups << " workgroups" << std::endl;
     }
     
     const VulkanContext* context = frameGraph.getContext();
@@ -308,10 +308,9 @@ void EntityComputeNode::prepareFrame(uint32_t frameIndex, float time, float delt
     currentTime = time;
     currentDeltaTime = deltaTime;
     
-    // Update push constants with timing data
+    // Update push constants with timing data - frame counter will be set in execute()
     pushConstants.time = time;
     pushConstants.deltaTime = deltaTime;
-    pushConstants.frame = frameCounter.load();  // Use counter for compute nodes
 }
 
 void EntityComputeNode::releaseFrame(uint32_t frameIndex) {
