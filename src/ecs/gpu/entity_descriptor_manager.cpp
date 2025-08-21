@@ -1,5 +1,6 @@
 #include "entity_descriptor_manager.h"
 #include "entity_buffer_manager.h"
+#include "entity_descriptor_bindings.h"
 #include "../../vulkan/core/vulkan_context.h"
 #include "../../vulkan/core/vulkan_function_loader.h"
 #include "../../vulkan/resources/core/resource_coordinator.h"
@@ -71,53 +72,53 @@ bool EntityDescriptorManager::createDescriptorSetLayouts() {
     VkDevice device = getContext()->getDevice();
 
     // Create compute descriptor set layout for SoA structure
-    VkDescriptorSetLayoutBinding computeBindings[7] = {};
+    VkDescriptorSetLayoutBinding computeBindings[EntityDescriptorBindings::Compute::BINDING_COUNT] = {};
     
     // Binding 0: Velocity buffer
-    computeBindings[0].binding = 0;
-    computeBindings[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    computeBindings[0].descriptorCount = 1;
-    computeBindings[0].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+    computeBindings[EntityDescriptorBindings::Compute::VELOCITY_BUFFER].binding = EntityDescriptorBindings::Compute::VELOCITY_BUFFER;
+    computeBindings[EntityDescriptorBindings::Compute::VELOCITY_BUFFER].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    computeBindings[EntityDescriptorBindings::Compute::VELOCITY_BUFFER].descriptorCount = 1;
+    computeBindings[EntityDescriptorBindings::Compute::VELOCITY_BUFFER].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
 
     // Binding 1: Movement params buffer (for movement shader) / Runtime state buffer (for physics shader)
-    computeBindings[1].binding = 1;
-    computeBindings[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    computeBindings[1].descriptorCount = 1;
-    computeBindings[1].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+    computeBindings[EntityDescriptorBindings::Compute::MOVEMENT_PARAMS_BUFFER].binding = EntityDescriptorBindings::Compute::MOVEMENT_PARAMS_BUFFER;
+    computeBindings[EntityDescriptorBindings::Compute::MOVEMENT_PARAMS_BUFFER].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    computeBindings[EntityDescriptorBindings::Compute::MOVEMENT_PARAMS_BUFFER].descriptorCount = 1;
+    computeBindings[EntityDescriptorBindings::Compute::MOVEMENT_PARAMS_BUFFER].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
 
     // Binding 2: Runtime state buffer (for movement shader) / Position output buffer (for physics shader)
-    computeBindings[2].binding = 2;
-    computeBindings[2].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    computeBindings[2].descriptorCount = 1;
-    computeBindings[2].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+    computeBindings[EntityDescriptorBindings::Compute::RUNTIME_STATE_BUFFER].binding = EntityDescriptorBindings::Compute::RUNTIME_STATE_BUFFER;
+    computeBindings[EntityDescriptorBindings::Compute::RUNTIME_STATE_BUFFER].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    computeBindings[EntityDescriptorBindings::Compute::RUNTIME_STATE_BUFFER].descriptorCount = 1;
+    computeBindings[EntityDescriptorBindings::Compute::RUNTIME_STATE_BUFFER].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
 
     // Binding 3: Current position buffer (for physics shader)
-    computeBindings[3].binding = 3;
-    computeBindings[3].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    computeBindings[3].descriptorCount = 1;
-    computeBindings[3].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+    computeBindings[EntityDescriptorBindings::Compute::POSITION_BUFFER].binding = EntityDescriptorBindings::Compute::POSITION_BUFFER;
+    computeBindings[EntityDescriptorBindings::Compute::POSITION_BUFFER].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    computeBindings[EntityDescriptorBindings::Compute::POSITION_BUFFER].descriptorCount = 1;
+    computeBindings[EntityDescriptorBindings::Compute::POSITION_BUFFER].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
 
     // Binding 4: Target position buffer (for physics shader)
-    computeBindings[4].binding = 4;
-    computeBindings[4].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    computeBindings[4].descriptorCount = 1;
-    computeBindings[4].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+    computeBindings[EntityDescriptorBindings::Compute::CURRENT_POSITION_BUFFER].binding = EntityDescriptorBindings::Compute::CURRENT_POSITION_BUFFER;
+    computeBindings[EntityDescriptorBindings::Compute::CURRENT_POSITION_BUFFER].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    computeBindings[EntityDescriptorBindings::Compute::CURRENT_POSITION_BUFFER].descriptorCount = 1;
+    computeBindings[EntityDescriptorBindings::Compute::CURRENT_POSITION_BUFFER].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
 
     // Binding 5: Color buffer (for graphics shader)
-    computeBindings[5].binding = 5;
-    computeBindings[5].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    computeBindings[5].descriptorCount = 1;
-    computeBindings[5].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+    computeBindings[EntityDescriptorBindings::Compute::COLOR_BUFFER].binding = EntityDescriptorBindings::Compute::COLOR_BUFFER;
+    computeBindings[EntityDescriptorBindings::Compute::COLOR_BUFFER].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    computeBindings[EntityDescriptorBindings::Compute::COLOR_BUFFER].descriptorCount = 1;
+    computeBindings[EntityDescriptorBindings::Compute::COLOR_BUFFER].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
 
     // Binding 6: Model matrix buffer (for graphics shader)
-    computeBindings[6].binding = 6;
-    computeBindings[6].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    computeBindings[6].descriptorCount = 1;
-    computeBindings[6].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+    computeBindings[EntityDescriptorBindings::Compute::MODEL_MATRIX_BUFFER].binding = EntityDescriptorBindings::Compute::MODEL_MATRIX_BUFFER;
+    computeBindings[EntityDescriptorBindings::Compute::MODEL_MATRIX_BUFFER].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    computeBindings[EntityDescriptorBindings::Compute::MODEL_MATRIX_BUFFER].descriptorCount = 1;
+    computeBindings[EntityDescriptorBindings::Compute::MODEL_MATRIX_BUFFER].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
 
     VkDescriptorSetLayoutCreateInfo computeLayoutInfo{};
     computeLayoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-    computeLayoutInfo.bindingCount = 7;  // Updated for SoA structure
+    computeLayoutInfo.bindingCount = EntityDescriptorBindings::Compute::BINDING_COUNT;
     computeLayoutInfo.pBindings = computeBindings;
 
     if (loader.vkCreateDescriptorSetLayout(device, &computeLayoutInfo, nullptr, &computeDescriptorSetLayout) != VK_SUCCESS) {
@@ -126,29 +127,29 @@ bool EntityDescriptorManager::createDescriptorSetLayouts() {
     }
 
     // Temporarily revert to simple graphics descriptor set layout for debugging
-    VkDescriptorSetLayoutBinding graphicsBindings[3] = {};
+    VkDescriptorSetLayoutBinding graphicsBindings[EntityDescriptorBindings::Graphics::BINDING_COUNT] = {};
     
     // Binding 0: Uniform buffer (camera matrices) 
-    graphicsBindings[0].binding = 0;
-    graphicsBindings[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    graphicsBindings[0].descriptorCount = 1;
-    graphicsBindings[0].stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+    graphicsBindings[EntityDescriptorBindings::Graphics::UNIFORM_BUFFER].binding = EntityDescriptorBindings::Graphics::UNIFORM_BUFFER;
+    graphicsBindings[EntityDescriptorBindings::Graphics::UNIFORM_BUFFER].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    graphicsBindings[EntityDescriptorBindings::Graphics::UNIFORM_BUFFER].descriptorCount = 1;
+    graphicsBindings[EntityDescriptorBindings::Graphics::UNIFORM_BUFFER].stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
 
     // Binding 1: Position buffer (for basic rendering test)
-    graphicsBindings[1].binding = 1;
-    graphicsBindings[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    graphicsBindings[1].descriptorCount = 1;
-    graphicsBindings[1].stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+    graphicsBindings[EntityDescriptorBindings::Graphics::POSITION_BUFFER].binding = EntityDescriptorBindings::Graphics::POSITION_BUFFER;
+    graphicsBindings[EntityDescriptorBindings::Graphics::POSITION_BUFFER].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    graphicsBindings[EntityDescriptorBindings::Graphics::POSITION_BUFFER].descriptorCount = 1;
+    graphicsBindings[EntityDescriptorBindings::Graphics::POSITION_BUFFER].stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
 
     // Binding 2: Movement params buffer (for basic rendering test)
-    graphicsBindings[2].binding = 2;
-    graphicsBindings[2].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    graphicsBindings[2].descriptorCount = 1;
-    graphicsBindings[2].stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+    graphicsBindings[EntityDescriptorBindings::Graphics::MOVEMENT_PARAMS_BUFFER].binding = EntityDescriptorBindings::Graphics::MOVEMENT_PARAMS_BUFFER;
+    graphicsBindings[EntityDescriptorBindings::Graphics::MOVEMENT_PARAMS_BUFFER].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    graphicsBindings[EntityDescriptorBindings::Graphics::MOVEMENT_PARAMS_BUFFER].descriptorCount = 1;
+    graphicsBindings[EntityDescriptorBindings::Graphics::MOVEMENT_PARAMS_BUFFER].stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
 
     VkDescriptorSetLayoutCreateInfo graphicsLayoutInfo{};
     graphicsLayoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-    graphicsLayoutInfo.bindingCount = 3;
+    graphicsLayoutInfo.bindingCount = EntityDescriptorBindings::Graphics::BINDING_COUNT;
     graphicsLayoutInfo.pBindings = graphicsBindings;
 
     if (loader.vkCreateDescriptorSetLayout(device, &graphicsLayoutInfo, nullptr, &graphicsDescriptorSetLayout) != VK_SUCCESS) {
@@ -164,7 +165,7 @@ bool EntityDescriptorManager::createComputeDescriptorPool() {
     DescriptorPoolManager::DescriptorPoolConfig config;
     config.maxSets = 1;
     config.uniformBuffers = 0;
-    config.storageBuffers = 7; // 7 SoA storage buffers for compute
+    config.storageBuffers = EntityDescriptorBindings::Compute::BINDING_COUNT; // SoA storage buffers for compute
     config.sampledImages = 0;
     config.storageImages = 0;
     config.samplers = 0;
@@ -178,7 +179,7 @@ bool EntityDescriptorManager::createGraphicsDescriptorPool() {
     DescriptorPoolManager::DescriptorPoolConfig config;
     config.maxSets = 1;
     config.uniformBuffers = 1;  // Camera matrices
-    config.storageBuffers = 2;  // Movement params + position buffers
+    config.storageBuffers = EntityDescriptorBindings::Graphics::BINDING_COUNT - 1;  // Storage buffers (excluding uniform buffer)
     config.sampledImages = 0;
     config.storageImages = 0;
     config.samplers = 0;
@@ -252,13 +253,13 @@ bool EntityDescriptorManager::updateComputeDescriptorSet() {
 
     // Use DescriptorUpdateHelper for DRY principle
     std::vector<DescriptorUpdateHelper::BufferBinding> bindings = {
-        {0, bufferManager->getVelocityBuffer(), VK_DESCRIPTOR_TYPE_STORAGE_BUFFER},
-        {1, bufferManager->getMovementParamsBuffer(), VK_DESCRIPTOR_TYPE_STORAGE_BUFFER},
-        {2, bufferManager->getRuntimeStateBuffer(), VK_DESCRIPTOR_TYPE_STORAGE_BUFFER},
-        {3, bufferManager->getPositionBuffer(), VK_DESCRIPTOR_TYPE_STORAGE_BUFFER},
-        {4, bufferManager->getCurrentPositionBuffer(), VK_DESCRIPTOR_TYPE_STORAGE_BUFFER},
-        {5, bufferManager->getColorBuffer(), VK_DESCRIPTOR_TYPE_STORAGE_BUFFER},
-        {6, bufferManager->getModelMatrixBuffer(), VK_DESCRIPTOR_TYPE_STORAGE_BUFFER}
+        {EntityDescriptorBindings::Compute::VELOCITY_BUFFER, bufferManager->getVelocityBuffer(), VK_DESCRIPTOR_TYPE_STORAGE_BUFFER},
+        {EntityDescriptorBindings::Compute::MOVEMENT_PARAMS_BUFFER, bufferManager->getMovementParamsBuffer(), VK_DESCRIPTOR_TYPE_STORAGE_BUFFER},
+        {EntityDescriptorBindings::Compute::RUNTIME_STATE_BUFFER, bufferManager->getRuntimeStateBuffer(), VK_DESCRIPTOR_TYPE_STORAGE_BUFFER},
+        {EntityDescriptorBindings::Compute::POSITION_BUFFER, bufferManager->getPositionBuffer(), VK_DESCRIPTOR_TYPE_STORAGE_BUFFER},
+        {EntityDescriptorBindings::Compute::CURRENT_POSITION_BUFFER, bufferManager->getCurrentPositionBuffer(), VK_DESCRIPTOR_TYPE_STORAGE_BUFFER},
+        {EntityDescriptorBindings::Compute::COLOR_BUFFER, bufferManager->getColorBuffer(), VK_DESCRIPTOR_TYPE_STORAGE_BUFFER},
+        {EntityDescriptorBindings::Compute::MODEL_MATRIX_BUFFER, bufferManager->getModelMatrixBuffer(), VK_DESCRIPTOR_TYPE_STORAGE_BUFFER}
     };
 
     return DescriptorUpdateHelper::updateDescriptorSet(*getContext(), computeDescriptorSet, bindings);
@@ -284,9 +285,9 @@ bool EntityDescriptorManager::updateGraphicsDescriptorSet() {
 
     // Use DescriptorUpdateHelper for DRY principle
     std::vector<DescriptorUpdateHelper::BufferBinding> bindings = {
-        {0, uniformBuffers[0], VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER},  // Camera matrices
-        {1, bufferManager->getPositionBuffer(), VK_DESCRIPTOR_TYPE_STORAGE_BUFFER},  // Entity positions
-        {2, bufferManager->getMovementParamsBuffer(), VK_DESCRIPTOR_TYPE_STORAGE_BUFFER}  // Movement params for color
+        {EntityDescriptorBindings::Graphics::UNIFORM_BUFFER, uniformBuffers[0], VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER},  // Camera matrices
+        {EntityDescriptorBindings::Graphics::POSITION_BUFFER, bufferManager->getPositionBuffer(), VK_DESCRIPTOR_TYPE_STORAGE_BUFFER},  // Entity positions
+        {EntityDescriptorBindings::Graphics::MOVEMENT_PARAMS_BUFFER, bufferManager->getMovementParamsBuffer(), VK_DESCRIPTOR_TYPE_STORAGE_BUFFER}  // Movement params for color
     };
 
     return DescriptorUpdateHelper::updateDescriptorSet(*getContext(), graphicsDescriptorSet, bindings);

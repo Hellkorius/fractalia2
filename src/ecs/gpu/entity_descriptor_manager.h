@@ -2,6 +2,7 @@
 
 #include "../../vulkan/resources/descriptors/descriptor_set_manager_base.h"
 #include "../../vulkan/core/vulkan_raii.h"
+#include "entity_descriptor_bindings.h"
 #include <vulkan/vulkan.h>
 
 // Forward declarations
