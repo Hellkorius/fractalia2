@@ -36,7 +36,7 @@ public:
     bool needsGraphicsQueue() const override { return false; }
     
     // Frame state updates
-    void updateFrameData(float time, float deltaTime, uint32_t frameCounter);
+    void updateFrameData(float time, float deltaTime, uint32_t frameCounter) override;
 
 private:
     // Helper method for chunked dispatch execution

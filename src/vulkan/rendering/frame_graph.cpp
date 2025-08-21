@@ -2,9 +2,6 @@
 #include "../core/vulkan_context.h"
 #include "../core/vulkan_sync.h"
 #include "../core/queue_manager.h"
-#include "../nodes/entity_compute_node.h"
-#include "../nodes/physics_compute_node.h"
-#include "../nodes/entity_graphics_node.h"
 #include "../monitoring/gpu_memory_monitor.h"
 #include "../monitoring/gpu_timeout_detector.h"
 #include <iostream>
@@ -232,24 +229,14 @@ bool FrameGraph::compile() {
 }
 
 void FrameGraph::updateFrameData(float time, float deltaTime, uint32_t frameCounter, uint32_t currentFrameIndex) {
-    // Update frame data for all nodes that support it
+    // Update frame data for all nodes via virtual interface
     for (auto& [nodeId, node] : nodes_) {
-        // Check if this is an EntityComputeNode and update it
-        auto* computeNode = dynamic_cast<EntityComputeNode*>(node.get());
-        if (computeNode) {
-            computeNode->updateFrameData(time, deltaTime, frameCounter);
-        }
-        
-        // Check if this is a PhysicsComputeNode and update it
-        auto* physicsNode = dynamic_cast<PhysicsComputeNode*>(node.get());
-        if (physicsNode) {
-            physicsNode->updateFrameData(time, deltaTime, frameCounter);
-        }
-        
-        // Check if this is an EntityGraphicsNode and update it  
-        auto* graphicsNode = dynamic_cast<EntityGraphicsNode*>(node.get());
-        if (graphicsNode) {
-            graphicsNode->updateFrameData(time, deltaTime, currentFrameIndex); // Use currentFrameIndex for buffer sync
+        // Use frameCounter for compute nodes, currentFrameIndex for graphics nodes
+        // This maintains backward compatibility while using the proper interface
+        if (node->needsComputeQueue()) {
+            node->updateFrameData(time, deltaTime, frameCounter);
+        } else {
+            node->updateFrameData(time, deltaTime, currentFrameIndex);
         }
     }
 }

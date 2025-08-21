@@ -45,7 +45,7 @@ public:
     void setCurrentSwapchainImageId(FrameGraphTypes::ResourceId currentImageId) { this->currentSwapchainImageId = currentImageId; }
     
     // Update frame data for vertex shader push constants and uniform buffers
-    void updateFrameData(float time, float deltaTime, uint32_t frameIndex) { 
+    void updateFrameData(float time, float deltaTime, uint32_t frameIndex) override { 
         this->frameTime = time; 
         this->frameDeltaTime = deltaTime; 
         this->currentFrameIndex = frameIndex;

@@ -27,6 +27,9 @@ public:
     virtual void execute(VkCommandBuffer commandBuffer, const FrameGraph& frameGraph) = 0;
     virtual void cleanup() {}
     
+    // Frame state updates
+    virtual void updateFrameData(float time, float deltaTime, uint32_t frameIndex) {}
+    
     // Synchronization hints
     virtual bool needsComputeQueue() const { return false; }
     virtual bool needsGraphicsQueue() const { return true; }
