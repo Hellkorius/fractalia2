@@ -132,36 +132,3 @@ private:
     void handleExecutionTimeout();
 };
 
-// Concrete node implementations (these should eventually move to separate files)
-class ComputeNode : public FrameGraphNode {
-    DECLARE_FRAME_GRAPH_NODE(ComputeNode)
-    
-public:
-    ComputeNode(FrameGraphTypes::ResourceId entityBuffer, FrameGraphTypes::ResourceId positionBuffer);
-    
-    std::vector<ResourceDependency> getInputs() const override;
-    std::vector<ResourceDependency> getOutputs() const override;
-    void execute(VkCommandBuffer commandBuffer, const FrameGraph& frameGraph) override;
-    bool needsComputeQueue() const override { return true; }
-    bool needsGraphicsQueue() const override { return false; }
-
-private:
-    FrameGraphTypes::ResourceId entityBufferId;
-    FrameGraphTypes::ResourceId positionBufferId;
-};
-
-class GraphicsNode : public FrameGraphNode {
-    DECLARE_FRAME_GRAPH_NODE(GraphicsNode)
-    
-public:
-    GraphicsNode(FrameGraphTypes::ResourceId entityBuffer, FrameGraphTypes::ResourceId positionBuffer, FrameGraphTypes::ResourceId colorTarget);
-    
-    std::vector<ResourceDependency> getInputs() const override;
-    std::vector<ResourceDependency> getOutputs() const override;
-    void execute(VkCommandBuffer commandBuffer, const FrameGraph& frameGraph) override;
-
-private:
-    FrameGraphTypes::ResourceId entityBufferId;
-    FrameGraphTypes::ResourceId positionBufferId;
-    FrameGraphTypes::ResourceId colorTargetId;
-};
