@@ -1,0 +1,87 @@
+#pragma once
+
+#include "buffer_base.h"
+#include <glm/glm.hpp>
+
+/**
+ * Specialized buffer classes following Single Responsibility Principle
+ * Each class manages exactly one type of entity data
+ */
+
+// SINGLE responsibility: velocity data management
+class VelocityBuffer : public BufferBase {
+public:
+    using BufferBase::initialize; // Bring base class initialize into scope
+    
+    bool initialize(const VulkanContext& context, ResourceContext* resourceContext, uint32_t maxEntities) {
+        return BufferBase::initialize(context, resourceContext, maxEntities, sizeof(glm::vec4), 0);
+    }
+    
+protected:
+    const char* getBufferTypeName() const override { return "Velocity"; }
+};
+
+// SINGLE responsibility: movement parameters management
+class MovementParamsBuffer : public BufferBase {
+public:
+    using BufferBase::initialize; // Bring base class initialize into scope
+    
+    bool initialize(const VulkanContext& context, ResourceContext* resourceContext, uint32_t maxEntities) {
+        return BufferBase::initialize(context, resourceContext, maxEntities, sizeof(glm::vec4), 0);
+    }
+    
+protected:
+    const char* getBufferTypeName() const override { return "MovementParams"; }
+};
+
+// SINGLE responsibility: runtime state management
+class RuntimeStateBuffer : public BufferBase {
+public:
+    using BufferBase::initialize; // Bring base class initialize into scope
+    
+    bool initialize(const VulkanContext& context, ResourceContext* resourceContext, uint32_t maxEntities) {
+        return BufferBase::initialize(context, resourceContext, maxEntities, sizeof(glm::vec4), 0);
+    }
+    
+protected:
+    const char* getBufferTypeName() const override { return "RuntimeState"; }
+};
+
+// SINGLE responsibility: color data management
+class ColorBuffer : public BufferBase {
+public:
+    using BufferBase::initialize; // Bring base class initialize into scope
+    
+    bool initialize(const VulkanContext& context, ResourceContext* resourceContext, uint32_t maxEntities) {
+        return BufferBase::initialize(context, resourceContext, maxEntities, sizeof(glm::vec4), 0);
+    }
+    
+protected:
+    const char* getBufferTypeName() const override { return "Color"; }
+};
+
+// SINGLE responsibility: model matrix management
+class ModelMatrixBuffer : public BufferBase {
+public:
+    using BufferBase::initialize; // Bring base class initialize into scope
+    
+    bool initialize(const VulkanContext& context, ResourceContext* resourceContext, uint32_t maxEntities) {
+        return BufferBase::initialize(context, resourceContext, maxEntities, sizeof(glm::mat4), 0);
+    }
+    
+protected:
+    const char* getBufferTypeName() const override { return "ModelMatrix"; }
+};
+
+// SINGLE responsibility: position data management
+class PositionBuffer : public BufferBase {
+public:
+    using BufferBase::initialize; // Bring base class initialize into scope
+    
+    bool initialize(const VulkanContext& context, ResourceContext* resourceContext, uint32_t maxEntities) {
+        return BufferBase::initialize(context, resourceContext, maxEntities, sizeof(glm::vec4), 0);
+    }
+    
+protected:
+    const char* getBufferTypeName() const override { return "Position"; }
+};

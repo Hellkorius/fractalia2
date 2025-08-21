@@ -166,12 +166,12 @@ void GPUEntityManager::uploadPendingEntities() {
     VkDeviceSize colorSize = entityCount * sizeof(glm::vec4);
     VkDeviceSize modelMatrixSize = entityCount * sizeof(glm::mat4);
     
-    // Copy SoA data to GPU buffers
-    bufferManager.copyDataToBuffer(bufferManager.getVelocityBuffer(), stagingEntities.velocities.data(), velocitySize, velocityOffset);
-    bufferManager.copyDataToBuffer(bufferManager.getMovementParamsBuffer(), stagingEntities.movementParams.data(), movementParamsSize, movementParamsOffset);
-    bufferManager.copyDataToBuffer(bufferManager.getRuntimeStateBuffer(), stagingEntities.runtimeStates.data(), runtimeStateSize, runtimeStateOffset);
-    bufferManager.copyDataToBuffer(bufferManager.getColorBuffer(), stagingEntities.colors.data(), colorSize, colorOffset);
-    bufferManager.copyDataToBuffer(bufferManager.getModelMatrixBuffer(), stagingEntities.modelMatrices.data(), modelMatrixSize, modelMatrixOffset);
+    // Copy SoA data to GPU buffers using new typed upload methods
+    bufferManager.uploadVelocityData(stagingEntities.velocities.data(), velocitySize, velocityOffset);
+    bufferManager.uploadMovementParamsData(stagingEntities.movementParams.data(), movementParamsSize, movementParamsOffset);
+    bufferManager.uploadRuntimeStateData(stagingEntities.runtimeStates.data(), runtimeStateSize, runtimeStateOffset);
+    bufferManager.uploadColorData(stagingEntities.colors.data(), colorSize, colorOffset);
+    bufferManager.uploadModelMatrixData(stagingEntities.modelMatrices.data(), modelMatrixSize, modelMatrixOffset);
     
     // Initialize position buffers with spawn positions
     std::vector<glm::vec4> initialPositions;
@@ -194,10 +194,7 @@ void GPUEntityManager::uploadPendingEntities() {
     VkDeviceSize positionUploadSize = initialPositions.size() * sizeof(glm::vec4);
     VkDeviceSize positionOffset = activeEntityCount * sizeof(glm::vec4);
     
-    bufferManager.copyDataToBuffer(bufferManager.getPositionBuffer(), initialPositions.data(), positionUploadSize, positionOffset);
-    bufferManager.copyDataToBuffer(bufferManager.getPositionBufferAlternate(), initialPositions.data(), positionUploadSize, positionOffset);
-    bufferManager.copyDataToBuffer(bufferManager.getCurrentPositionBuffer(), initialPositions.data(), positionUploadSize, positionOffset);
-    bufferManager.copyDataToBuffer(bufferManager.getTargetPositionBuffer(), initialPositions.data(), positionUploadSize, positionOffset);
+    bufferManager.uploadPositionDataToAllBuffers(initialPositions.data(), positionUploadSize, positionOffset);
     
     activeEntityCount += entityCount;
     stagingEntities.clear();
