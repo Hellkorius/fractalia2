@@ -6,6 +6,7 @@
 #include <memory>
 #include "../../core/vulkan_raii.h"
 #include "../core/resource_handle.h"
+#include "../descriptors/descriptor_update_helper.h"
 
 class VulkanContext;
 class BufferFactory;
@@ -33,7 +34,10 @@ public:
     bool createGraphicsDescriptorPool(VkDescriptorSetLayout descriptorSetLayout);
     bool createGraphicsDescriptorSets(VkDescriptorSetLayout descriptorSetLayout);
     
-    // Descriptor set updates
+    // Unified descriptor set updates (DRY principle)
+    bool updateDescriptorSets(const std::vector<DescriptorUpdateHelper::BufferBinding>& additionalBindings = {});
+    
+    // Convenience methods (delegate to unified method)
     bool updateDescriptorSetsWithPositionBuffer(VkBuffer positionBuffer);
     bool updateDescriptorSetsWithPositionBuffers(VkBuffer currentPositionBuffer, VkBuffer targetPositionBuffer);
     bool updateDescriptorSetsWithEntityAndPositionBuffers(VkBuffer entityBuffer, VkBuffer positionBuffer);

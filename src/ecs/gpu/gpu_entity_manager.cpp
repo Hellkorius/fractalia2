@@ -64,8 +64,15 @@ bool GPUEntityManager::initialize(const VulkanContext& context, VulkanSync* sync
         return false;
     }
     
-    if (!descriptorManager.initialize(context, bufferManager, resourceCoordinator)) {
-        std::cerr << "GPUEntityManager: Failed to initialize descriptor manager" << std::endl;
+    // Initialize base descriptor manager functionality
+    if (!descriptorManager.initialize(context)) {
+        std::cerr << "GPUEntityManager: Failed to initialize base descriptor manager" << std::endl;
+        return false;
+    }
+    
+    // Initialize entity-specific descriptor manager functionality
+    if (!descriptorManager.initializeEntity(bufferManager, resourceCoordinator)) {
+        std::cerr << "GPUEntityManager: Failed to initialize entity descriptor manager" << std::endl;
         return false;
     }
     

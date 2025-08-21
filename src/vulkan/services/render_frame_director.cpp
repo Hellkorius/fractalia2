@@ -223,7 +223,7 @@ void RenderFrameDirector::resetSwapchainCache() {
         
         if (movementParamsBuffer != VK_NULL_HANDLE && positionBuffer != VK_NULL_HANDLE) {
             bool graphicsSuccess = resourceCoordinator->getGraphicsManager()->updateDescriptorSetsWithEntityAndPositionBuffers(movementParamsBuffer, positionBuffer);
-            bool computeSuccess = gpuEntityManager->getDescriptorManager().recreateComputeDescriptorSets();
+            bool computeSuccess = gpuEntityManager->getDescriptorManager().recreateDescriptorSets();
             
             if (graphicsSuccess && computeSuccess) {
                 std::cout << "RenderFrameDirector: Successfully updated graphics AND compute descriptor sets after swapchain recreation" << std::endl;

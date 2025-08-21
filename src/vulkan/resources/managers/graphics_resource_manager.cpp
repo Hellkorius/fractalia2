@@ -4,6 +4,7 @@
 #include "../../core/vulkan_function_loader.h"
 #include "../../core/vulkan_constants.h"
 #include "../../core/vulkan_utils.h"
+#include "../descriptors/descriptor_update_helper.h"
 #include "../../../PolygonFactory.h"
 #include <iostream>
 #include <glm/glm.hpp>
@@ -247,113 +248,7 @@ bool GraphicsResourceManager::recreateGraphicsDescriptors() {
     return true;
 }
 
-bool GraphicsResourceManager::updateDescriptorSetsWithPositionBuffer(VkBuffer positionBuffer) {
-    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-        // UBO binding (binding 0)
-        VkDescriptorBufferInfo uboBufferInfo{};
-        uboBufferInfo.buffer = uniformBuffers[i];
-        uboBufferInfo.offset = 0;
-        uboBufferInfo.range = sizeof(glm::mat4) * 2;
-        
-        // Position buffer binding (binding 2)
-        VkDescriptorBufferInfo positionBufferInfo{};
-        positionBufferInfo.buffer = positionBuffer;
-        positionBufferInfo.offset = 0;
-        positionBufferInfo.range = VK_WHOLE_SIZE;
-        
-        // Write both descriptors
-        VkWriteDescriptorSet descriptorWrites[2] = {};
-        
-        // UBO write
-        descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        descriptorWrites[0].dstSet = graphicsDescriptorSets[i];
-        descriptorWrites[0].dstBinding = 0;
-        descriptorWrites[0].dstArrayElement = 0;
-        descriptorWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        descriptorWrites[0].descriptorCount = 1;
-        descriptorWrites[0].pBufferInfo = &uboBufferInfo;
-        
-        // Position buffer write
-        descriptorWrites[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        descriptorWrites[1].dstSet = graphicsDescriptorSets[i];
-        descriptorWrites[1].dstBinding = 2;
-        descriptorWrites[1].dstArrayElement = 0;
-        descriptorWrites[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-        descriptorWrites[1].descriptorCount = 1;
-        descriptorWrites[1].pBufferInfo = &positionBufferInfo;
-        
-        context->getLoader().vkUpdateDescriptorSets(context->getDevice(), 2, descriptorWrites, 0, nullptr);
-    }
-    
-    return true;
-}
-
-bool GraphicsResourceManager::updateDescriptorSetsWithPositionBuffers(VkBuffer currentPositionBuffer, VkBuffer targetPositionBuffer) {
-    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-        // UBO binding (binding 0)
-        VkDescriptorBufferInfo uboBufferInfo{};
-        uboBufferInfo.buffer = uniformBuffers[i];
-        uboBufferInfo.offset = 0;
-        uboBufferInfo.range = sizeof(glm::mat4) * 2;
-        
-        // Current position buffer binding (binding 2)
-        VkDescriptorBufferInfo currentPositionBufferInfo{};
-        currentPositionBufferInfo.buffer = currentPositionBuffer;
-        currentPositionBufferInfo.offset = 0;
-        currentPositionBufferInfo.range = VK_WHOLE_SIZE;
-        
-        // Target position buffer binding (binding 3)
-        VkDescriptorBufferInfo targetPositionBufferInfo{};
-        targetPositionBufferInfo.buffer = targetPositionBuffer;
-        targetPositionBufferInfo.offset = 0;
-        targetPositionBufferInfo.range = VK_WHOLE_SIZE;
-        
-        // Write all three descriptors
-        VkWriteDescriptorSet descriptorWrites[3] = {};
-        
-        // UBO write
-        descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        descriptorWrites[0].dstSet = graphicsDescriptorSets[i];
-        descriptorWrites[0].dstBinding = 0;
-        descriptorWrites[0].dstArrayElement = 0;
-        descriptorWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        descriptorWrites[0].descriptorCount = 1;
-        descriptorWrites[0].pBufferInfo = &uboBufferInfo;
-        
-        // Current position buffer write
-        descriptorWrites[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        descriptorWrites[1].dstSet = graphicsDescriptorSets[i];
-        descriptorWrites[1].dstBinding = 2;
-        descriptorWrites[1].dstArrayElement = 0;
-        descriptorWrites[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-        descriptorWrites[1].descriptorCount = 1;
-        descriptorWrites[1].pBufferInfo = &currentPositionBufferInfo;
-        
-        // Target position buffer write
-        descriptorWrites[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        descriptorWrites[2].dstSet = graphicsDescriptorSets[i];
-        descriptorWrites[2].dstBinding = 3;
-        descriptorWrites[2].dstArrayElement = 0;
-        descriptorWrites[2].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-        descriptorWrites[2].descriptorCount = 1;
-        descriptorWrites[2].pBufferInfo = &targetPositionBufferInfo;
-        
-        context->getLoader().vkUpdateDescriptorSets(context->getDevice(), 3, descriptorWrites, 0, nullptr);
-    }
-    
-    return true;
-}
-
-bool GraphicsResourceManager::updateDescriptorSetsWithEntityAndPositionBuffers(VkBuffer entityBuffer, VkBuffer positionBuffer) {
-    // Validate inputs
-    if (entityBuffer == VK_NULL_HANDLE) {
-        std::cerr << "GraphicsResourceManager: ERROR - Entity buffer is null in updateDescriptorSetsWithEntityAndPositionBuffers" << std::endl;
-        return false;
-    }
-    if (positionBuffer == VK_NULL_HANDLE) {
-        std::cerr << "GraphicsResourceManager: ERROR - Position buffer is null in updateDescriptorSetsWithEntityAndPositionBuffers" << std::endl;
-        return false;
-    }
+bool GraphicsResourceManager::updateDescriptorSets(const std::vector<DescriptorUpdateHelper::BufferBinding>& additionalBindings) {
     // Auto-recreate descriptor sets if they were destroyed (e.g., during resize)
     if (graphicsDescriptorSets.empty()) {
         std::cout << "GraphicsResourceManager: Descriptor sets missing, attempting to recreate..." << std::endl;
@@ -364,60 +259,95 @@ bool GraphicsResourceManager::updateDescriptorSetsWithEntityAndPositionBuffers(V
             return false;
         }
     }
+
+    // Build base bindings (uniform buffer binding 0)
+    std::vector<DescriptorUpdateHelper::BufferBinding> bindings;
     
-    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-        // UBO binding (binding 0)
-        VkDescriptorBufferInfo uboBufferInfo{};
-        uboBufferInfo.buffer = uniformBuffers[i];
-        uboBufferInfo.offset = 0;
-        uboBufferInfo.range = sizeof(glm::mat4) * 2;
-        
-        // Entity buffer binding (binding 1)
-        VkDescriptorBufferInfo entityBufferInfo{};
-        entityBufferInfo.buffer = entityBuffer;
-        entityBufferInfo.offset = 0;
-        entityBufferInfo.range = VK_WHOLE_SIZE;
-        
-        // Position buffer binding (binding 2)
-        VkDescriptorBufferInfo positionBufferInfo{};
-        positionBufferInfo.buffer = positionBuffer;
-        positionBufferInfo.offset = 0;
-        positionBufferInfo.range = VK_WHOLE_SIZE;
-        
-        // Write all three descriptors
-        VkWriteDescriptorSet descriptorWrites[3] = {};
-        
-        // UBO write (binding 0)
-        descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        descriptorWrites[0].dstSet = graphicsDescriptorSets[i];
-        descriptorWrites[0].dstBinding = 0;
-        descriptorWrites[0].dstArrayElement = 0;
-        descriptorWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        descriptorWrites[0].descriptorCount = 1;
-        descriptorWrites[0].pBufferInfo = &uboBufferInfo;
-        
-        // Entity buffer write (binding 1)
-        descriptorWrites[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        descriptorWrites[1].dstSet = graphicsDescriptorSets[i];
-        descriptorWrites[1].dstBinding = 1;
-        descriptorWrites[1].dstArrayElement = 0;
-        descriptorWrites[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-        descriptorWrites[1].descriptorCount = 1;
-        descriptorWrites[1].pBufferInfo = &entityBufferInfo;
-        
-        // Position buffer write (binding 2)
-        descriptorWrites[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        descriptorWrites[2].dstSet = graphicsDescriptorSets[i];
-        descriptorWrites[2].dstBinding = 2;
-        descriptorWrites[2].dstArrayElement = 0;
-        descriptorWrites[2].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-        descriptorWrites[2].descriptorCount = 1;
-        descriptorWrites[2].pBufferInfo = &positionBufferInfo;
-        
-        context->getLoader().vkUpdateDescriptorSets(context->getDevice(), 3, descriptorWrites, 0, nullptr);
+    // Add additional bindings
+    bindings.insert(bindings.end(), additionalBindings.begin(), additionalBindings.end());
+    
+    // Update each frame's descriptor set
+    std::array<VkDescriptorSet, MAX_FRAMES_IN_FLIGHT> descriptorSetArray;
+    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
+        descriptorSetArray[i] = graphicsDescriptorSets[i];
+    }
+    
+    // Use specialized uniform buffer update helper
+    std::array<VkBuffer, MAX_FRAMES_IN_FLIGHT> uniformBufferArray;
+    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
+        uniformBufferArray[i] = uniformBuffers[i];
+    }
+    
+    // Update uniform buffer binding (binding 0) for all frames
+    if (!DescriptorUpdateHelper::updateUniformBufferBinding(
+            *context, descriptorSetArray, 0, uniformBufferArray, sizeof(glm::mat4) * 2)) {
+        std::cerr << "GraphicsResourceManager: Failed to update uniform buffer binding" << std::endl;
+        return false;
+    }
+    
+    // Update additional bindings if provided
+    if (!additionalBindings.empty()) {
+        for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
+            if (!DescriptorUpdateHelper::updateDescriptorSet(*context, graphicsDescriptorSets[i], additionalBindings)) {
+                std::cerr << "GraphicsResourceManager: Failed to update additional bindings for frame " << i << std::endl;
+                return false;
+            }
+        }
     }
     
     return true;
+}
+
+bool GraphicsResourceManager::updateDescriptorSetsWithPositionBuffer(VkBuffer positionBuffer) {
+    // Validate inputs
+    if (positionBuffer == VK_NULL_HANDLE) {
+        std::cerr << "GraphicsResourceManager: ERROR - Position buffer is null" << std::endl;
+        return false;
+    }
+    
+    std::vector<DescriptorUpdateHelper::BufferBinding> bindings = {
+        {2, positionBuffer, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER}  // Position buffer at binding 2
+    };
+    
+    return updateDescriptorSets(bindings);
+}
+
+bool GraphicsResourceManager::updateDescriptorSetsWithPositionBuffers(VkBuffer currentPositionBuffer, VkBuffer targetPositionBuffer) {
+    // Validate inputs
+    if (currentPositionBuffer == VK_NULL_HANDLE) {
+        std::cerr << "GraphicsResourceManager: ERROR - Current position buffer is null" << std::endl;
+        return false;
+    }
+    if (targetPositionBuffer == VK_NULL_HANDLE) {
+        std::cerr << "GraphicsResourceManager: ERROR - Target position buffer is null" << std::endl;
+        return false;
+    }
+    
+    std::vector<DescriptorUpdateHelper::BufferBinding> bindings = {
+        {2, currentPositionBuffer, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER},  // Current position at binding 2
+        {3, targetPositionBuffer, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER}    // Target position at binding 3
+    };
+    
+    return updateDescriptorSets(bindings);
+}
+
+bool GraphicsResourceManager::updateDescriptorSetsWithEntityAndPositionBuffers(VkBuffer entityBuffer, VkBuffer positionBuffer) {
+    // Validate inputs
+    if (entityBuffer == VK_NULL_HANDLE) {
+        std::cerr << "GraphicsResourceManager: ERROR - Entity buffer is null" << std::endl;
+        return false;
+    }
+    if (positionBuffer == VK_NULL_HANDLE) {
+        std::cerr << "GraphicsResourceManager: ERROR - Position buffer is null" << std::endl;
+        return false;
+    }
+    
+    std::vector<DescriptorUpdateHelper::BufferBinding> bindings = {
+        {1, entityBuffer, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER},   // Entity buffer at binding 1
+        {2, positionBuffer, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER}  // Position buffer at binding 2
+    };
+    
+    return updateDescriptorSets(bindings);
 }
 
 // High-level resource operations (consolidated from facade)
