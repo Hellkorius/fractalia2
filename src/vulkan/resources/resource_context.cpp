@@ -7,9 +7,7 @@
 #include "buffer_factory.h"
 #include "descriptor_pool_manager.h"
 #include "graphics_resource_manager.h"
-#include "staging_buffer_manager.h"
-#include "gpu_buffer_manager.h"
-#include "transfer_manager.h"
+#include "buffer_manager.h"
 
 // Define the forward declared types for proper compilation
 namespace {
@@ -71,16 +69,8 @@ void ResourceContext::cleanupBeforeContextDestruction() {
         graphicsResourceManager->cleanupBeforeContextDestruction();
     }
     
-    if (transferManager) {
-        // No RAII cleanup needed in TransferManager currently
-    }
-    
-    if (gpuBufferManager) {
-        // No RAII cleanup needed in GPUBufferManager currently
-    }
-    
-    if (stagingManager) {
-        // No RAII cleanup needed in StagingBufferManager currently
+    if (bufferManager) {
+        // No RAII cleanup needed in BufferManager currently
     }
     
     
@@ -133,17 +123,17 @@ void ResourceContext::destroyResource(ResourceHandle& handle) {
     }
 }
 
-// Transfer operations (delegated to TransferManager)
+// Transfer operations (delegated to BufferManager)
 bool ResourceContext::copyToBuffer(const ResourceHandle& dst, const void* data, VkDeviceSize size, VkDeviceSize offset) {
-    return transferManager ? transferManager->copyToBuffer(dst, data, size, offset) : false;
+    return bufferManager ? bufferManager->copyToBuffer(dst, data, size, offset) : false;
 }
 
 bool ResourceContext::copyBufferToBuffer(const ResourceHandle& src, const ResourceHandle& dst, VkDeviceSize size, VkDeviceSize srcOffset, VkDeviceSize dstOffset) {
-    return transferManager ? transferManager->copyBufferToBuffer(src, dst, size, srcOffset, dstOffset) : false;
+    return bufferManager ? bufferManager->copyBufferToBuffer(src, dst, size, srcOffset, dstOffset) : false;
 }
 
 CommandExecutor::AsyncTransfer ResourceContext::copyToBufferAsync(const ResourceHandle& dst, const void* data, VkDeviceSize size, VkDeviceSize offset) {
-    return transferManager ? transferManager->copyToBufferAsync(dst, data, size, offset) : CommandExecutor::AsyncTransfer{};
+    return bufferManager ? bufferManager->copyToBufferAsync(dst, data, size, offset) : CommandExecutor::AsyncTransfer{};
 }
 
 // Descriptor management (delegated to DescriptorPoolManager)
@@ -229,11 +219,11 @@ const std::vector<VkDescriptorSet>& ResourceContext::getGraphicsDescriptorSets()
 
 // Legacy compatibility - staging buffer direct access
 StagingRingBuffer& ResourceContext::getStagingBuffer() {
-    return getStagingManager()->getPrimaryBuffer();
+    return getBufferManager()->getPrimaryStagingBuffer();
 }
 
 const StagingRingBuffer& ResourceContext::getStagingBuffer() const {
-    return getStagingManager()->getPrimaryBuffer();
+    return getBufferManager()->getPrimaryStagingBuffer();
 }
 
 // Statistics and monitoring (delegated to MemoryAllocator)
@@ -290,12 +280,8 @@ bool ResourceContext::optimizeResources() {
         success &= memoryAllocator->attemptMemoryRecovery();
     }
     
-    if (stagingManager) {
-        success &= stagingManager->tryDefragment();
-    }
-    
-    if (transferManager) {
-        success &= transferManager->tryOptimizeTransfers();
+    if (bufferManager) {
+        success &= bufferManager->tryOptimizeMemory();
     }
     
     if (graphicsResourceManager) {
@@ -337,24 +323,10 @@ bool ResourceContext::initializeManagers(QueueManager* queueManager) {
         return false;
     }
     
-    // 5. Staging buffer manager
-    stagingManager = std::make_unique<StagingBufferManager>();
-    if (!stagingManager->initialize(*context, STAGING_BUFFER_SIZE)) {
-        std::cerr << "Failed to initialize staging buffer manager!" << std::endl;
-        return false;
-    }
-    
-    // 6. GPU buffer manager (depends on staging manager)
-    gpuBufferManager = std::make_unique<GPUBufferManager>();
-    if (!gpuBufferManager->initialize(this, stagingManager.get())) {
-        std::cerr << "Failed to initialize GPU buffer manager!" << std::endl;
-        return false;
-    }
-    
-    // 7. Transfer manager (depends on multiple managers)
-    transferManager = std::make_unique<TransferManager>();
-    if (!transferManager->initialize(this, bufferFactory.get(), stagingManager.get(), &executor)) {
-        std::cerr << "Failed to initialize transfer manager!" << std::endl;
+    // 5. Unified buffer manager (replaces staging, gpu buffer, and transfer managers)
+    bufferManager = std::make_unique<BufferManager>();
+    if (!bufferManager->initialize(this, bufferFactory.get(), &executor, STAGING_BUFFER_SIZE)) {
+        std::cerr << "Failed to initialize buffer manager!" << std::endl;
         return false;
     }
     
@@ -364,17 +336,15 @@ bool ResourceContext::initializeManagers(QueueManager* queueManager) {
 
 void ResourceContext::setupManagerDependencies() {
     // Setup cross-manager dependencies
-    if (bufferFactory && stagingManager && transferManager) {
-        bufferFactory->setStagingBuffer(&stagingManager->getPrimaryBuffer());
+    if (bufferFactory && bufferManager) {
+        bufferFactory->setStagingBuffer(&bufferManager->getPrimaryStagingBuffer());
         bufferFactory->setCommandExecutor(&executor);
     }
 }
 
 void ResourceContext::cleanupManagers() {
     // Cleanup in reverse order of initialization
-    transferManager.reset();
-    gpuBufferManager.reset();
-    stagingManager.reset();
+    bufferManager.reset();
     graphicsResourceManager.reset();
     descriptorPoolManager.reset();
     bufferFactory.reset();

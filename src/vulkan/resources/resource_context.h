@@ -16,10 +16,8 @@ class MemoryAllocator;
 class BufferFactory;
 class DescriptorPoolManager;
 class GraphicsResourceManager;
-class StagingBufferManager;
+class BufferManager;
 class StagingRingBuffer;
-class GPUBufferManager;
-class TransferManager;
 
 #include "resource_handle.h"
 #include "command_executor.h"
@@ -96,9 +94,7 @@ public:
     // Manager access for advanced operations
     MemoryAllocator* getMemoryAllocator() const { return memoryAllocator.get(); }
     BufferFactory* getBufferFactory() const { return bufferFactory.get(); }
-    StagingBufferManager* getStagingManager() const { return stagingManager.get(); }
-    GPUBufferManager* getGPUBufferManager() const { return gpuBufferManager.get(); }
-    TransferManager* getTransferManager() const { return transferManager.get(); }
+    BufferManager* getBufferManager() const { return bufferManager.get(); }
     GraphicsResourceManager* getGraphicsManager() const { return graphicsResourceManager.get(); }
     
     // Legacy compatibility - staging buffer direct access
@@ -138,9 +134,7 @@ private:
     std::unique_ptr<BufferFactory> bufferFactory;
     std::unique_ptr<DescriptorPoolManager> descriptorPoolManager;
     std::unique_ptr<GraphicsResourceManager> graphicsResourceManager;
-    std::unique_ptr<StagingBufferManager> stagingManager;
-    std::unique_ptr<GPUBufferManager> gpuBufferManager;
-    std::unique_ptr<TransferManager> transferManager;
+    std::unique_ptr<BufferManager> bufferManager;
     
     // Resource tracking
     std::vector<std::function<void()>> cleanupCallbacks;
