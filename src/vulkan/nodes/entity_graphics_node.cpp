@@ -283,11 +283,11 @@ void EntityGraphicsNode::updateUniformBuffer() {
         // Auto-recreate uniform buffers if they were destroyed (e.g., during resize)
         if (uniformBuffers.empty()) {
             std::cout << "EntityGraphicsNode: Uniform buffers missing, attempting to recreate..." << std::endl;
-            if (resourceContext->createUniformBuffers()) {
-                std::cout << "EntityGraphicsNode: Successfully recreated uniform buffers" << std::endl;
+            if (resourceContext->createGraphicsResources()) {
+                std::cout << "EntityGraphicsNode: Successfully recreated graphics resources" << std::endl;
                 uniformBuffers = resourceContext->getUniformBuffersMapped();
             } else {
-                std::cerr << "EntityGraphicsNode: CRITICAL ERROR: Failed to recreate uniform buffers!" << std::endl;
+                std::cerr << "EntityGraphicsNode: CRITICAL ERROR: Failed to recreate graphics resources!" << std::endl;
                 return;
             }
         }

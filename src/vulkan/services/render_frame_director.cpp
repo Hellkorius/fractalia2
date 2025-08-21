@@ -221,7 +221,7 @@ void RenderFrameDirector::resetSwapchainCache() {
         VkBuffer positionBuffer = gpuEntityManager->getPositionBuffer();
         
         if (entityBuffer != VK_NULL_HANDLE && positionBuffer != VK_NULL_HANDLE) {
-            bool graphicsSuccess = resourceContext->updateDescriptorSetsWithEntityAndPositionBuffers(entityBuffer, positionBuffer);
+            bool graphicsSuccess = resourceContext->updateGraphicsDescriptors(entityBuffer, positionBuffer);
             bool computeSuccess = gpuEntityManager->getDescriptorManager().recreateComputeDescriptorSets();
             
             if (graphicsSuccess && computeSuccess) {

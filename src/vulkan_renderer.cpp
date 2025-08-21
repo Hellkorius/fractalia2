@@ -112,14 +112,8 @@ bool VulkanRenderer::initialize(SDL_Window* window) {
         return false;
     }
     
-    if (!resourceContext->createUniformBuffers()) {
-        std::cerr << "Failed to create uniform buffers" << std::endl;
-        cleanup();
-        return false;
-    }
-    
-    if (!resourceContext->createTriangleBuffers()) {
-        std::cerr << "Failed to create triangle buffers" << std::endl;
+    if (!resourceContext->createGraphicsResources()) {
+        std::cerr << "Failed to create graphics resources (uniform and triangle buffers)" << std::endl;
         cleanup();
         return false;
     }
@@ -166,7 +160,7 @@ bool VulkanRenderer::initialize(SDL_Window* window) {
         return false;
     }
     
-    if (!resourceContext->updateDescriptorSetsWithEntityAndPositionBuffers(
+    if (!resourceContext->updateGraphicsDescriptors(
             gpuEntityManager->getEntityBuffer(),
             gpuEntityManager->getPositionBuffer())) {
         std::cerr << "Failed to update descriptor sets with entity and position buffers" << std::endl;

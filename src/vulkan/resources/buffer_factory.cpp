@@ -2,7 +2,7 @@
 #include "../core/vulkan_context.h"
 #include "../core/vulkan_function_loader.h"
 #include "../core/vulkan_constants.h"
-#include "resource_context.h" // For StagingRingBuffer
+#include "staging_buffer_manager.h" // For complete StagingRingBuffer definition
 #include "command_executor.h"
 #include <iostream>
 #include <cstring>
