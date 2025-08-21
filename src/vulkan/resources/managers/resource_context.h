@@ -17,7 +17,10 @@ class BufferFactory;
 class DescriptorPoolManager;
 class GraphicsResourceManager;
 class BufferManager;
-class StagingRingBuffer;
+class StagingBufferPool;
+
+// Legacy alias for backward compatibility
+using StagingRingBuffer = StagingBufferPool;
 
 #include "../core/resource_handle.h"
 #include "../core/command_executor.h"

@@ -7,7 +7,7 @@
 #include "../core/resource_handle.h"
 
 class VulkanContext;
-class StagingRingBuffer;
+class StagingBufferPool;
 class CommandExecutor;
 
 // Buffer and image creation factory
@@ -49,7 +49,7 @@ public:
     void destroyResource(ResourceHandle& handle);
     
     // Transfer operations (requires staging buffer and command executor)
-    void setStagingBuffer(StagingRingBuffer* stagingBuffer) { this->stagingBuffer = stagingBuffer; }
+    void setStagingBuffer(StagingBufferPool* stagingBuffer) { this->stagingBuffer = stagingBuffer; }
     void setCommandExecutor(CommandExecutor* executor) { this->executor = executor; }
     
     void copyToBuffer(const ResourceHandle& dst, const void* data, VkDeviceSize size, VkDeviceSize offset = 0);
@@ -58,6 +58,6 @@ public:
 private:
     const VulkanContext* context = nullptr;
     MemoryAllocator* memoryAllocator = nullptr;
-    StagingRingBuffer* stagingBuffer = nullptr;
+    StagingBufferPool* stagingBuffer = nullptr;
     CommandExecutor* executor = nullptr;
 };
