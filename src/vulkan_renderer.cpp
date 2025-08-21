@@ -4,7 +4,8 @@
 #include "vulkan/core/vulkan_swapchain.h"
 #include "vulkan/core/vulkan_sync.h"
 #include "vulkan/core/queue_manager.h"
-#include "vulkan/resources/managers/resource_context.h"
+#include "vulkan/resources/core/resource_coordinator.h"
+#include "vulkan/resources/managers/graphics_resource_manager.h"
 #include "vulkan/rendering/frame_graph.h"
 #include "vulkan/nodes/entity_compute_node.h"
 #include "vulkan/nodes/entity_graphics_node.h"
@@ -105,14 +106,14 @@ bool VulkanRenderer::initialize(SDL_Window* window) {
     }
     
     // Phase 4: Resource management (depends on context, queue manager)
-    resourceContext = std::make_unique<ResourceContext>();
-    if (!resourceContext || !resourceContext->initialize(*context, queueManager.get())) {
-        std::cerr << "Failed to initialize Resource context" << std::endl;
+    resourceCoordinator = std::make_unique<ResourceCoordinator>();
+    if (!resourceCoordinator || !resourceCoordinator->initialize(*context, queueManager.get())) {
+        std::cerr << "Failed to initialize Resource coordinator" << std::endl;
         cleanup();
         return false;
     }
     
-    if (!resourceContext->createGraphicsResources()) {
+    if (!resourceCoordinator->getGraphicsManager()->createAllGraphicsResources()) {
         std::cerr << "Failed to create graphics resources (uniform and triangle buffers)" << std::endl;
         cleanup();
         return false;
@@ -133,13 +134,13 @@ bool VulkanRenderer::initialize(SDL_Window* window) {
         return false;
     }
     
-    if (!resourceContext->createGraphicsDescriptorPool(descriptorLayout)) {
+    if (!resourceCoordinator->getGraphicsManager()->createGraphicsDescriptorPool(descriptorLayout)) {
         std::cerr << "Failed to create descriptor pool" << std::endl;
         cleanup();
         return false;
     }
     
-    if (!resourceContext->createGraphicsDescriptorSets(descriptorLayout)) {
+    if (!resourceCoordinator->getGraphicsManager()->createGraphicsDescriptorSets(descriptorLayout)) {
         std::cerr << "Failed to create descriptor sets" << std::endl;
         cleanup();
         return false;
@@ -147,7 +148,7 @@ bool VulkanRenderer::initialize(SDL_Window* window) {
     
     // Phase 6: Entity management (depends on context, sync, resource context)
     gpuEntityManager = std::make_unique<GPUEntityManager>();
-    if (!gpuEntityManager || !gpuEntityManager->initialize(*context, sync.get(), resourceContext.get())) {
+    if (!gpuEntityManager || !gpuEntityManager->initialize(*context, sync.get(), resourceCoordinator.get())) {
         std::cerr << "Failed to initialize GPU entity manager" << std::endl;
         cleanup();
         return false;
@@ -160,7 +161,7 @@ bool VulkanRenderer::initialize(SDL_Window* window) {
         return false;
     }
     
-    if (!resourceContext->updateGraphicsDescriptors(
+    if (!resourceCoordinator->getGraphicsManager()->updateDescriptorSetsWithEntityAndPositionBuffers(
             gpuEntityManager->getEntityBuffer(),
             gpuEntityManager->getPositionBuffer())) {
         std::cerr << "Failed to update descriptor sets with entity and position buffers" << std::endl;
@@ -246,12 +247,12 @@ void VulkanRenderer::cleanup() {
         }
     }
     
-    // Cleanup ResourceContext RAII resources before destroying dependencies
-    if (resourceContext) {
+    // Cleanup ResourceCoordinator RAII resources before destroying dependencies
+    if (resourceCoordinator) {
         try {
-            resourceContext->cleanupBeforeContextDestruction();
+            resourceCoordinator->cleanupBeforeContextDestruction();
         } catch (const std::exception& e) {
-            std::cerr << "Exception during resource context cleanup: " << e.what() << std::endl;
+            std::cerr << "Exception during resource coordinator cleanup: " << e.what() << std::endl;
         }
     }
     
@@ -261,8 +262,8 @@ void VulkanRenderer::cleanup() {
         gpuEntityManager.reset();
     }
     
-    if (resourceContext) {
-        resourceContext.reset();
+    if (resourceCoordinator) {
+        resourceCoordinator.reset();
     }
     
     if (queueManager) {
@@ -330,7 +331,7 @@ bool VulkanRenderer::initializeModularArchitecture() {
         swapchain.get(), 
         pipelineSystem.get(),
         sync.get(),
-        resourceContext.get(),
+        resourceCoordinator.get(),
         gpuEntityManager.get(),
         frameGraph.get(),
         presentationSurface.get()
@@ -447,13 +448,16 @@ void VulkanRenderer::drawFrameModular() {
     }
     
     // Periodic memory pressure monitoring (every 60 frames to avoid performance impact)
-    if (frameCounter % 60 == 0 && resourceContext) {
-        auto memStats = resourceContext->getMemoryStats();
-        if (memStats.memoryPressure || memStats.failedAllocations > 0) {
-            std::cout << "VulkanRenderer: Frame " << frameCounter << " - Memory pressure status: " 
-                      << (memStats.memoryPressure ? "HIGH" : "Normal") 
-                      << ", Failed allocations: " << memStats.failedAllocations 
-                      << ", Fragmentation: " << (memStats.fragmentationRatio * 100.0f) << "%" << std::endl;
+    if (frameCounter % 60 == 0 && resourceCoordinator) {
+        bool memoryPressure = resourceCoordinator->isUnderMemoryPressure();
+        if (memoryPressure) {
+            VkDeviceSize totalAllocated = resourceCoordinator->getTotalAllocatedMemory();
+            VkDeviceSize available = resourceCoordinator->getAvailableMemory();
+            uint32_t allocCount = resourceCoordinator->getAllocationCount();
+            std::cout << "VulkanRenderer: Frame " << frameCounter << " - Memory pressure status: HIGH" 
+                      << ", Total allocated: " << (totalAllocated / (1024 * 1024)) << "MB"
+                      << ", Available: " << (available / (1024 * 1024)) << "MB"
+                      << ", Active allocations: " << allocCount << std::endl;
         }
     }
     

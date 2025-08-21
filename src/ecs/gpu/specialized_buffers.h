@@ -13,8 +13,8 @@ class VelocityBuffer : public BufferBase {
 public:
     using BufferBase::initialize; // Bring base class initialize into scope
     
-    bool initialize(const VulkanContext& context, ResourceContext* resourceContext, uint32_t maxEntities) {
-        return BufferBase::initialize(context, resourceContext, maxEntities, sizeof(glm::vec4), 0);
+    bool initialize(const VulkanContext& context, ResourceCoordinator* resourceCoordinator, uint32_t maxEntities) {
+        return BufferBase::initialize(context, resourceCoordinator, maxEntities, sizeof(glm::vec4), 0);
     }
     
 protected:
@@ -26,8 +26,8 @@ class MovementParamsBuffer : public BufferBase {
 public:
     using BufferBase::initialize; // Bring base class initialize into scope
     
-    bool initialize(const VulkanContext& context, ResourceContext* resourceContext, uint32_t maxEntities) {
-        return BufferBase::initialize(context, resourceContext, maxEntities, sizeof(glm::vec4), 0);
+    bool initialize(const VulkanContext& context, ResourceCoordinator* resourceCoordinator, uint32_t maxEntities) {
+        return BufferBase::initialize(context, resourceCoordinator, maxEntities, sizeof(glm::vec4), 0);
     }
     
 protected:
@@ -39,8 +39,8 @@ class RuntimeStateBuffer : public BufferBase {
 public:
     using BufferBase::initialize; // Bring base class initialize into scope
     
-    bool initialize(const VulkanContext& context, ResourceContext* resourceContext, uint32_t maxEntities) {
-        return BufferBase::initialize(context, resourceContext, maxEntities, sizeof(glm::vec4), 0);
+    bool initialize(const VulkanContext& context, ResourceCoordinator* resourceCoordinator, uint32_t maxEntities) {
+        return BufferBase::initialize(context, resourceCoordinator, maxEntities, sizeof(glm::vec4), 0);
     }
     
 protected:
@@ -52,8 +52,8 @@ class ColorBuffer : public BufferBase {
 public:
     using BufferBase::initialize; // Bring base class initialize into scope
     
-    bool initialize(const VulkanContext& context, ResourceContext* resourceContext, uint32_t maxEntities) {
-        return BufferBase::initialize(context, resourceContext, maxEntities, sizeof(glm::vec4), 0);
+    bool initialize(const VulkanContext& context, ResourceCoordinator* resourceCoordinator, uint32_t maxEntities) {
+        return BufferBase::initialize(context, resourceCoordinator, maxEntities, sizeof(glm::vec4), 0);
     }
     
 protected:
@@ -65,8 +65,8 @@ class ModelMatrixBuffer : public BufferBase {
 public:
     using BufferBase::initialize; // Bring base class initialize into scope
     
-    bool initialize(const VulkanContext& context, ResourceContext* resourceContext, uint32_t maxEntities) {
-        return BufferBase::initialize(context, resourceContext, maxEntities, sizeof(glm::mat4), 0);
+    bool initialize(const VulkanContext& context, ResourceCoordinator* resourceCoordinator, uint32_t maxEntities) {
+        return BufferBase::initialize(context, resourceCoordinator, maxEntities, sizeof(glm::mat4), 0);
     }
     
 protected:
@@ -78,8 +78,8 @@ class PositionBuffer : public BufferBase {
 public:
     using BufferBase::initialize; // Bring base class initialize into scope
     
-    bool initialize(const VulkanContext& context, ResourceContext* resourceContext, uint32_t maxEntities) {
-        return BufferBase::initialize(context, resourceContext, maxEntities, sizeof(glm::vec4), 0);
+    bool initialize(const VulkanContext& context, ResourceCoordinator* resourceCoordinator, uint32_t maxEntities) {
+        return BufferBase::initialize(context, resourceCoordinator, maxEntities, sizeof(glm::vec4), 0);
     }
     
 protected:

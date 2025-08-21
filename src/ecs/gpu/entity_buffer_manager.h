@@ -8,7 +8,7 @@
 
 // Forward declarations
 class VulkanContext;
-class ResourceContext;
+class ResourceCoordinator;
 
 /**
  * REFACTORED: Entity buffer manager using SRP-compliant specialized buffer classes
@@ -19,7 +19,7 @@ public:
     EntityBufferManager();
     ~EntityBufferManager();
 
-    bool initialize(const VulkanContext& context, ResourceContext* resourceContext, uint32_t maxEntities);
+    bool initialize(const VulkanContext& context, ResourceCoordinator* resourceCoordinator, uint32_t maxEntities);
     void cleanup();
     
     // SoA buffer access - delegated to specialized buffers

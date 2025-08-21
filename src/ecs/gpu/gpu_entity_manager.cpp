@@ -1,7 +1,7 @@
 #include "gpu_entity_manager.h"
 #include "../../vulkan/core/vulkan_context.h"
 #include "../../vulkan/core/vulkan_sync.h"
-#include "../../vulkan/resources/managers/resource_context.h"
+#include "../../vulkan/resources/core/resource_coordinator.h"
 #include "../../vulkan/core/vulkan_function_loader.h"
 #include "../../vulkan/core/vulkan_utils.h"
 #include <iostream>
@@ -84,18 +84,18 @@ GPUEntityManager::~GPUEntityManager() {
     cleanup();
 }
 
-bool GPUEntityManager::initialize(const VulkanContext& context, VulkanSync* sync, ResourceContext* resourceContext) {
+bool GPUEntityManager::initialize(const VulkanContext& context, VulkanSync* sync, ResourceCoordinator* resourceCoordinator) {
     this->context = &context;
     this->sync = sync;
-    this->resourceContext = resourceContext;
+    this->resourceCoordinator = resourceCoordinator;
     
     // Initialize buffer manager
-    if (!bufferManager.initialize(context, resourceContext, MAX_ENTITIES)) {
+    if (!bufferManager.initialize(context, resourceCoordinator, MAX_ENTITIES)) {
         std::cerr << "GPUEntityManager: Failed to initialize buffer manager" << std::endl;
         return false;
     }
     
-    if (!descriptorManager.initialize(context, bufferManager, resourceContext)) {
+    if (!descriptorManager.initialize(context, bufferManager, resourceCoordinator)) {
         std::cerr << "GPUEntityManager: Failed to initialize descriptor manager" << std::endl;
         return false;
     }

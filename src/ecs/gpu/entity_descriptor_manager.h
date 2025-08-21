@@ -5,7 +5,7 @@
 // Forward declarations
 class VulkanContext;
 class EntityBufferManager;
-class ResourceContext;
+class ResourceCoordinator;
 
 /**
  * EntityDescriptorManager - Isolated Vulkan descriptor management for entity rendering
@@ -24,7 +24,7 @@ public:
     ~EntityDescriptorManager();
 
     // Initialization and cleanup
-    bool initialize(const VulkanContext& context, EntityBufferManager& bufferManager, ResourceContext* resourceContext = nullptr);
+    bool initialize(const VulkanContext& context, EntityBufferManager& bufferManager, ResourceCoordinator* resourceCoordinator = nullptr);
     void cleanup();
 
     // Descriptor set layout management
@@ -50,7 +50,7 @@ private:
     // Dependencies
     const VulkanContext* context = nullptr;
     EntityBufferManager* bufferManager = nullptr;
-    ResourceContext* resourceContext = nullptr;
+    ResourceCoordinator* resourceCoordinator = nullptr;
     
     // Descriptor set layouts
     VkDescriptorSetLayout computeDescriptorSetLayout = VK_NULL_HANDLE;

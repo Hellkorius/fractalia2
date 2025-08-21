@@ -4,7 +4,8 @@
 #include "../core/vulkan_swapchain.h"
 #include "../pipelines/pipeline_system_manager.h"
 #include "../core/vulkan_sync.h"
-#include "../resources/managers/resource_context.h"
+#include "../resources/core/resource_coordinator.h"
+#include "../resources/managers/graphics_resource_manager.h"
 #include "../nodes/entity_compute_node.h"
 #include "../nodes/physics_compute_node.h"
 #include "../nodes/entity_graphics_node.h"
@@ -24,7 +25,7 @@ bool RenderFrameDirector::initialize(
     VulkanSwapchain* swapchain,
     PipelineSystemManager* pipelineSystem,
     VulkanSync* sync,
-    ResourceContext* resourceContext,
+    ResourceCoordinator* resourceCoordinator,
     GPUEntityManager* gpuEntityManager,
     FrameGraph* frameGraph,
     PresentationSurface* presentationSurface
@@ -33,7 +34,7 @@ bool RenderFrameDirector::initialize(
     this->swapchain = swapchain;
     this->pipelineSystem = pipelineSystem;
     this->sync = sync;
-    this->resourceContext = resourceContext;
+    this->resourceCoordinator = resourceCoordinator;
     this->gpuEntityManager = gpuEntityManager;
     this->frameGraph = frameGraph;
     this->presentationSurface = presentationSurface;
@@ -154,7 +155,7 @@ void RenderFrameDirector::setupFrameGraph(uint32_t imageIndex) {
             0, // Placeholder - will be resolved dynamically
             pipelineSystem->getGraphicsManager(),
             swapchain,
-            resourceContext,
+            resourceCoordinator,
             gpuEntityManager
         );
         
@@ -216,12 +217,12 @@ void RenderFrameDirector::resetSwapchainCache() {
     
     // 4. CRITICAL FIX: Update BOTH graphics AND compute descriptor sets after swapchain recreation
     // This fixes the second window resize crash by ensuring all descriptor sets have valid buffer bindings
-    if (gpuEntityManager && resourceContext) {
+    if (gpuEntityManager && resourceCoordinator) {
         VkBuffer entityBuffer = gpuEntityManager->getEntityBuffer();
         VkBuffer positionBuffer = gpuEntityManager->getPositionBuffer();
         
         if (entityBuffer != VK_NULL_HANDLE && positionBuffer != VK_NULL_HANDLE) {
-            bool graphicsSuccess = resourceContext->updateGraphicsDescriptors(entityBuffer, positionBuffer);
+            bool graphicsSuccess = resourceCoordinator->getGraphicsManager()->updateDescriptorSetsWithEntityAndPositionBuffers(entityBuffer, positionBuffer);
             bool computeSuccess = gpuEntityManager->getDescriptorManager().recreateComputeDescriptorSets();
             
             if (graphicsSuccess && computeSuccess) {
@@ -237,7 +238,7 @@ void RenderFrameDirector::resetSwapchainCache() {
             std::cerr << "  Position buffer: " << (positionBuffer != VK_NULL_HANDLE ? "VALID" : "NULL") << std::endl;
         }
     } else {
-        std::cerr << "RenderFrameDirector: WARNING - Missing gpuEntityManager or resourceContext during swapchain recreation" << std::endl;
+        std::cerr << "RenderFrameDirector: WARNING - Missing gpuEntityManager or resourceCoordinator during swapchain recreation" << std::endl;
     }
     
     // 5. That's it! Next frame will naturally import new images

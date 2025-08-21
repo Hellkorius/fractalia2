@@ -3,6 +3,7 @@
 #define VK_NO_PROTOTYPES
 #include <vulkan/vulkan.h>
 #include <memory>
+#include <vector>
 #include "resource_handle.h"
 #include "command_executor.h"
 #include "resource_context_bridge.h"
@@ -71,6 +72,10 @@ public:
     // Legacy compatibility - staging buffer direct access
     StagingBufferPool& getStagingBuffer();
     const StagingBufferPool& getStagingBuffer() const;
+    
+    // Graphics resource convenience methods
+    const std::vector<VkBuffer>& getUniformBuffers() const;
+    const std::vector<void*>& getUniformBuffersMapped() const;
     
     // Statistics and monitoring (delegates to MemoryAllocator)
     bool isUnderMemoryPressure() const;

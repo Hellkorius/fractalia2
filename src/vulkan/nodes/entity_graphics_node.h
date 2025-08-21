@@ -12,7 +12,7 @@
 // Forward declarations
 class GraphicsPipelineManager;
 class VulkanSwapchain;
-class ResourceContext;
+class ResourceCoordinator;
 class GPUEntityManager;
 
 class EntityGraphicsNode : public FrameGraphNode {
@@ -25,7 +25,7 @@ public:
         FrameGraphTypes::ResourceId colorTarget,
         GraphicsPipelineManager* graphicsManager,
         VulkanSwapchain* swapchain,
-        ResourceContext* resourceContext,
+        ResourceCoordinator* resourceCoordinator,
         GPUEntityManager* gpuEntityManager
     );
     
@@ -78,7 +78,7 @@ private:
     // External dependencies (not owned) - validated during execution
     GraphicsPipelineManager* graphicsManager;
     VulkanSwapchain* swapchain;
-    ResourceContext* resourceContext;
+    ResourceCoordinator* resourceCoordinator;
     GPUEntityManager* gpuEntityManager;
     
     // Current frame state

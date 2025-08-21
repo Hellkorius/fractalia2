@@ -1,7 +1,8 @@
 #include "entity_graphics_node.h"
 #include "../pipelines/graphics_pipeline_manager.h"
 #include "../core/vulkan_swapchain.h"
-#include "../resources/managers/resource_context.h"
+#include "../resources/core/resource_coordinator.h"
+#include "../resources/managers/graphics_resource_manager.h"
 #include "../../ecs/gpu/gpu_entity_manager.h"
 #include "../core/vulkan_context.h"
 #include "../core/vulkan_function_loader.h"
@@ -23,14 +24,14 @@ EntityGraphicsNode::EntityGraphicsNode(
     FrameGraphTypes::ResourceId colorTarget,
     GraphicsPipelineManager* graphicsManager,
     VulkanSwapchain* swapchain,
-    ResourceContext* resourceContext,
+    ResourceCoordinator* resourceCoordinator,
     GPUEntityManager* gpuEntityManager
 ) : entityBufferId(entityBuffer)
   , positionBufferId(positionBuffer)
   , colorTargetId(colorTarget)
   , graphicsManager(graphicsManager)
   , swapchain(swapchain)
-  , resourceContext(resourceContext)
+  , resourceCoordinator(resourceCoordinator)
   , gpuEntityManager(gpuEntityManager) {
     
     // Validate dependencies during construction for fail-fast behavior
@@ -40,8 +41,8 @@ EntityGraphicsNode::EntityGraphicsNode(
     if (!swapchain) {
         throw std::invalid_argument("EntityGraphicsNode: swapchain cannot be null");
     }
-    if (!resourceContext) {
-        throw std::invalid_argument("EntityGraphicsNode: resourceContext cannot be null");
+    if (!resourceCoordinator) {
+        throw std::invalid_argument("EntityGraphicsNode: resourceCoordinator cannot be null");
     }
     if (!gpuEntityManager) {
         throw std::invalid_argument("EntityGraphicsNode: gpuEntityManager cannot be null");
@@ -65,7 +66,7 @@ std::vector<ResourceDependency> EntityGraphicsNode::getOutputs() const {
 void EntityGraphicsNode::execute(VkCommandBuffer commandBuffer, const FrameGraph& frameGraph) {
     
     // Validate dependencies are still valid
-    if (!graphicsManager || !swapchain || !resourceContext || !gpuEntityManager) {
+    if (!graphicsManager || !swapchain || !resourceCoordinator || !gpuEntityManager) {
         std::cerr << "EntityGraphicsNode: Critical error - dependencies became null during execution" << std::endl;
         return;
     }
@@ -206,19 +207,19 @@ void EntityGraphicsNode::execute(VkCommandBuffer commandBuffer, const FrameGraph
     if (entityCount > 0) {
         // Bind vertex buffer: only geometry vertices (SoA uses storage buffers for entity data)
         VkBuffer vertexBuffers[] = {
-            resourceContext->getVertexBuffer()      // Vertex positions for triangle geometry
+            resourceCoordinator->getGraphicsManager()->getVertexBuffer()      // Vertex positions for triangle geometry
         };
         VkDeviceSize offsets[] = {0};
         vk.vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
         
         // Bind index buffer for triangle geometry
         vk.vkCmdBindIndexBuffer(
-            commandBuffer, resourceContext->getIndexBuffer(), 0, VK_INDEX_TYPE_UINT16);
+            commandBuffer, resourceCoordinator->getGraphicsManager()->getIndexBuffer(), 0, VK_INDEX_TYPE_UINT16);
         
         // Draw indexed instances: all entities with triangle geometry
         vk.vkCmdDrawIndexed(
             commandBuffer, 
-            resourceContext->getIndexCount(),  // Number of indices per triangle
+            resourceCoordinator->getGraphicsManager()->getIndexCount(),  // Number of indices per triangle
             entityCount,                      // Number of instances (entities)
             0, 0, 0                          // Index/vertex/instance offsets
         );
@@ -227,7 +228,7 @@ void EntityGraphicsNode::execute(VkCommandBuffer commandBuffer, const FrameGraph
         uint32_t counter = drawCounter.fetch_add(1, std::memory_order_relaxed);
         if (counter % 60 == 0) {
             std::cout << "EntityGraphicsNode: Drew " << entityCount 
-                      << " entities with " << resourceContext->getIndexCount() 
+                      << " entities with " << resourceCoordinator->getGraphicsManager()->getIndexCount() 
                       << " indices per triangle" << std::endl;
         }
     }
@@ -237,7 +238,7 @@ void EntityGraphicsNode::execute(VkCommandBuffer commandBuffer, const FrameGraph
 }
 
 void EntityGraphicsNode::updateUniformBuffer() {
-    if (!resourceContext) return;
+    if (!resourceCoordinator) return;
     
     // Check if uniform buffer needs updating for this frame index
     bool needsUpdate = uniformBufferDirty || (lastUpdatedFrameIndex != currentFrameIndex);
@@ -278,14 +279,14 @@ void EntityGraphicsNode::updateUniformBuffer() {
     
     // Only update if dirty, frame changed, or matrices changed
     if (needsUpdate || matricesChanged) {
-        auto uniformBuffers = resourceContext->getUniformBuffersMapped();
+        auto uniformBuffers = resourceCoordinator->getGraphicsManager()->getUniformBuffersMapped();
         
         // Auto-recreate uniform buffers if they were destroyed (e.g., during resize)
         if (uniformBuffers.empty()) {
             std::cout << "EntityGraphicsNode: Uniform buffers missing, attempting to recreate..." << std::endl;
-            if (resourceContext->createGraphicsResources()) {
+            if (resourceCoordinator->getGraphicsManager()->createAllGraphicsResources()) {
                 std::cout << "EntityGraphicsNode: Successfully recreated graphics resources" << std::endl;
-                uniformBuffers = resourceContext->getUniformBuffersMapped();
+                uniformBuffers = resourceCoordinator->getGraphicsManager()->getUniformBuffersMapped();
             } else {
                 std::cerr << "EntityGraphicsNode: CRITICAL ERROR: Failed to recreate graphics resources!" << std::endl;
                 return;
@@ -327,8 +328,8 @@ bool EntityGraphicsNode::initializeNode(const FrameGraph& frameGraph) {
         std::cerr << "EntityGraphicsNode: VulkanSwapchain is null" << std::endl;
         return false;
     }
-    if (!resourceContext) {
-        std::cerr << "EntityGraphicsNode: ResourceContext is null" << std::endl;
+    if (!resourceCoordinator) {
+        std::cerr << "EntityGraphicsNode: ResourceCoordinator is null" << std::endl;
         return false;
     }
     if (!gpuEntityManager) {

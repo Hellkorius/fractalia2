@@ -1,6 +1,6 @@
 #include "position_buffer_coordinator.h"
 #include "../../vulkan/core/vulkan_context.h"
-#include "../../vulkan/resources/managers/resource_context.h"
+#include "../../vulkan/resources/core/resource_coordinator.h"
 #include <iostream>
 
 PositionBufferCoordinator::PositionBufferCoordinator() {
@@ -10,26 +10,26 @@ PositionBufferCoordinator::~PositionBufferCoordinator() {
     cleanup();
 }
 
-bool PositionBufferCoordinator::initialize(const VulkanContext& context, ResourceContext* resourceContext, uint32_t maxEntities) {
+bool PositionBufferCoordinator::initialize(const VulkanContext& context, ResourceCoordinator* resourceCoordinator, uint32_t maxEntities) {
     this->maxEntities = maxEntities;
     
     // Initialize all position buffers
-    if (!primaryBuffer.initialize(context, resourceContext, maxEntities)) {
+    if (!primaryBuffer.initialize(context, resourceCoordinator, maxEntities)) {
         std::cerr << "PositionBufferCoordinator: Failed to initialize primary buffer" << std::endl;
         return false;
     }
     
-    if (!alternateBuffer.initialize(context, resourceContext, maxEntities)) {
+    if (!alternateBuffer.initialize(context, resourceCoordinator, maxEntities)) {
         std::cerr << "PositionBufferCoordinator: Failed to initialize alternate buffer" << std::endl;
         return false;
     }
     
-    if (!currentBuffer.initialize(context, resourceContext, maxEntities)) {
+    if (!currentBuffer.initialize(context, resourceCoordinator, maxEntities)) {
         std::cerr << "PositionBufferCoordinator: Failed to initialize current buffer" << std::endl;
         return false;
     }
     
-    if (!targetBuffer.initialize(context, resourceContext, maxEntities)) {
+    if (!targetBuffer.initialize(context, resourceCoordinator, maxEntities)) {
         std::cerr << "PositionBufferCoordinator: Failed to initialize target buffer" << std::endl;
         return false;
     }

@@ -1,6 +1,6 @@
 #include "buffer_base.h"
 #include "../../vulkan/core/vulkan_context.h"
-#include "../../vulkan/resources/managers/resource_context.h"
+#include "../../vulkan/resources/core/resource_coordinator.h"
 #include "../../vulkan/core/vulkan_function_loader.h"
 #include "../../vulkan/core/vulkan_utils.h"
 #include "../../vulkan/resources/core/resource_handle.h"
@@ -14,10 +14,10 @@ BufferBase::~BufferBase() {
     cleanup();
 }
 
-bool BufferBase::initialize(const VulkanContext& context, ResourceContext* resourceContext, 
+bool BufferBase::initialize(const VulkanContext& context, ResourceCoordinator* resourceCoordinator, 
                            uint32_t maxElements, VkDeviceSize elementSize, VkBufferUsageFlags usage) {
     this->context = &context;
-    this->resourceContext = resourceContext;
+    this->resourceCoordinator = resourceCoordinator;
     this->maxElements = maxElements;
     this->elementSize = elementSize;
     this->bufferSize = maxElements * elementSize;
@@ -43,14 +43,14 @@ bool BufferBase::initialize(const VulkanContext& context, ResourceContext* resou
 void BufferBase::cleanup() {
     destroyBuffer();
     context = nullptr;
-    resourceContext = nullptr;
+    resourceCoordinator = nullptr;
     maxElements = 0;
     elementSize = 0;
     bufferSize = 0;
 }
 
 bool BufferBase::copyData(const void* data, VkDeviceSize size, VkDeviceSize offset) {
-    if (!isInitialized() || !resourceContext) {
+    if (!isInitialized() || !resourceCoordinator) {
         std::cerr << "BufferBase: Cannot copy data - " << getBufferTypeName() << " buffer not initialized" << std::endl;
         return false;
     }
@@ -65,8 +65,8 @@ bool BufferBase::copyData(const void* data, VkDeviceSize size, VkDeviceSize offs
     handle.buffer = vulkan_raii::make_buffer(buffer, context);
     handle.size = bufferSize;
     
-    // Use ResourceContext's staging infrastructure
-    bool success = resourceContext->copyToBuffer(handle, data, size, offset);
+    // Use ResourceCoordinator's staging infrastructure
+    bool success = resourceCoordinator->copyToBuffer(handle, data, size, offset);
     
     // Detach to prevent cleanup of existing buffer
     handle.buffer.detach();

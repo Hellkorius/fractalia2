@@ -5,7 +5,7 @@
 
 // Forward declarations
 class VulkanContext;
-class ResourceContext;
+class ResourceCoordinator;
 
 /**
  * Base class providing common buffer operations to avoid code duplication
@@ -26,7 +26,7 @@ public:
     bool copyData(const void* data, VkDeviceSize size, VkDeviceSize offset = 0) override;
     
     // Lifecycle
-    virtual bool initialize(const VulkanContext& context, ResourceContext* resourceContext, 
+    virtual bool initialize(const VulkanContext& context, ResourceCoordinator* resourceCoordinator, 
                            uint32_t maxElements, VkDeviceSize elementSize, VkBufferUsageFlags usage);
     virtual void cleanup();
 
@@ -40,7 +40,7 @@ protected:
     
     // Dependencies
     const VulkanContext* context = nullptr;
-    ResourceContext* resourceContext = nullptr;
+    ResourceCoordinator* resourceCoordinator = nullptr;
     
     // Template method pattern - subclasses can override specific behavior
     virtual VkBufferUsageFlags getAdditionalUsageFlags() const { return 0; }

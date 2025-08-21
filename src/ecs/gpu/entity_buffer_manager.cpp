@@ -1,6 +1,6 @@
 #include "entity_buffer_manager.h"
 #include "../../vulkan/core/vulkan_context.h"
-#include "../../vulkan/resources/managers/resource_context.h"
+#include "../../vulkan/resources/core/resource_coordinator.h"
 #include <iostream>
 #include <cstring>
 
@@ -11,43 +11,43 @@ EntityBufferManager::~EntityBufferManager() {
     cleanup();
 }
 
-bool EntityBufferManager::initialize(const VulkanContext& context, ResourceContext* resourceContext, uint32_t maxEntities) {
+bool EntityBufferManager::initialize(const VulkanContext& context, ResourceCoordinator* resourceCoordinator, uint32_t maxEntities) {
     this->maxEntities = maxEntities;
     
     // Initialize upload service
-    if (!uploadService.initialize(resourceContext)) {
+    if (!uploadService.initialize(resourceCoordinator)) {
         std::cerr << "EntityBufferManager: Failed to initialize upload service" << std::endl;
         return false;
     }
     
     // Initialize specialized buffers
-    if (!velocityBuffer.initialize(context, resourceContext, maxEntities)) {
+    if (!velocityBuffer.initialize(context, resourceCoordinator, maxEntities)) {
         std::cerr << "EntityBufferManager: Failed to initialize velocity buffer" << std::endl;
         return false;
     }
     
-    if (!movementParamsBuffer.initialize(context, resourceContext, maxEntities)) {
+    if (!movementParamsBuffer.initialize(context, resourceCoordinator, maxEntities)) {
         std::cerr << "EntityBufferManager: Failed to initialize movement params buffer" << std::endl;
         return false;
     }
     
-    if (!runtimeStateBuffer.initialize(context, resourceContext, maxEntities)) {
+    if (!runtimeStateBuffer.initialize(context, resourceCoordinator, maxEntities)) {
         std::cerr << "EntityBufferManager: Failed to initialize runtime state buffer" << std::endl;
         return false;
     }
     
-    if (!colorBuffer.initialize(context, resourceContext, maxEntities)) {
+    if (!colorBuffer.initialize(context, resourceCoordinator, maxEntities)) {
         std::cerr << "EntityBufferManager: Failed to initialize color buffer" << std::endl;
         return false;
     }
     
-    if (!modelMatrixBuffer.initialize(context, resourceContext, maxEntities)) {
+    if (!modelMatrixBuffer.initialize(context, resourceCoordinator, maxEntities)) {
         std::cerr << "EntityBufferManager: Failed to initialize model matrix buffer" << std::endl;
         return false;
     }
     
     // Initialize position buffer coordinator
-    if (!positionCoordinator.initialize(context, resourceContext, maxEntities)) {
+    if (!positionCoordinator.initialize(context, resourceCoordinator, maxEntities)) {
         std::cerr << "EntityBufferManager: Failed to initialize position coordinator" << std::endl;
         return false;
     }

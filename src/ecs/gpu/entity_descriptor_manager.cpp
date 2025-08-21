@@ -2,7 +2,7 @@
 #include "entity_buffer_manager.h"
 #include "../../vulkan/core/vulkan_context.h"
 #include "../../vulkan/core/vulkan_function_loader.h"
-#include "../../vulkan/resources/managers/resource_context.h"
+#include "../../vulkan/resources/core/resource_coordinator.h"
 #include <iostream>
 #include <array>
 
@@ -13,10 +13,10 @@ EntityDescriptorManager::~EntityDescriptorManager() {
     cleanup();
 }
 
-bool EntityDescriptorManager::initialize(const VulkanContext& context, EntityBufferManager& bufferManager, ResourceContext* resourceContext) {
+bool EntityDescriptorManager::initialize(const VulkanContext& context, EntityBufferManager& bufferManager, ResourceCoordinator* resourceCoordinator) {
     this->context = &context;
     this->bufferManager = &bufferManager;
-    this->resourceContext = resourceContext;
+    this->resourceCoordinator = resourceCoordinator;
     
     if (!createDescriptorSetLayouts()) {
         std::cerr << "EntityDescriptorManager: Failed to create descriptor set layouts" << std::endl;
@@ -363,18 +363,18 @@ bool EntityDescriptorManager::updateGraphicsDescriptorSet() {
         return false;
     }
 
-    if (!resourceContext) {
-        std::cerr << "EntityDescriptorManager: ResourceContext not available for uniform buffer binding" << std::endl;
+    if (!resourceCoordinator) {
+        std::cerr << "EntityDescriptorManager: ResourceCoordinator not available for uniform buffer binding" << std::endl;
         return false;
     }
 
     std::array<VkWriteDescriptorSet, 3> descriptorWrites{};
     std::array<VkDescriptorBufferInfo, 3> bufferInfos{};
 
-    // Binding 0: Uniform buffer (camera matrices) from ResourceContext
-    const auto& uniformBuffers = resourceContext->getUniformBuffers();
+    // Binding 0: Uniform buffer (camera matrices) from ResourceCoordinator
+    const auto& uniformBuffers = resourceCoordinator->getUniformBuffers();
     if (uniformBuffers.empty()) {
-        std::cerr << "EntityDescriptorManager: No uniform buffers available from ResourceContext" << std::endl;
+        std::cerr << "EntityDescriptorManager: No uniform buffers available from ResourceCoordinator" << std::endl;
         return false;
     }
     

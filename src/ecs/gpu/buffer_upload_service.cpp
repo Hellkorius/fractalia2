@@ -1,5 +1,5 @@
 #include "buffer_upload_service.h"
-#include "../../vulkan/resources/managers/resource_context.h"
+#include "../../vulkan/resources/core/resource_coordinator.h"
 #include <iostream>
 
 BufferUploadService::BufferUploadService() {
@@ -9,11 +9,11 @@ BufferUploadService::~BufferUploadService() {
     cleanup();
 }
 
-bool BufferUploadService::initialize(ResourceContext* resourceContext) {
-    this->resourceContext = resourceContext;
+bool BufferUploadService::initialize(ResourceCoordinator* resourceCoordinator) {
+    this->resourceCoordinator = resourceCoordinator;
     
-    if (!resourceContext) {
-        std::cerr << "BufferUploadService: ResourceContext is null" << std::endl;
+    if (!resourceCoordinator) {
+        std::cerr << "BufferUploadService: ResourceCoordinator is null" << std::endl;
         return false;
     }
     
@@ -22,11 +22,11 @@ bool BufferUploadService::initialize(ResourceContext* resourceContext) {
 }
 
 void BufferUploadService::cleanup() {
-    resourceContext = nullptr;
+    resourceCoordinator = nullptr;
 }
 
 bool BufferUploadService::uploadBatch(const std::vector<UploadOperation>& operations) {
-    if (!resourceContext) {
+    if (!resourceCoordinator) {
         std::cerr << "BufferUploadService: Not initialized" << std::endl;
         return false;
     }

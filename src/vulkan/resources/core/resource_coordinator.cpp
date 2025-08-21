@@ -290,3 +290,13 @@ void ResourceCoordinator::cleanupManagers() {
     resourceFactory.reset();
     memoryAllocator.reset();
 }
+
+const std::vector<VkBuffer>& ResourceCoordinator::getUniformBuffers() const {
+    static const std::vector<VkBuffer> empty;
+    return graphicsResourceManager ? graphicsResourceManager->getUniformBuffers() : empty;
+}
+
+const std::vector<void*>& ResourceCoordinator::getUniformBuffersMapped() const {
+    static const std::vector<void*> empty;
+    return graphicsResourceManager ? graphicsResourceManager->getUniformBuffersMapped() : empty;
+}

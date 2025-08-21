@@ -63,7 +63,7 @@ public:
     GPUEntityManager();
     ~GPUEntityManager();
 
-    bool initialize(const VulkanContext& context, VulkanSync* sync, ResourceContext* resourceContext);
+    bool initialize(const VulkanContext& context, VulkanSync* sync, ResourceCoordinator* resourceCoordinator);
     void cleanup();
     
     // Entity management - SoA approach
@@ -120,7 +120,7 @@ private:
     // Dependencies
     const VulkanContext* context = nullptr;
     VulkanSync* sync = nullptr;
-    ResourceContext* resourceContext = nullptr;
+    ResourceCoordinator* resourceCoordinator = nullptr;
     
     // Core components
     EntityBufferManager bufferManager;

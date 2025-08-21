@@ -5,7 +5,7 @@
 
 // Forward declarations
 class VulkanContext;
-class ResourceContext;
+class ResourceCoordinator;
 
 /**
  * SINGLE responsibility: coordinate ping-pong position buffer logic
@@ -16,7 +16,7 @@ public:
     PositionBufferCoordinator();
     ~PositionBufferCoordinator();
     
-    bool initialize(const VulkanContext& context, ResourceContext* resourceContext, uint32_t maxEntities);
+    bool initialize(const VulkanContext& context, ResourceCoordinator* resourceCoordinator, uint32_t maxEntities);
     void cleanup();
     
     // Ping-pong buffer access for async compute

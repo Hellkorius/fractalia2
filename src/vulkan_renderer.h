@@ -17,7 +17,7 @@ class VulkanContext;
 class VulkanSwapchain;
 class VulkanSync;
 class QueueManager;
-class ResourceContext;
+class ResourceCoordinator;
 class GPUEntityManager;
 class FrameGraph;
 class EntityComputeNode;
@@ -75,7 +75,7 @@ private:
     std::unique_ptr<VulkanSwapchain> swapchain;
     std::unique_ptr<VulkanSync> sync;
     std::unique_ptr<QueueManager> queueManager;
-    std::unique_ptr<ResourceContext> resourceContext;
+    std::unique_ptr<ResourceCoordinator> resourceCoordinator;
     std::unique_ptr<GPUEntityManager> gpuEntityManager;
     
     // AAA Pipeline System

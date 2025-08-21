@@ -12,7 +12,7 @@
 class VulkanContext;
 class VulkanSwapchain;
 class VulkanSync;
-class ResourceContext;
+class ResourceCoordinator;
 class GPUEntityManager;
 class PipelineSystemManager;
 class PresentationSurface;
@@ -33,7 +33,7 @@ public:
         VulkanSwapchain* swapchain,
         PipelineSystemManager* pipelineSystem,
         VulkanSync* sync,
-        ResourceContext* resourceContext,
+        ResourceCoordinator* resourceCoordinator,
         GPUEntityManager* gpuEntityManager,
         FrameGraph* frameGraph,
         PresentationSurface* presentationSurface
@@ -70,7 +70,7 @@ private:
     VulkanSwapchain* swapchain = nullptr;
     PipelineSystemManager* pipelineSystem = nullptr;
     VulkanSync* sync = nullptr;
-    ResourceContext* resourceContext = nullptr;
+    ResourceCoordinator* resourceCoordinator = nullptr;
     GPUEntityManager* gpuEntityManager = nullptr;
     FrameGraph* frameGraph = nullptr;
     PresentationSurface* presentationSurface = nullptr;

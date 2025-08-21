@@ -5,7 +5,7 @@
 #include <vector>
 
 // Forward declarations
-class ResourceContext;
+class ResourceCoordinator;
 
 /**
  * Shared service for buffer upload operations
@@ -16,7 +16,7 @@ public:
     BufferUploadService();
     ~BufferUploadService();
     
-    bool initialize(ResourceContext* resourceContext);
+    bool initialize(ResourceCoordinator* resourceCoordinator);
     void cleanup();
     
     // Generic upload to any buffer implementing IBufferOperations
@@ -55,7 +55,7 @@ public:
     }
     
 private:
-    ResourceContext* resourceContext = nullptr;
+    ResourceCoordinator* resourceCoordinator = nullptr;
     
     // Helper for validation
     bool validateUpload(const IBufferOperations& buffer, VkDeviceSize size, VkDeviceSize offset) const;
