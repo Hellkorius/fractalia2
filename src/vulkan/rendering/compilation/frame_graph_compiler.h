@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../frame_graph_types.h"
+#include "dependency_graph.h"
 #include <vector>
 #include <unordered_map>
 #include <unordered_set>
@@ -75,7 +76,8 @@ private:
 
     // Cycle analysis
     CircularDependencyReport analyzeCycles(const std::unordered_map<FrameGraphTypes::NodeId, int>& inDegree,
-                                           const std::unordered_map<FrameGraphTypes::NodeId, std::unique_ptr<FrameGraphNode>>& nodes);
+                                           const std::unordered_map<FrameGraphTypes::NodeId, std::unique_ptr<FrameGraphNode>>& nodes,
+                                           const DependencyGraph::GraphData& graph);
     std::vector<DependencyPath> findCyclePaths(FrameGraphTypes::NodeId startNode,
                                                 const std::unordered_map<FrameGraphTypes::NodeId, std::vector<FrameGraphTypes::NodeId>>& adjacencyList,
                                                 const std::unordered_map<FrameGraphTypes::NodeId, std::unique_ptr<FrameGraphNode>>& nodes);

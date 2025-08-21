@@ -1,4 +1,5 @@
 #include "frame_graph_compiler.h"
+#include "dependency_graph.h"
 #include "../frame_graph_node_base.h"
 #include <iostream>
 #include <queue>
@@ -30,35 +31,10 @@ bool FrameGraphCompiler::compileWithCycleDetection(const std::unordered_map<Fram
 PartialCompilationResult FrameGraphCompiler::attemptPartialCompilation(const std::unordered_map<FrameGraphTypes::NodeId, std::unique_ptr<FrameGraphNode>>& nodes) {
     PartialCompilationResult result;
     
-    // Build resource producer mapping
-    std::unordered_map<FrameGraphTypes::ResourceId, FrameGraphTypes::NodeId> resourceProducers;
-    for (const auto& [nodeId, node] : nodes) {
-        auto outputs = node->getOutputs();
-        for (const auto& output : outputs) {
-            resourceProducers[output.resourceId] = nodeId;
-        }
-    }
-    
-    // Build adjacency list
-    std::unordered_map<FrameGraphTypes::NodeId, std::vector<FrameGraphTypes::NodeId>> adjacencyList;
-    std::unordered_map<FrameGraphTypes::NodeId, int> inDegree;
-    
-    for (const auto& [nodeId, node] : nodes) {
-        inDegree[nodeId] = 0;
-        adjacencyList[nodeId] = {};
-    }
-    
-    for (const auto& [nodeId, node] : nodes) {
-        auto inputs = node->getInputs();
-        for (const auto& input : inputs) {
-            auto producerIt = resourceProducers.find(input.resourceId);
-            if (producerIt != resourceProducers.end() && producerIt->second != nodeId) {
-                FrameGraphTypes::NodeId producerNodeId = producerIt->second;
-                adjacencyList[producerNodeId].push_back(nodeId);
-                inDegree[nodeId]++;
-            }
-        }
-    }
+    // Build dependency graph once and reuse
+    auto graph = DependencyGraph::buildGraph(nodes);
+    auto& adjacencyList = graph.adjacencyList;
+    auto inDegree = graph.inDegree; // Copy for modification
     
     // Identify cycle nodes
     std::queue<FrameGraphTypes::NodeId> zeroInDegreeQueue;
@@ -122,37 +98,10 @@ bool FrameGraphCompiler::topologicalSort(const std::unordered_map<FrameGraphType
     // Efficient O(V + E) topological sort using Kahn's algorithm
     executionOrder.clear();
     
-    // Build resource producer mapping for O(1) dependency lookups
-    std::unordered_map<FrameGraphTypes::ResourceId, FrameGraphTypes::NodeId> resourceProducers;
-    for (const auto& [nodeId, node] : nodes) {
-        auto outputs = node->getOutputs();
-        for (const auto& output : outputs) {
-            resourceProducers[output.resourceId] = nodeId;
-        }
-    }
-    
-    // Build adjacency list and calculate in-degrees
-    std::unordered_map<FrameGraphTypes::NodeId, std::vector<FrameGraphTypes::NodeId>> adjacencyList;
-    std::unordered_map<FrameGraphTypes::NodeId, int> inDegree;
-    
-    // Initialize in-degrees to 0
-    for (const auto& [nodeId, node] : nodes) {
-        inDegree[nodeId] = 0;
-        adjacencyList[nodeId] = {};
-    }
-    
-    // Build graph edges: if nodeA produces resource that nodeB consumes, nodeA -> nodeB
-    for (const auto& [nodeId, node] : nodes) {
-        auto inputs = node->getInputs();
-        for (const auto& input : inputs) {
-            auto producerIt = resourceProducers.find(input.resourceId);
-            if (producerIt != resourceProducers.end() && producerIt->second != nodeId) {
-                FrameGraphTypes::NodeId producerNodeId = producerIt->second;
-                adjacencyList[producerNodeId].push_back(nodeId);
-                inDegree[nodeId]++;
-            }
-        }
-    }
+    // Build dependency graph once and reuse
+    auto graph = DependencyGraph::buildGraph(nodes);
+    auto& adjacencyList = graph.adjacencyList;
+    auto& inDegree = graph.inDegree;
     
     // Kahn's algorithm: start with nodes that have no dependencies
     std::queue<FrameGraphTypes::NodeId> zeroInDegreeQueue;
@@ -206,37 +155,10 @@ bool FrameGraphCompiler::topologicalSortWithCycleDetection(const std::unordered_
     // Efficient O(V + E) topological sort using Kahn's algorithm with enhanced cycle detection
     executionOrder.clear();
     
-    // Build resource producer mapping for O(1) dependency lookups
-    std::unordered_map<FrameGraphTypes::ResourceId, FrameGraphTypes::NodeId> resourceProducers;
-    for (const auto& [nodeId, node] : nodes) {
-        auto outputs = node->getOutputs();
-        for (const auto& output : outputs) {
-            resourceProducers[output.resourceId] = nodeId;
-        }
-    }
-    
-    // Build adjacency list and calculate in-degrees
-    std::unordered_map<FrameGraphTypes::NodeId, std::vector<FrameGraphTypes::NodeId>> adjacencyList;
-    std::unordered_map<FrameGraphTypes::NodeId, int> inDegree;
-    
-    // Initialize in-degrees to 0
-    for (const auto& [nodeId, node] : nodes) {
-        inDegree[nodeId] = 0;
-        adjacencyList[nodeId] = {};
-    }
-    
-    // Build graph edges: if nodeA produces resource that nodeB consumes, nodeA -> nodeB
-    for (const auto& [nodeId, node] : nodes) {
-        auto inputs = node->getInputs();
-        for (const auto& input : inputs) {
-            auto producerIt = resourceProducers.find(input.resourceId);
-            if (producerIt != resourceProducers.end() && producerIt->second != nodeId) {
-                FrameGraphTypes::NodeId producerNodeId = producerIt->second;
-                adjacencyList[producerNodeId].push_back(nodeId);
-                inDegree[nodeId]++;
-            }
-        }
-    }
+    // Build dependency graph once and reuse
+    auto graph = DependencyGraph::buildGraph(nodes);
+    auto& adjacencyList = graph.adjacencyList;
+    auto& inDegree = graph.inDegree;
     
     // Kahn's algorithm: start with nodes that have no dependencies
     std::queue<FrameGraphTypes::NodeId> zeroInDegreeQueue;
@@ -266,7 +188,7 @@ bool FrameGraphCompiler::topologicalSortWithCycleDetection(const std::unordered_
     // Check for circular dependencies
     if (processedNodes != nodes.size()) {
         // Enhanced cycle analysis
-        report = analyzeCycles(inDegree, nodes);
+        report = analyzeCycles(inDegree, nodes, graph);
         return false;
     }
     
@@ -274,7 +196,8 @@ bool FrameGraphCompiler::topologicalSortWithCycleDetection(const std::unordered_
 }
 
 CircularDependencyReport FrameGraphCompiler::analyzeCycles(const std::unordered_map<FrameGraphTypes::NodeId, int>& inDegree,
-                                                            const std::unordered_map<FrameGraphTypes::NodeId, std::unique_ptr<FrameGraphNode>>& nodes) {
+                                                            const std::unordered_map<FrameGraphTypes::NodeId, std::unique_ptr<FrameGraphNode>>& nodes,
+                                                            const DependencyGraph::GraphData& graph) {
     CircularDependencyReport report;
     
     // Find nodes involved in cycles (those with remaining in-degree > 0)
@@ -285,32 +208,15 @@ CircularDependencyReport FrameGraphCompiler::analyzeCycles(const std::unordered_
         }
     }
     
-    // Build adjacency list for cycle nodes only
+    // Filter existing adjacency list for cycle nodes only
     std::unordered_map<FrameGraphTypes::NodeId, std::vector<FrameGraphTypes::NodeId>> cycleAdjacencyList;
-    std::unordered_map<FrameGraphTypes::ResourceId, FrameGraphTypes::NodeId> resourceProducers;
     
-    // Build resource producers map
-    for (const auto& [nodeId, node] : nodes) {
-        if (cycleNodes.find(nodeId) != cycleNodes.end()) {
-            auto outputs = node->getOutputs();
-            for (const auto& output : outputs) {
-                resourceProducers[output.resourceId] = nodeId;
-            }
-        }
-    }
-    
-    // Build cycle adjacency list with resource tracking
     for (const auto& nodeId : cycleNodes) {
-        auto nodeIt = nodes.find(nodeId);
-        if (nodeIt != nodes.end()) {
-            auto inputs = nodeIt->second->getInputs();
-            for (const auto& input : inputs) {
-                auto producerIt = resourceProducers.find(input.resourceId);
-                if (producerIt != resourceProducers.end() && producerIt->second != nodeId) {
-                    FrameGraphTypes::NodeId producerNodeId = producerIt->second;
-                    if (cycleNodes.find(producerNodeId) != cycleNodes.end()) {
-                        cycleAdjacencyList[producerNodeId].push_back(nodeId);
-                    }
+        auto adjIt = graph.adjacencyList.find(nodeId);
+        if (adjIt != graph.adjacencyList.end()) {
+            for (const auto& neighbor : adjIt->second) {
+                if (cycleNodes.find(neighbor) != cycleNodes.end()) {
+                    cycleAdjacencyList[nodeId].push_back(neighbor);
                 }
             }
         }
