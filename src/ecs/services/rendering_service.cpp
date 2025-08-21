@@ -495,22 +495,36 @@ void RenderingService::updateFromECS() {
         return;
     }
     
+    // Collect entities that need GPU upload using SoA approach
+    std::vector<flecs::entity> entitiesToUpload;
+    
     // Query for entities that need GPU upload
-    world->query<Transform, Renderable>().each([this](flecs::entity entity, 
-                                                      Transform& transform, 
-                                                      Renderable& renderable) {
+    world->query<Transform, Renderable>().each([&entitiesToUpload](flecs::entity entity, 
+                                                                   Transform& transform, 
+                                                                   Renderable& renderable) {
         // Check if entity has GPU upload pending tag
         if (!entity.has<GPUUploadPending>()) {
             return;
         }
-        // Create GPU entity and add to manager
-        GPUEntity gpuEntity = GPUEntity::fromECS(transform, renderable, MovementPattern{});
-        gpuEntityManager->addEntity(gpuEntity);
         
-        // Remove the pending marker
-        entity.remove<GPUUploadPending>();
-        entity.add<GPUUploadComplete>();
+        // Ensure entity has MovementPattern component (add default if missing)
+        if (!entity.has<MovementPattern>()) {
+            entity.add<MovementPattern>();
+        }
+        
+        entitiesToUpload.push_back(entity);
     });
+    
+    // Batch upload using SoA approach for better performance
+    if (!entitiesToUpload.empty()) {
+        gpuEntityManager->addEntitiesFromECS(entitiesToUpload);
+        
+        // Mark all uploaded entities as complete
+        for (auto& entity : entitiesToUpload) {
+            entity.remove<GPUUploadPending>();
+            entity.add<GPUUploadComplete>();
+        }
+    }
 }
 
 void RenderingService::prepareGPUData() {
