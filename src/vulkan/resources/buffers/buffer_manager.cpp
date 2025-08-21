@@ -1,6 +1,6 @@
 #include "buffer_manager.h"
 #include "gpu_buffer.h"
-#include "../managers/resource_context.h"
+#include "../core/resource_context_interface.h"
 #include "buffer_factory.h"
 #include <iostream>
 #include <cstring>
@@ -16,7 +16,7 @@ BufferManager::~BufferManager() {
     cleanup();
 }
 
-bool BufferManager::initialize(const ResourceContext* resourceContext, 
+bool BufferManager::initialize(IResourceContext* resourceContext, 
                               BufferFactory* bufferFactory,
                               CommandExecutor* executor,
                               VkDeviceSize stagingSize) {
@@ -75,7 +75,7 @@ void BufferManager::cleanup() {
     executor = nullptr;
 }
 
-const ResourceContext* BufferManager::getResourceContext() const {
+IResourceContext* BufferManager::getResourceContext() const {
     return resourceContext;
 }
 
@@ -112,7 +112,7 @@ std::unique_ptr<GPUBuffer> BufferManager::createBuffer(VkDeviceSize size,
                                                       VkMemoryPropertyFlags properties) {
     auto buffer = std::make_unique<GPUBuffer>();
     
-    if (!buffer->initialize(const_cast<ResourceContext*>(resourceContext), this, size, usage, properties)) {
+    if (!buffer->initialize(resourceContext, this, size, usage, properties)) {
         return nullptr;
     }
     

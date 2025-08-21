@@ -3,7 +3,7 @@
 #include "buffer_registry.h"
 #include "gpu_buffer.h"
 #include "buffer_factory.h"
-#include "../managers/resource_context.h"
+#include "../core/resource_context_interface.h"
 #include "../core/validation_utils.h"
 #include "../core/buffer_operation_utils.h"
 #include "../../core/vulkan_raii.h"

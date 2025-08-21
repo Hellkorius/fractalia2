@@ -1,6 +1,6 @@
 #include "buffer_registry.h"
 #include "gpu_buffer.h"
-#include "../managers/resource_context.h"
+#include "../core/resource_context_interface.h"
 #include "buffer_factory.h"
 #include <algorithm>
 
@@ -8,7 +8,7 @@ BufferRegistry::~BufferRegistry() {
     cleanup();
 }
 
-bool BufferRegistry::initialize(const ResourceContext* resourceContext, BufferFactory* bufferFactory) {
+bool BufferRegistry::initialize(IResourceContext* resourceContext, BufferFactory* bufferFactory) {
     if (!resourceContext || !bufferFactory) {
         return false;
     }

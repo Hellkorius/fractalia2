@@ -1,20 +1,13 @@
 #include "resource_context.h"
 #include "../../core/vulkan_context.h"
-#include "../../core/vulkan_constants.h"
-
-// Include all the new modular managers
-#include "../core/memory_allocator.h"
-#include "../buffers/buffer_factory.h"
+#include "../core/resource_coordinator.h"
+#include "../core/resource_factory.h"
 #include "descriptor_pool_manager.h"
 #include "graphics_resource_manager.h"
+#include "../core/memory_allocator.h"
+#include "../buffers/buffer_factory.h"
 #include "../buffers/buffer_manager.h"
-
-// Define the forward declared types for proper compilation
-namespace {
-    using DescriptorPoolConfig = DescriptorPoolManager::DescriptorPoolConfig;
-    using MemoryStats = MemoryAllocator::MemoryStats;
-}
-
+#include "../buffers/staging_buffer_pool.h"
 #include <iostream>
 
 ResourceContext::ResourceContext() {
@@ -25,82 +18,80 @@ ResourceContext::~ResourceContext() {
 }
 
 bool ResourceContext::initialize(const VulkanContext& context, QueueManager* queueManager) {
-    this->context = &context;
-    
-    // Initialize command executor first
-    if (queueManager) {
-        if (!executor.initialize(context, queueManager)) {
-            std::cerr << "Failed to initialize command executor!" << std::endl;
-            return false;
-        }
+    if (initialized) {
+        return true;
     }
     
-    // Initialize all specialized managers
-    if (!initializeManagers(queueManager)) {
-        std::cerr << "Failed to initialize resource managers!" << std::endl;
+    // Create and initialize ResourceCoordinator
+    coordinator = std::make_unique<ResourceCoordinator>();
+    if (!coordinator->initialize(context, queueManager)) {
+        std::cerr << "Failed to initialize ResourceCoordinator!" << std::endl;
         return false;
     }
     
-    // Setup dependencies between managers
-    setupManagerDependencies();
+    // Initialize specialized managers not handled by ResourceCoordinator
+    descriptorPoolManager = std::make_unique<DescriptorPoolManager>();
+    if (!descriptorPoolManager->initialize(context)) {
+        std::cerr << "Failed to initialize DescriptorPoolManager!" << std::endl;
+        return false;
+    }
     
+    graphicsResourceManager = std::make_unique<GraphicsResourceManager>();
+    if (!graphicsResourceManager->initialize(context, coordinator->getResourceFactory()->getBufferFactory())) {
+        std::cerr << "Failed to initialize GraphicsResourceManager!" << std::endl;
+        return false;
+    }
+    
+    initialized = true;
     return true;
 }
 
 void ResourceContext::cleanup() {
+    if (!initialized) {
+        return;
+    }
+    
     cleanupBeforeContextDestruction();
     
-    // Run cleanup callbacks in reverse order
-    for (auto it = cleanupCallbacks.rbegin(); it != cleanupCallbacks.rend(); ++it) {
-        (*it)();
-    }
-    cleanupCallbacks.clear();
+    // Cleanup in reverse order
+    graphicsResourceManager.reset();
+    descriptorPoolManager.reset();
+    coordinator.reset();
     
-    // Cleanup in reverse order of initialization
-    cleanupManagers();
-    executor.cleanup();
-    
-    context = nullptr;
+    initialized = false;
 }
 
 void ResourceContext::cleanupBeforeContextDestruction() {
-    // Cleanup RAII resources in reverse order of initialization
+    if (!initialized) {
+        return;
+    }
+    
+    // Cleanup RAII resources in reverse order
     if (graphicsResourceManager) {
         graphicsResourceManager->cleanupBeforeContextDestruction();
     }
     
-    if (bufferManager) {
-        // No RAII cleanup needed in BufferManager currently
+    if (coordinator) {
+        coordinator->cleanupBeforeContextDestruction();
     }
-    
-    
-    if (descriptorPoolManager) {
-        // No RAII cleanup needed in DescriptorPoolManager currently
-    }
-    
-    if (bufferFactory) {
-        bufferFactory->cleanupBeforeContextDestruction();
-    }
-    
-    if (memoryAllocator) {
-        // No RAII cleanup needed in MemoryAllocator currently
-    }
-    
-    // Cleanup command executor RAII resources
-    executor.cleanupBeforeContextDestruction();
 }
 
-// Core resource creation (delegated to BufferFactory)
+// Context access
+const VulkanContext* ResourceContext::getContext() const {
+    return coordinator ? coordinator->getContext() : nullptr;
+}
+
+// Core resource creation (delegates to ResourceCoordinator)
 ResourceHandle ResourceContext::createBuffer(VkDeviceSize size, 
                                             VkBufferUsageFlags usage,
                                             VkMemoryPropertyFlags properties) {
-    return bufferFactory ? bufferFactory->createBuffer(size, usage, properties) : ResourceHandle{};
+    return coordinator ? coordinator->createBuffer(size, usage, properties) : ResourceHandle{};
 }
 
 ResourceHandle ResourceContext::createMappedBuffer(VkDeviceSize size,
                                                   VkBufferUsageFlags usage,
                                                   VkMemoryPropertyFlags properties) {
-    return bufferFactory ? bufferFactory->createMappedBuffer(size, usage, properties) : ResourceHandle{};
+    return coordinator ? coordinator->createMappedBuffer(size, usage, properties) : ResourceHandle{};
 }
 
 ResourceHandle ResourceContext::createImage(uint32_t width, uint32_t height,
@@ -108,38 +99,42 @@ ResourceHandle ResourceContext::createImage(uint32_t width, uint32_t height,
                                            VkImageUsageFlags usage,
                                            VkMemoryPropertyFlags properties,
                                            VkSampleCountFlagBits samples) {
-    return bufferFactory ? bufferFactory->createImage(width, height, format, usage, properties, samples) : ResourceHandle{};
+    return coordinator ? coordinator->createImage(width, height, format, usage, properties, samples) : ResourceHandle{};
 }
 
 ResourceHandle ResourceContext::createImageView(const ResourceHandle& imageHandle,
                                                VkFormat format,
                                                VkImageAspectFlags aspectFlags) {
-    return bufferFactory ? bufferFactory->createImageView(imageHandle, format, aspectFlags) : ResourceHandle{};
+    return coordinator ? coordinator->createImageView(imageHandle, format, aspectFlags) : ResourceHandle{};
 }
 
 void ResourceContext::destroyResource(ResourceHandle& handle) {
-    if (bufferFactory) {
-        bufferFactory->destroyResource(handle);
+    if (coordinator) {
+        coordinator->destroyResource(handle);
     }
 }
 
-// Transfer operations (delegated to BufferManager)
+// Transfer operations (delegates to ResourceCoordinator)
 bool ResourceContext::copyToBuffer(const ResourceHandle& dst, const void* data, VkDeviceSize size, VkDeviceSize offset) {
-    return bufferManager ? bufferManager->copyToBuffer(dst, data, size, offset) : false;
+    return coordinator ? coordinator->copyToBuffer(dst, data, size, offset) : false;
 }
 
 bool ResourceContext::copyBufferToBuffer(const ResourceHandle& src, const ResourceHandle& dst, VkDeviceSize size, VkDeviceSize srcOffset, VkDeviceSize dstOffset) {
-    return bufferManager ? bufferManager->copyBufferToBuffer(src, dst, size, srcOffset, dstOffset) : false;
+    return coordinator ? coordinator->copyBufferToBuffer(src, dst, size, srcOffset, dstOffset) : false;
 }
 
 CommandExecutor::AsyncTransfer ResourceContext::copyToBufferAsync(const ResourceHandle& dst, const void* data, VkDeviceSize size, VkDeviceSize offset) {
-    return bufferManager ? bufferManager->copyToBufferAsync(dst, data, size, offset) : CommandExecutor::AsyncTransfer{};
+    return coordinator ? coordinator->copyToBufferAsync(dst, data, size, offset) : CommandExecutor::AsyncTransfer{};
 }
 
-// Descriptor management (delegated to DescriptorPoolManager)
+// Descriptor management (delegates to DescriptorPoolManager)
+vulkan_raii::DescriptorPool ResourceContext::createDescriptorPool() {
+    return descriptorPoolManager ? descriptorPoolManager->createDescriptorPool() : vulkan_raii::DescriptorPool{};
+}
+
 vulkan_raii::DescriptorPool ResourceContext::createDescriptorPoolWithConfig(uint32_t maxSets, 
-                                                                            uint32_t uniformBufferCount, 
-                                                                            uint32_t storageBufferCount) {
+                                                                           uint32_t uniformBufferCount, 
+                                                                           uint32_t storageBufferCount) {
     if (!descriptorPoolManager) {
         return vulkan_raii::DescriptorPool{};
     }
@@ -152,17 +147,13 @@ vulkan_raii::DescriptorPool ResourceContext::createDescriptorPoolWithConfig(uint
     return descriptorPoolManager->createDescriptorPool(config);
 }
 
-vulkan_raii::DescriptorPool ResourceContext::createDescriptorPool() {
-    return descriptorPoolManager ? descriptorPoolManager->createDescriptorPool() : vulkan_raii::DescriptorPool{};
-}
-
 void ResourceContext::destroyDescriptorPool(VkDescriptorPool pool) {
     if (descriptorPoolManager) {
         descriptorPoolManager->destroyDescriptorPool(pool);
     }
 }
 
-// Graphics resources (delegated to GraphicsResourceManager)
+// Graphics resources (delegates to GraphicsResourceManager)
 bool ResourceContext::createGraphicsResources() {
     return graphicsResourceManager ? graphicsResourceManager->createAllGraphicsResources() : false;
 }
@@ -175,17 +166,16 @@ bool ResourceContext::updateGraphicsDescriptors(VkBuffer entityBuffer, VkBuffer 
     return graphicsResourceManager ? graphicsResourceManager->updateDescriptorSetsWithEntityAndPositionBuffers(entityBuffer, positionBuffer) : false;
 }
 
-// Individual graphics resource creation (for legacy compatibility)
+// Graphics resource individual creation (for legacy compatibility)
 bool ResourceContext::createGraphicsDescriptorPool(VkDescriptorSetLayout descriptorSetLayout) {
     return graphicsResourceManager ? graphicsResourceManager->createGraphicsDescriptorPool(descriptorSetLayout) : false;
 }
 
 bool ResourceContext::createGraphicsDescriptorSets(VkDescriptorSetLayout descriptorSetLayout) {
-    // This is typically handled by createDescriptorResources, but we can delegate to the graphics manager
-    if (!graphicsResourceManager) return false;
-    return graphicsResourceManager->createGraphicsDescriptorSets(descriptorSetLayout);
+    return graphicsResourceManager ? graphicsResourceManager->createGraphicsDescriptorSets(descriptorSetLayout) : false;
 }
 
+// Getters - delegates to appropriate managers
 const std::vector<VkBuffer>& ResourceContext::getUniformBuffers() const {
     static const std::vector<VkBuffer> empty;
     return graphicsResourceManager ? graphicsResourceManager->getUniformBuffers() : empty;
@@ -217,41 +207,74 @@ const std::vector<VkDescriptorSet>& ResourceContext::getGraphicsDescriptorSets()
     return graphicsResourceManager ? graphicsResourceManager->getDescriptorSets() : empty;
 }
 
+// Manager access for advanced operations
+MemoryAllocator* ResourceContext::getMemoryAllocator() const {
+    return coordinator ? coordinator->getMemoryAllocator() : nullptr;
+}
+
+BufferFactory* ResourceContext::getBufferFactory() const {
+    return coordinator && coordinator->getResourceFactory() ? coordinator->getResourceFactory()->getBufferFactory() : nullptr;
+}
+
+CommandExecutor* ResourceContext::getCommandExecutor() const {
+    return coordinator ? coordinator->getCommandExecutor() : nullptr;
+}
+
+BufferManager* ResourceContext::getBufferManager() const {
+    return coordinator ? coordinator->getBufferManager() : nullptr;
+}
+
+GraphicsResourceManager* ResourceContext::getGraphicsManager() const {
+    return graphicsResourceManager.get();
+}
+
 // Legacy compatibility - staging buffer direct access
-StagingRingBuffer& ResourceContext::getStagingBuffer() {
-    return getBufferManager()->getPrimaryStagingBuffer();
+StagingBufferPool& ResourceContext::getStagingBuffer() {
+    // Use temporary workaround until BufferManager integration is fixed
+    auto bufferManager = getBufferManager();
+    if (!bufferManager) {
+        throw std::runtime_error("BufferManager not available - circular dependency needs resolution");
+    }
+    return bufferManager->getPrimaryStagingBuffer();
 }
 
-const StagingRingBuffer& ResourceContext::getStagingBuffer() const {
-    return getBufferManager()->getPrimaryStagingBuffer();
+const StagingBufferPool& ResourceContext::getStagingBuffer() const {
+    // Use temporary workaround until BufferManager integration is fixed
+    auto bufferManager = getBufferManager();
+    if (!bufferManager) {
+        throw std::runtime_error("BufferManager not available - circular dependency needs resolution");
+    }
+    return bufferManager->getPrimaryStagingBuffer();
 }
 
-// Statistics and monitoring (delegated to MemoryAllocator)
+// Statistics and monitoring (delegates to ResourceCoordinator)
+bool ResourceContext::isUnderMemoryPressure() const {
+    return coordinator ? coordinator->isUnderMemoryPressure() : false;
+}
+
+bool ResourceContext::attemptMemoryRecovery() {
+    return coordinator ? coordinator->attemptMemoryRecovery() : false;
+}
+
+// Memory statistics - simplified interface
 VkDeviceSize ResourceContext::getTotalAllocatedMemory() const {
-    if (!memoryAllocator) return 0;
-    auto stats = memoryAllocator->getMemoryStats();
-    return stats.totalAllocated;
+    return coordinator ? coordinator->getTotalAllocatedMemory() : 0;
 }
 
 VkDeviceSize ResourceContext::getAvailableMemory() const {
-    if (!memoryAllocator) return 0;
-    auto stats = memoryAllocator->getMemoryStats();
-    // Calculate available as peak minus current usage (approximation)
-    return stats.peakUsage > stats.totalAllocated ? stats.peakUsage - stats.totalAllocated : 0;
+    return coordinator ? coordinator->getAvailableMemory() : 0;
 }
 
 uint32_t ResourceContext::getAllocationCount() const {
-    if (!memoryAllocator) return 0;
-    auto stats = memoryAllocator->getMemoryStats();
-    return stats.activeAllocations;
+    return coordinator ? coordinator->getAllocationCount() : 0;
 }
 
-// Legacy memory stats access (for backward compatibility)
+// Legacy memory stats structure for backward compatibility
 ResourceContext::SimpleMemoryStats ResourceContext::getMemoryStats() const {
     SimpleMemoryStats simpleStats;
     
-    if (memoryAllocator) {
-        auto stats = memoryAllocator->getMemoryStats();
+    if (coordinator && coordinator->getMemoryAllocator()) {
+        auto stats = coordinator->getMemoryAllocator()->getMemoryStats();
         simpleStats.totalAllocated = stats.totalAllocated;
         simpleStats.totalFreed = stats.totalFreed;
         simpleStats.activeAllocations = stats.activeAllocations;
@@ -264,24 +287,12 @@ ResourceContext::SimpleMemoryStats ResourceContext::getMemoryStats() const {
     return simpleStats;
 }
 
-bool ResourceContext::isUnderMemoryPressure() const {
-    return memoryAllocator ? memoryAllocator->isUnderMemoryPressure() : false;
-}
-
-bool ResourceContext::attemptMemoryRecovery() {
-    return memoryAllocator ? memoryAllocator->attemptMemoryRecovery() : false;
-}
-
+// Performance optimization
 bool ResourceContext::optimizeResources() {
     bool success = true;
     
-    // Optimize each manager
-    if (memoryAllocator) {
-        success &= memoryAllocator->attemptMemoryRecovery();
-    }
-    
-    if (bufferManager) {
-        success &= bufferManager->tryOptimizeMemory();
+    if (coordinator) {
+        success &= coordinator->optimizeResources();
     }
     
     if (graphicsResourceManager) {
@@ -289,64 +300,4 @@ bool ResourceContext::optimizeResources() {
     }
     
     return success;
-}
-
-// Private implementation methods
-bool ResourceContext::initializeManagers(QueueManager* queueManager) {
-    // Initialize in dependency order
-    
-    // 1. Memory allocator (foundation)
-    memoryAllocator = std::make_unique<MemoryAllocator>();
-    if (!memoryAllocator->initialize(*context)) {
-        std::cerr << "Failed to initialize memory allocator!" << std::endl;
-        return false;
-    }
-    
-    // 2. Buffer factory (depends on memory allocator)
-    bufferFactory = std::make_unique<BufferFactory>();
-    if (!bufferFactory->initialize(*context, memoryAllocator.get())) {
-        std::cerr << "Failed to initialize buffer factory!" << std::endl;
-        return false;
-    }
-    
-    // 3. Descriptor pool manager
-    descriptorPoolManager = std::make_unique<DescriptorPoolManager>();
-    if (!descriptorPoolManager->initialize(*context)) {
-        std::cerr << "Failed to initialize descriptor pool manager!" << std::endl;
-        return false;
-    }
-    
-    // 4. Graphics resource manager (depends on buffer factory)
-    graphicsResourceManager = std::make_unique<GraphicsResourceManager>();
-    if (!graphicsResourceManager->initialize(*context, bufferFactory.get())) {
-        std::cerr << "Failed to initialize graphics resource manager!" << std::endl;
-        return false;
-    }
-    
-    // 5. Unified buffer manager (replaces staging, gpu buffer, and transfer managers)
-    bufferManager = std::make_unique<BufferManager>();
-    if (!bufferManager->initialize(this, bufferFactory.get(), &executor, STAGING_BUFFER_SIZE)) {
-        std::cerr << "Failed to initialize buffer manager!" << std::endl;
-        return false;
-    }
-    
-    
-    return true;
-}
-
-void ResourceContext::setupManagerDependencies() {
-    // Setup cross-manager dependencies
-    if (bufferFactory && bufferManager) {
-        bufferFactory->setStagingBuffer(&bufferManager->getPrimaryStagingBuffer());
-        bufferFactory->setCommandExecutor(&executor);
-    }
-}
-
-void ResourceContext::cleanupManagers() {
-    // Cleanup in reverse order of initialization
-    bufferManager.reset();
-    graphicsResourceManager.reset();
-    descriptorPoolManager.reset();
-    bufferFactory.reset();
-    memoryAllocator.reset();
 }

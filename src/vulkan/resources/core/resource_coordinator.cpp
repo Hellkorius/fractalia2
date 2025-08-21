@@ -3,6 +3,7 @@
 #include "transfer_manager.h"
 #include "memory_allocator.h"
 #include "validation_utils.h"
+#include "resource_context_bridge.h"
 #include "../managers/descriptor_pool_manager.h"
 #include "../managers/graphics_resource_manager.h"
 #include "../buffers/buffer_manager.h"
@@ -171,13 +172,17 @@ BufferManager* ResourceCoordinator::getBufferManager() const {
 }
 
 StagingBufferPool& ResourceCoordinator::getStagingBuffer() {
-    // TODO: Fix BufferManager integration
-    throw std::runtime_error("BufferManager integration needs to be fixed");
+    if (!bufferManager) {
+        throw std::runtime_error("BufferManager not initialized");
+    }
+    return bufferManager->getPrimaryStagingBuffer();
 }
 
 const StagingBufferPool& ResourceCoordinator::getStagingBuffer() const {
-    // TODO: Fix BufferManager integration
-    throw std::runtime_error("BufferManager integration needs to be fixed");
+    if (!bufferManager) {
+        throw std::runtime_error("BufferManager not initialized");
+    }
+    return bufferManager->getPrimaryStagingBuffer();
 }
 
 bool ResourceCoordinator::isUnderMemoryPressure() const {
@@ -211,10 +216,9 @@ bool ResourceCoordinator::optimizeResources() {
         success &= memoryAllocator->attemptMemoryRecovery();
     }
     
-    // TODO: Fix BufferManager integration  
-    // if (bufferManager) {
-    //     success &= bufferManager->tryOptimizeMemory();
-    // }
+    if (bufferManager) {
+        success &= bufferManager->tryOptimizeMemory();
+    }
     
     return success;
 }
@@ -234,26 +238,28 @@ bool ResourceCoordinator::initializeManagers(QueueManager* queueManager) {
         return false;
     }
     
-    // 3. BufferManager (complex initialization with multiple dependencies)
+    // 3. Create bridge for BufferManager (breaks circular dependency)
+    contextBridge = std::make_unique<ResourceContextBridge>(this, &executor);
+    
+    // 4. BufferManager (uses bridge to avoid circular dependency)
     bufferManager = std::make_unique<BufferManager>();
-    // TODO: BufferManager needs ResourceContext, but we're trying to eliminate it
-    // For now, skip BufferManager initialization to fix compilation
-    // This will need proper refactoring later
-    // if (!bufferManager->initialize(*context, queueManager)) {
-    //     return false;
-    // }
+    if (!bufferManager->initialize(contextBridge.get(), resourceFactory->getBufferFactory(), &executor, 16 * 1024 * 1024)) {
+        return false;
+    }
     
-    // 4. TransferManager (depends on TransferOrchestrator from BufferManager)
+    // 5. TransferManager (depends on TransferOrchestrator from BufferManager)
     transferManager = std::make_unique<TransferManager>();
-    // TODO: Initialize with BufferManager's TransferOrchestrator
+    if (!transferManager->initialize(bufferManager->getTransferOrchestrator())) {
+        return false;
+    }
     
-    // 5. DescriptorPoolManager (minimal dependencies)
+    // 6. DescriptorPoolManager (minimal dependencies)
     descriptorPoolManager = std::make_unique<DescriptorPoolManager>();
     if (!descriptorPoolManager->initialize(*context)) {
         return false;
     }
     
-    // 6. GraphicsResourceManager (depends on multiple managers)
+    // 7. GraphicsResourceManager (depends on multiple managers)
     graphicsResourceManager = std::make_unique<GraphicsResourceManager>();
     if (!graphicsResourceManager->initialize(*context, resourceFactory->getBufferFactory())) {
         return false;
@@ -268,10 +274,9 @@ void ResourceCoordinator::setupManagerDependencies() {
         auto bufferFactory = resourceFactory->getBufferFactory();
         bufferFactory->setCommandExecutor(&executor);
         
-        // TODO: Fix BufferManager integration
-        // if (bufferManager) {
-        //     bufferFactory->setStagingBuffer(&bufferManager->getStagingPool());
-        // }
+        if (bufferManager) {
+            bufferFactory->setStagingBuffer(&bufferManager->getPrimaryStagingBuffer());
+        }
     }
 }
 
@@ -281,6 +286,7 @@ void ResourceCoordinator::cleanupManagers() {
     descriptorPoolManager.reset();
     transferManager.reset();
     bufferManager.reset();
+    contextBridge.reset();
     resourceFactory.reset();
     memoryAllocator.reset();
 }

@@ -1,6 +1,6 @@
 #include "gpu_buffer.h"
 #include "buffer_manager.h"
-#include "../managers/resource_context.h"
+#include "../core/resource_context_interface.h"
 #include "../../core/vulkan_raii.h"
 #include <cstring>
 #include <iostream>
@@ -9,7 +9,7 @@ GPUBuffer::~GPUBuffer() {
     cleanup();
 }
 
-bool GPUBuffer::initialize(ResourceContext* resourceContext, BufferManager* bufferManager, VkDeviceSize size,
+bool GPUBuffer::initialize(IResourceContext* resourceContext, BufferManager* bufferManager, VkDeviceSize size,
                           VkBufferUsageFlags usage, VkMemoryPropertyFlags properties) {
     this->resourceContext = resourceContext;
     this->bufferManager = bufferManager;

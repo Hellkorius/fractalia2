@@ -5,18 +5,28 @@
 #include <memory>
 #include <vector>
 #include <functional>
-#include "../core/resource_handle.h"
-#include "../core/command_executor.h"
+#include "../../core/vulkan_constants.h"
 #include "../../core/vulkan_raii.h"
 
 class VulkanContext;
 class QueueManager;
-class ResourceCoordinator;
+
+// Forward declarations for new modular managers
+class MemoryAllocator;
+class BufferFactory;
 class DescriptorPoolManager;
 class GraphicsResourceManager;
+class BufferManager;
+class StagingBufferPool;
 
-// New lightweight ResourceContext that delegates to ResourceCoordinator
-// Maintains backward compatibility while eliminating God Object pattern
+// Legacy alias for backward compatibility
+using StagingRingBuffer = StagingBufferPool;
+
+#include "../core/resource_handle.h"
+#include "../core/command_executor.h"
+
+// Lightweight centralized resource coordination manager
+// Delegates to specialized managers for actual implementation
 class ResourceContext {
 public:
     ResourceContext();
@@ -24,12 +34,14 @@ public:
     
     bool initialize(const VulkanContext& context, QueueManager* queueManager);
     void cleanup();
+    
+    // Cleanup method for proper destruction order
     void cleanupBeforeContextDestruction();
     
     // Context access
-    const VulkanContext* getContext() const;
+    const VulkanContext* getContext() const { return context; }
     
-    // Core resource creation (delegates to ResourceCoordinator)
+    // Core resource creation (delegated to BufferFactory)
     ResourceHandle createBuffer(VkDeviceSize size, 
                                VkBufferUsageFlags usage,
                                VkMemoryPropertyFlags properties);
@@ -50,28 +62,30 @@ public:
     
     void destroyResource(ResourceHandle& handle);
     
-    // Transfer operations (delegates to ResourceCoordinator)
+    // Transfer operations (delegated to TransferManager)
     bool copyToBuffer(const ResourceHandle& dst, const void* data, VkDeviceSize size, VkDeviceSize offset = 0);
     bool copyBufferToBuffer(const ResourceHandle& src, const ResourceHandle& dst, VkDeviceSize size, VkDeviceSize srcOffset = 0, VkDeviceSize dstOffset = 0);
     CommandExecutor::AsyncTransfer copyToBufferAsync(const ResourceHandle& dst, const void* data, VkDeviceSize size, VkDeviceSize offset = 0);
     
-    // Descriptor management (delegates to DescriptorPoolManager)
-    vulkan_raii::DescriptorPool createDescriptorPool();
+    // Descriptor management (delegated to DescriptorPoolManager)
+    vulkan_raii::DescriptorPool createDescriptorPool(); // Uses default config
+    void destroyDescriptorPool(VkDescriptorPool pool);
+    
+    // Advanced descriptor pool creation with custom config - implemented in .cpp
     vulkan_raii::DescriptorPool createDescriptorPoolWithConfig(uint32_t maxSets, 
                                                                uint32_t uniformBufferCount = 1024,
                                                                uint32_t storageBufferCount = 1024);
-    void destroyDescriptorPool(VkDescriptorPool pool);
     
-    // Graphics resources (delegates to GraphicsResourceManager)
+    // Graphics resources (delegated to GraphicsResourceManager)
     bool createGraphicsResources();
     bool recreateGraphicsResources();
     bool updateGraphicsDescriptors(VkBuffer entityBuffer, VkBuffer positionBuffer);
     
-    // Graphics resource individual creation (for legacy compatibility)
+    // Individual graphics resource creation (for legacy compatibility)
     bool createGraphicsDescriptorPool(VkDescriptorSetLayout descriptorSetLayout);
     bool createGraphicsDescriptorSets(VkDescriptorSetLayout descriptorSetLayout);
     
-    // Getters - delegates to appropriate managers
+    // Getters
     const std::vector<VkBuffer>& getUniformBuffers() const;
     const std::vector<void*>& getUniformBuffersMapped() const;
     VkBuffer getVertexBuffer() const;
@@ -81,25 +95,25 @@ public:
     const std::vector<VkDescriptorSet>& getGraphicsDescriptorSets() const;
     
     // Manager access for advanced operations
-    class MemoryAllocator* getMemoryAllocator() const;
-    class BufferFactory* getBufferFactory() const;
-    class BufferManager* getBufferManager() const;
-    class GraphicsResourceManager* getGraphicsManager() const;
+    MemoryAllocator* getMemoryAllocator() const { return memoryAllocator.get(); }
+    BufferFactory* getBufferFactory() const { return bufferFactory.get(); }
+    BufferManager* getBufferManager() const { return bufferManager.get(); }
+    GraphicsResourceManager* getGraphicsManager() const { return graphicsResourceManager.get(); }
     
     // Legacy compatibility - staging buffer direct access
-    class StagingBufferPool& getStagingBuffer();
-    const class StagingBufferPool& getStagingBuffer() const;
+    StagingRingBuffer& getStagingBuffer();
+    const StagingRingBuffer& getStagingBuffer() const;
     
-    // Statistics and monitoring (delegates to ResourceCoordinator)
+    // Statistics and monitoring (delegated to MemoryAllocator)
     bool isUnderMemoryPressure() const;
     bool attemptMemoryRecovery();
     
-    // Memory statistics - simplified interface
+    // Memory statistics - simplified interface to avoid incomplete types
     VkDeviceSize getTotalAllocatedMemory() const;
     VkDeviceSize getAvailableMemory() const;
     uint32_t getAllocationCount() const;
     
-    // Legacy memory stats structure for backward compatibility
+    // Legacy memory stats access (for backward compatibility)
     struct SimpleMemoryStats {
         VkDeviceSize totalAllocated = 0;
         VkDeviceSize totalFreed = 0;
@@ -112,15 +126,24 @@ public:
     SimpleMemoryStats getMemoryStats() const;
     
     // Performance optimization
-    bool optimizeResources();
-
-private:
-    // Focused coordination through ResourceCoordinator
-    std::unique_ptr<ResourceCoordinator> coordinator;
+    bool optimizeResources(); // Optimize all managed resources
     
-    // Specialized managers for operations not handled by ResourceCoordinator
+private:
+    const VulkanContext* context = nullptr;
+    CommandExecutor executor;
+    
+    // Specialized managers - order matters for initialization/cleanup
+    std::unique_ptr<MemoryAllocator> memoryAllocator;
+    std::unique_ptr<BufferFactory> bufferFactory;
     std::unique_ptr<DescriptorPoolManager> descriptorPoolManager;
     std::unique_ptr<GraphicsResourceManager> graphicsResourceManager;
+    std::unique_ptr<BufferManager> bufferManager;
     
-    bool initialized = false;
+    // Resource tracking
+    std::vector<std::function<void()>> cleanupCallbacks;
+    
+    // Initialization helpers
+    bool initializeManagers(QueueManager* queueManager);
+    void setupManagerDependencies();
+    void cleanupManagers();
 };

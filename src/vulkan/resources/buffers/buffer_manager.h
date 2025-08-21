@@ -5,12 +5,11 @@
 #include <memory>
 #include "../core/resource_handle.h"
 #include "../core/command_executor.h"
+#include "../core/resource_context_interface.h"
 #include "staging_buffer_pool.h"
 #include "buffer_registry.h"
 #include "transfer_orchestrator.h"
 #include "buffer_statistics_collector.h"
-
-class ResourceContext;
 class BufferFactory;
 class GPUBuffer;
 
@@ -20,14 +19,14 @@ public:
     BufferManager();
     ~BufferManager();
     
-    bool initialize(const ResourceContext* resourceContext, 
+    bool initialize(IResourceContext* resourceContext, 
                    BufferFactory* bufferFactory,
                    CommandExecutor* executor,
                    VkDeviceSize stagingSize = 16 * 1024 * 1024);
     void cleanup();
     
     // Context access
-    const ResourceContext* getResourceContext() const;
+    IResourceContext* getResourceContext() const;
     BufferFactory* getBufferFactory() const;
     CommandExecutor* getCommandExecutor() const;
     
@@ -85,7 +84,7 @@ private:
     std::unique_ptr<TransferOrchestrator> transferOrchestrator;
     std::unique_ptr<BufferStatisticsCollector> statisticsCollector;
     
-    const ResourceContext* resourceContext = nullptr;
+    IResourceContext* resourceContext = nullptr;
     BufferFactory* bufferFactory = nullptr;
     CommandExecutor* executor = nullptr;
 };

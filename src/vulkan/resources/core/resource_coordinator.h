@@ -5,6 +5,7 @@
 #include <memory>
 #include "resource_handle.h"
 #include "command_executor.h"
+#include "resource_context_bridge.h"
 
 class VulkanContext;
 class QueueManager;
@@ -64,6 +65,8 @@ public:
     DescriptorPoolManager* getDescriptorPoolManager() const;
     GraphicsResourceManager* getGraphicsManager() const;
     BufferManager* getBufferManager() const;
+    CommandExecutor* getCommandExecutor() { return &executor; }
+    const CommandExecutor* getCommandExecutor() const { return &executor; }
     
     // Legacy compatibility - staging buffer direct access
     StagingBufferPool& getStagingBuffer();
@@ -84,6 +87,9 @@ public:
 private:
     const VulkanContext* context = nullptr;
     CommandExecutor executor;
+    
+    // Bridge for breaking circular dependencies
+    std::unique_ptr<ResourceContextBridge> contextBridge;
     
     // Focused managers
     std::unique_ptr<MemoryAllocator> memoryAllocator;
