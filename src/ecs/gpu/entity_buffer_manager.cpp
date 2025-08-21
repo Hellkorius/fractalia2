@@ -69,26 +69,6 @@ void EntityBufferManager::cleanup() {
     maxEntities = 0;
 }
 
-void EntityBufferManager::copyDataToBuffer(VkBuffer buffer, const void* data, VkDeviceSize size, VkDeviceSize offset) {
-    // Legacy method - find the appropriate buffer and delegate
-    IBufferOperations* targetBuffer = findBufferByHandle(buffer);
-    if (targetBuffer) {
-        targetBuffer->copyData(data, size, offset);
-    } else {
-        // Handle position buffers specially
-        if (buffer == positionCoordinator.getPrimaryBuffer()) {
-            positionCoordinator.uploadToPrimary(data, size, offset);
-        } else if (buffer == positionCoordinator.getAlternateBuffer()) {
-            positionCoordinator.uploadToAlternate(data, size, offset);
-        } else if (buffer == positionCoordinator.getCurrentBuffer()) {
-            positionCoordinator.uploadToCurrent(data, size, offset);
-        } else if (buffer == positionCoordinator.getTargetBuffer()) {
-            positionCoordinator.uploadToTarget(data, size, offset);
-        } else {
-            std::cerr << "EntityBufferManager: Unknown buffer handle in copyDataToBuffer" << std::endl;
-        }
-    }
-}
 
 bool EntityBufferManager::uploadVelocityData(const void* data, VkDeviceSize size, VkDeviceSize offset) {
     return uploadService.upload(velocityBuffer, data, size, offset);
@@ -114,12 +94,3 @@ bool EntityBufferManager::uploadPositionDataToAllBuffers(const void* data, VkDev
     return positionCoordinator.uploadToAllBuffers(data, size, offset);
 }
 
-IBufferOperations* EntityBufferManager::findBufferByHandle(VkBuffer handle) {
-    if (handle == velocityBuffer.getBuffer()) return &velocityBuffer;
-    if (handle == movementParamsBuffer.getBuffer()) return &movementParamsBuffer;
-    if (handle == runtimeStateBuffer.getBuffer()) return &runtimeStateBuffer;
-    if (handle == colorBuffer.getBuffer()) return &colorBuffer;
-    if (handle == modelMatrixBuffer.getBuffer()) return &modelMatrixBuffer;
-    
-    return nullptr;
-}

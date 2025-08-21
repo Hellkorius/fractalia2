@@ -9,7 +9,6 @@
 #include <flecs.h>
 #include "ecs/core/entity_factory.h"
 #include "ecs/systems/lifetime_system.h"
-// Removed legacy input system include - using service-based architecture
 #include "ecs/components/component.h"
 #include "ecs/utilities/profiler.h"
 #include "ecs/gpu/gpu_entity_manager.h"

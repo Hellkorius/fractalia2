@@ -73,7 +73,7 @@ src/
 │   │   ├── memory_manager.*    # Memory allocation utilities
 │   │   └── system_scheduler.*  # System execution coordination
 │   ├── gpu_entity_manager.*    # CPU→GPU bridge
-│   ├── systems/                # ECS systems (legacy, being phased out)
+│   ├── systems/                # ECS systems
 │   └── components/             # Component definitions
 └── shaders/
     ├── movement_random.comp    # Compute movement

@@ -51,7 +51,6 @@ public:
     
     
     // Data upload - using shared upload service
-    void copyDataToBuffer(VkBuffer buffer, const void* data, VkDeviceSize size, VkDeviceSize offset = 0);
     
     // Typed upload methods for better API
     bool uploadVelocityData(const void* data, VkDeviceSize size, VkDeviceSize offset = 0);
@@ -78,7 +77,5 @@ private:
     // Shared upload service
     BufferUploadService uploadService;
     
-    // Helper to find buffer by VkBuffer handle (for legacy copyDataToBuffer)
-    IBufferOperations* findBufferByHandle(VkBuffer handle);
 };
 

@@ -21,7 +21,6 @@
 #include "ecs/gpu/gpu_entity_manager.h"
 #include "ecs/components/component.h"
 #include "ecs/components/camera_component.h"
-// Removed legacy simple control system include - using service-based architecture
 #include <iostream>
 #include <array>
 #include <chrono>
