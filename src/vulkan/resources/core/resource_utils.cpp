@@ -1,6 +1,6 @@
 #include "resource_utils.h"
-#include "../core/vulkan_function_loader.h"
-#include "../core/vulkan_utils.h"
+#include "../../core/vulkan_function_loader.h"
+#include "../../core/vulkan_utils.h"
 #include <iostream>
 
 // Descriptor pool utilities implementation

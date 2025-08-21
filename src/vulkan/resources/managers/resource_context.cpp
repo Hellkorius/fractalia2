@@ -1,13 +1,13 @@
 #include "resource_context.h"
-#include "../core/vulkan_context.h"
-#include "../core/vulkan_constants.h"
+#include "../../core/vulkan_context.h"
+#include "../../core/vulkan_constants.h"
 
 // Include all the new modular managers
-#include "memory_allocator.h"
-#include "buffer_factory.h"
-#include "descriptor_pool_manager.h"
+#include "../core/memory_allocator.h"
+#include "../buffers/buffer_factory.h"
+#include "../descriptors/descriptor_pool_manager.h"
 #include "graphics_resource_manager.h"
-#include "buffer_manager.h"
+#include "../buffers/buffer_manager.h"
 
 // Define the forward declared types for proper compilation
 namespace {

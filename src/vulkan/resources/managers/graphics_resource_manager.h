@@ -4,8 +4,8 @@
 #include <vulkan/vulkan.h>
 #include <vector>
 #include <memory>
-#include "../core/vulkan_raii.h"
-#include "resource_handle.h"
+#include "../../core/vulkan_raii.h"
+#include "../core/resource_handle.h"
 
 class VulkanContext;
 class BufferFactory;

@@ -4,8 +4,8 @@
 #include <vulkan/vulkan.h>
 #include <memory>
 #include <vector>
-#include "resource_handle.h"
-#include "command_executor.h"
+#include "../core/resource_handle.h"
+#include "../transfer/command_executor.h"
 
 class VulkanContext;
 class ResourceContext;

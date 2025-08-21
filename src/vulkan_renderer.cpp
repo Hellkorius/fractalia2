@@ -4,7 +4,7 @@
 #include "vulkan/core/vulkan_swapchain.h"
 #include "vulkan/core/vulkan_sync.h"
 #include "vulkan/core/queue_manager.h"
-#include "vulkan/resources/resource_context.h"
+#include "vulkan/resources/managers/resource_context.h"
 #include "vulkan/rendering/frame_graph.h"
 #include "vulkan/nodes/entity_compute_node.h"
 #include "vulkan/nodes/entity_graphics_node.h"

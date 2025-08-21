@@ -5,8 +5,8 @@
 #include <memory>
 #include <vector>
 #include <functional>
-#include "../core/vulkan_constants.h"
-#include "../core/vulkan_raii.h"
+#include "../../core/vulkan_constants.h"
+#include "../../core/vulkan_raii.h"
 
 class VulkanContext;
 class QueueManager;
@@ -19,8 +19,8 @@ class GraphicsResourceManager;
 class BufferManager;
 class StagingRingBuffer;
 
-#include "resource_handle.h"
-#include "command_executor.h"
+#include "../core/resource_handle.h"
+#include "../transfer/command_executor.h"
 
 // Lightweight centralized resource coordination manager
 // Delegates to specialized managers for actual implementation

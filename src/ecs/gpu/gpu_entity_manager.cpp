@@ -1,7 +1,7 @@
 #include "gpu_entity_manager.h"
 #include "../../vulkan/core/vulkan_context.h"
 #include "../../vulkan/core/vulkan_sync.h"
-#include "../../vulkan/resources/resource_context.h"
+#include "../../vulkan/resources/managers/resource_context.h"
 #include "../../vulkan/core/vulkan_function_loader.h"
 #include "../../vulkan/core/vulkan_utils.h"
 #include <iostream>

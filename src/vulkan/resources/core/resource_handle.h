@@ -2,7 +2,7 @@
 
 #define VK_NO_PROTOTYPES
 #include <vulkan/vulkan.h>
-#include "../core/vulkan_raii.h"
+#include "../../core/vulkan_raii.h"
 
 // Resource handle combining buffer/image with allocation
 struct ResourceHandle {

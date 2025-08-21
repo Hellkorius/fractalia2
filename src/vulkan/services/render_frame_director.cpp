@@ -4,7 +4,7 @@
 #include "../core/vulkan_swapchain.h"
 #include "../pipelines/pipeline_system_manager.h"
 #include "../core/vulkan_sync.h"
-#include "../resources/resource_context.h"
+#include "../resources/managers/resource_context.h"
 #include "../nodes/entity_compute_node.h"
 #include "../nodes/physics_compute_node.h"
 #include "../nodes/entity_graphics_node.h"

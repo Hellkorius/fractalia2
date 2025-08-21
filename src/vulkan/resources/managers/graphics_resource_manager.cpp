@@ -1,10 +1,10 @@
 #include "graphics_resource_manager.h"
-#include "buffer_factory.h"
-#include "../core/vulkan_context.h"
-#include "../core/vulkan_function_loader.h"
-#include "../core/vulkan_constants.h"
-#include "../core/vulkan_utils.h"
-#include "../../PolygonFactory.h"
+#include "../buffers/buffer_factory.h"
+#include "../../core/vulkan_context.h"
+#include "../../core/vulkan_function_loader.h"
+#include "../../core/vulkan_constants.h"
+#include "../../core/vulkan_utils.h"
+#include "../../../PolygonFactory.h"
 #include <iostream>
 #include <glm/glm.hpp>
 

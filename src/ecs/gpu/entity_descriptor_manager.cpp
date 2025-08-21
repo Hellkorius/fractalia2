@@ -2,7 +2,7 @@
 #include "entity_buffer_manager.h"
 #include "../../vulkan/core/vulkan_context.h"
 #include "../../vulkan/core/vulkan_function_loader.h"
-#include "../../vulkan/resources/resource_context.h"
+#include "../../vulkan/resources/managers/resource_context.h"
 #include <iostream>
 #include <array>
 

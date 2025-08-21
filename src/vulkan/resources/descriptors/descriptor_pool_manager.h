@@ -2,8 +2,8 @@
 
 #define VK_NO_PROTOTYPES
 #include <vulkan/vulkan.h>
-#include "../core/vulkan_raii.h"
-#include "../core/vulkan_constants.h"
+#include "../../core/vulkan_raii.h"
+#include "../../core/vulkan_constants.h"
 
 class VulkanContext;
 

@@ -2,9 +2,9 @@
 
 #define VK_NO_PROTOTYPES
 #include <vulkan/vulkan.h>
-#include "../core/vulkan_raii.h"
-#include "memory_allocator.h"
-#include "resource_handle.h"
+#include "../../core/vulkan_raii.h"
+#include "../core/memory_allocator.h"
+#include "../core/resource_handle.h"
 
 class VulkanContext;
 class StagingRingBuffer;

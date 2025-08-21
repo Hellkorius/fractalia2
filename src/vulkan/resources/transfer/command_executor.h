@@ -2,8 +2,8 @@
 
 #define VK_NO_PROTOTYPES
 #include <vulkan/vulkan.h>
-#include "../core/vulkan_raii.h"
-#include "../core/queue_manager.h"
+#include "../../core/vulkan_raii.h"
+#include "../../core/queue_manager.h"
 
 class VulkanContext;
 
