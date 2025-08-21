@@ -5,7 +5,7 @@
 // Include all the new modular managers
 #include "../core/memory_allocator.h"
 #include "../buffers/buffer_factory.h"
-#include "../descriptors/descriptor_pool_manager.h"
+#include "descriptor_pool_manager.h"
 #include "graphics_resource_manager.h"
 #include "../buffers/buffer_manager.h"
 

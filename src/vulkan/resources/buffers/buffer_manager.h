@@ -5,7 +5,7 @@
 #include <memory>
 #include <vector>
 #include "../core/resource_handle.h"
-#include "../transfer/command_executor.h"
+#include "../core/command_executor.h"
 
 class VulkanContext;
 class ResourceContext;

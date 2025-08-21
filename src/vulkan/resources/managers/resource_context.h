@@ -20,7 +20,7 @@ class BufferManager;
 class StagingRingBuffer;
 
 #include "../core/resource_handle.h"
-#include "../transfer/command_executor.h"
+#include "../core/command_executor.h"
 
 // Lightweight centralized resource coordination manager
 // Delegates to specialized managers for actual implementation
