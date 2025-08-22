@@ -62,14 +62,7 @@ public:
     std::vector<Viewport*> getActiveViewports();
     std::vector<const Viewport*> getActiveViewports() const;
     
-    std::vector<CullingInfo> performFrustumCulling(const std::vector<Transform>& transforms, 
-                                                   const std::vector<Bounds>& bounds,
-                                                   CameraID cameraID = 0) const;
     bool isEntityVisible(const Transform& transform, const Bounds& bounds, CameraID cameraID = 0) const;
-    
-    int calculateLODLevel(const glm::vec3& entityPosition, CameraID cameraID = 0) const;
-    void setLODDistances(const std::vector<float>& distances);
-    const std::vector<float>& getLODDistances() const;
     
     glm::vec2 worldToScreen(const glm::vec3& worldPos, const glm::vec2& screenSize, CameraID cameraID = 0) const;
     glm::vec2 screenToWorld(const glm::vec2& screenPos, const glm::vec2& screenSize, CameraID cameraID = 0) const;

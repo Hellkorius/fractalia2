@@ -117,10 +117,6 @@ void RenderingService::processFrame(float deltaTime) {
     // Build render queue
     buildRenderQueue();
     
-    // Perform culling
-    if (frustumCullingEnabled || occlusionCullingEnabled) {
-        performCulling();
-    }
     
     // Sort render queue
     sortRenderQueue();
@@ -144,7 +140,6 @@ void RenderingService::processFrame(float deltaTime) {
     renderStats.cpuRenderTimeMs = duration.count() / 1000.0f;
     
     // Update statistics
-    updateCullingStats();
     updateRenderStats();
     
     // Execute post-render callback
@@ -294,97 +289,7 @@ void RenderingService::clearRenderQueue() {
     entityToQueueIndex.clear();
 }
 
-void RenderingService::performCulling() {
-    if (!initialized || renderQueue.empty()) {
-        return;
-    }
-    
-    auto startTime = std::chrono::high_resolution_clock::now();
-    
-    // Use cached camera service for frustum culling
-    
-    uint32_t visibleCount = 0;
-    uint32_t frustumCulledCount = 0;
-    uint32_t occlusionCulledCount = 0;
-    uint32_t lodCulledCount = 0;
-    
-    for (auto& entry : renderQueue) {
-        bool visible = true;
-        
-        // Distance culling
-        if (entry.distanceToCamera > maxRenderDistance) {
-            visible = false;
-        }
-        
-        // Frustum culling
-        if (visible && frustumCullingEnabled && cameraService) {
-            // Get bounds from entity if available
-            Bounds bounds;
-            if (entry.entity.has<Bounds>()) {
-                bounds = *entry.entity.get<Bounds>();
-            } else {
-                // Use default bounds
-                bounds.min = glm::vec3(-0.5f);
-                bounds.max = glm::vec3(0.5f);
-            }
-            
-            if (!cameraService->isEntityVisible(entry.transform, bounds)) {
-                visible = false;
-                frustumCulledCount++;
-            }
-        }
-        
-        // Occlusion culling (placeholder - requires occlusion query system)
-        if (visible && occlusionCullingEnabled) {
-            // TODO: Implement occlusion culling
-            // For now, just a placeholder
-            if (performOcclusionCulling(entry.transform, Bounds{})) {
-                visible = false;
-                occlusionCulledCount++;
-            }
-        }
-        
-        // LOD culling (cull entities with too high LOD level)
-        if (visible && lodConfig.enabled) {
-            if (entry.lodLevel >= static_cast<int>(lodConfig.distances.size())) {
-                visible = false;
-                lodCulledCount++;
-            }
-        }
-        
-        entry.visible = visible;
-        if (visible) {
-            visibleCount++;
-        }
-    }
-    
-    // Update culling statistics
-    cullingStats.visibleEntities = visibleCount;
-    cullingStats.frustumCulled = frustumCulledCount;
-    cullingStats.occlusionCulled = occlusionCulledCount;
-    cullingStats.lodCulled = lodCulledCount;
-    
-    auto endTime = std::chrono::high_resolution_clock::now();
-    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime);
-    cullingStats.cullingTimeMs = duration.count() / 1000.0f;
-}
 
-int RenderingService::calculateLOD(const glm::vec3& entityPosition, const glm::vec3& cameraPosition) const {
-    if (!lodConfig.enabled) {
-        return 0;
-    }
-    
-    float distance = glm::length(entityPosition - cameraPosition);
-    distance += lodConfig.lodBias;
-    
-    for (size_t i = 0; i < lodConfig.distances.size(); ++i) {
-        if (distance <= lodConfig.distances[i]) {
-            return static_cast<int>(i);
-        }
-    }
-    
-    return static_cast<int>(lodConfig.distances.size());
-}
 
 void RenderingService::createRenderBatches() {
     if (!initialized || renderQueue.empty()) {
@@ -403,8 +308,7 @@ void RenderingService::createRenderBatches() {
         
         // Check if we can batch with the current batch
         bool canBatch = currentBatch.entries.empty() || 
-                       (currentBatch.priority == entry.priority && 
-                        currentBatch.entries.back().lodLevel == entry.lodLevel);
+                       (currentBatch.priority == entry.priority);
         
         if (!canBatch && !currentBatch.entries.empty()) {
             // Finalize current batch
@@ -455,9 +359,6 @@ void RenderingService::printStats() const {
     std::cout << "\n--- Culling Stats ---" << std::endl;
     std::cout << "Total Entities: " << cullingStats.totalEntities << std::endl;
     std::cout << "Visible Entities: " << cullingStats.visibleEntities << std::endl;
-    std::cout << "Frustum Culled: " << cullingStats.frustumCulled << std::endl;
-    std::cout << "Occlusion Culled: " << cullingStats.occlusionCulled << std::endl;
-    std::cout << "LOD Culled: " << cullingStats.lodCulled << std::endl;
     std::cout << "Culling Ratio: " << (cullingStats.getCullingRatio() * 100.0f) << "%" << std::endl;
     std::cout << "Culling Time: " << cullingStats.cullingTimeMs << "ms" << std::endl;
     
@@ -568,9 +469,6 @@ void RenderingService::processRenderingMT() {
     }
     
     // Single-threaded operations that depend on the above
-    if (frustumCullingEnabled || occlusionCullingEnabled) {
-        performCulling();
-    }
     
     sortRenderQueue();
     
@@ -616,7 +514,6 @@ void RenderingService::collectRenderableEntities() {
         batchEntry.entity = flecs::entity::null(); // Batch render, no specific entity
         batchEntry.priority = RenderPriority::NORMAL;
         batchEntry.distanceToCamera = 0.0f; // GPU calculates distances
-        batchEntry.lodLevel = 0; // GPU handles LOD
         batchEntry.visible = true;
         
         renderQueue.push_back(batchEntry);
@@ -635,7 +532,6 @@ void RenderingService::collectRenderableEntities() {
         
         RenderQueueEntry entry = createQueueEntry(entity, transform, renderable);
         entry.distanceToCamera = glm::length(transform.position - cameraPosition);
-        entry.lodLevel = calculateLOD(transform.position, cameraPosition);
         
         renderQueue.push_back(entry);
         entityToQueueIndex[entity] = renderQueue.size() - 1;
@@ -647,21 +543,6 @@ bool RenderingService::isEntityVisible(const RenderQueueEntry& entry) const {
     return entry.visible && entry.distanceToCamera <= maxRenderDistance;
 }
 
-bool RenderingService::performFrustumCulling(const Transform& transform, const Bounds& bounds) const {
-    // This would perform actual frustum culling
-    // For now, return true (visible)
-    return true;
-}
-
-bool RenderingService::performOcclusionCulling(const Transform& transform, const Bounds& bounds) const {
-    // This would perform occlusion culling using GPU queries
-    // For now, return false (not occluded)
-    return false;
-}
-
-void RenderingService::updateCullingStats() {
-    // Statistics are updated during the culling process
-}
 
 void RenderingService::updateRenderStats() {
     // Update any additional render statistics
@@ -677,14 +558,13 @@ RenderQueueEntry RenderingService::createQueueEntry(flecs::entity entity, const 
     entry.priority = static_cast<RenderPriority>(renderable.layer);
     entry.visible = true;
     entry.distanceToCamera = 0.0f;
-    entry.lodLevel = 0;
     entry.sortKey = 0;
     
     return entry;
 }
 
 bool RenderingService::canBatchTogether(const RenderQueueEntry& a, const RenderQueueEntry& b) const {
-    return a.priority == b.priority && a.lodLevel == b.lodLevel;
+    return a.priority == b.priority;
 }
 
 void RenderingService::waitForGPUIdle() {
@@ -708,8 +588,8 @@ void RenderingService::setupRenderingPhases() {
 
 void RenderingService::registerRenderingSystems() {
     // GPU-DRIVEN PIPELINE: CPU-side ECS systems removed for performance
-    // All entity processing (transforms, culling, LOD) handled by GPU compute shaders
-    // This eliminates 320k function calls per frame (4 systems × 80k entities)
+    // All entity processing handled by GPU compute shaders
+    // This eliminates 320k function calls per frame
 }
 
 void RenderingService::cleanupSystems() {
@@ -733,39 +613,8 @@ void RenderingService::setCameraEntity(flecs::entity cameraEntity) {
 
 // ECS System Callbacks
 // GPU-DRIVEN PIPELINE: System callbacks removed
-// All entity processing (transforms, culling, LOD, sync) handled by GPU compute shaders
-// This eliminates 19.2 million function calls per second (320k calls/frame × 60 FPS)
+// All entity processing handled by GPU compute shaders
+// This eliminates 19.2 million function calls per second
 
-// Helper Methods
-bool RenderingService::isEntityVisibleInFrustum(const Transform& transform, const Renderable& renderable, 
-                                                const glm::mat4& viewMatrix, const glm::mat4& projMatrix) {
-    // Simple visibility check - in production this would do proper frustum culling
-    return true;
-}
 
-uint32_t RenderingService::calculateLODLevel(const glm::vec3& entityPosition, const glm::vec3& cameraPosition) {
-    float distance = glm::length(entityPosition - cameraPosition);
-    
-    if (distance < renderState_.lodNearDistance) {
-        return 0;
-    } else if (distance < renderState_.lodMediumDistance) {
-        return 1;
-    } else {
-        return 2;
-    }
-}
-
-void RenderingService::updateEntityCullingData(flecs::entity entity, bool visible) {
-    if (entity.has<CullingData>()) {
-        auto cullingData = entity.get_mut<CullingData>();
-        cullingData->visible = visible;
-    }
-}
-
-void RenderingService::updateEntityLODData(flecs::entity entity, uint32_t lodLevel) {
-    if (entity.has<LODData>()) {
-        auto lodData = entity.get_mut<LODData>();
-        lodData->level = lodLevel;
-    }
-}
 

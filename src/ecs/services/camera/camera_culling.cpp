@@ -2,32 +2,6 @@
 #include <cmath>
 #include <algorithm>
 
-std::vector<CullingInfo> CameraCulling::performFrustumCulling(const std::vector<Transform>& transforms, 
-                                                              const std::vector<Bounds>& bounds,
-                                                              const Camera* camera) const {
-    std::vector<CullingInfo> cullingResults;
-    
-    if (!camera || transforms.size() != bounds.size()) {
-        return cullingResults;
-    }
-    
-    cullingResults.reserve(transforms.size());
-    
-    for (size_t i = 0; i < transforms.size(); ++i) {
-        CullingInfo info;
-        info.position = transforms[i].position;
-        glm::vec3 size = bounds[i].max - bounds[i].min;
-        info.bounds = size * 0.5f;
-        
-        info.visible = isInFrustum(info.position, info.bounds, camera);
-        info.distanceToCamera = calculateDistanceToCamera(info.position, camera);
-        info.lodLevel = calculateLODLevel(info.position, camera);
-        
-        cullingResults.push_back(info);
-    }
-    
-    return cullingResults;
-}
 
 bool CameraCulling::isEntityVisible(const Transform& transform, const Bounds& bounds, const Camera* camera) const {
     if (!camera) {
@@ -52,21 +26,6 @@ bool CameraCulling::isPositionVisible(const glm::vec3& position, const Camera* c
            position.y >= bounds.min.y && position.y <= bounds.max.y;
 }
 
-int CameraCulling::calculateLODLevel(const glm::vec3& entityPosition, const Camera* camera) const {
-    if (!camera) {
-        return 0;
-    }
-    
-    float distance = calculateDistanceToCamera(entityPosition, camera);
-    
-    for (size_t i = 0; i < lodDistances.size(); ++i) {
-        if (distance < lodDistances[i]) {
-            return static_cast<int>(i);
-        }
-    }
-    
-    return static_cast<int>(lodDistances.size());
-}
 
 CameraCulling::CameraBounds CameraCulling::getCameraBounds(const Camera* camera) const {
     CameraBounds bounds;

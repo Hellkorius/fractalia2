@@ -38,13 +38,6 @@ enum class RenderPriority {
     DEBUG = 400
 };
 
-// LOD (Level of Detail) configuration
-struct LODConfig {
-    std::vector<float> distances = {10.0f, 50.0f, 100.0f, 500.0f};
-    std::vector<float> complexityMultipliers = {1.0f, 0.75f, 0.5f, 0.25f};
-    bool enabled = true;
-    float lodBias = 0.0f; // Bias to adjust LOD selection
-};
 
 // Render queue entry
 struct RenderQueueEntry {
@@ -53,17 +46,15 @@ struct RenderQueueEntry {
     Renderable renderable;
     RenderPriority priority;
     float distanceToCamera;
-    int lodLevel;
     uint32_t sortKey; // For efficient sorting
     bool visible;
     
     // Generate sort key for efficient sorting
     void generateSortKey() {
-        // Pack priority (8 bits) + LOD (8 bits) + distance quantized (16 bits)
+        // Pack priority (8 bits) + distance quantized (24 bits)
         uint32_t priorityBits = static_cast<uint32_t>(priority) & 0xFF;
-        uint32_t lodBits = (static_cast<uint32_t>(lodLevel) & 0xFF) << 8;
-        uint32_t distanceBits = (static_cast<uint32_t>(distanceToCamera * 10.0f) & 0xFFFF) << 16;
-        sortKey = priorityBits | lodBits | distanceBits;
+        uint32_t distanceBits = (static_cast<uint32_t>(distanceToCamera * 10.0f) & 0xFFFFFF) << 8;
+        sortKey = priorityBits | distanceBits;
     }
 };
 
@@ -71,15 +62,11 @@ struct RenderQueueEntry {
 struct CullingStats {
     uint32_t totalEntities = 0;
     uint32_t visibleEntities = 0;
-    uint32_t frustumCulled = 0;
-    uint32_t occlusionCulled = 0;
-    uint32_t lodCulled = 0;
     uint32_t renderQueueSize = 0;
     float cullingTimeMs = 0.0f;
     
     void reset() {
-        totalEntities = visibleEntities = frustumCulled = 0;
-        occlusionCulled = lodCulled = renderQueueSize = 0;
+        totalEntities = visibleEntities = renderQueueSize = 0;
         cullingTimeMs = 0.0f;
     }
     
@@ -155,19 +142,6 @@ public:
     void submitRenderQueue();
     void clearRenderQueue();
     
-    // Culling system
-    void performCulling();
-    void setFrustumCullingEnabled(bool enabled) { frustumCullingEnabled = enabled; }
-    void setOcclusionCullingEnabled(bool enabled) { occlusionCullingEnabled = enabled; }
-    bool isFrustumCullingEnabled() const { return frustumCullingEnabled; }
-    bool isOcclusionCullingEnabled() const { return occlusionCullingEnabled; }
-    
-    // LOD (Level of Detail) management
-    void setLODConfig(const LODConfig& config) { lodConfig = config; }
-    const LODConfig& getLODConfig() const { return lodConfig; }
-    int calculateLOD(const glm::vec3& entityPosition, const glm::vec3& cameraPosition) const;
-    void setLODEnabled(bool enabled) { lodConfig.enabled = enabled; }
-    bool isLODEnabled() const { return lodConfig.enabled; }
     
     // Render batching
     void createRenderBatches();
@@ -224,12 +198,6 @@ public:
     
     // Render state management
     struct RenderState {
-        bool cullingEnabled = true;
-        bool lodEnabled = true;
-        bool frustumCullingEnabled = true;
-        float lodNearDistance = 50.0f;
-        float lodMediumDistance = 150.0f;
-        float lodFarDistance = 300.0f;
         uint32_t maxRenderableEntities = 80000;
     };
     
@@ -255,10 +223,6 @@ private:
     std::vector<RenderBatch> renderBatches;
     std::unordered_map<flecs::entity, uint32_t> entityToQueueIndex;
     
-    // Culling and LOD
-    LODConfig lodConfig;
-    bool frustumCullingEnabled = true;
-    bool occlusionCullingEnabled = false;
     bool batchingEnabled = true;
     float maxRenderDistance = 1000.0f;
     
@@ -293,9 +257,6 @@ private:
     // Internal methods
     void collectRenderableEntities();
     bool isEntityVisible(const RenderQueueEntry& entry) const;
-    bool performFrustumCulling(const Transform& transform, const Bounds& bounds) const;
-    bool performOcclusionCulling(const Transform& transform, const Bounds& bounds) const;
-    void updateCullingStats();
     void updateRenderStats();
     
     // Render queue helpers
@@ -319,16 +280,8 @@ private:
     
     // Debug helpers
     void renderDebugBounds();
-    void renderDebugLOD();
-    void renderDebugCulling();
     
     // GPU-DRIVEN PIPELINE: ECS system callbacks removed for performance
     
-    // Helper methods
-    bool isEntityVisibleInFrustum(const Transform& transform, const Renderable& renderable, 
-                                  const glm::mat4& viewMatrix, const glm::mat4& projMatrix);
-    uint32_t calculateLODLevel(const glm::vec3& entityPosition, const glm::vec3& cameraPosition);
-    void updateEntityCullingData(flecs::entity entity, bool visible);
-    void updateEntityLODData(flecs::entity entity, uint32_t lodLevel);
 };
 

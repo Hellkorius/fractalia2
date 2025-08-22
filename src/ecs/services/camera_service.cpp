@@ -210,15 +210,6 @@ std::vector<const Viewport*> CameraService::getActiveViewports() const {
     return result;
 }
 
-std::vector<CullingInfo> CameraService::performFrustumCulling(const std::vector<Transform>& transforms, 
-                                                              const std::vector<Bounds>& bounds,
-                                                              CameraID cameraID) const {
-    if (!initialized) return {};
-    
-    const Camera* camera = getCameraForOperations(cameraID);
-    return culling->performFrustumCulling(transforms, bounds, camera);
-}
-
 bool CameraService::isEntityVisible(const Transform& transform, const Bounds& bounds, CameraID cameraID) const {
     if (!initialized) return false;
     
@@ -226,23 +217,6 @@ bool CameraService::isEntityVisible(const Transform& transform, const Bounds& bo
     return culling->isEntityVisible(transform, bounds, camera);
 }
 
-int CameraService::calculateLODLevel(const glm::vec3& entityPosition, CameraID cameraID) const {
-    if (!initialized) return 0;
-    
-    const Camera* camera = getCameraForOperations(cameraID);
-    return culling->calculateLODLevel(entityPosition, camera);
-}
-
-void CameraService::setLODDistances(const std::vector<float>& distances) {
-    if (initialized) {
-        culling->setLODDistances(distances);
-    }
-}
-
-const std::vector<float>& CameraService::getLODDistances() const {
-    static std::vector<float> empty;
-    return initialized ? culling->getLODDistances() : empty;
-}
 
 glm::vec2 CameraService::worldToScreen(const glm::vec3& worldPos, const glm::vec2& screenSize, CameraID cameraID) const {
     if (!initialized) return glm::vec2(0.0f);

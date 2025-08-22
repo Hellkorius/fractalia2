@@ -95,23 +95,6 @@ struct MovementPattern {
     mutable bool initialized{false};
 };
 
-// Culling data for frustum and occlusion culling
-struct CullingData {
-    bool visible{true};
-    float distance{0.0f};
-    bool frustumCulled{false};
-    bool occlusionCulled{false};
-    uint32_t lastFrameVisible{0};
-};
-
-// Level of Detail data
-struct LODData {
-    uint32_t level{0};        // 0 = highest detail, higher numbers = lower detail
-    float distance{0.0f};     // Distance from camera
-    uint32_t meshLOD{0};      // Mesh LOD index
-    uint32_t textureLOD{0};   // Texture LOD index
-    bool needsUpdate{true};   // LOD needs recalculation
-};
 
 // Input system components for ECS-based input handling
 struct KeyboardInput {
