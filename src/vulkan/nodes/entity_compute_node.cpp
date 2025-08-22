@@ -147,9 +147,9 @@ void EntityComputeNode::execute(VkCommandBuffer commandBuffer, const FrameGraph&
         return;
     }
     
-    // Debug logging (thread-safe) - more frequent for debugging
+    // Debug logging (thread-safe) - reduced frequency
     uint32_t logCounter = debugCounter.fetch_add(1, std::memory_order_relaxed);
-    if (logCounter % 60 == 0) {
+    if (logCounter % 3000 == 0) {
         std::cout << "EntityComputeNode (Movement): " << entityCount << " entities → " << 
                      dispatchParams.totalWorkgroups << " workgroups" << std::endl;
     }

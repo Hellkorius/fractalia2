@@ -148,7 +148,7 @@ void PhysicsComputeNode::execute(VkCommandBuffer commandBuffer, const FrameGraph
     
     // Debug logging (thread-safe) - more frequent for debugging
     uint32_t logCounter = debugCounter.fetch_add(1, std::memory_order_relaxed);
-    if (logCounter % 60 == 0) {
+    if (logCounter % 3000 == 0) {
         std::cout << "PhysicsComputeNode: " << entityCount << " entities → " << 
                      dispatchParams.totalWorkgroups << " workgroups" << std::endl;
     }

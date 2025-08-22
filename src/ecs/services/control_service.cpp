@@ -94,9 +94,9 @@ void GameControlService::processFrame(float deltaTime) {
     
     this->deltaTime = deltaTime;
     
-    // Debug: Check if service is running every 60 frames
+    // Debug: Check if service is running every 3000 frames
     static int frameCount = 0;
-    if (++frameCount % 60 == 0) {
+    if (++frameCount % 3000 == 0) {
         std::cout << "GameControlService::processFrame - running (frame " << frameCount << ")" << std::endl;
     }
     
@@ -121,7 +121,7 @@ void GameControlService::handleInput() {
     
     // Debug: Show when input handling is called
     static int inputCallCount = 0;
-    if (++inputCallCount % 120 == 0) {
+    if (++inputCallCount % 3000 == 0) {
         std::cout << "GameControlService::handleInput - called " << inputCallCount << " times" << std::endl;
     }
     
