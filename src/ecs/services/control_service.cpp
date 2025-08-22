@@ -136,6 +136,14 @@ void GameControlService::handleInput() {
         std::cout << "GameControlService: create_entity is active but not just pressed" << std::endl;
     }
     
+    // Entity debug info
+    if (inputService->isActionJustPressed("debug_entity")) {
+        std::cout << "GameControlService: debug_entity action triggered!" << std::endl;
+        glm::vec2 mouseWorld = inputService->getMouseWorldPosition();
+        std::cout << "Debug readback at world position: (" << mouseWorld.x << ", " << mouseWorld.y << ")" << std::endl;
+        executeAction("debug_entity");
+    }
+    
     // Swarm creation  
     if (inputService->isActionJustPressed("create_swarm")) {
         std::cout << "GameControlService: create_swarm action triggered!" << std::endl;
@@ -223,6 +231,14 @@ void GameControlService::initializeDefaultActions() {
         "Create entity swarm",
         [this]() { actionCreateSwarm(); },
         true, swarmCreationCooldown, 0.0f
+    });
+    
+    registerAction({
+        ControlActionType::DEBUG_ENTITY,
+        "debug_entity",
+        "Debug entity info at cursor position",
+        [this]() { actionDebugEntity(); },
+        true, 0.5f, 0.0f
     });
     
     registerAction({
@@ -318,6 +334,13 @@ void GameControlService::integrateWithInputService() {
         InputActionType::DIGITAL,
         "Create entity swarm",
         {InputBinding(InputBinding::InputType::KEYBOARD_KEY, SDL_SCANCODE_EQUALS)}
+    });
+    
+    inputService->registerAction({
+        "debug_entity",
+        InputActionType::DIGITAL,
+        "Debug entity info at mouse position",
+        {InputBinding(InputBinding::InputType::MOUSE_BUTTON, SDL_BUTTON_RIGHT)}
     });
     
     inputService->registerAction({
@@ -418,6 +441,11 @@ void GameControlService::actionCreateEntity() {
 
 void GameControlService::actionCreateSwarm() {
     controlState.requestSwarmCreation = true;
+}
+
+void GameControlService::actionDebugEntity() {
+    glm::vec2 mouseWorldPos = inputService->getMouseWorldPosition();
+    debugEntityAtPosition(mouseWorldPos);
 }
 
 void GameControlService::actionShowStats() {
@@ -660,7 +688,46 @@ void GameControlService::printControlInstructions() const {
     std::cout << "R: Reset camera" << std::endl;
     std::cout << "F: Focus camera on entities" << std::endl;
     std::cout << "WASD: Move camera" << std::endl;
+    std::cout << "Right Click: Debug entity info at mouse position" << std::endl;
     std::cout << "Mouse Wheel: Zoom camera" << std::endl;
     std::cout << "===============================================\n" << std::endl;
+}
+
+void GameControlService::debugEntityAtPosition(const glm::vec2& worldPos) {
+    if (!renderer) {
+        std::cerr << "GameControlService::debugEntityAtPosition - No renderer available" << std::endl;
+        return;
+    }
+    
+    auto* gpuEntityManager = renderer->getGPUEntityManager();
+    if (!gpuEntityManager) {
+        std::cerr << "GameControlService::debugEntityAtPosition - No GPUEntityManager available" << std::endl;
+        return;
+    }
+    
+    // Get the entity buffer manager for readback
+    auto& bufferManager = gpuEntityManager->getBufferManager();
+    
+    // Perform GPU readback at the clicked position
+    EntityBufferManager::EntityDebugInfo debugInfo;
+    if (bufferManager.readbackEntityAtPosition(worldPos, debugInfo)) {
+        std::cout << "\n=== ENTITY DEBUG INFO ===" << std::endl;
+        std::cout << "World Position: (" << worldPos.x << ", " << worldPos.y << ")" << std::endl;
+        std::cout << "Entity ID: " << debugInfo.entityId << std::endl;
+        std::cout << "Position: (" << debugInfo.position.x << ", " << debugInfo.position.y 
+                  << ", " << debugInfo.position.z << ")" << std::endl;
+        std::cout << "Velocity: (" << debugInfo.velocity.x << ", " << debugInfo.velocity.y 
+                  << ") | Damping: " << debugInfo.velocity.z << std::endl;
+        std::cout << "Spatial Cell: " << debugInfo.spatialCell << std::endl;
+        
+        // Calculate spatial cell coordinates for readability
+        const uint32_t GRID_WIDTH = 64;
+        uint32_t cellX = debugInfo.spatialCell % GRID_WIDTH;
+        uint32_t cellY = debugInfo.spatialCell / GRID_WIDTH;
+        std::cout << "Spatial Grid: (" << cellX << ", " << cellY << ")" << std::endl;
+        std::cout << "========================\n" << std::endl;
+    } else {
+        std::cout << "No entity found at world position (" << worldPos.x << ", " << worldPos.y << ")" << std::endl;
+    }
 }
 

@@ -54,6 +54,25 @@ public:
         return upload(buffer, data, size, offset);
     }
     
+    // Generic readback from any buffer implementing IBufferOperations (expensive!)
+    template<typename BufferType>
+    bool readback(BufferType& buffer, void* data, VkDeviceSize size, VkDeviceSize offset = 0) {
+        static_assert(std::is_base_of_v<IBufferOperations, BufferType>, 
+                     "BufferType must implement IBufferOperations");
+        
+        if (!buffer.isInitialized()) {
+            return false;
+        }
+        
+        return buffer.readData(data, size, offset);
+    }
+    
+    // Direct VkBuffer readback for when we have the handle directly
+    bool readback(VkBuffer buffer, void* data, VkDeviceSize size, VkDeviceSize offset = 0);
+    
+    // Access to resource coordinator for advanced operations
+    ResourceCoordinator* getResourceCoordinator() const { return resourceCoordinator; }
+    
 private:
     ResourceCoordinator* resourceCoordinator = nullptr;
     

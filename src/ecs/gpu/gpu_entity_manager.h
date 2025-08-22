@@ -96,6 +96,9 @@ public:
     // Descriptor management delegation
     EntityDescriptorManager& getDescriptorManager() { return descriptorManager; }
     const EntityDescriptorManager& getDescriptorManager() const { return descriptorManager; }
+    
+    // Debug access to buffer manager for spatial map readback
+    const EntityBufferManager& getBufferManager() const { return bufferManager; }
 
 private:
     static constexpr uint32_t MAX_ENTITIES = 131072; // 128k entities max

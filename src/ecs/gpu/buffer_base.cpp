@@ -74,6 +74,23 @@ bool BufferBase::copyData(const void* data, VkDeviceSize size, VkDeviceSize offs
     return success;
 }
 
+bool BufferBase::readData(void* data, VkDeviceSize size, VkDeviceSize offset) const {
+    if (!isInitialized()) {
+        std::cerr << "BufferBase: Cannot read data - " << getBufferTypeName() << " buffer not initialized" << std::endl;
+        return false;
+    }
+    
+    if (offset + size > bufferSize) {
+        std::cerr << "BufferBase: Read would exceed " << getBufferTypeName() << " buffer size" << std::endl;
+        return false;
+    }
+    
+    // For debug readback, we need to implement a simple staging buffer approach
+    // This is expensive and should only be used for debugging
+    std::cerr << "BufferBase::readData: GPU readback not implemented yet - spatial map data not available" << std::endl;
+    return false;
+}
+
 bool BufferBase::createBuffer(VkDeviceSize size, VkBufferUsageFlags usage) {
     VkBufferCreateInfo bufferInfo{};
     bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;

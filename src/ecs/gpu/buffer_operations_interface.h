@@ -18,6 +18,9 @@ public:
     // Data upload operations
     virtual bool copyData(const void* data, VkDeviceSize size, VkDeviceSize offset = 0) = 0;
     
+    // Data readback operations (expensive - use sparingly)
+    virtual bool readData(void* data, VkDeviceSize size, VkDeviceSize offset = 0) const = 0;
+    
     // Buffer state
     virtual bool isInitialized() const = 0;
 };

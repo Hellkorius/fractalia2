@@ -24,6 +24,7 @@ public:
     
     // Common buffer operations
     bool copyData(const void* data, VkDeviceSize size, VkDeviceSize offset = 0) override;
+    bool readData(void* data, VkDeviceSize size, VkDeviceSize offset = 0) const override;
     
     // Lifecycle
     virtual bool initialize(const VulkanContext& context, ResourceCoordinator* resourceCoordinator, 

@@ -71,13 +71,16 @@ public:
         uint32_t entityId;
     };
     
-    bool readbackEntityAtPosition(glm::vec2 worldPos, EntityDebugInfo& info);
-    bool readbackEntityById(uint32_t entityId, EntityDebugInfo& info);
-    bool readbackSpatialCell(uint32_t cellIndex, std::vector<uint32_t>& entityIds);
+    bool readbackEntityAtPosition(glm::vec2 worldPos, EntityDebugInfo& info) const;
+    bool readbackEntityById(uint32_t entityId, EntityDebugInfo& info) const;
+    bool readbackSpatialCell(uint32_t cellIndex, std::vector<uint32_t>& entityIds) const;
 
 private:
     // Configuration
     uint32_t maxEntities = 0;
+    
+    // Helper method for GPU readback
+    bool readGPUBuffer(VkBuffer srcBuffer, void* dstData, VkDeviceSize size, VkDeviceSize offset) const;
     
     // Specialized buffer components (SRP-compliant)
     VelocityBuffer velocityBuffer;

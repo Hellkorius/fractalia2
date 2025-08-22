@@ -74,3 +74,10 @@ bool BufferUploadService::validateUpload(const IBufferOperations& buffer, VkDevi
     
     return true;
 }
+
+bool BufferUploadService::readback(VkBuffer buffer, void* data, VkDeviceSize size, VkDeviceSize offset) {
+    // For debug readback, we need to implement a simple staging buffer approach
+    // This is expensive and should only be used for debugging
+    std::cerr << "BufferUploadService::readback: GPU readback not implemented yet - spatial map data not available" << std::endl;
+    return false;
+}

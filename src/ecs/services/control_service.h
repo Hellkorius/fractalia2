@@ -20,6 +20,7 @@ enum class ControlActionType {
     TOGGLE_MOVEMENT,
     CREATE_ENTITY,
     CREATE_SWARM,
+    DEBUG_ENTITY,
     PERFORMANCE_STATS,
     GRAPHICS_TESTS,
     CAMERA_CONTROL,
@@ -92,6 +93,7 @@ public:
     void toggleMovementType();
     void createEntity(const glm::vec2& position);
     void createSwarm(size_t count, const glm::vec3& center, float radius);
+    void debugEntityAtPosition(const glm::vec2& worldPos);
     void showPerformanceStats();
     void runGraphicsTests();
     void toggleDebugMode();
@@ -149,6 +151,7 @@ private:
     void actionToggleMovement();
     void actionCreateEntity();
     void actionCreateSwarm();
+    void actionDebugEntity();
     void actionShowStats();
     void actionGraphicsTests();
     void actionToggleDebug();
