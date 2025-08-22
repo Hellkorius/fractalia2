@@ -78,7 +78,7 @@ void PhysicsComputeNode::execute(VkCommandBuffer commandBuffer, const FrameGraph
     const uint32_t entityCount = gpuEntityManager->getEntityCount();
     if (entityCount == 0) {
         uint32_t counter = debugCounter.fetch_add(1, std::memory_order_relaxed);
-        if (counter % 60 == 0) {
+        if (counter % 1800 == 0) {
             std::cout << "PhysicsComputeNode: No entities to process" << std::endl;
         }
         return;
@@ -146,9 +146,9 @@ void PhysicsComputeNode::execute(VkCommandBuffer commandBuffer, const FrameGraph
         return;
     }
     
-    // Debug logging (thread-safe) - more frequent for debugging
+    // Debug logging (thread-safe) - once every 30 seconds
     uint32_t logCounter = debugCounter.fetch_add(1, std::memory_order_relaxed);
-    if (logCounter % 60 == 0) {
+    if (logCounter % 1800 == 0) {
         std::cout << "PhysicsComputeNode: " << entityCount << " entities → " << 
                      dispatchParams.totalWorkgroups << " workgroups" << std::endl;
     }

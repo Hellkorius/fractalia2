@@ -28,6 +28,7 @@ public:
     VkBuffer getRuntimeStateBuffer() const { return runtimeStateBuffer.getBuffer(); }
     VkBuffer getColorBuffer() const { return colorBuffer.getBuffer(); }
     VkBuffer getModelMatrixBuffer() const { return modelMatrixBuffer.getBuffer(); }
+    VkBuffer getSpatialMapBuffer() const { return spatialMapBuffer.getBuffer(); }
     
     // Position buffers - delegated to coordinator
     VkBuffer getPositionBuffer() const { return positionCoordinator.getPrimaryBuffer(); }
@@ -46,6 +47,7 @@ public:
     VkDeviceSize getRuntimeStateBufferSize() const { return runtimeStateBuffer.getSize(); }
     VkDeviceSize getColorBufferSize() const { return colorBuffer.getSize(); }
     VkDeviceSize getModelMatrixBufferSize() const { return modelMatrixBuffer.getSize(); }
+    VkDeviceSize getSpatialMapBufferSize() const { return spatialMapBuffer.getSize(); }
     VkDeviceSize getPositionBufferSize() const { return positionCoordinator.getBufferSize(); }
     uint32_t getMaxEntities() const { return maxEntities; }
     
@@ -58,7 +60,20 @@ public:
     bool uploadRuntimeStateData(const void* data, VkDeviceSize size, VkDeviceSize offset = 0);
     bool uploadColorData(const void* data, VkDeviceSize size, VkDeviceSize offset = 0);
     bool uploadModelMatrixData(const void* data, VkDeviceSize size, VkDeviceSize offset = 0);
+    bool uploadSpatialMapData(const void* data, VkDeviceSize size, VkDeviceSize offset = 0);
     bool uploadPositionDataToAllBuffers(const void* data, VkDeviceSize size, VkDeviceSize offset = 0);
+    
+    // Debug readback methods (expensive - use sparingly)
+    struct EntityDebugInfo {
+        glm::vec4 position;
+        glm::vec4 velocity;
+        uint32_t spatialCell;
+        uint32_t entityId;
+    };
+    
+    bool readbackEntityAtPosition(glm::vec2 worldPos, EntityDebugInfo& info);
+    bool readbackEntityById(uint32_t entityId, EntityDebugInfo& info);
+    bool readbackSpatialCell(uint32_t cellIndex, std::vector<uint32_t>& entityIds);
 
 private:
     // Configuration
@@ -70,6 +85,7 @@ private:
     RuntimeStateBuffer runtimeStateBuffer;
     ColorBuffer colorBuffer;
     ModelMatrixBuffer modelMatrixBuffer;
+    SpatialMapBuffer spatialMapBuffer;
     
     // Position buffer coordination
     PositionBufferCoordinator positionCoordinator;

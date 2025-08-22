@@ -30,6 +30,47 @@ layout(std430, binding = 4) buffer CurrentPositionBuffer {
     vec4 currentPositions[]; // R/W: physics integration state
 } currentPos;
 
+// Spatial map buffer for collision detection and spatial queries
+layout(std430, binding = 7) buffer SpatialMapBuffer {
+    uvec2 spatialCells[]; // R/W: spatial hash grid - packed (entityId, nextIndex)
+} spatialMap;
+
+/* ---------- Spatial Map Constants and Functions ---------- */
+
+// Spatial grid configuration
+const float CELL_SIZE = 2.0;           // Size of each spatial cell
+const uint GRID_WIDTH = 64;            // Grid dimensions (must be power of 2)
+const uint GRID_HEIGHT = 64;
+const uint SPATIAL_MAP_SIZE = GRID_WIDTH * GRID_HEIGHT; // 4096 cells
+const uint NULL_INDEX = 0xFFFFFFFF;    // Null pointer for linked list
+
+// Fast spatial hash function using bit mixing
+uint spatialHash(vec2 position) {
+    // Convert world position to grid coordinates
+    ivec2 gridCoord = ivec2(floor(position / CELL_SIZE));
+    
+    // Wrap to grid bounds using bitwise AND (requires power-of-2 dimensions)
+    uint x = uint(gridCoord.x) & (GRID_WIDTH - 1);
+    uint y = uint(gridCoord.y) & (GRID_HEIGHT - 1);
+    
+    // Simple hash: x + y * width
+    return x + y * GRID_WIDTH;
+}
+
+// Update spatial map entry for this entity
+void updateSpatialMap(uint entityIndex, vec2 position) {
+    uint cellIndex = spatialHash(position);
+    
+    // Pack entity data: entityId in x, clear next pointer in y
+    uvec2 entityData = uvec2(entityIndex, NULL_INDEX);
+    
+    // Atomic operation: read current cell head and insert this entity at front
+    uint oldHead = atomicExchange(spatialMap.spatialCells[cellIndex].x, entityIndex);
+    
+    // Store old head as our next pointer (building linked list)
+    spatialMap.spatialCells[cellIndex].y = oldHead;
+}
+
 void main() {
     // Get current entity index with chunk offset
     uint entityIndex = gl_GlobalInvocationID.x + pc.entityOffset;
@@ -74,4 +115,7 @@ void main() {
     // Write back velocity and position
     velocityBuffer.velocities[entityIndex].xy = vel;
     outPositions.positions[entityIndex] = vec4(currentPosition, 1.0);
+    
+    // Update spatial map with new position
+    updateSpatialMap(entityIndex, currentPosition.xy);
 }

@@ -85,3 +85,17 @@ public:
 protected:
     const char* getBufferTypeName() const override { return "Position"; }
 };
+
+// SINGLE responsibility: spatial map data management
+class SpatialMapBuffer : public BufferBase {
+public:
+    using BufferBase::initialize; // Bring base class initialize into scope
+    
+    bool initialize(const VulkanContext& context, ResourceCoordinator* resourceCoordinator, uint32_t gridSize = 4096) {
+        // Spatial map uses uvec2 (8 bytes per cell) for linked list storage
+        return BufferBase::initialize(context, resourceCoordinator, gridSize, sizeof(glm::uvec2), 0);
+    }
+    
+protected:
+    const char* getBufferTypeName() const override { return "SpatialMap"; }
+};

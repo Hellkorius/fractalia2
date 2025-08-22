@@ -46,6 +46,11 @@ bool EntityBufferManager::initialize(const VulkanContext& context, ResourceCoord
         return false;
     }
     
+    if (!spatialMapBuffer.initialize(context, resourceCoordinator, 4096)) { // 64x64 grid
+        std::cerr << "EntityBufferManager: Failed to initialize spatial map buffer" << std::endl;
+        return false;
+    }
+    
     // Initialize position buffer coordinator
     if (!positionCoordinator.initialize(context, resourceCoordinator, maxEntities)) {
         std::cerr << "EntityBufferManager: Failed to initialize position coordinator" << std::endl;
@@ -59,6 +64,7 @@ bool EntityBufferManager::initialize(const VulkanContext& context, ResourceCoord
 void EntityBufferManager::cleanup() {
     // Cleanup specialized components
     positionCoordinator.cleanup();
+    spatialMapBuffer.cleanup();
     modelMatrixBuffer.cleanup();
     colorBuffer.cleanup();
     runtimeStateBuffer.cleanup();
@@ -88,6 +94,10 @@ bool EntityBufferManager::uploadColorData(const void* data, VkDeviceSize size, V
 
 bool EntityBufferManager::uploadModelMatrixData(const void* data, VkDeviceSize size, VkDeviceSize offset) {
     return uploadService.upload(modelMatrixBuffer, data, size, offset);
+}
+
+bool EntityBufferManager::uploadSpatialMapData(const void* data, VkDeviceSize size, VkDeviceSize offset) {
+    return uploadService.upload(spatialMapBuffer, data, size, offset);
 }
 
 bool EntityBufferManager::uploadPositionDataToAllBuffers(const void* data, VkDeviceSize size, VkDeviceSize offset) {
