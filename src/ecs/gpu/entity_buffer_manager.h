@@ -82,6 +82,9 @@ private:
     // Helper method for GPU readback
     bool readGPUBuffer(VkBuffer srcBuffer, void* dstData, VkDeviceSize size, VkDeviceSize offset) const;
     
+    // Initialize spatial map with NULL values
+    bool initializeSpatialMapBuffer();
+    
     // Specialized buffer components (SRP-compliant)
     VelocityBuffer velocityBuffer;
     MovementParamsBuffer movementParamsBuffer;

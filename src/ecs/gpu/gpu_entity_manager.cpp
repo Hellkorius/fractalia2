@@ -105,6 +105,13 @@ void GPUEntityManager::addEntitiesFromECS(const std::vector<flecs::entity>& enti
         
         if (transform && renderable && movement) {
             stagingEntities.addFromECS(*transform, *renderable, *movement);
+            
+            // Store mapping from GPU buffer index to ECS entity ID for debugging
+            uint32_t gpuIndex = activeEntityCount + stagingEntities.size() - 1;
+            if (gpuIndex >= gpuIndexToECSEntity.size()) {
+                gpuIndexToECSEntity.resize(gpuIndex + 1);
+            }
+            gpuIndexToECSEntity[gpuIndex] = entity;
         }
     }
 }
@@ -171,3 +178,10 @@ void GPUEntityManager::clearAllEntities() {
 }
 
 // Core entity logic now clearly visible - descriptor management delegated to EntityDescriptorManager
+
+flecs::entity GPUEntityManager::getECSEntityFromGPUIndex(uint32_t gpuIndex) const {
+    if (gpuIndex < gpuIndexToECSEntity.size()) {
+        return gpuIndexToECSEntity[gpuIndex];
+    }
+    return flecs::entity{}; // Invalid entity
+}

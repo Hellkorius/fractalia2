@@ -608,7 +608,15 @@ namespace DescriptorLayoutPresets {
         currentPosBinding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
         currentPosBinding.debugName = "currentPositionBuffer";
         
-        spec.bindings = {velocityBinding, movementParamsBinding, runtimeStateBinding, positionOutputBinding, currentPosBinding};
+        // Binding 7: SpatialMapBuffer (spatial hash grid for collision detection)
+        DescriptorBinding spatialMapBinding{};
+        spatialMapBinding.binding = 7;
+        spatialMapBinding.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        spatialMapBinding.descriptorCount = 1;
+        spatialMapBinding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+        spatialMapBinding.debugName = "spatialMapBuffer";
+        
+        spec.bindings = {velocityBinding, movementParamsBinding, runtimeStateBinding, positionOutputBinding, currentPosBinding, spatialMapBinding};
         return spec;
     }
 }

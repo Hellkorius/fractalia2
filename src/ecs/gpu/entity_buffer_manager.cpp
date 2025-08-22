@@ -55,6 +55,12 @@ bool EntityBufferManager::initialize(const VulkanContext& context, ResourceCoord
         return false;
     }
     
+    // Initialize spatial map buffer with NULL values (0xFFFFFFFF)
+    if (!initializeSpatialMapBuffer()) {
+        std::cerr << "EntityBufferManager: Failed to clear spatial map buffer" << std::endl;
+        return false;
+    }
+    
     // Initialize position buffer coordinator
     if (!positionCoordinator.initialize(context, resourceCoordinator, maxEntities)) {
         std::cerr << "EntityBufferManager: Failed to initialize position coordinator" << std::endl;
@@ -182,45 +188,75 @@ bool EntityBufferManager::readbackEntityAtPosition(glm::vec2 worldPos, EntityDeb
     
     std::cout << "=== ENTITY SEARCH DEBUG ===" << std::endl;
     std::cout << "Click position: (" << worldPos.x << ", " << worldPos.y << ")" << std::endl;
-    std::cout << "Clicked cell: " << clickedCellIndex << " (grid: " << clickedX << ", " << clickedY << ")" << std::endl;
+    std::cout << "CELL_SIZE: " << CELL_SIZE << ", GRID_WIDTH: " << GRID_WIDTH << ", GRID_HEIGHT: " << GRID_HEIGHT << std::endl;
+    std::cout << "Raw grid coord: (" << gridCoord.x << ", " << gridCoord.y << ")" << std::endl;
+    std::cout << "Wrapped grid coord: (" << clickedX << ", " << clickedY << ")" << std::endl;
+    std::cout << "Clicked cell: " << clickedCellIndex << " (formula: " << clickedX << " + " << clickedY << " * " << GRID_WIDTH << ")" << std::endl;
     
-    // Search through ALL entities to find the closest one (ignore spatial cells for now)
+    // Search nearby spatial cells for entities (much more efficient!)
     uint32_t closestEntity = 0;
     float closestDistance = std::numeric_limits<float>::max();
     glm::vec4 closestPosition;
-    uint32_t entitiesChecked = 0;
-    uint32_t validEntities = 0;
+    uint32_t cellsChecked = 0;
+    uint32_t entitiesFound = 0;
     
-    // Check a reasonable number of entities (not all 80k for performance)
-    uint32_t searchLimit = std::min(maxEntities, 10000u);
+    // Search in a 5x5 grid around the clicked cell (25 cells total)
+    const int SEARCH_RADIUS = 2; // cells in each direction
     
-    for (uint32_t entityId = 0; entityId < searchLimit; ++entityId) {
-        entitiesChecked++;
-        
-        // Read position for this entity
-        glm::vec4 entityPosition;
-        if (readGPUBuffer(positionCoordinator.getPrimaryBuffer(), 
-                         &entityPosition, sizeof(glm::vec4), 
-                         entityId * sizeof(glm::vec4))) {
+    for (int dy = -SEARCH_RADIUS; dy <= SEARCH_RADIUS; ++dy) {
+        for (int dx = -SEARCH_RADIUS; dx <= SEARCH_RADIUS; ++dx) {
+            // Calculate neighboring cell coordinates
+            int neighborX = (int)clickedX + dx;
+            int neighborY = (int)clickedY + dy;
             
-            // Check if this is a valid entity (has non-zero position or is at spawn location)
-            if (glm::length(glm::vec2(entityPosition)) > 0.01f) {
-                validEntities++;
-                
-                float distance = glm::distance(worldPos, glm::vec2(entityPosition));
-                if (distance < closestDistance) {
-                    closestDistance = distance;
-                    closestEntity = entityId;
-                    closestPosition = entityPosition;
+            // Wrap around grid boundaries (handle negative coordinates properly)
+            uint32_t searchX = ((uint32_t)(neighborX % (int)GRID_WIDTH + GRID_WIDTH)) & (GRID_WIDTH - 1);
+            uint32_t searchY = ((uint32_t)(neighborY % (int)GRID_HEIGHT + GRID_HEIGHT)) & (GRID_HEIGHT - 1);
+            uint32_t searchCellIndex = searchX + searchY * GRID_WIDTH;
+            
+            cellsChecked++;
+            
+            // Check entities in this cell
+            std::vector<uint32_t> entitiesInCell;
+            std::cout << "Searching cell " << searchCellIndex << " (grid: " << searchX << ", " << searchY << ")" << std::endl;
+            if (readbackSpatialCell(searchCellIndex, entitiesInCell)) {
+                for (uint32_t entityId : entitiesInCell) {
+                    if (entityId >= maxEntities) continue;
+                    entitiesFound++;
+                    
+                    // Read position for this entity
+                    glm::vec4 entityPosition;
+                    if (readGPUBuffer(positionCoordinator.getPrimaryBuffer(), 
+                                     &entityPosition, sizeof(glm::vec4), 
+                                     entityId * sizeof(glm::vec4))) {
+                        
+                        // Calculate entity's spatial cell using same logic as shader
+                        glm::vec2 entityPos2D = glm::vec2(entityPosition);
+                        glm::ivec2 entityGridCoord = glm::ivec2(glm::floor(entityPos2D / CELL_SIZE));
+                        uint32_t entityCellX = static_cast<uint32_t>(entityGridCoord.x) & (GRID_WIDTH - 1);
+                        uint32_t entityCellY = static_cast<uint32_t>(entityGridCoord.y) & (GRID_HEIGHT - 1);
+                        uint32_t entityActualCell = entityCellX + entityCellY * GRID_WIDTH;
+                        
+                        float distance = glm::distance(worldPos, glm::vec2(entityPosition));
+                        std::cout << "  Entity " << entityId << " at (" << entityPosition.x << ", " << entityPosition.y 
+                                  << ") in search cell " << searchCellIndex << " but actual cell " << entityActualCell 
+                                  << " distance " << distance << std::endl;
+                        
+                        if (distance < closestDistance) {
+                            closestDistance = distance;
+                            closestEntity = entityId;
+                            closestPosition = entityPosition;
+                        }
+                    }
                 }
             }
         }
     }
     
-    std::cout << "Entities checked: " << entitiesChecked << ", Valid entities: " << validEntities << std::endl;
+    std::cout << "Cells searched: " << cellsChecked << ", Entities found: " << entitiesFound << std::endl;
     
-    if (validEntities == 0) {
-        std::cout << "No valid entities found in search" << std::endl;
+    if (entitiesFound == 0) {
+        std::cout << "No entities found in nearby cells" << std::endl;
         return false;
     }
     
@@ -337,5 +373,28 @@ bool EntityBufferManager::readbackSpatialCell(uint32_t cellIndex, std::vector<ui
     }
     
     return true;
+}
+
+bool EntityBufferManager::initializeSpatialMapBuffer() {
+    const uint32_t SPATIAL_MAP_SIZE = 4096; // 64x64 grid
+    const uint32_t NULL_INDEX = 0xFFFFFFFF;
+    
+    // Create initialization data with NULL values
+    std::vector<glm::uvec2> initData(SPATIAL_MAP_SIZE);
+    for (auto& cell : initData) {
+        cell.x = NULL_INDEX; // entityId = NULL
+        cell.y = NULL_INDEX; // nextIndex = NULL
+    }
+    
+    // Upload the NULL initialization data
+    VkDeviceSize uploadSize = SPATIAL_MAP_SIZE * sizeof(glm::uvec2);
+    bool success = uploadService.upload(spatialMapBuffer, initData.data(), uploadSize, 0);
+    
+    if (success) {
+        std::cout << "EntityBufferManager: Spatial map buffer initialized with NULL values (" 
+                  << SPATIAL_MAP_SIZE << " cells)" << std::endl;
+    }
+    
+    return success;
 }
 

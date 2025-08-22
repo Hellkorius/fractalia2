@@ -711,9 +711,19 @@ void GameControlService::debugEntityAtPosition(const glm::vec2& worldPos) {
     // Perform GPU readback at the clicked position
     EntityBufferManager::EntityDebugInfo debugInfo;
     if (bufferManager.readbackEntityAtPosition(worldPos, debugInfo)) {
+        // Get ECS entity ID from GPU index
+        auto ecsEntity = gpuEntityManager->getECSEntityFromGPUIndex(debugInfo.entityId);
+        
         std::cout << "\n=== ENTITY DEBUG INFO ===" << std::endl;
         std::cout << "World Position: (" << worldPos.x << ", " << worldPos.y << ")" << std::endl;
-        std::cout << "Entity ID: " << debugInfo.entityId << std::endl;
+        std::cout << "GPU Buffer Index: " << debugInfo.entityId << std::endl;
+        std::cout << "ECS Entity ID: " << std::hex << ecsEntity.id() << std::dec;
+        if (ecsEntity.is_valid()) {
+            std::cout << " (valid)";
+        } else {
+            std::cout << " (invalid/unmapped)";
+        }
+        std::cout << std::endl;
         std::cout << "Position: (" << debugInfo.position.x << ", " << debugInfo.position.y 
                   << ", " << debugInfo.position.z << ")" << std::endl;
         std::cout << "Velocity: (" << debugInfo.velocity.x << ", " << debugInfo.velocity.y 

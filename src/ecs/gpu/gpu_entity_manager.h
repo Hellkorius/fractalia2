@@ -99,6 +99,9 @@ public:
     
     // Debug access to buffer manager for spatial map readback
     const EntityBufferManager& getBufferManager() const { return bufferManager; }
+    
+    // Debug: Get ECS entity ID from GPU buffer index
+    flecs::entity getECSEntityFromGPUIndex(uint32_t gpuIndex) const;
 
 private:
     static constexpr uint32_t MAX_ENTITIES = 131072; // 128k entities max
@@ -115,4 +118,7 @@ private:
     // Staging data - SoA approach
     GPUEntitySoA stagingEntities;
     uint32_t activeEntityCount = 0;
+    
+    // Debug: Mapping from GPU buffer index to ECS entity ID
+    std::vector<flecs::entity> gpuIndexToECSEntity;
 };
