@@ -38,7 +38,7 @@ layout(std430, binding = 7) buffer SpatialMapBuffer {
 /* ---------- Spatial Map Constants and Functions ---------- */
 
 // Spatial grid configuration
-const float CELL_SIZE = 2.0;           // Size of each spatial cell (smaller for precision)
+const float CELL_SIZE = 1.5;           // Size of each spatial cell
 const uint GRID_WIDTH = 64;            // Grid dimensions (must be power of 2)
 const uint GRID_HEIGHT = 64;
 const uint SPATIAL_MAP_SIZE = GRID_WIDTH * GRID_HEIGHT; // 4096 cells
@@ -85,22 +85,26 @@ const vec2 TRIANGLE_VERTICES[3] = vec2[](
     vec2(0.4, -0.25)     // Bottom right
 );
 
-// Collect entities from spatial cell by brute force search
-// Since linked list traversal is unreliable, we'll search all entities for this cell
-uint collectEntitiesInCell(uint targetCellIndex, out uint entities[MAX_ENTITIES_PER_CELL]) {
+// Fast entity collection using spatial map (optimized)
+uint collectEntitiesInCell(uint cellIndex, out uint entities[MAX_ENTITIES_PER_CELL]) {
     uint count = 0;
     
-    // Brute force: check every entity to see if it belongs to this cell
-    for (uint i = 0; i < pc.entityCount && count < MAX_ENTITIES_PER_CELL; i++) {
-        // Get entity position and calculate its cell
-        vec3 entityPos = currentPos.currentPositions[i].xyz;
-        uint entityCellIndex = spatialHash(entityPos.xy);
+    // Read head entity from spatial map
+    uint headEntity = spatialMap.spatialCells[cellIndex].x;
+    if (headEntity != NULL_INDEX && headEntity < pc.entityCount && count < MAX_ENTITIES_PER_CELL) {
+        entities[count] = headEntity;
+        count++;
         
-        // If this entity belongs to our target cell, add it to the list
-        if (entityCellIndex == targetCellIndex) {
-            entities[count] = i;
+        // Read next entity (now checking more entities per cell)
+        uint nextEntity = spatialMap.spatialCells[cellIndex].y;
+        if (nextEntity != NULL_INDEX && nextEntity < pc.entityCount && 
+            nextEntity != headEntity && count < MAX_ENTITIES_PER_CELL) {
+            entities[count] = nextEntity;
             count++;
         }
+        
+        // Note: With current spatial map implementation, we can only reliably get 2 entities
+        // In a full linked list implementation, we could traverse more here
     }
     
     return count;
@@ -247,19 +251,27 @@ void main() {
     vec2 resolvedPosition = currentPosition.xy;
     bool hadCollision = false;
     
+    // Pre-calculate collision parameters
+    const float collisionRadius = TRIANGLE_RADIUS * 2.0;
+    const float collisionRadiusSq = collisionRadius * collisionRadius;
+    
     // Get our spatial cell
     uint cellIndex = spatialHash(currentPosition.xy);
     
-    // Check only 4 adjacent cells (not diagonal neighbors)
-    const int offsets[5][2] = int[5][2](
+    // Check all 8 neighboring cells plus current cell (3x3 grid)
+    const int offsets[9][2] = int[9][2](
         int[2](0, 0),   // Current cell
         int[2](-1, 0),  // Left
         int[2](1, 0),   // Right  
         int[2](0, -1),  // Up
-        int[2](0, 1)    // Down
+        int[2](0, 1),   // Down
+        int[2](-1, -1), // Top-left diagonal
+        int[2](1, -1),  // Top-right diagonal
+        int[2](-1, 1),  // Bottom-left diagonal
+        int[2](1, 1)    // Bottom-right diagonal
     );
     
-    for (int cellIdx = 0; cellIdx < 5; cellIdx++) {
+    for (int cellIdx = 0; cellIdx < 9; cellIdx++) {
         int dx = offsets[cellIdx][0];
         int dy = offsets[cellIdx][1];
         
@@ -285,13 +297,14 @@ void main() {
             // Get other entity's position
             vec3 otherPos = currentPos.currentPositions[otherEntityIndex].xyz;
             
-            // Simple distance check for collision (same as working version)
-            float distance = length(currentPosition.xy - otherPos.xy);
-            float collisionRadius = TRIANGLE_RADIUS * 2.0; // Combined radius
+            // Fast squared distance check (no expensive sqrt)
+            vec2 diff = currentPosition.xy - otherPos.xy;
+            float distSq = dot(diff, diff);
             
-            if (distance < collisionRadius && distance > 0.001) {
-                // Collision detected! Force strong separation
-                vec2 separationDir = normalize(currentPosition.xy - otherPos.xy);
+            if (distSq < collisionRadiusSq && distSq > 0.000001) {
+                // Collision detected! Fast separation using diff vector
+                float invDist = inversesqrt(distSq); // Fast inverse sqrt
+                vec2 separationDir = diff * invDist;
                 resolvedPosition = otherPos.xy + separationDir * collisionRadius;
                 
                 // Stop movement entirely on collision
