@@ -169,39 +169,33 @@ bool EntityBufferManager::readGPUBuffer(VkBuffer srcBuffer, void* dstData, VkDev
 
 // Debug readback implementations
 bool EntityBufferManager::readbackEntityAtPosition(glm::vec2 worldPos, EntityDebugInfo& info) const {
-    // Calculate spatial cell using same logic as GPU shader
+    // Calculate clicked spatial cell using same logic as GPU shader
     const float CELL_SIZE = 2.0f;
     const uint32_t GRID_WIDTH = 64;
     const uint32_t GRID_HEIGHT = 64;
     
     // Convert world position to grid coordinates (same as GPU)
     glm::ivec2 gridCoord = glm::ivec2(glm::floor(worldPos / CELL_SIZE));
-    uint32_t x = static_cast<uint32_t>(gridCoord.x) & (GRID_WIDTH - 1);
-    uint32_t y = static_cast<uint32_t>(gridCoord.y) & (GRID_HEIGHT - 1);
-    uint32_t cellIndex = x + y * GRID_WIDTH;
+    uint32_t clickedX = static_cast<uint32_t>(gridCoord.x) & (GRID_WIDTH - 1);
+    uint32_t clickedY = static_cast<uint32_t>(gridCoord.y) & (GRID_HEIGHT - 1);
+    uint32_t clickedCellIndex = clickedX + clickedY * GRID_WIDTH;
     
-    info.spatialCell = cellIndex;
+    std::cout << "=== ENTITY SEARCH DEBUG ===" << std::endl;
+    std::cout << "Click position: (" << worldPos.x << ", " << worldPos.y << ")" << std::endl;
+    std::cout << "Clicked cell: " << clickedCellIndex << " (grid: " << clickedX << ", " << clickedY << ")" << std::endl;
     
-    // Read spatial map from GPU to find entities in this cell
-    std::vector<uint32_t> entitiesInCell;
-    if (!readbackSpatialCell(cellIndex, entitiesInCell)) {
-        std::cout << "Failed to read spatial cell " << cellIndex << std::endl;
-        return false;
-    }
-    
-    if (entitiesInCell.empty()) {
-        std::cout << "No entities found in spatial cell " << cellIndex << " at world position (" 
-                  << worldPos.x << ", " << worldPos.y << ")" << std::endl;
-        return false;
-    }
-    
-    // Find closest entity by reading position data for all entities in cell
-    uint32_t closestEntity = entitiesInCell[0];
+    // Search through ALL entities to find the closest one (ignore spatial cells for now)
+    uint32_t closestEntity = 0;
     float closestDistance = std::numeric_limits<float>::max();
     glm::vec4 closestPosition;
+    uint32_t entitiesChecked = 0;
+    uint32_t validEntities = 0;
     
-    for (uint32_t entityId : entitiesInCell) {
-        if (entityId >= maxEntities) continue;
+    // Check a reasonable number of entities (not all 80k for performance)
+    uint32_t searchLimit = std::min(maxEntities, 10000u);
+    
+    for (uint32_t entityId = 0; entityId < searchLimit; ++entityId) {
+        entitiesChecked++;
         
         // Read position for this entity
         glm::vec4 entityPosition;
@@ -209,17 +203,38 @@ bool EntityBufferManager::readbackEntityAtPosition(glm::vec2 worldPos, EntityDeb
                          &entityPosition, sizeof(glm::vec4), 
                          entityId * sizeof(glm::vec4))) {
             
-            float distance = glm::distance(worldPos, glm::vec2(entityPosition));
-            if (distance < closestDistance) {
-                closestDistance = distance;
-                closestEntity = entityId;
-                closestPosition = entityPosition;
+            // Check if this is a valid entity (has non-zero position or is at spawn location)
+            if (glm::length(glm::vec2(entityPosition)) > 0.01f) {
+                validEntities++;
+                
+                float distance = glm::distance(worldPos, glm::vec2(entityPosition));
+                if (distance < closestDistance) {
+                    closestDistance = distance;
+                    closestEntity = entityId;
+                    closestPosition = entityPosition;
+                }
             }
         }
     }
     
+    std::cout << "Entities checked: " << entitiesChecked << ", Valid entities: " << validEntities << std::endl;
+    
+    if (validEntities == 0) {
+        std::cout << "No valid entities found in search" << std::endl;
+        return false;
+    }
+    
+    // Calculate which cell the closest entity is actually in
+    glm::vec2 entityPos2D = glm::vec2(closestPosition);
+    glm::ivec2 entityGridCoord = glm::ivec2(glm::floor(entityPos2D / CELL_SIZE));
+    uint32_t entityX = static_cast<uint32_t>(entityGridCoord.x) & (GRID_WIDTH - 1);
+    uint32_t entityY = static_cast<uint32_t>(entityGridCoord.y) & (GRID_WIDTH - 1);
+    uint32_t entityCellIndex = entityX + entityY * GRID_WIDTH;
+    
+    // Fill in the debug info
     info.entityId = closestEntity;
     info.position = closestPosition;
+    info.spatialCell = entityCellIndex;
     
     // Read velocity for the closest entity
     if (!readGPUBuffer(velocityBuffer.getBuffer(), 
@@ -227,6 +242,12 @@ bool EntityBufferManager::readbackEntityAtPosition(glm::vec2 worldPos, EntityDeb
                       closestEntity * sizeof(glm::vec4))) {
         info.velocity = glm::vec4(0.0f); // Fallback
     }
+    
+    std::cout << "Closest entity: " << closestEntity << " at distance " << closestDistance << std::endl;
+    std::cout << "Entity position: (" << closestPosition.x << ", " << closestPosition.y << ")" << std::endl;
+    std::cout << "Entity cell: " << entityCellIndex << " (grid: " << entityX << ", " << entityY << ")" << std::endl;
+    std::cout << "Cell difference: clicked=" << clickedCellIndex << ", entity=" << entityCellIndex 
+              << " (diff=" << (int)entityCellIndex - (int)clickedCellIndex << ")" << std::endl;
     
     return true;
 }
@@ -281,28 +302,38 @@ bool EntityBufferManager::readbackSpatialCell(uint32_t cellIndex, std::vector<ui
         return false;
     }
     
-    // Walk the linked list to collect all entities in this cell
+    std::cout << "DEBUG: Cell " << cellIndex << " raw data: entityId=" << cellData.x 
+              << ", next=" << cellData.y << std::endl;
+    
+    // Check if there's an entity in this cell
     const uint32_t NULL_INDEX = 0xFFFFFFFF;
-    uint32_t currentEntity = cellData.x;
+    if (cellData.x == NULL_INDEX || cellData.x == 0) {
+        std::cout << "DEBUG: Empty cell (no entities)" << std::endl;
+        return true; // Empty cell
+    }
     
-    // Safety: limit iterations to prevent infinite loops
-    uint32_t iterations = 0;
-    const uint32_t MAX_ITERATIONS = 100;
+    // Looking at the GPU shader more carefully:
+    // atomicExchange(spatialMap.spatialCells[cellIndex].x, entityIndex) 
+    // spatialMap.spatialCells[cellIndex].y = oldHead
+    //
+    // This means:
+    // - .x contains the most recent entity ID added to this cell
+    // - .y contains the previous head (which could be another entity or NULL_INDEX)
+    //
+    // But there's a race condition issue: the .y gets overwritten each time
+    // So we can only reliably get the most recent entity in each cell
     
-    while (currentEntity != NULL_INDEX && currentEntity < maxEntities && iterations < MAX_ITERATIONS) {
-        entityIds.push_back(currentEntity);
+    uint32_t headEntity = cellData.x;
+    if (headEntity != NULL_INDEX && headEntity < maxEntities) {
+        std::cout << "DEBUG: Found head entity " << headEntity << " in cell " << cellIndex << std::endl;
+        entityIds.push_back(headEntity);
         
-        // Read next link in the chain - the spatial map stores links differently
-        // Each entity has its "next" pointer stored in the spatial map at its entity index
-        glm::uvec2 nextCellData;
-        if (!readGPUBuffer(spatialMapBuffer.getBuffer(), 
-                          &nextCellData, sizeof(glm::uvec2), 
-                          currentEntity * sizeof(glm::uvec2))) {
-            break;
+        // Try to follow the chain, but this might not work reliably due to race conditions
+        uint32_t nextEntity = cellData.y;
+        if (nextEntity != NULL_INDEX && nextEntity < maxEntities && nextEntity != headEntity) {
+            std::cout << "DEBUG: Found next entity " << nextEntity << " in cell " << cellIndex << std::endl;
+            entityIds.push_back(nextEntity);
         }
-        
-        currentEntity = nextCellData.y; // Next pointer is in .y component
-        iterations++;
     }
     
     return true;
