@@ -32,7 +32,7 @@ layout(std430, binding = 2) buffer RuntimeStateBuffer {
 
 // Constants for improved performance
 const float TWO_PI = 6.28318530718;
-const uint CYCLE_LENGTH = 900u; // Balanced cycle length for active but smooth movement (15 seconds at 60fps)
+const uint CYCLE_LENGTH = 120u; // More frequent movement updates for dynamic behavior (2 seconds at 60fps)
 const float INV_4294967295 = 2.3283064e-10; // 1.0 / 4294967295.0
 
 // Optimized Wang hash - fewer operations
@@ -110,18 +110,25 @@ void main() {
     // Calculate cycle using frame number and entity offset for staggering
     float cycle = mod(float(pc.frame + entityIndex * 37u), float(CYCLE_LENGTH));
     
-    // Generate new velocity direction every 900 frames (cycle reset) OR on initialization
+    // Generate new velocity direction every 120 frames (cycle reset) OR on initialization
     if (cycle < 1.0 || initialized < 0.5) {
         // TRULY RANDOM: Use entity index and frame for random seed
         uint seed = entityIndex * 1664525u + pc.frame * 1013904223u;
         uint hash = fastHash(seed);
         float randAngle = hashToFloat(hash) * TWO_PI;
         
-        float speed = 0.8;
+        // Enhanced speed with moderate variance for frequent updates
+        uint speedHash = fastHash(seed + 12345u);
+        float speedMultiplier = 1.0 + hashToFloat(speedHash) * 2.0; // Range: 1.0 to 3.0
+        float speed = 1.2 * speedMultiplier; // Base speed 1.2, final range: 1.2 to 3.6
         
-        // Use basic trig for random direction
-        velocity.x = speed * cos(randAngle);
-        velocity.y = speed * sin(randAngle);
+        // Add moderate angular momentum for dynamic movement
+        uint spiralHash = fastHash(seed + 67890u);
+        float angularVelocity = (hashToFloat(spiralHash) - 0.5) * 0.15; // -0.075 to +0.075 rad/frame
+        
+        // Use basic trig for random direction with enhanced velocity
+        velocity.x = speed * cos(randAngle + angularVelocity);
+        velocity.y = speed * sin(randAngle + angularVelocity);
         
         // Write updated velocity back to SoA buffer
         velocityBuffer.velocities[entityIndex] = velocity;

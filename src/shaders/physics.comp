@@ -230,12 +230,13 @@ void main() {
     
     // Physics integration: position += velocity * deltaTime (only if velocity is non-zero)
     if (length(vel) > 0.01) {
-        currentPosition.x += vel.x * pc.deltaTime * 10.0;
-        currentPosition.y += vel.y * pc.deltaTime * 10.0;
+        // Enhanced physics integration for frequent movement updates
+        currentPosition.x += vel.x * pc.deltaTime * 15.0;
+        currentPosition.y += vel.y * pc.deltaTime * 15.0;
     }
     
-    // Apply very light damping to velocity (much less damping)
-    vel *= 0.999;
+    // Moderate damping to balance frequent updates with momentum retention
+    vel *= 0.998;
     
     // Write tentative position to current buffer first
     currentPos.currentPositions[entityIndex] = vec4(currentPosition, 1.0);
