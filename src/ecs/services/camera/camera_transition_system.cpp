@@ -128,28 +128,38 @@ float CameraTransitionSystem::evaluateEasing(float t, CameraTransitionType type)
 Camera CameraTransitionSystem::interpolateCameras(const Camera& start, const Camera& end, float t) const {
     Camera result;
     
+    // Interpolate position
     glm::vec3 startPos = start.position;
     glm::vec3 endPos = end.position;
     result.setPosition(glm::mix(startPos, endPos, t));
     
-    float startZoom = start.zoom;
-    float endZoom = end.zoom;
-    result.setZoom(glm::mix(startZoom, endZoom, t));
+    // Interpolate FOV instead of zoom
+    float startFOV = start.fov;
+    float endFOV = end.fov;
+    result.setFOV(glm::mix(startFOV, endFOV, t));
     
-    float startRotation = start.rotation;
-    float endRotation = end.rotation;
+    // Interpolate yaw angle
+    float startYaw = start.yaw;
+    float endYaw = end.yaw;
     
-    float angleDiff = endRotation - startRotation;
-    while (angleDiff > M_PI) angleDiff -= 2.0f * M_PI;
-    while (angleDiff < -M_PI) angleDiff += 2.0f * M_PI;
+    float angleDiff = endYaw - startYaw;
+    while (angleDiff > 180.0f) angleDiff -= 360.0f;
+    while (angleDiff < -180.0f) angleDiff += 360.0f;
     
-    result.setRotation(startRotation + angleDiff * t);
+    result.setYaw(startYaw + angleDiff * t);
     
-    glm::vec2 startViewSize = start.viewSize;
-    glm::vec2 endViewSize = end.viewSize;
-    result.viewSize = glm::mix(startViewSize, endViewSize, t);
+    // Interpolate pitch angle
+    float startPitch = start.pitch;
+    float endPitch = end.pitch;
+    result.setPitch(glm::mix(startPitch, endPitch, t));
     
-    result.aspectRatio = end.aspectRatio;
+    // Interpolate roll angle
+    float startRoll = start.roll;
+    float endRoll = end.roll;
+    result.setRoll(glm::mix(startRoll, endRoll, t));
+    
+    // Interpolate aspect ratio
+    result.aspectRatio = glm::mix(start.aspectRatio, end.aspectRatio, t);
     
     return result;
 }

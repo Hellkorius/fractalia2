@@ -410,8 +410,15 @@ void GameControlService::integrateWithInputService() {
     inputService->registerAction({
         "camera_zoom",
         InputActionType::ANALOG_1D,
-        "Zoom camera with mouse wheel",
+        "Adjust FOV with mouse wheel",
         {InputBinding(InputBinding::InputType::MOUSE_WHEEL_Y, 0)}
+    });
+    
+    inputService->registerAction({
+        "camera_look",
+        InputActionType::DIGITAL,
+        "Hold to enable mouse look",
+        {InputBinding(InputBinding::InputType::MOUSE_BUTTON, SDL_BUTTON_MIDDLE)}
     });
 }
 
@@ -580,66 +587,74 @@ void GameControlService::toggleWireframeMode() {
 void GameControlService::handleCameraControls() {
     if (!cameraService || !inputService) return;
     
-    const float baseMoveSpeed = 30.0f; // base units per second at 1.0x zoom (increased)
-    const float maxMoveSpeed = 100.0f; // cap speed when zoomed way out
-    const float zoomSensitivity = 0.05f;  // zoom sensitivity per wheel tick (smoother)
+    const float moveSpeed = 15.0f; // Camera movement speed in units per second
+    const float mouseSensitivity = 0.1f; // Mouse look sensitivity
+    const float fovSensitivity = 2.0f;  // FOV adjustment sensitivity
     
-    // Get current zoom level to adjust movement speed
-    float currentZoom = cameraService->getCameraZoom(cameraService->getActiveCameraID());
-    float zoomAdjustedMoveSpeed = std::min(maxMoveSpeed, baseMoveSpeed / currentZoom); // Inverse relationship with cap
+    CameraID activeCameraID = cameraService->getActiveCameraID();
+    Camera* camera = cameraService->getCamera(activeCameraID);
+    if (!camera) return;
     
-    glm::vec3 movement(0.0f);
-    float zoomDelta = 0.0f;
-    
-    // Calculate movement based on input - zoom-adjusted for fine control when zoomed in
+    // Handle WASD movement in 3D space (relative to camera orientation)
     if (inputService->isActionActive("camera_move_forward")) {
-        movement.y += zoomAdjustedMoveSpeed * deltaTime;
+        camera->moveForward(moveSpeed * deltaTime);
     }
     if (inputService->isActionActive("camera_move_backward")) {
-        movement.y -= zoomAdjustedMoveSpeed * deltaTime;
+        camera->moveBackward(moveSpeed * deltaTime);
     }
     if (inputService->isActionActive("camera_move_left")) {
-        movement.x -= zoomAdjustedMoveSpeed * deltaTime;
+        camera->moveLeft(moveSpeed * deltaTime);
     }
     if (inputService->isActionActive("camera_move_right")) {
-        movement.x += zoomAdjustedMoveSpeed * deltaTime;
+        camera->moveRight(moveSpeed * deltaTime);
     }
     
-    // Calculate zoom from mouse wheel (positive = zoom in, negative = zoom out)
+    // Handle mouse look (if right mouse button is held for look mode)
+    static bool firstMouse = true;
+    static float lastX = 0.0f, lastY = 0.0f;
+    
+    // Get mouse position and calculate delta
+    glm::vec2 mousePos = inputService->getMousePosition();
+    
+    if (firstMouse) {
+        lastX = mousePos.x;
+        lastY = mousePos.y;
+        firstMouse = false;
+    }
+    
+    float xoffset = mousePos.x - lastX;
+    float yoffset = lastY - mousePos.y; // Reversed: y-coordinates go from bottom to top
+    lastX = mousePos.x;
+    lastY = mousePos.y;
+    
+    // Apply mouse look when middle mouse button is held
+    if (inputService->isActionActive("camera_look")) {
+        camera->addYaw(xoffset * mouseSensitivity);
+        camera->addPitch(yoffset * mouseSensitivity);
+    }
+    
+    // Handle FOV adjustment with mouse wheel (replaces zoom)
     float wheelDelta = inputService->getActionAnalog1D("camera_zoom");
     if (std::abs(wheelDelta) > 0.01f) {
-        std::cout << "Wheel delta: " << wheelDelta << std::endl;
-        zoomDelta = wheelDelta * zoomSensitivity; // Much smaller sensitivity for fine control
-    }
-    
-    // Apply movement if any
-    if (movement.x != 0.0f || movement.y != 0.0f || movement.z != 0.0f) {
-        glm::vec3 currentPos = cameraService->getCameraPosition(cameraService->getActiveCameraID());
-        cameraService->setCameraPosition(cameraService->getActiveCameraID(), currentPos + movement);
-    }
-    
-    // Apply zoom if any
-    if (zoomDelta != 0.0f) {
-        float currentZoom = cameraService->getCameraZoom(cameraService->getActiveCameraID());
-        
-        // Use exponential zoom for smoother feel (like most applications)
-        // Positive delta = zoom in (multiply by >1), negative = zoom out (multiply by <1)
-        float zoomMultiplier = std::pow(1.1f, zoomDelta * 10.0f); // 1.1^(delta*10) for smooth exponential scaling
-        float newZoom = std::max(0.05f, std::min(20.0f, currentZoom * zoomMultiplier)); // Wider range: 0.05x to 20x
-        
-        std::cout << "Zoom: " << currentZoom << " -> " << newZoom << " (multiplier: " << zoomMultiplier << ")" << std::endl;
-        cameraService->setCameraZoom(cameraService->getActiveCameraID(), newZoom);
+        camera->adjustFOV(-wheelDelta * fovSensitivity); // Negative for natural zoom direction
     }
 }
 
 void GameControlService::resetCamera() {
     if (!cameraService) return;
     
-    // Reset to default camera position
-    cameraService->setCameraPosition(cameraService->getActiveCameraID(), glm::vec3(0.0f, 0.0f, 10.0f));
-    cameraService->setCameraZoom(cameraService->getActiveCameraID(), 1.0f);
+    CameraID activeCameraID = cameraService->getActiveCameraID();
+    Camera* camera = cameraService->getCamera(activeCameraID);
+    if (!camera) return;
     
-    DEBUG_LOG("Camera reset to default position");
+    // Reset to default 3D camera position
+    camera->setPosition(glm::vec3(0.0f, 0.0f, 10.0f));
+    camera->setYaw(-90.0f);  // Look forward (negative Z)
+    camera->setPitch(0.0f);  // Level view
+    camera->setRoll(0.0f);   // No tilt
+    camera->setFOV(45.0f);   // Standard FOV
+    
+    DEBUG_LOG("Camera reset to default 3D position");
 }
 
 void GameControlService::focusCameraOnEntities() {
@@ -677,19 +692,20 @@ void GameControlService::logControlState() const {
 }
 
 void GameControlService::printControlInstructions() const {
-    std::cout << "\n=== Flecs GPU Compute Movement Demo Controls ===" << std::endl;
+    std::cout << "\n=== Flecs 3D GPU Compute Movement Demo Controls ===" << std::endl;
     std::cout << "ESC: Exit" << std::endl;
     std::cout << "P: Print detailed performance report" << std::endl;
     std::cout << "+/=: Add 1000 more GPU entities" << std::endl;
     std::cout << "Left Click: Create GPU entity with movement at mouse position" << std::endl;
-    std::cout << "All entities use random walk movement pattern" << std::endl;
+    std::cout << "All entities use 3D random walk movement pattern" << std::endl;
     std::cout << "T: Run graphics buffer overflow tests" << std::endl;
     std::cout << "F3: Toggle debug mode" << std::endl;
-    std::cout << "R: Reset camera" << std::endl;
+    std::cout << "R: Reset camera to default 3D position" << std::endl;
     std::cout << "F: Focus camera on entities" << std::endl;
-    std::cout << "WASD: Move camera" << std::endl;
+    std::cout << "WASD: Move camera in 3D space (forward/back/left/right)" << std::endl;
+    std::cout << "Middle Mouse: Hold + move mouse for look around" << std::endl;
     std::cout << "Right Click: Debug entity info at mouse position" << std::endl;
-    std::cout << "Mouse Wheel: Zoom camera" << std::endl;
+    std::cout << "Mouse Wheel: Adjust field of view" << std::endl;
     std::cout << "===============================================\n" << std::endl;
 }
 

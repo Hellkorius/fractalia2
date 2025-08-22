@@ -6,16 +6,25 @@ glm::vec2 CameraTransforms::worldToScreen(const glm::vec3& worldPos, const Camer
         return glm::vec2(0.0f);
     }
     
-    glm::vec3 cameraPos = camera->position;
-    float zoom = camera->zoom;
-    glm::vec2 viewSize = camera->viewSize;
+    // Use 3D projection matrices for world to screen conversion
+    glm::mat4 viewMatrix = camera->getViewMatrix();
+    glm::mat4 projMatrix = camera->getProjectionMatrix();
+    glm::mat4 mvp = projMatrix * viewMatrix;
     
-    glm::vec2 worldOffset = glm::vec2(worldPos.x - cameraPos.x, worldPos.y - cameraPos.y);
-    glm::vec2 scaledOffset = worldOffset * zoom;
+    glm::vec4 worldPos4 = glm::vec4(worldPos, 1.0f);
+    glm::vec4 clipPos = mvp * worldPos4;
     
+    if (clipPos.w == 0.0f) {
+        return glm::vec2(0.0f);
+    }
+    
+    // Perspective divide
+    glm::vec3 ndc = glm::vec3(clipPos) / clipPos.w;
+    
+    // Convert NDC to screen coordinates
     glm::vec2 screenPos;
-    screenPos.x = (scaledOffset.x / viewSize.x + 0.5f) * screenSize.x;
-    screenPos.y = (scaledOffset.y / viewSize.y + 0.5f) * screenSize.y;
+    screenPos.x = (ndc.x + 1.0f) * 0.5f * screenSize.x;
+    screenPos.y = (1.0f - ndc.y) * 0.5f * screenSize.y; // Flip Y for screen coordinates
     
     return screenPos;
 }
@@ -25,21 +34,8 @@ glm::vec2 CameraTransforms::screenToWorld(const glm::vec2& screenPos, const Came
         return glm::vec2(0.0f);
     }
     
-    glm::vec3 cameraPos = camera->position;
-    float zoom = camera->zoom;
-    glm::vec2 viewSize = camera->viewSize;
-    
-    if (zoom <= 0.0f) {
-        return glm::vec2(cameraPos.x, cameraPos.y);
-    }
-    
-    glm::vec2 normalizedScreen;
-    normalizedScreen.x = (screenPos.x / screenSize.x - 0.5f);
-    normalizedScreen.y = -(screenPos.y / screenSize.y - 0.5f);  // Flip Y axis: SDL screen coords (Y=0 top) to world coords (Y=0 center)
-    
-    glm::vec2 worldOffset = (normalizedScreen * viewSize) / zoom;
-    
-    return glm::vec2(cameraPos.x + worldOffset.x, cameraPos.y + worldOffset.y);
+    // Use camera's 3D ray casting for screen to world conversion
+    return glm::vec2(camera->screenToWorldRay(screenPos, screenSize));
 }
 
 glm::vec2 CameraTransforms::viewportToWorld(const glm::vec2& viewportPos, const Viewport* viewport, const Camera* camera) const {
@@ -59,11 +55,13 @@ glm::vec3 CameraTransforms::getCameraPosition(const Camera* camera) const {
 }
 
 float CameraTransforms::getCameraZoom(const Camera* camera) const {
-    return camera ? camera->zoom : 1.0f;
+    // For 3D cameras, return FOV instead of zoom
+    return camera ? camera->fov : 45.0f;
 }
 
 float CameraTransforms::getCameraRotation(const Camera* camera) const {
-    return camera ? camera->rotation : 0.0f;
+    // For 3D cameras, return yaw rotation
+    return camera ? camera->yaw : 0.0f;
 }
 
 glm::mat4 CameraTransforms::getViewMatrix(const Camera* camera) const {

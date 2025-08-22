@@ -212,8 +212,8 @@ void main() {
     float initialized = runtimeState.w; // initialized flag is in .w
     
     // Extract velocity and damping
-    vec2 vel = velocity.xy;
-    float damping = velocity.z;
+    vec3 vel = velocity.xyz;
+    float damping = velocity.w;
     
     // SIMPLIFIED: Read position directly from output buffer, integrate velocity
     vec3 currentPosition = outPositions.positions[entityIndex].xyz;
@@ -233,6 +233,7 @@ void main() {
         // Enhanced physics integration for frequent movement updates
         currentPosition.x += vel.x * pc.deltaTime * 15.0;
         currentPosition.y += vel.y * pc.deltaTime * 15.0;
+        currentPosition.z += vel.z * pc.deltaTime * 15.0;
     }
     
     // Moderate damping to balance frequent updates with momentum retention
@@ -241,7 +242,7 @@ void main() {
     // Write tentative position to current buffer first
     currentPos.currentPositions[entityIndex] = vec4(currentPosition, 1.0);
     
-    // Update spatial map with new position
+    // Update spatial map with new position (still using 2D projection for spatial hashing)
     updateSpatialMap(entityIndex, currentPosition.xy);
     
     // Wait for all threads to update their positions and spatial maps
@@ -249,7 +250,7 @@ void main() {
     memoryBarrierShared();
     
     // Spatial hash collision detection - much faster than O(N²)
-    vec2 resolvedPosition = currentPosition.xy;
+    vec3 resolvedPosition = currentPosition;
     bool hadCollision = false;
     
     // Pre-calculate collision parameters
@@ -306,10 +307,11 @@ void main() {
                 // Collision detected! Fast separation using diff vector
                 float invDist = inversesqrt(distSq); // Fast inverse sqrt
                 vec2 separationDir = diff * invDist;
-                resolvedPosition = otherPos.xy + separationDir * collisionRadius;
+                resolvedPosition.xy = otherPos.xy + separationDir * collisionRadius;
+                // Keep Z position unchanged in collision resolution
                 
                 // Stop movement entirely on collision
-                vel = vec2(0.0, 0.0);
+                vel = vec3(0.0, 0.0, 0.0);
                 hadCollision = true;
                 break; // Handle first collision only
             }
@@ -319,6 +321,6 @@ void main() {
     }
     
     // Write back final velocity and resolved position
-    velocityBuffer.velocities[entityIndex].xy = vel;
-    outPositions.positions[entityIndex] = vec4(resolvedPosition, currentPosition.z, 1.0);
+    velocityBuffer.velocities[entityIndex].xyz = vel;
+    outPositions.positions[entityIndex] = vec4(resolvedPosition, 1.0);
 }

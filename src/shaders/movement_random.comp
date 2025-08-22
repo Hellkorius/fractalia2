@@ -126,9 +126,13 @@ void main() {
         uint spiralHash = fastHash(seed + 67890u);
         float angularVelocity = (hashToFloat(spiralHash) - 0.5) * 0.15; // -0.075 to +0.075 rad/frame
         
-        // Use basic trig for random direction with enhanced velocity
-        velocity.x = speed * cos(randAngle + angularVelocity);
-        velocity.y = speed * sin(randAngle + angularVelocity);
+        // Generate 3D random direction with enhanced velocity
+        uint pitchHash = fastHash(seed + 24680u);
+        float randPitch = (hashToFloat(pitchHash) - 0.5) * 1.57; // -π/4 to +π/4 for reasonable 3D movement
+        
+        velocity.x = speed * cos(randAngle + angularVelocity) * cos(randPitch);
+        velocity.y = speed * sin(randAngle + angularVelocity) * cos(randPitch);
+        velocity.z = speed * sin(randPitch);
         
         // Write updated velocity back to SoA buffer
         velocityBuffer.velocities[entityIndex] = velocity;

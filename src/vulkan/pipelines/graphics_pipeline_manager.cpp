@@ -269,6 +269,12 @@ namespace GraphicsPipelinePresets {
         colorBlendAttachment.blendEnable = VK_FALSE;
         state.colorBlendAttachments.push_back(colorBlendAttachment);
         
+        // No depth testing since we removed depth buffer
+        state.depthTestEnable = VK_FALSE;
+        state.depthWriteEnable = VK_FALSE;
+        state.depthCompareOp = VK_COMPARE_OP_ALWAYS;
+        state.stencilTestEnable = VK_FALSE;
+        
         return state;
     }
 }

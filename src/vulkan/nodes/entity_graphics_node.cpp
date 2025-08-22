@@ -95,10 +95,10 @@ void EntityGraphicsNode::execute(VkCommandBuffer commandBuffer, const FrameGraph
     auto layoutSpec = DescriptorLayoutPresets::createEntityGraphicsLayout();
     VkDescriptorSetLayout descriptorLayout = graphicsManager->getLayoutManager()->getLayout(layoutSpec);
     
-    // Get the render pass that was used to create the framebuffers
+    // Get the render pass that was used to create the framebuffers (no depth buffer needed)
     VkRenderPass renderPass = graphicsManager->createRenderPass(
         swapchain->getImageFormat(), 
-        VK_FORMAT_UNDEFINED,  // No depth (match VulkanRenderer setup)
+        VK_FORMAT_UNDEFINED,  // No depth buffer
         VK_SAMPLE_COUNT_2_BIT, // MSAA samples
         true  // Enable MSAA
     );
@@ -132,7 +132,7 @@ void EntityGraphicsNode::execute(VkCommandBuffer commandBuffer, const FrameGraph
     renderPassInfo.renderArea.offset = {0, 0};
     renderPassInfo.renderArea.extent = swapchain->getExtent();
 
-    // Clear values: MSAA color, resolve color (no depth)
+    // Clear values: MSAA color, resolve color (no depth buffer)
     std::array<VkClearValue, 2> clearValues{};
     clearValues[0].color = {{0.1f, 0.1f, 0.2f, 1.0f}};  // MSAA color attachment
     clearValues[1].color = {{0.1f, 0.1f, 0.2f, 1.0f}};  // Resolve attachment

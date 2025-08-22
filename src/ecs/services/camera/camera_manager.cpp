@@ -249,14 +249,16 @@ void CameraManager::setCameraPosition(CameraID cameraID, const glm::vec3& positi
 void CameraManager::setCameraZoom(CameraID cameraID, float zoom) {
     Camera* camera = getCamera(cameraID);
     if (camera) {
-        camera->setZoom(zoom);
+        // For 3D cameras, interpret zoom as FOV adjustment
+        camera->setFOV(zoom);
     }
 }
 
 void CameraManager::setCameraRotation(CameraID cameraID, float rotation) {
     Camera* camera = getCamera(cameraID);
     if (camera) {
-        camera->setRotation(rotation);
+        // For 3D cameras, interpret rotation as yaw
+        camera->setYaw(rotation);
     }
 }
 
@@ -265,7 +267,8 @@ void CameraManager::focusCameraOn(CameraID cameraID, const glm::vec3& target, fl
     if (camera) {
         camera->setPosition(target);
         if (zoom > 0.0f) {
-            camera->setZoom(zoom);
+            // For 3D cameras, interpret zoom as FOV adjustment
+            camera->setFOV(zoom);
         }
     }
 }
@@ -273,8 +276,9 @@ void CameraManager::focusCameraOn(CameraID cameraID, const glm::vec3& target, fl
 void CameraManager::createOrthographicCamera(const std::string& name, const glm::vec3& position, float zoom, const glm::vec2& viewSize) {
     Camera camera;
     camera.setPosition(position);
-    camera.setZoom(zoom);
-    camera.viewSize = viewSize;
+    // Convert to perspective camera settings
+    camera.setFOV(zoom);
+    camera.aspectRatio = viewSize.x / viewSize.y;
     
     createCamera(camera, name);
 }
@@ -283,7 +287,7 @@ void CameraManager::createFollowCamera(const std::string& name, const glm::vec3&
     Camera camera;
     glm::vec3 position = target + glm::vec3(0.0f, 0.0f, distance);
     camera.setPosition(position);
-    camera.setZoom(zoom);
+    camera.setFOV(zoom);
     
     createCamera(camera, name);
 }
@@ -297,8 +301,8 @@ void CameraManager::printCameraInfo(CameraID cameraID) const {
     
     std::cout << "Camera " << cameraID << ":\n";
     std::cout << "  Position: " << camera->position.x << ", " << camera->position.y << ", " << camera->position.z << "\n";
-    std::cout << "  Zoom: " << camera->zoom << "\n";
-    std::cout << "  Rotation: " << camera->rotation << "\n";
+    std::cout << "  FOV: " << camera->fov << "\n";
+    std::cout << "  Yaw: " << camera->yaw << ", Pitch: " << camera->pitch << ", Roll: " << camera->roll << "\n";
 }
 
 void CameraManager::printAllCameras() const {
@@ -332,6 +336,9 @@ flecs::entity CameraManager::createCameraEntity(const Camera& cameraData, const 
     Camera* camera = entity.get_mut<Camera>();
     if (camera) {
         *camera = cameraData;
+        
+        // Initialize camera vectors for 3D navigation
+        camera->initializeVectors();
         
         // Ensure matrices are marked dirty for proper initialization
         camera->viewDirty = true;
