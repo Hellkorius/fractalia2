@@ -38,7 +38,7 @@ layout(std430, binding = 7) buffer SpatialMapBuffer {
 /* ---------- Spatial Map Constants and Functions ---------- */
 
 // Spatial grid configuration
-const float CELL_SIZE = 2.0;           // Size of each spatial cell
+const float CELL_SIZE = 10.0;          // Size of each spatial cell (5x larger)
 const uint GRID_WIDTH = 64;            // Grid dimensions (must be power of 2)
 const uint GRID_HEIGHT = 64;
 const uint SPATIAL_MAP_SIZE = GRID_WIDTH * GRID_HEIGHT; // 4096 cells
@@ -69,6 +69,120 @@ void updateSpatialMap(uint entityIndex, vec2 position) {
     
     // Store old head as our next pointer (building linked list)
     spatialMap.spatialCells[cellIndex].y = expectedHead;
+}
+
+/* ---------- Collision Detection Constants and Functions ---------- */
+
+// Collision detection configuration
+const uint MAX_ENTITIES_PER_CELL = 64;    // Maximum entities to check per cell (much higher)
+const float TRIANGLE_RADIUS = 1.5;        // Bounding circle radius for triangle (larger)
+const float MIN_SEPARATION = 0.2;         // Minimum separation distance (larger)
+
+// Triangle vertices relative to entity center
+const vec2 TRIANGLE_VERTICES[3] = vec2[](
+    vec2(0.0, 0.5),      // Top vertex
+    vec2(-0.4, -0.25),   // Bottom left
+    vec2(0.4, -0.25)     // Bottom right
+);
+
+// Collect entities from spatial cell by brute force search
+// Since linked list traversal is unreliable, we'll search all entities for this cell
+uint collectEntitiesInCell(uint targetCellIndex, out uint entities[MAX_ENTITIES_PER_CELL]) {
+    uint count = 0;
+    
+    // Brute force: check every entity to see if it belongs to this cell
+    for (uint i = 0; i < pc.entityCount && count < MAX_ENTITIES_PER_CELL; i++) {
+        // Get entity position and calculate its cell
+        vec3 entityPos = currentPos.currentPositions[i].xyz;
+        uint entityCellIndex = spatialHash(entityPos.xy);
+        
+        // If this entity belongs to our target cell, add it to the list
+        if (entityCellIndex == targetCellIndex) {
+            entities[count] = i;
+            count++;
+        }
+    }
+    
+    return count;
+}
+
+// Circle-circle collision test for quick culling
+bool circleCollision(vec2 pos1, vec2 pos2, float radius1, float radius2) {
+    float distSq = dot(pos2 - pos1, pos2 - pos1);
+    float radiusSum = radius1 + radius2;
+    return distSq < (radiusSum * radiusSum);
+}
+
+// Point-in-triangle test using barycentric coordinates
+bool pointInTriangle(vec2 p, vec2 a, vec2 b, vec2 c) {
+    vec2 v0 = c - a;
+    vec2 v1 = b - a;
+    vec2 v2 = p - a;
+    
+    float dot00 = dot(v0, v0);
+    float dot01 = dot(v0, v1);
+    float dot02 = dot(v0, v2);
+    float dot11 = dot(v1, v1);
+    float dot12 = dot(v1, v2);
+    
+    float invDenom = 1.0 / (dot00 * dot11 - dot01 * dot01);
+    float u = (dot11 * dot02 - dot01 * dot12) * invDenom;
+    float v = (dot00 * dot12 - dot01 * dot02) * invDenom;
+    
+    return (u >= 0.0) && (v >= 0.0) && (u + v <= 1.0);
+}
+
+// Triangle-triangle intersection test
+bool triangleTriangleCollision(vec2 pos1, vec2 pos2) {
+    // Get triangle vertices in world space
+    vec2 tri1[3];
+    vec2 tri2[3];
+    
+    for (int i = 0; i < 3; i++) {
+        tri1[i] = pos1 + TRIANGLE_VERTICES[i];
+        tri2[i] = pos2 + TRIANGLE_VERTICES[i];
+    }
+    
+    // Check if any vertex of tri1 is inside tri2
+    for (int i = 0; i < 3; i++) {
+        if (pointInTriangle(tri1[i], tri2[0], tri2[1], tri2[2])) {
+            return true;
+        }
+    }
+    
+    // Check if any vertex of tri2 is inside tri1
+    for (int i = 0; i < 3; i++) {
+        if (pointInTriangle(tri2[i], tri1[0], tri1[1], tri1[2])) {
+            return true;
+        }
+    }
+    
+    return false;
+}
+
+// Resolve collision with strong separation force
+vec2 resolveCollision(vec2 currentPos, vec2 newPos, vec2 otherPos) {
+    vec2 toOther = otherPos - currentPos;
+    float distToOther = length(toOther);
+    
+    // Calculate safe distance (sum of bounding radii + separation)
+    float safeDistance = TRIANGLE_RADIUS * 2.0 + MIN_SEPARATION;
+    
+    if (distToOther < safeDistance) {
+        // Force strong separation - push entity away from collision
+        vec2 separationDirection = normalize(currentPos - otherPos);
+        
+        // If entities are exactly on top of each other, use random direction
+        if (length(separationDirection) < 0.001) {
+            separationDirection = vec2(1.0, 0.0); // Default direction
+        }
+        
+        // Position entity at safe distance away from other entity
+        vec2 safePos = otherPos + separationDirection * safeDistance;
+        return safePos;
+    }
+    
+    return newPos; // No collision resolution needed
 }
 
 void main() {
@@ -119,10 +233,44 @@ void main() {
     // Apply very light damping to velocity (much less damping)
     vel *= 0.999;
     
-    // Write back velocity and position
-    velocityBuffer.velocities[entityIndex].xy = vel;
-    outPositions.positions[entityIndex] = vec4(currentPosition, 1.0);
+    // Write tentative position to current buffer first
+    currentPos.currentPositions[entityIndex] = vec4(currentPosition, 1.0);
     
     // Update spatial map with new position
     updateSpatialMap(entityIndex, currentPosition.xy);
+    
+    // Wait for all threads to update their positions and spatial maps
+    barrier();
+    memoryBarrierShared();
+    
+    // Simple collision detection - check all nearby entities
+    vec2 resolvedPosition = currentPosition.xy;
+    bool hadCollision = false;
+    
+    // Check collision with all other entities (simplified for debugging)
+    for (uint i = 0; i < pc.entityCount; i++) {
+        if (i == entityIndex) continue; // Skip self
+        
+        // Get other entity's position
+        vec3 otherPos = currentPos.currentPositions[i].xyz;
+        
+        // Simple distance check for collision
+        float distance = length(currentPosition.xy - otherPos.xy);
+        float collisionRadius = TRIANGLE_RADIUS * 2.0; // Combined radius
+        
+        if (distance < collisionRadius && distance > 0.001) {
+            // Collision detected! Force strong separation
+            vec2 separationDir = normalize(currentPosition.xy - otherPos.xy);
+            resolvedPosition = otherPos.xy + separationDir * collisionRadius;
+            
+            // Stop movement entirely on collision
+            vel = vec2(0.0, 0.0);
+            hadCollision = true;
+            break; // Handle first collision only
+        }
+    }
+    
+    // Write back final velocity and resolved position
+    velocityBuffer.velocities[entityIndex].xy = vel;
+    outPositions.positions[entityIndex] = vec4(resolvedPosition, currentPosition.z, 1.0);
 }

@@ -151,7 +151,7 @@ int main(int argc, char* argv[]) {
     
     Profiler::getInstance().setTargetFrameTime(TARGET_FRAME_TIME);
 
-    constexpr size_t ENTITY_COUNT = 1000;
+    constexpr size_t ENTITY_COUNT = 10;
     
     DEBUG_LOG("Creating " << ENTITY_COUNT << " GPU entities for stress testing...");
     
