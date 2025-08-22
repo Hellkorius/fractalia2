@@ -38,7 +38,7 @@ layout(std430, binding = 7) buffer SpatialMapBuffer {
 /* ---------- Spatial Map Constants and Functions ---------- */
 
 // Spatial grid configuration
-const float CELL_SIZE = 10.0;          // Size of each spatial cell (5x larger)
+const float CELL_SIZE = 2.0;           // Size of each spatial cell (smaller for precision)
 const uint GRID_WIDTH = 64;            // Grid dimensions (must be power of 2)
 const uint GRID_HEIGHT = 64;
 const uint SPATIAL_MAP_SIZE = GRID_WIDTH * GRID_HEIGHT; // 4096 cells
@@ -250,50 +250,58 @@ void main() {
     // Get our spatial cell
     uint cellIndex = spatialHash(currentPosition.xy);
     
-    // Check our cell and all 8 neighboring cells (3x3 grid)
-    for (int dy = -1; dy <= 1; dy++) {
-        for (int dx = -1; dx <= 1; dx++) {
-            // Calculate neighbor cell coordinates
-            int cellX = int(cellIndex % GRID_WIDTH) + dx;
-            int cellY = int(cellIndex / GRID_WIDTH) + dy;
+    // Check only 4 adjacent cells (not diagonal neighbors)
+    const int offsets[5][2] = int[5][2](
+        int[2](0, 0),   // Current cell
+        int[2](-1, 0),  // Left
+        int[2](1, 0),   // Right  
+        int[2](0, -1),  // Up
+        int[2](0, 1)    // Down
+    );
+    
+    for (int cellIdx = 0; cellIdx < 5; cellIdx++) {
+        int dx = offsets[cellIdx][0];
+        int dy = offsets[cellIdx][1];
+        
+        // Calculate neighbor cell coordinates
+        int cellX = int(cellIndex % GRID_WIDTH) + dx;
+        int cellY = int(cellIndex / GRID_WIDTH) + dy;
+        
+        // Wrap around grid boundaries
+        cellX = ((cellX % int(GRID_WIDTH)) + int(GRID_WIDTH)) % int(GRID_WIDTH);
+        cellY = ((cellY % int(GRID_HEIGHT)) + int(GRID_HEIGHT)) % int(GRID_HEIGHT);
+        uint neighborCell = uint(cellX + cellY * int(GRID_WIDTH));
+        
+        // Collect entities in this neighboring cell
+        uint entitiesInCell[MAX_ENTITIES_PER_CELL];
+        uint entityCount = collectEntitiesInCell(neighborCell, entitiesInCell);
+        
+        // Check collision with entities in this cell
+        for (uint i = 0; i < entityCount; i++) {
+            uint otherEntityIndex = entitiesInCell[i];
+            if (otherEntityIndex == entityIndex) continue; // Skip self
+            if (otherEntityIndex >= pc.entityCount) continue;
             
-            // Wrap around grid boundaries
-            cellX = ((cellX % int(GRID_WIDTH)) + int(GRID_WIDTH)) % int(GRID_WIDTH);
-            cellY = ((cellY % int(GRID_HEIGHT)) + int(GRID_HEIGHT)) % int(GRID_HEIGHT);
-            uint neighborCell = uint(cellX + cellY * int(GRID_WIDTH));
+            // Get other entity's position
+            vec3 otherPos = currentPos.currentPositions[otherEntityIndex].xyz;
             
-            // Collect entities in this neighboring cell
-            uint entitiesInCell[MAX_ENTITIES_PER_CELL];
-            uint entityCount = collectEntitiesInCell(neighborCell, entitiesInCell);
+            // Simple distance check for collision (same as working version)
+            float distance = length(currentPosition.xy - otherPos.xy);
+            float collisionRadius = TRIANGLE_RADIUS * 2.0; // Combined radius
             
-            // Check collision with entities in this cell
-            for (uint i = 0; i < entityCount; i++) {
-                uint otherEntityIndex = entitiesInCell[i];
-                if (otherEntityIndex == entityIndex) continue; // Skip self
-                if (otherEntityIndex >= pc.entityCount) continue;
+            if (distance < collisionRadius && distance > 0.001) {
+                // Collision detected! Force strong separation
+                vec2 separationDir = normalize(currentPosition.xy - otherPos.xy);
+                resolvedPosition = otherPos.xy + separationDir * collisionRadius;
                 
-                // Get other entity's position
-                vec3 otherPos = currentPos.currentPositions[otherEntityIndex].xyz;
-                
-                // Simple distance check for collision (same as working version)
-                float distance = length(currentPosition.xy - otherPos.xy);
-                float collisionRadius = TRIANGLE_RADIUS * 2.0; // Combined radius
-                
-                if (distance < collisionRadius && distance > 0.001) {
-                    // Collision detected! Force strong separation
-                    vec2 separationDir = normalize(currentPosition.xy - otherPos.xy);
-                    resolvedPosition = otherPos.xy + separationDir * collisionRadius;
-                    
-                    // Stop movement entirely on collision
-                    vel = vec2(0.0, 0.0);
-                    hadCollision = true;
-                    break; // Handle first collision only
-                }
+                // Stop movement entirely on collision
+                vel = vec2(0.0, 0.0);
+                hadCollision = true;
+                break; // Handle first collision only
             }
-            
-            if (hadCollision) break; // Exit both loops
         }
-        if (hadCollision) break;
+        
+        if (hadCollision) break; // Exit loop
     }
     
     // Write back final velocity and resolved position
