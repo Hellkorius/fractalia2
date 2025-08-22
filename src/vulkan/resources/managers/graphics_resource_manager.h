@@ -30,7 +30,7 @@ public:
     
     // Individual resource creation
     bool createUniformBuffers();
-    bool createTriangleBuffers();
+    bool createGeometryBuffers();
     bool createGraphicsDescriptorPool(VkDescriptorSetLayout descriptorSetLayout);
     bool createGraphicsDescriptorSets(VkDescriptorSetLayout descriptorSetLayout);
     

@@ -33,6 +33,11 @@ bool VulkanSwapchain::initialize(const VulkanContext& context, SDL_Window* windo
         return false;
     }
     
+    if (!createDepthResources()) {
+        std::cerr << "Failed to create depth resources" << std::endl;
+        return false;
+    }
+    
     return true;
 }
 
@@ -47,6 +52,10 @@ void VulkanSwapchain::cleanupBeforeContextDestruction() {
     msaaColorImageView.reset();
     msaaColorImage.reset();
     msaaColorImageMemory.reset();
+    
+    depthImageView.reset();
+    depthImage.reset();
+    depthImageMemory.reset();
     
     // Manual cleanup for non-RAII managed resources
     if (context && swapChain != VK_NULL_HANDLE) {
@@ -120,6 +129,11 @@ bool VulkanSwapchain::recreate(VkRenderPass renderPass) {
     
     if (!createMSAAColorResources()) {
         std::cerr << "Failed to recreate MSAA color resources!" << std::endl;
+        return false;
+    }
+    
+    if (!createDepthResources()) {
+        std::cerr << "Failed to recreate depth resources!" << std::endl;
         return false;
     }
     
@@ -259,6 +273,35 @@ bool VulkanSwapchain::createMSAAColorResources() {
     return true;
 }
 
+bool VulkanSwapchain::createDepthResources() {
+    // Use a more compatible depth format
+    VkFormat depthFormat = VK_FORMAT_D24_UNORM_S8_UINT;
+    
+    VkImage image;
+    VkDeviceMemory memory;
+    if (!VulkanUtils::createImage(context->getDevice(), context->getPhysicalDevice(), context->getLoader(),
+                            swapChainExtent.width, swapChainExtent.height, depthFormat, VK_IMAGE_TILING_OPTIMAL,
+                            VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
+                            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, image, memory, VK_SAMPLE_COUNT_2_BIT)) {
+        std::cerr << "Failed to create depth image!" << std::endl;
+        return false;
+    }
+    
+    depthImage = vulkan_raii::make_image(image, context);
+    depthImageMemory = vulkan_raii::make_device_memory(memory, context);
+    
+    VkImageView imageView = VulkanUtils::createImageView(context->getDevice(), context->getLoader(), 
+                                                        depthImage.get(), depthFormat, VK_IMAGE_ASPECT_DEPTH_BIT);
+    if (imageView == VK_NULL_HANDLE) {
+        std::cerr << "Failed to create depth image view!" << std::endl;
+        return false;
+    }
+    
+    depthImageView = vulkan_raii::make_image_view(imageView, context);
+    
+    return true;
+}
+
 void VulkanSwapchain::cleanupSwapChain() {
     // Cache loader and device references for performance
     const auto& vk = context->getLoader();
@@ -270,6 +313,10 @@ void VulkanSwapchain::cleanupSwapChain() {
     msaaColorImageView.reset();
     msaaColorImage.reset();
     msaaColorImageMemory.reset();
+    
+    depthImageView.reset();
+    depthImage.reset();
+    depthImageMemory.reset();
     
     swapChainImageViews.clear();
     
@@ -299,6 +346,21 @@ void VulkanSwapchain::cleanupSwapChainExceptSwapchain() {
         std::cout << "VulkanSwapchain: CRITICAL - Freeing MSAA color image memory" << std::endl;
         msaaColorImageMemory.reset();
         std::cout << "VulkanSwapchain: MSAA memory successfully freed" << std::endl;
+    }
+    
+    // Cleanup depth resources - RAII handles destruction
+    if (depthImageView) {
+        std::cout << "VulkanSwapchain: Destroying depth image view" << std::endl;
+        depthImageView.reset();
+    }
+    if (depthImage) {
+        std::cout << "VulkanSwapchain: Destroying depth image" << std::endl;
+        depthImage.reset();
+    }
+    if (depthImageMemory) {
+        std::cout << "VulkanSwapchain: Freeing depth image memory" << std::endl;
+        depthImageMemory.reset();
+        std::cout << "VulkanSwapchain: Depth memory successfully freed" << std::endl;
     }
     
     // Cleanup swapchain image views - RAII handles destruction
@@ -394,9 +456,10 @@ bool VulkanSwapchain::createFramebuffers(VkRenderPass renderPass) {
     swapChainFramebuffers.reserve(swapChainImageViews.size());
     
     for (size_t i = 0; i < swapChainImageViews.size(); i++) {
-        std::array<VkImageView, 2> attachments = {
+        std::array<VkImageView, 3> attachments = {
             msaaColorImageView.get(),      
-            swapChainImageViews[i].get()
+            swapChainImageViews[i].get(),
+            depthImageView.get()
         };
         
         VkFramebufferCreateInfo framebufferInfo{};

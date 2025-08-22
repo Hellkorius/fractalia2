@@ -53,12 +53,17 @@ private:
     vulkan_raii::DeviceMemory msaaColorImageMemory;
     vulkan_raii::ImageView msaaColorImageView;
     
+    vulkan_raii::Image depthImage;
+    vulkan_raii::DeviceMemory depthImageMemory;
+    vulkan_raii::ImageView depthImageView;
+    
     std::vector<vulkan_raii::Framebuffer> swapChainFramebuffers;
 
 
     bool createSwapChain(VkSwapchainKHR oldSwapchainKHR = VK_NULL_HANDLE);
     bool createImageViews();
     bool createMSAAColorResources();
+    bool createDepthResources();
     void cleanupSwapChain();
     void cleanupSwapChainExceptSwapchain();
     

@@ -546,8 +546,8 @@ bool RenderingService::isEntityVisible(const RenderQueueEntry& entry) const {
 
 void RenderingService::updateRenderStats() {
     // Update any additional render statistics
-    renderStats.totalTriangles = renderStats.totalInstances * 2; // Assuming quads
-    renderStats.totalVertices = renderStats.totalInstances * 4;  // 4 vertices per quad
+    renderStats.totalTriangles = renderStats.totalInstances * 12; // Cubes have 12 triangles
+    renderStats.totalVertices = renderStats.totalInstances * 8;  // 8 vertices per cube
 }
 
 RenderQueueEntry RenderingService::createQueueEntry(flecs::entity entity, const Transform& transform, const Renderable& renderable) {

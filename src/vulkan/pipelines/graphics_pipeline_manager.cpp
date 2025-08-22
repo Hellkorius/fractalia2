@@ -269,10 +269,10 @@ namespace GraphicsPipelinePresets {
         colorBlendAttachment.blendEnable = VK_FALSE;
         state.colorBlendAttachments.push_back(colorBlendAttachment);
         
-        // No depth testing since we removed depth buffer
-        state.depthTestEnable = VK_FALSE;
-        state.depthWriteEnable = VK_FALSE;
-        state.depthCompareOp = VK_COMPARE_OP_ALWAYS;
+        // Enable depth testing for proper 3D cube rendering
+        state.depthTestEnable = VK_TRUE;
+        state.depthWriteEnable = VK_TRUE;
+        state.depthCompareOp = VK_COMPARE_OP_LESS;
         state.stencilTestEnable = VK_FALSE;
         
         return state;

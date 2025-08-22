@@ -95,10 +95,10 @@ void EntityGraphicsNode::execute(VkCommandBuffer commandBuffer, const FrameGraph
     auto layoutSpec = DescriptorLayoutPresets::createEntityGraphicsLayout();
     VkDescriptorSetLayout descriptorLayout = graphicsManager->getLayoutManager()->getLayout(layoutSpec);
     
-    // Get the render pass that was used to create the framebuffers (no depth buffer needed)
+    // Get the render pass with depth buffer for proper 3D rendering
     VkRenderPass renderPass = graphicsManager->createRenderPass(
         swapchain->getImageFormat(), 
-        VK_FORMAT_UNDEFINED,  // No depth buffer
+        VK_FORMAT_D24_UNORM_S8_UINT,  // Depth buffer for 3D cubes
         VK_SAMPLE_COUNT_2_BIT, // MSAA samples
         true  // Enable MSAA
     );
@@ -132,10 +132,11 @@ void EntityGraphicsNode::execute(VkCommandBuffer commandBuffer, const FrameGraph
     renderPassInfo.renderArea.offset = {0, 0};
     renderPassInfo.renderArea.extent = swapchain->getExtent();
 
-    // Clear values: MSAA color, resolve color (no depth buffer)
-    std::array<VkClearValue, 2> clearValues{};
+    // Clear values: MSAA color, resolve color, depth buffer
+    std::array<VkClearValue, 3> clearValues{};
     clearValues[0].color = {{0.1f, 0.1f, 0.2f, 1.0f}};  // MSAA color attachment
-    clearValues[1].color = {{0.1f, 0.1f, 0.2f, 1.0f}};  // Resolve attachment
+    clearValues[1].color = {{0.1f, 0.1f, 0.2f, 1.0f}};  // Resolve attachment  
+    clearValues[2].depthStencil = {1.0f, 0};             // Depth buffer (1.0 = far plane)
     renderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
     renderPassInfo.pClearValues = clearValues.data();
 
@@ -207,19 +208,19 @@ void EntityGraphicsNode::execute(VkCommandBuffer commandBuffer, const FrameGraph
     if (entityCount > 0) {
         // Bind vertex buffer: only geometry vertices (SoA uses storage buffers for entity data)
         VkBuffer vertexBuffers[] = {
-            resourceCoordinator->getGraphicsManager()->getVertexBuffer()      // Vertex positions for triangle geometry
+            resourceCoordinator->getGraphicsManager()->getVertexBuffer()      // Vertex positions for cube geometry
         };
         VkDeviceSize offsets[] = {0};
         vk.vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
         
-        // Bind index buffer for triangle geometry
+        // Bind index buffer for cube geometry
         vk.vkCmdBindIndexBuffer(
             commandBuffer, resourceCoordinator->getGraphicsManager()->getIndexBuffer(), 0, VK_INDEX_TYPE_UINT16);
         
-        // Draw indexed instances: all entities with triangle geometry
+        // Draw indexed instances: all entities with cube geometry
         vk.vkCmdDrawIndexed(
             commandBuffer, 
-            resourceCoordinator->getGraphicsManager()->getIndexCount(),  // Number of indices per triangle
+            resourceCoordinator->getGraphicsManager()->getIndexCount(),  // Number of indices per cube
             entityCount,                      // Number of instances (entities)
             0, 0, 0                          // Index/vertex/instance offsets
         );
@@ -229,7 +230,7 @@ void EntityGraphicsNode::execute(VkCommandBuffer commandBuffer, const FrameGraph
         if (counter % 1800 == 0) {
             std::cout << "EntityGraphicsNode: Drew " << entityCount 
                       << " entities with " << resourceCoordinator->getGraphicsManager()->getIndexCount() 
-                      << " indices per triangle" << std::endl;
+                      << " indices per cube" << std::endl;
         }
     }
 
