@@ -17,6 +17,7 @@ EntityBufferManager::~EntityBufferManager() {
 
 bool EntityBufferManager::initialize(const VulkanContext& context, ResourceCoordinator* resourceCoordinator, uint32_t maxEntities) {
     this->maxEntities = maxEntities;
+    this->context = &context;
     
     // Initialize upload service
     if (!uploadService.initialize(resourceCoordinator)) {
@@ -396,5 +397,27 @@ bool EntityBufferManager::initializeSpatialMapBuffer() {
     }
     
     return success;
+}
+
+bool EntityBufferManager::readbackEntityAtPositionSafe(glm::vec2 worldPos, EntityDebugInfo& info) const {
+    if (!context) {
+        std::cerr << "EntityBufferManager::readbackEntityAtPositionSafe - No Vulkan context available" << std::endl;
+        return false;
+    }
+    
+    // Wait for GPU to complete all operations to ensure spatial map is consistent
+    const auto& vk = context->getLoader();
+    const VkDevice device = context->getDevice();
+    
+    VkResult result = vk.vkDeviceWaitIdle(device);
+    if (result != VK_SUCCESS) {
+        std::cerr << "EntityBufferManager::readbackEntityAtPositionSafe - Failed to wait for GPU idle: " << result << std::endl;
+        return false;
+    }
+    
+    std::cout << "GPU synchronized - spatial map data should be consistent" << std::endl;
+    
+    // Now perform the readback with guaranteed consistent data
+    return readbackEntityAtPosition(worldPos, info);
 }
 

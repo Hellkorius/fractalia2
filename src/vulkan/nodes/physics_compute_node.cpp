@@ -20,7 +20,14 @@ namespace {
     };
     
     DispatchParams calculateDispatchParams(uint32_t entityCount, uint32_t maxWorkgroups, bool forceChunking) {
-        const uint32_t totalWorkgroups = (entityCount + THREADS_PER_WORKGROUP - 1) / THREADS_PER_WORKGROUP;
+        // Calculate workgroups needed for both spatial map clearing and entity processing
+        const uint32_t SPATIAL_MAP_SIZE = 4096;
+        const uint32_t spatialClearWorkgroups = (SPATIAL_MAP_SIZE + THREADS_PER_WORKGROUP - 1) / THREADS_PER_WORKGROUP;
+        const uint32_t entityWorkgroups = (entityCount + THREADS_PER_WORKGROUP - 1) / THREADS_PER_WORKGROUP;
+        
+        // Use maximum of both requirements
+        const uint32_t totalWorkgroups = std::max(spatialClearWorkgroups, entityWorkgroups);
+        
         return {
             totalWorkgroups,
             maxWorkgroups,

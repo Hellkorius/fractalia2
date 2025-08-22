@@ -708,9 +708,9 @@ void GameControlService::debugEntityAtPosition(const glm::vec2& worldPos) {
     // Get the entity buffer manager for readback
     auto& bufferManager = gpuEntityManager->getBufferManager();
     
-    // Perform GPU readback at the clicked position
+    // Perform GPU readback at the clicked position with synchronization
     EntityBufferManager::EntityDebugInfo debugInfo;
-    if (bufferManager.readbackEntityAtPosition(worldPos, debugInfo)) {
+    if (bufferManager.readbackEntityAtPositionSafe(worldPos, debugInfo)) {
         // Get ECS entity ID from GPU index
         auto ecsEntity = gpuEntityManager->getECSEntityFromGPUIndex(debugInfo.entityId);
         

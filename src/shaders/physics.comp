@@ -61,17 +61,24 @@ uint spatialHash(vec2 position) {
 void updateSpatialMap(uint entityIndex, vec2 position) {
     uint cellIndex = spatialHash(position);
     
-    // Pack entity data: entityId in x, clear next pointer in y
-    uvec2 entityData = uvec2(entityIndex, NULL_INDEX);
-    
-    // Atomic operation: read current cell head and insert this entity at front
-    uint oldHead = atomicExchange(spatialMap.spatialCells[cellIndex].x, entityIndex);
+    // Atomic compare-swap loop to safely update the linked list head
+    uint expectedHead;
+    do {
+        expectedHead = spatialMap.spatialCells[cellIndex].x;
+    } while (atomicCompSwap(spatialMap.spatialCells[cellIndex].x, expectedHead, entityIndex) != expectedHead);
     
     // Store old head as our next pointer (building linked list)
-    spatialMap.spatialCells[cellIndex].y = oldHead;
+    spatialMap.spatialCells[cellIndex].y = expectedHead;
 }
 
 void main() {
+    // Clear spatial cells (each thread clears one cell)
+    if (gl_GlobalInvocationID.x < SPATIAL_MAP_SIZE) {
+        spatialMap.spatialCells[gl_GlobalInvocationID.x] = uvec2(NULL_INDEX, NULL_INDEX);
+    }
+    barrier();
+    memoryBarrierShared();
+    
     // Get current entity index with chunk offset
     uint entityIndex = gl_GlobalInvocationID.x + pc.entityOffset;
     

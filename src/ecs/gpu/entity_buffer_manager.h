@@ -74,10 +74,14 @@ public:
     bool readbackEntityAtPosition(glm::vec2 worldPos, EntityDebugInfo& info) const;
     bool readbackEntityById(uint32_t entityId, EntityDebugInfo& info) const;
     bool readbackSpatialCell(uint32_t cellIndex, std::vector<uint32_t>& entityIds) const;
+    
+    // GPU-synchronized readback (waits for compute shader completion)
+    bool readbackEntityAtPositionSafe(glm::vec2 worldPos, EntityDebugInfo& info) const;
 
 private:
     // Configuration
     uint32_t maxEntities = 0;
+    const VulkanContext* context = nullptr;
     
     // Helper method for GPU readback
     bool readGPUBuffer(VkBuffer srcBuffer, void* dstData, VkDeviceSize size, VkDeviceSize offset) const;
