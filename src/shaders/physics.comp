@@ -243,31 +243,57 @@ void main() {
     barrier();
     memoryBarrierShared();
     
-    // Simple collision detection - check all nearby entities
+    // Spatial hash collision detection - much faster than O(N²)
     vec2 resolvedPosition = currentPosition.xy;
     bool hadCollision = false;
     
-    // Check collision with all other entities (simplified for debugging)
-    for (uint i = 0; i < pc.entityCount; i++) {
-        if (i == entityIndex) continue; // Skip self
-        
-        // Get other entity's position
-        vec3 otherPos = currentPos.currentPositions[i].xyz;
-        
-        // Simple distance check for collision
-        float distance = length(currentPosition.xy - otherPos.xy);
-        float collisionRadius = TRIANGLE_RADIUS * 2.0; // Combined radius
-        
-        if (distance < collisionRadius && distance > 0.001) {
-            // Collision detected! Force strong separation
-            vec2 separationDir = normalize(currentPosition.xy - otherPos.xy);
-            resolvedPosition = otherPos.xy + separationDir * collisionRadius;
+    // Get our spatial cell
+    uint cellIndex = spatialHash(currentPosition.xy);
+    
+    // Check our cell and all 8 neighboring cells (3x3 grid)
+    for (int dy = -1; dy <= 1; dy++) {
+        for (int dx = -1; dx <= 1; dx++) {
+            // Calculate neighbor cell coordinates
+            int cellX = int(cellIndex % GRID_WIDTH) + dx;
+            int cellY = int(cellIndex / GRID_WIDTH) + dy;
             
-            // Stop movement entirely on collision
-            vel = vec2(0.0, 0.0);
-            hadCollision = true;
-            break; // Handle first collision only
+            // Wrap around grid boundaries
+            cellX = ((cellX % int(GRID_WIDTH)) + int(GRID_WIDTH)) % int(GRID_WIDTH);
+            cellY = ((cellY % int(GRID_HEIGHT)) + int(GRID_HEIGHT)) % int(GRID_HEIGHT);
+            uint neighborCell = uint(cellX + cellY * int(GRID_WIDTH));
+            
+            // Collect entities in this neighboring cell
+            uint entitiesInCell[MAX_ENTITIES_PER_CELL];
+            uint entityCount = collectEntitiesInCell(neighborCell, entitiesInCell);
+            
+            // Check collision with entities in this cell
+            for (uint i = 0; i < entityCount; i++) {
+                uint otherEntityIndex = entitiesInCell[i];
+                if (otherEntityIndex == entityIndex) continue; // Skip self
+                if (otherEntityIndex >= pc.entityCount) continue;
+                
+                // Get other entity's position
+                vec3 otherPos = currentPos.currentPositions[otherEntityIndex].xyz;
+                
+                // Simple distance check for collision (same as working version)
+                float distance = length(currentPosition.xy - otherPos.xy);
+                float collisionRadius = TRIANGLE_RADIUS * 2.0; // Combined radius
+                
+                if (distance < collisionRadius && distance > 0.001) {
+                    // Collision detected! Force strong separation
+                    vec2 separationDir = normalize(currentPosition.xy - otherPos.xy);
+                    resolvedPosition = otherPos.xy + separationDir * collisionRadius;
+                    
+                    // Stop movement entirely on collision
+                    vel = vec2(0.0, 0.0);
+                    hadCollision = true;
+                    break; // Handle first collision only
+                }
+            }
+            
+            if (hadCollision) break; // Exit both loops
         }
+        if (hadCollision) break;
     }
     
     // Write back final velocity and resolved position
