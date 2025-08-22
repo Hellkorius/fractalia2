@@ -2,6 +2,7 @@
 
 #include "specialized_buffers.h"
 #include "position_buffer_coordinator.h"
+#include "spatial_map_buffers.h"
 #include "buffer_upload_service.h"
 #include <vulkan/vulkan.h>
 #include <memory>
@@ -35,6 +36,10 @@ public:
     VkBuffer getCurrentPositionBuffer() const { return positionCoordinator.getCurrentBuffer(); }
     VkBuffer getTargetPositionBuffer() const { return positionCoordinator.getTargetBuffer(); }
     
+    // Spatial map buffers - delegated to coordinator
+    VkBuffer getSpatialMapBuffer() const { return spatialMapCoordinator.getSpatialMapBuffer(); }
+    VkBuffer getEntityCellBuffer() const { return spatialMapCoordinator.getEntityCellBuffer(); }
+    
     
     // Ping-pong buffer access - delegated to coordinator
     VkBuffer getComputeWriteBuffer(uint32_t frameIndex) const { return positionCoordinator.getComputeWriteBuffer(frameIndex); }
@@ -47,6 +52,8 @@ public:
     VkDeviceSize getColorBufferSize() const { return colorBuffer.getSize(); }
     VkDeviceSize getModelMatrixBufferSize() const { return modelMatrixBuffer.getSize(); }
     VkDeviceSize getPositionBufferSize() const { return positionCoordinator.getBufferSize(); }
+    VkDeviceSize getSpatialMapBufferSize() const { return spatialMapCoordinator.getSpatialMapBufferSize(); }
+    VkDeviceSize getEntityCellBufferSize() const { return spatialMapCoordinator.getEntityCellBufferSize(); }
     uint32_t getMaxEntities() const { return maxEntities; }
     
     
@@ -59,6 +66,16 @@ public:
     bool uploadColorData(const void* data, VkDeviceSize size, VkDeviceSize offset = 0);
     bool uploadModelMatrixData(const void* data, VkDeviceSize size, VkDeviceSize offset = 0);
     bool uploadPositionDataToAllBuffers(const void* data, VkDeviceSize size, VkDeviceSize offset = 0);
+    
+    // Spatial map operations
+    bool clearSpatialMap();
+    bool uploadEntityCellData(const void* data, VkDeviceSize size, VkDeviceSize offset = 0);
+    
+    // Spatial map properties
+    uint32_t getGridResolution() const { return spatialMapCoordinator.getGridResolution(); }
+    float getCellSize() const { return spatialMapCoordinator.getCellSize(); }
+    float getWorldSize() const { return spatialMapCoordinator.getWorldSize(); }
+    uint32_t getMaxEntitiesPerCell() const { return spatialMapCoordinator.getMaxEntitiesPerCell(); }
 
 private:
     // Configuration
@@ -73,6 +90,9 @@ private:
     
     // Position buffer coordination
     PositionBufferCoordinator positionCoordinator;
+    
+    // Spatial map coordination
+    SpatialMapCoordinator spatialMapCoordinator;
     
     // Shared upload service
     BufferUploadService uploadService;

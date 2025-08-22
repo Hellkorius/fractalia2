@@ -309,6 +309,25 @@ namespace ComputePipelinePresets {
         return state;
     }
     
+    ComputePipelineState createSpatialMapUpdateState(VkDescriptorSetLayout descriptorLayout) {
+        ComputePipelineState state{};
+        state.shaderPath = "shaders/spatial_map_update.comp.spv";
+        state.descriptorSetLayouts.push_back(descriptorLayout);
+        state.workgroupSizeX = THREADS_PER_WORKGROUP;  // MUST match shader local_size_x
+        state.workgroupSizeY = 1;
+        state.workgroupSizeZ = 1;
+        state.isFrequentlyUsed = true;
+        
+        // Add push constants for spatial map parameters (must match SpatialPushConstants struct)
+        VkPushConstantRange pushConstant{};
+        pushConstant.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+        pushConstant.offset = 0;
+        pushConstant.size = sizeof(uint32_t) * 6 + sizeof(float) * 2;  // entityCount, gridResolution, cellSize, worldSize, maxEntitiesPerCell, clearMapFirst, padding[2]
+        state.pushConstantRanges.push_back(pushConstant);
+        
+        return state;
+    }
+    
     ComputePipelineState createPhysicsState(VkDescriptorSetLayout descriptorLayout) {
         ComputePipelineState state{};
         state.shaderPath = "shaders/physics.comp.spv";

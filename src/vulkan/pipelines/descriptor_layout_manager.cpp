@@ -611,6 +611,38 @@ namespace DescriptorLayoutPresets {
         spec.bindings = {velocityBinding, movementParamsBinding, runtimeStateBinding, positionOutputBinding, currentPosBinding};
         return spec;
     }
+    
+    DescriptorLayoutSpec createSpatialMapComputeLayout() {
+        DescriptorLayoutSpec spec;
+        spec.layoutName = "SpatialMapComputeLayout";
+        
+        // Binding 0: Position Buffer (read-only input)
+        DescriptorBinding positionBinding{};
+        positionBinding.binding = 0;
+        positionBinding.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        positionBinding.descriptorCount = 1;
+        positionBinding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+        positionBinding.debugName = "positionInputBuffer";
+        
+        // Binding 1: EntityCell Buffer (write-only output)
+        DescriptorBinding entityCellBinding{};
+        entityCellBinding.binding = 1;
+        entityCellBinding.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        entityCellBinding.descriptorCount = 1;
+        entityCellBinding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+        entityCellBinding.debugName = "entityCellBuffer";
+        
+        // Binding 2: Spatial Map Buffer (read-write)
+        DescriptorBinding spatialMapBinding{};
+        spatialMapBinding.binding = 2;
+        spatialMapBinding.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        spatialMapBinding.descriptorCount = 1;
+        spatialMapBinding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+        spatialMapBinding.debugName = "spatialMapBuffer";
+        
+        spec.bindings = {positionBinding, entityCellBinding, spatialMapBinding};
+        return spec;
+    }
 }
 
 // DescriptorLayoutBuilder implementation

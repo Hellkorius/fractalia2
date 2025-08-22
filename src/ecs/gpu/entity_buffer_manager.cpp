@@ -52,12 +52,19 @@ bool EntityBufferManager::initialize(const VulkanContext& context, ResourceCoord
         return false;
     }
     
+    // Initialize spatial map coordinator
+    if (!spatialMapCoordinator.initialize(context, resourceCoordinator, maxEntities)) {
+        std::cerr << "EntityBufferManager: Failed to initialize spatial map coordinator" << std::endl;
+        return false;
+    }
+    
     std::cout << "EntityBufferManager: Initialized successfully for " << maxEntities << " entities using SRP-compliant design" << std::endl;
     return true;
 }
 
 void EntityBufferManager::cleanup() {
     // Cleanup specialized components
+    spatialMapCoordinator.cleanup();
     positionCoordinator.cleanup();
     modelMatrixBuffer.cleanup();
     colorBuffer.cleanup();
@@ -92,5 +99,13 @@ bool EntityBufferManager::uploadModelMatrixData(const void* data, VkDeviceSize s
 
 bool EntityBufferManager::uploadPositionDataToAllBuffers(const void* data, VkDeviceSize size, VkDeviceSize offset) {
     return positionCoordinator.uploadToAllBuffers(data, size, offset);
+}
+
+bool EntityBufferManager::clearSpatialMap() {
+    return spatialMapCoordinator.clearSpatialMap();
+}
+
+bool EntityBufferManager::uploadEntityCellData(const void* data, VkDeviceSize size, VkDeviceSize offset) {
+    return spatialMapCoordinator.uploadEntityCellData(data, size, offset);
 }
 

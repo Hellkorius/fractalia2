@@ -1,0 +1,122 @@
+#version 450
+
+// Optimized workgroup size for spatial mapping
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+// Push constants for spatial mapping
+layout(push_constant) uniform SpatialPushConstants {
+    uint entityCount;
+    uint gridResolution;    // 128
+    float cellSize;         // ~15.625
+    float worldSize;        // 2000.0
+    uint maxEntitiesPerCell; // 64
+    uint clearMapFirst;     // 1 to clear, 0 to skip clearing
+    uint padding[2];        // Ensure 16-byte alignment
+} pc;
+
+// Input buffers (read-only)
+layout(std430, binding = 0) buffer readonly PositionBuffer {
+    vec4 positions[];
+} positionBuffer;
+
+// Output buffers (write)
+layout(std430, binding = 1) buffer writeonly EntityCellBuffer {
+    uint entityCells[];
+} entityCellBuffer;
+
+layout(std430, binding = 2) buffer coherent SpatialMapBuffer {
+    uint spatialMap[];  // Layout: [count, entity0, entity1, ..., entity63] per cell
+} spatialMapBuffer;
+
+// Constants
+const uint INVALID_ENTITY = 0xFFFFFFFF;
+
+// Convert world position to cell index
+uint worldToCell(vec2 worldPos) {
+    // Normalize to [0, worldSize]
+    float halfWorld = pc.worldSize * 0.5;
+    vec2 normalized = worldPos + halfWorld;
+    
+    // Convert to grid coordinates [0, gridResolution-1]
+    ivec2 gridCoords = ivec2(floor(normalized / pc.cellSize));
+    
+    // Clamp to valid range
+    gridCoords = clamp(gridCoords, ivec2(0), ivec2(pc.gridResolution - 1));
+    
+    return uint(gridCoords.y * pc.gridResolution + gridCoords.x);
+}
+
+// Get the base offset for a cell in the spatial map buffer
+uint getCellOffset(uint cellIndex) {
+    return cellIndex * (pc.maxEntitiesPerCell + 1); // +1 for count
+}
+
+// Atomically add entity to spatial cell
+bool addEntityToCell(uint cellIndex, uint entityIndex) {
+    uint cellOffset = getCellOffset(cellIndex);
+    
+    // Atomically increment the entity count and get the previous value
+    uint slotIndex = atomicAdd(spatialMapBuffer.spatialMap[cellOffset], 1);
+    
+    // Check if we have space (slot index should be < maxEntitiesPerCell)
+    if (slotIndex < pc.maxEntitiesPerCell) {
+        // Write entity to the allocated slot (offset by 1 to skip count)
+        spatialMapBuffer.spatialMap[cellOffset + 1 + slotIndex] = entityIndex;
+        return true;
+    } else {
+        // Cell is full, decrement the count back
+        atomicAdd(spatialMapBuffer.spatialMap[cellOffset], -1);
+        return false;
+    }
+}
+
+void main() {
+    uint entityIndex = gl_GlobalInvocationID.x;
+    
+    // Clear spatial map if requested (only first workgroup does this)
+    if (pc.clearMapFirst != 0 && gl_GlobalInvocationID.x == 0) {
+        uint totalCells = pc.gridResolution * pc.gridResolution;
+        uint cellDataSize = pc.maxEntitiesPerCell + 1;
+        
+        // Clear all cells in parallel chunks
+        for (uint cellIndex = 0; cellIndex < totalCells; ++cellIndex) {
+            uint cellOffset = getCellOffset(cellIndex);
+            
+            // Reset entity count to 0
+            spatialMapBuffer.spatialMap[cellOffset] = 0;
+            
+            // Clear entity slots (optional, but helps with debugging)
+            for (uint i = 1; i <= pc.maxEntitiesPerCell; ++i) {
+                spatialMapBuffer.spatialMap[cellOffset + i] = INVALID_ENTITY;
+            }
+        }
+    }
+    
+    // Ensure clearing is complete before processing entities
+    barrier();
+    memoryBarrierBuffer();
+    
+    // Early exit for out-of-bounds entities
+    if (entityIndex >= pc.entityCount) {
+        return;
+    }
+    
+    // Get entity position (assuming positions are in .xy components)
+    vec2 entityPos = positionBuffer.positions[entityIndex].xy;
+    
+    // Calculate which cell this entity belongs to
+    uint cellIndex = worldToCell(entityPos);
+    
+    // Store the cell index for this entity
+    entityCellBuffer.entityCells[entityIndex] = cellIndex;
+    
+    // Add entity to the spatial map cell
+    bool success = addEntityToCell(cellIndex, entityIndex);
+    
+    // Note: If cell is full, entity is still tracked in entityCellBuffer
+    // but won't appear in spatial queries for that cell
+    if (!success) {
+        // Could implement overflow handling here if needed
+        // For now, we silently ignore overflow
+    }
+}

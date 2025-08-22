@@ -74,6 +74,10 @@ public:
     VkBuffer getCurrentPositionBuffer() const { return bufferManager.getCurrentPositionBuffer(); }
     VkBuffer getTargetPositionBuffer() const { return bufferManager.getTargetPositionBuffer(); }
     
+    // Spatial map buffers
+    VkBuffer getSpatialMapBuffer() const { return bufferManager.getSpatialMapBuffer(); }
+    VkBuffer getEntityCellBuffer() const { return bufferManager.getEntityCellBuffer(); }
+    
     
     // Async compute support - ping-pong between position buffers
     VkBuffer getComputeWriteBuffer(uint32_t frameIndex) const { return bufferManager.getComputeWriteBuffer(frameIndex); }
@@ -86,6 +90,8 @@ public:
     VkDeviceSize getColorBufferSize() const { return bufferManager.getColorBufferSize(); }
     VkDeviceSize getModelMatrixBufferSize() const { return bufferManager.getModelMatrixBufferSize(); }
     VkDeviceSize getPositionBufferSize() const { return bufferManager.getPositionBufferSize(); }
+    VkDeviceSize getSpatialMapBufferSize() const { return bufferManager.getSpatialMapBufferSize(); }
+    VkDeviceSize getEntityCellBufferSize() const { return bufferManager.getEntityCellBufferSize(); }
     
     
     // Entity state
@@ -96,6 +102,15 @@ public:
     // Descriptor management delegation
     EntityDescriptorManager& getDescriptorManager() { return descriptorManager; }
     const EntityDescriptorManager& getDescriptorManager() const { return descriptorManager; }
+    
+    // Spatial map operations
+    bool clearSpatialMap() { return bufferManager.clearSpatialMap(); }
+    
+    // Spatial map properties
+    uint32_t getGridResolution() const { return bufferManager.getGridResolution(); }
+    float getCellSize() const { return bufferManager.getCellSize(); }
+    float getWorldSize() const { return bufferManager.getWorldSize(); }
+    uint32_t getMaxEntitiesPerCell() const { return bufferManager.getMaxEntitiesPerCell(); }
 
 private:
     static constexpr uint32_t MAX_ENTITIES = 131072; // 128k entities max

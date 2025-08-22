@@ -16,6 +16,10 @@ cp src/shaders/compiled/fragment.frag.spv build/shaders/
 glslangValidator -V src/shaders/movement_random.comp -o src/shaders/compiled/movement_random.comp.spv
 cp src/shaders/compiled/movement_random.comp.spv build/shaders/
 
+# Compile compute shader (spatial map update)
+glslangValidator -V src/shaders/spatial_map_update.comp -o src/shaders/compiled/spatial_map_update.comp.spv
+cp src/shaders/compiled/spatial_map_update.comp.spv build/shaders/
+
 # Compile compute shader (physics)
 glslangValidator -V src/shaders/physics.comp -o src/shaders/compiled/physics.comp.spv
 cp src/shaders/compiled/physics.comp.spv build/shaders/

@@ -246,6 +246,7 @@ namespace DescriptorLayoutPresets {
     // Entity rendering layouts (for your use case)
     DescriptorLayoutSpec createEntityGraphicsLayout();
     DescriptorLayoutSpec createEntityComputeLayout();
+    DescriptorLayoutSpec createSpatialMapComputeLayout();
     
     // Common rendering layouts
     DescriptorLayoutSpec createMaterialLayout(uint32_t textureCount = 4);

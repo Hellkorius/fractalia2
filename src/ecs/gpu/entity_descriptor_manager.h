@@ -32,18 +32,22 @@ public:
     bool createDescriptorSetLayouts();
     VkDescriptorSetLayout getComputeDescriptorSetLayout() const { return computeDescriptorSetLayout; }
     VkDescriptorSetLayout getGraphicsDescriptorSetLayout() const { return graphicsDescriptorSetLayout; }
+    VkDescriptorSetLayout getSpatialMapDescriptorSetLayout() const { return spatialMapDescriptorSetLayout; }
 
     // Descriptor set management
     bool createComputeDescriptorSets(VkDescriptorSetLayout layout);
     bool createGraphicsDescriptorSets(VkDescriptorSetLayout layout);
+    bool createSpatialMapDescriptorSets(VkDescriptorSetLayout layout);
     
     // Descriptor set access
     VkDescriptorSet getComputeDescriptorSet() const { return computeDescriptorSet; }
     VkDescriptorSet getGraphicsDescriptorSet() const { return graphicsDescriptorSet; }
+    VkDescriptorSet getSpatialMapDescriptorSet() const { return spatialMapDescriptorSet; }
 
     // State queries (entity-specific)
     bool hasValidComputeDescriptorSet() const { return computeDescriptorSet != VK_NULL_HANDLE; }
     bool hasValidGraphicsDescriptorSet() const { return graphicsDescriptorSet != VK_NULL_HANDLE; }
+    bool hasValidSpatialMapDescriptorSet() const { return spatialMapDescriptorSet != VK_NULL_HANDLE; }
 
     // Override from base class
     bool recreateDescriptorSets() override;
@@ -61,22 +65,28 @@ private:
     // Entity-specific descriptor set layouts
     VkDescriptorSetLayout computeDescriptorSetLayout = VK_NULL_HANDLE;
     VkDescriptorSetLayout graphicsDescriptorSetLayout = VK_NULL_HANDLE;
+    VkDescriptorSetLayout spatialMapDescriptorSetLayout = VK_NULL_HANDLE;
     
     // Entity-specific descriptor pools (managed via composition)
     vulkan_raii::DescriptorPool computeDescriptorPool;
     vulkan_raii::DescriptorPool graphicsDescriptorPool;
+    vulkan_raii::DescriptorPool spatialMapDescriptorPool;
     
     // Entity-specific descriptor sets
     VkDescriptorSet computeDescriptorSet = VK_NULL_HANDLE;
     VkDescriptorSet graphicsDescriptorSet = VK_NULL_HANDLE;
+    VkDescriptorSet spatialMapDescriptorSet = VK_NULL_HANDLE;
     
     // Entity-specific helpers (SRP)
     bool createComputeDescriptorPool();
     bool createGraphicsDescriptorPool();
+    bool createSpatialMapDescriptorPool();
     bool updateComputeDescriptorSet();
     bool updateGraphicsDescriptorSet();
+    bool updateSpatialMapDescriptorSet();
     bool recreateComputeDescriptorSets();
     bool recreateGraphicsDescriptorSets();
+    bool recreateSpatialMapDescriptorSets();
     
     // Entity-specific cleanup
     void cleanupDescriptorSetLayouts();
