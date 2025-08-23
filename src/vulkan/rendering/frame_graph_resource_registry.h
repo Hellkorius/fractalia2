@@ -12,7 +12,6 @@ public:
     ~FrameGraphResourceRegistry();
 
     bool initialize(FrameGraph* frameGraph, GPUEntityManager* gpuEntityManager);
-    void cleanup();
 
     // Import all entity-related resources into frame graph
     bool importEntityResources();

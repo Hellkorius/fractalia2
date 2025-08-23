@@ -9,7 +9,6 @@
 #include <chrono>
 #include "../core/vulkan_context.h"
 #include "../core/vulkan_constants.h"
-#include "../core/vulkan_manager_base.h"
 #include "../core/vulkan_raii.h"
 #include "graphics_pipeline_state_hash.h"
 #include "graphics_pipeline_cache.h"
@@ -20,7 +19,7 @@
 class ShaderManager;
 class DescriptorLayoutManager;
 
-class GraphicsPipelineManager : public VulkanManagerBase {
+class GraphicsPipelineManager {
 public:
     explicit GraphicsPipelineManager(VulkanContext* ctx);
     ~GraphicsPipelineManager();
@@ -62,6 +61,7 @@ public:
     void enableHotReload(bool enable) { hotReloadEnabled_ = enable; }
 
 private:
+    VulkanContext* context;
     vulkan_raii::PipelineCache pipelineCache_;
     
     ShaderManager* shaderManager_ = nullptr;

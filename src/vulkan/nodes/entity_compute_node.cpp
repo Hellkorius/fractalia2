@@ -68,7 +68,7 @@ std::vector<ResourceDependency> EntityComputeNode::getOutputs() const {
     };
 }
 
-void EntityComputeNode::execute(VkCommandBuffer commandBuffer, const FrameGraph& frameGraph) {
+void EntityComputeNode::execute(VkCommandBuffer commandBuffer, const FrameGraph& frameGraph, float time, float deltaTime) {
     // Validate dependencies are still valid
     if (!computeManager || !gpuEntityManager) {
         std::cerr << "EntityComputeNode: Critical error - dependencies became null during execution" << std::endl;
@@ -113,7 +113,7 @@ void EntityComputeNode::execute(VkCommandBuffer commandBuffer, const FrameGraph&
     // Configure push constants and dispatch
     pushConstants.entityCount = entityCount;
     dispatch.pushConstantData = &pushConstants;
-    dispatch.pushConstantSize = sizeof(ComputePushConstants);
+    dispatch.pushConstantSize = sizeof(NodePushConstants);
     dispatch.pushConstantStages = VK_SHADER_STAGE_COMPUTE_BIT;
     dispatch.calculateOptimalDispatch(entityCount, glm::uvec3(THREADS_PER_WORKGROUP, 1, 1));
     
@@ -172,7 +172,7 @@ void EntityComputeNode::execute(VkCommandBuffer commandBuffer, const FrameGraph&
         
         vk.vkCmdPushConstants(
             commandBuffer, dispatch.layout, VK_SHADER_STAGE_COMPUTE_BIT,
-            0, sizeof(ComputePushConstants), &pushConstants);
+            0, sizeof(NodePushConstants), &pushConstants);
         
         vk.vkCmdDispatch(commandBuffer, dispatchParams.totalWorkgroups, 1, 1);
         
@@ -228,12 +228,12 @@ void EntityComputeNode::executeChunkedDispatch(
         }
         
         // Update push constants for this chunk
-        ComputePushConstants chunkPushConstants = pushConstants;
-        chunkPushConstants.entityOffset = baseEntityOffset;
+        NodePushConstants chunkPushConstants = pushConstants;
+        chunkPushConstants.param1 = baseEntityOffset;  // entityOffset for chunked dispatches
         
         vk.vkCmdPushConstants(
             commandBuffer, dispatch.layout, VK_SHADER_STAGE_COMPUTE_BIT,
-            0, sizeof(ComputePushConstants), &chunkPushConstants);
+            0, sizeof(NodePushConstants), &chunkPushConstants);
         
         vk.vkCmdDispatch(commandBuffer, currentChunkSize, 1, 1);
         
@@ -295,32 +295,11 @@ void EntityComputeNode::executeChunkedDispatch(
     }
 }
 
-// Node lifecycle implementation
-bool EntityComputeNode::initializeNode(const FrameGraph& frameGraph) {
-    // One-time initialization - validate dependencies
-    if (!computeManager) {
-        std::cerr << "EntityComputeNode: ComputePipelineManager is null" << std::endl;
-        return false;
+// Optional dependency validation
+void EntityComputeNode::onFirstUse(const FrameGraph& frameGraph) {
+    if (!computeManager || !gpuEntityManager) {
+        std::cerr << "EntityComputeNode: Missing dependencies during first use" << std::endl;
     }
-    if (!gpuEntityManager) {
-        std::cerr << "EntityComputeNode: GPUEntityManager is null" << std::endl;
-        return false;
-    }
-    return true;
-}
-
-void EntityComputeNode::prepareFrame(uint32_t frameIndex, float time, float deltaTime) {
-    // Store timing data for execution
-    currentTime = time;
-    currentDeltaTime = deltaTime;
-    
-    // Update push constants with timing data - frame counter will be set in execute()
-    pushConstants.time = time;
-    pushConstants.deltaTime = deltaTime;
-}
-
-void EntityComputeNode::releaseFrame(uint32_t frameIndex) {
-    // Per-frame cleanup - nothing to clean up for compute node
 }
 
 

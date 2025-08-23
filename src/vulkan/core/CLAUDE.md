@@ -12,7 +12,6 @@ src/vulkan/core/
 ├── vulkan_context.h                  # Central Vulkan device and queue context
 ├── vulkan_function_loader.cpp        # Function loader implementation
 ├── vulkan_function_loader.h          # Centralized Vulkan function pointer management
-├── vulkan_manager_base.h             # Base class for Vulkan component managers
 ├── vulkan_raii.cpp                   # RAII wrapper implementations
 ├── vulkan_raii.h                     # RAII wrappers for Vulkan objects
 ├── vulkan_swapchain.cpp              # Swapchain management implementation
@@ -45,9 +44,6 @@ src/vulkan/core/
 - **Inputs**: SDL Vulkan proc addr, instance/device handles
 - **Outputs**: Loaded function pointers organized by category (core, physical device, surface, memory, buffers, images, pipelines, descriptors, synchronization, commands). Uses macros to eliminate repetitive loading patterns.
 
-**vulkan_manager_base.h**
-- **Inputs**: VulkanContext reference for cached loader/device access
-- **Outputs**: Base class with cached references and convenience wrapper methods for pipeline creation, destruction, and command buffer operations. Reduces code duplication across pipeline managers.
 
 **vulkan_raii.h**
 - **Inputs**: Raw Vulkan handles and VulkanContext for cleanup

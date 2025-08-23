@@ -5,7 +5,7 @@
 #include <memory>
 #include <chrono>
 #include "../core/vulkan_context.h"
-#include "../core/vulkan_manager_base.h"
+
 #include "../core/vulkan_raii.h"
 #include "graphics_pipeline_state_hash.h"
 #include "graphics_pipeline_cache.h"
@@ -13,7 +13,7 @@
 
 class ShaderManager;
 
-class GraphicsPipelineFactory : public VulkanManagerBase {
+class GraphicsPipelineFactory {
 public:
     explicit GraphicsPipelineFactory(VulkanContext* ctx);
     ~GraphicsPipelineFactory() = default;
@@ -23,6 +23,7 @@ public:
     std::unique_ptr<CachedGraphicsPipeline> createPipeline(const GraphicsPipelineState& state);
 
 private:
+    VulkanContext* context;
     ShaderManager* shaderManager_ = nullptr;
     vulkan_raii::PipelineCache* pipelineCache_ = nullptr;
     GraphicsPipelineLayoutBuilder layoutBuilder_;

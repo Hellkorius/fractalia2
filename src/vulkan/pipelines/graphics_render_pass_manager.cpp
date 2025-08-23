@@ -1,8 +1,9 @@
 #include "graphics_render_pass_manager.h"
 #include "hash_utils.h"
+#include "../core/vulkan_function_loader.h"
 #include <iostream>
 
-GraphicsRenderPassManager::GraphicsRenderPassManager(VulkanContext* ctx) : VulkanManagerBase(ctx) {
+GraphicsRenderPassManager::GraphicsRenderPassManager(VulkanContext* ctx) : context(ctx) {
 }
 
 VkRenderPass GraphicsRenderPassManager::createRenderPass(VkFormat colorFormat, 
@@ -101,7 +102,8 @@ VkRenderPass GraphicsRenderPassManager::createRenderPass(VkFormat colorFormat,
     renderPassInfo.pDependencies = &dependency;
     
     VkRenderPass renderPass;
-    VkResult result = vkCreateRenderPassWrapper(&renderPassInfo, &renderPass);
+    const auto& vk = context->getLoader();
+    VkResult result = vk.vkCreateRenderPass(context->getDevice(), &renderPassInfo, nullptr, &renderPass);
     
     if (result != VK_SUCCESS) {
         std::cerr << "Failed to create render pass: " << result << std::endl;

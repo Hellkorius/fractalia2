@@ -7,24 +7,16 @@
 #include "gpu_synchronization_service.h"
 #include <iostream>
 
-PresentationSurface::PresentationSurface() {
-}
-
-PresentationSurface::~PresentationSurface() {
-    cleanup();
-}
-
-bool PresentationSurface::initialize(
+PresentationSurface::PresentationSurface(
     VulkanContext* context,
     VulkanSwapchain* swapchain,
     GraphicsPipelineManager* graphicsManager,
     GPUSynchronizationService* syncManager
-) {
-    this->context = context;
-    this->swapchain = swapchain;
-    this->graphicsManager = graphicsManager;
-    this->syncManager = syncManager;
-    return true;
+) : context(context), swapchain(swapchain), graphicsManager(graphicsManager), syncManager(syncManager) {
+}
+
+PresentationSurface::~PresentationSurface() {
+    cleanup();
 }
 
 void PresentationSurface::cleanup() {

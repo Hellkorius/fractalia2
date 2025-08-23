@@ -12,7 +12,6 @@
 #include <future>
 #include <glm/glm.hpp>
 #include "../core/vulkan_context.h"
-#include "../core/vulkan_manager_base.h"
 #include "../core/vulkan_raii.h"
 #include "compute_pipeline_types.h"
 #include "compute_pipeline_cache.h"
@@ -23,7 +22,7 @@
 class ShaderManager;
 class DescriptorLayoutManager;
 
-class ComputePipelineManager : public VulkanManagerBase {
+class ComputePipelineManager {
 public:
     explicit ComputePipelineManager(VulkanContext* ctx);
     ~ComputePipelineManager();
@@ -120,6 +119,7 @@ public:
 
 private:
     // Core Vulkan objects
+    VulkanContext* context;
     vulkan_raii::PipelineCache pipelineCache_;
     
     // Dependencies

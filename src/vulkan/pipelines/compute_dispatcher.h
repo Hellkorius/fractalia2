@@ -5,10 +5,10 @@
 #include <vector>
 #include <glm/glm.hpp>
 #include "../core/vulkan_context.h"
-#include "../core/vulkan_manager_base.h"
+
 #include "compute_pipeline_types.h"
 
-class ComputeDispatcher : public VulkanManagerBase {
+class ComputeDispatcher {
 public:
     explicit ComputeDispatcher(VulkanContext* ctx);
     ~ComputeDispatcher() = default;
@@ -43,6 +43,7 @@ public:
     void resetFrameStats();
 
 private:
+    VulkanContext* context;
     mutable DispatchStats stats_;
     
     bool validateDispatch(const ComputeDispatch& dispatch) const;

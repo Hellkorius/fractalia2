@@ -1,4 +1,5 @@
 #include "compute_dispatcher.h"
+#include "../core/vulkan_function_loader.h"
 #include <iostream>
 #include <cmath>
 
@@ -79,7 +80,7 @@ namespace {
     }
 }
 
-ComputeDispatcher::ComputeDispatcher(VulkanContext* ctx) : VulkanManagerBase(ctx) {}
+ComputeDispatcher::ComputeDispatcher(VulkanContext* ctx) : context(ctx) {}
 
 void ComputeDispatcher::dispatch(VkCommandBuffer commandBuffer, const ComputeDispatch& dispatch) {
     stats_.dispatchesThisFrame++;
@@ -89,17 +90,18 @@ void ComputeDispatcher::dispatch(VkCommandBuffer commandBuffer, const ComputeDis
         return;
     }
     
-    cmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, dispatch.pipeline);
+    const auto& vk = context->getLoader();
+    vk.vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, dispatch.pipeline);
     
     if (!dispatch.descriptorSets.empty()) {
-        cmdBindDescriptorSets(
+        vk.vkCmdBindDescriptorSets(
             commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, dispatch.layout,
             0, static_cast<uint32_t>(dispatch.descriptorSets.size()),
             dispatch.descriptorSets.data(), 0, nullptr);
     }
     
     if (dispatch.pushConstantData && dispatch.pushConstantSize > 0) {
-        cmdPushConstants(
+        vk.vkCmdPushConstants(
             commandBuffer, dispatch.layout, dispatch.pushConstantStages,
             0, dispatch.pushConstantSize, dispatch.pushConstantData);
     }
@@ -108,7 +110,7 @@ void ComputeDispatcher::dispatch(VkCommandBuffer commandBuffer, const ComputeDis
         insertOptimalBarriers(commandBuffer, dispatch.bufferBarriers, dispatch.imageBarriers);
     }
     
-    cmdDispatch(commandBuffer, 
+    vk.vkCmdDispatch(commandBuffer, 
                dispatch.groupCountX, 
                dispatch.groupCountY, 
                dispatch.groupCountZ);
@@ -118,7 +120,8 @@ void ComputeDispatcher::dispatchIndirect(VkCommandBuffer commandBuffer, VkBuffer
     stats_.dispatchesThisFrame++;
     stats_.totalDispatches++;
     
-    cmdDispatchIndirect(commandBuffer, buffer, offset);
+    const auto& vk = context->getLoader();
+    vk.vkCmdDispatchIndirect(commandBuffer, buffer, offset);
 }
 
 void ComputeDispatcher::dispatchBuffer(VkCommandBuffer commandBuffer, 
@@ -211,7 +214,8 @@ void ComputeDispatcher::insertOptimalBarriers(VkCommandBuffer commandBuffer,
     dependencyInfo.imageMemoryBarrierCount = static_cast<uint32_t>(imageBarriers2.size());
     dependencyInfo.pImageMemoryBarriers = imageBarriers2.empty() ? nullptr : imageBarriers2.data();
     
-    loader->vkCmdPipelineBarrier2(commandBuffer, &dependencyInfo);
+    const auto& vk = context->getLoader();
+    vk.vkCmdPipelineBarrier2(commandBuffer, &dependencyInfo);
 }
 
 void ComputeDispatcher::resetFrameStats() {

@@ -1,10 +1,11 @@
 #include "compute_pipeline_factory.h"
 #include "shader_manager.h"
 #include "../core/vulkan_utils.h"
+#include "../core/vulkan_function_loader.h"
 #include <iostream>
 #include <cassert>
 
-ComputePipelineFactory::ComputePipelineFactory(VulkanContext* ctx) : VulkanManagerBase(ctx) {}
+ComputePipelineFactory::ComputePipelineFactory(VulkanContext* ctx) : context(ctx) {}
 
 bool ComputePipelineFactory::initialize(ShaderManager* shaderManager, vulkan_raii::PipelineCache& pipelineCache) {
     shaderManager_ = shaderManager;
@@ -58,7 +59,8 @@ std::unique_ptr<CachedComputePipeline> ComputePipelineFactory::createPipeline(co
     std::cout << "ComputePipelineFactory: Creating compute pipeline for shader: " << state.shaderPath << std::endl;
     
     VkPipeline rawPipeline;
-    VkResult result = createComputePipelines(pipelineCache_->get(), 1, &pipelineInfo, &rawPipeline);
+    const auto& vk = context->getLoader();
+    VkResult result = vk.vkCreateComputePipelines(context->getDevice(), pipelineCache_->get(), 1, &pipelineInfo, nullptr, &rawPipeline);
     
     if (result != VK_SUCCESS) {
         std::cerr << "ComputePipelineFactory: Failed to create compute pipeline!" << std::endl;
@@ -91,7 +93,8 @@ VkPipelineLayout ComputePipelineFactory::createPipelineLayout(const std::vector<
     layoutInfo.pPushConstantRanges = pushConstants.data();
     
     VkPipelineLayout layout;
-    VkResult result = vkCreatePipelineLayoutWrapper(&layoutInfo, &layout);
+    const auto& vk = context->getLoader();
+    VkResult result = vk.vkCreatePipelineLayout(context->getDevice(), &layoutInfo, nullptr, &layout);
     
     if (result != VK_SUCCESS) {
         std::cerr << "ComputePipelineFactory: Failed to create pipeline layout!" << std::endl;

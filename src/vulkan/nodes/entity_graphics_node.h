@@ -32,7 +32,7 @@ public:
     // FrameGraphNode interface
     std::vector<ResourceDependency> getInputs() const override;
     std::vector<ResourceDependency> getOutputs() const override;
-    void execute(VkCommandBuffer commandBuffer, const FrameGraph& frameGraph) override;
+    void execute(VkCommandBuffer commandBuffer, const FrameGraph& frameGraph, float time, float deltaTime) override;
     
     // Queue requirements
     bool needsComputeQueue() const override { return false; }
@@ -45,9 +45,7 @@ public:
     void setCurrentSwapchainImageId(FrameGraphTypes::ResourceId currentImageId) { this->currentSwapchainImageId = currentImageId; }
     
     // Node lifecycle - standardized pattern
-    bool initializeNode(const FrameGraph& frameGraph) override;
-    void prepareFrame(uint32_t frameIndex, float time, float deltaTime) override;
-    void releaseFrame(uint32_t frameIndex) override;
+    void onFirstUse(const FrameGraph& frameGraph) override;
     
     // Set world reference for camera matrix access
     void setWorld(flecs::world* world) { this->world = world; }

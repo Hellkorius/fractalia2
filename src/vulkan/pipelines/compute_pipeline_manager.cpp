@@ -15,7 +15,7 @@
 
 // ComputePipelineManager implementation
 ComputePipelineManager::ComputePipelineManager(VulkanContext* ctx) 
-    : VulkanManagerBase(ctx), cache_(DEFAULT_COMPUTE_CACHE_SIZE), factory_(ctx), dispatcher_(ctx), deviceInfo_(ctx) {
+    : context(ctx), cache_(DEFAULT_COMPUTE_CACHE_SIZE), factory_(ctx), dispatcher_(ctx), deviceInfo_(ctx) {
 }
 
 ComputePipelineManager::~ComputePipelineManager() {

@@ -43,14 +43,14 @@
 **Function:** Provides robust fence waiting with timeout handling and critical fence reset logic to prevent corruption across swapchain recreation.
 
 ### presentation_surface.h
-**Inputs:** VulkanContext, VulkanSwapchain, frame indices for image acquisition.  
+**Inputs:** VulkanContext, VulkanSwapchain, GraphicsPipelineManager, GPUSynchronizationService via constructor dependency injection.  
 **Outputs:** SurfaceAcquisitionResult containing acquired image indices and recreation flags.  
-**Function:** Coordinates swapchain image acquisition with recreation detection and framebuffer resize handling.
+**Function:** Coordinates swapchain image acquisition with recreation detection and framebuffer resize handling. Uses constructor-based initialization pattern.
 
 ### presentation_surface.cpp
-**Inputs:** Current frame index, framebuffer resize events, graphics pipeline and sync managers.  
+**Inputs:** Current frame index, framebuffer resize events, dependencies injected via constructor.  
 **Outputs:** Acquired swapchain images with proper timeout handling, recreated swapchain resources.  
-**Function:** Handles swapchain image acquisition with timeout protection and orchestrates full swapchain recreation including pipeline cache regeneration.
+**Function:** Implements constructor-based service pattern with full dependency injection. Handles swapchain image acquisition with timeout protection and orchestrates full swapchain recreation including pipeline cache regeneration.
 
 ### render_frame_director.h
 **Inputs:** All Vulkan subsystem managers, ECS world reference, frame timing data, resource IDs.  

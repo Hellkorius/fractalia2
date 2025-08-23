@@ -1,19 +1,24 @@
 # Vulkan Nodes
 
 ## Directory Overview
-(Frame graph node implementations for GPU compute and graphics pipeline stages)
+(Streamlined frame graph node implementations with unified lifecycle and push constants)
+
+### Simplified Node Architecture
+- **Unified Lifecycle**: Nodes use only `execute()` and optional `onFirstUse()` methods
+- **Unified Push Constants**: All nodes use `NodePushConstants` structure with flexible parameters
+- **Consolidated Debug**: Replaced individual counters with `FrameGraphDebug` utilities
 
 ### Files
 
 **entity_compute_node.h**
 - **Inputs**: Entity buffer resource IDs, ComputePipelineManager, GPUEntityManager, GPUTimeoutDetector
 - **Outputs**: Modified entity buffer with updated movement parameters, compute shader barriers for graphics synchronization
-- **Function**: Orchestrates GPU compute workloads for entity movement using adaptive chunked dispatching and timeout monitoring.
+- **Function**: Orchestrates GPU compute workloads for entity movement using adaptive chunked dispatching with unified `NodePushConstants`.
 
 **entity_compute_node.cpp**
-- **Inputs**: Command buffer, frame timing data, entity count from GPUEntityManager
-- **Outputs**: Executed compute dispatches with memory barriers, push constants for shader parameters, workload management decisions
-- **Function**: Implements chunked compute execution with GPU health monitoring and inter-stage synchronization barriers.
+- **Inputs**: Command buffer, frame timing data (time, deltaTime), entity count from GPUEntityManager
+- **Outputs**: Executed compute dispatches with memory barriers, unified push constants with `param1` for chunk offsets
+- **Function**: Implements chunked compute execution with GPU health monitoring using simplified lifecycle pattern.
 
 **entity_graphics_node.h**
 - **Inputs**: Entity/position buffer resource IDs, GraphicsPipelineManager, VulkanSwapchain, ResourceCoordinator, GPUEntityManager
@@ -32,8 +37,8 @@
 
 **physics_compute_node.cpp**
 - **Inputs**: Command buffer, frame timing, entity positions, spatial map size requirements
-- **Outputs**: Physics compute dispatches for collision detection, memory barriers for data consistency, workload statistics
-- **Function**: Implements physics simulation with spatial map management, chunked execution for large entity counts, and GPU timeout protection.
+- **Outputs**: Physics compute dispatches with unified `NodePushConstants`, memory barriers for data consistency, consolidated debug logging
+- **Function**: Implements physics simulation with spatial map management using unified push constants (`param1` for entityOffset) and streamlined debug utilities.
 
 **swapchain_present_node.h**
 - **Inputs**: Color target resource ID, VulkanSwapchain, current swapchain image index

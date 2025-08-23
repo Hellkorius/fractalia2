@@ -4,6 +4,7 @@
 #include <vulkan/vulkan.h>
 #include "../rendering/frame_graph.h"
 #include "../rendering/frame_graph_debug.h"
+#include "../rendering/frame_graph_types.h"
 #include "../core/vulkan_constants.h"
 #include <memory>
 
@@ -29,16 +30,14 @@ public:
     // FrameGraphNode interface
     std::vector<ResourceDependency> getInputs() const override;
     std::vector<ResourceDependency> getOutputs() const override;
-    void execute(VkCommandBuffer commandBuffer, const FrameGraph& frameGraph) override;
+    void execute(VkCommandBuffer commandBuffer, const FrameGraph& frameGraph, float time, float deltaTime) override;
     
     // Queue requirements
     bool needsComputeQueue() const override { return true; }
     bool needsGraphicsQueue() const override { return false; }
     
     // Node lifecycle - standardized pattern
-    bool initializeNode(const FrameGraph& frameGraph) override;
-    void prepareFrame(uint32_t frameIndex, float time, float deltaTime) override;
-    void releaseFrame(uint32_t frameIndex) override;
+    void onFirstUse(const FrameGraph& frameGraph) override;
 
 private:
     // Dispatch parameters struct
@@ -78,13 +77,6 @@ private:
     float currentTime = 0.0f;
     float currentDeltaTime = 0.0f;
     
-    // Frame data for compute shader
-    struct ComputePushConstants {
-        float time;
-        float deltaTime;
-        uint32_t entityCount;
-        uint32_t frame;
-        uint32_t entityOffset;  // For chunked dispatches
-        uint32_t padding[3];    // Ensure 16-byte alignment
-    } pushConstants{};
+    // Frame data for compute shader - using unified push constants
+    NodePushConstants pushConstants{};
 };

@@ -75,7 +75,7 @@ std::vector<ResourceDependency> PhysicsComputeNode::getOutputs() const {
     };
 }
 
-void PhysicsComputeNode::execute(VkCommandBuffer commandBuffer, const FrameGraph& frameGraph) {
+void PhysicsComputeNode::execute(VkCommandBuffer commandBuffer, const FrameGraph& frameGraph, float time, float deltaTime) {
     // Validate dependencies are still valid
     if (!computeManager || !gpuEntityManager) {
         std::cerr << "PhysicsComputeNode: Critical error - dependencies became null during execution" << std::endl;
@@ -84,7 +84,7 @@ void PhysicsComputeNode::execute(VkCommandBuffer commandBuffer, const FrameGraph
     
     const uint32_t entityCount = gpuEntityManager->getEntityCount();
     if (entityCount == 0) {
-        FRAME_GRAPH_DEBUG_LOG_THROTTLED(debugCounter, 1800, "PhysicsComputeNode: No entities to process");
+        FRAME_GRAPH_DEBUG_LOG("PhysicsComputeNode: No entities to process");
         return;
     }
     
@@ -93,7 +93,9 @@ void PhysicsComputeNode::execute(VkCommandBuffer commandBuffer, const FrameGraph
     VkDescriptorSetLayout descriptorLayout = computeManager->getLayoutManager()->getLayout(layoutSpec);
     ComputePipelineState pipelineState = ComputePipelinePresets::createPhysicsState(descriptorLayout);
     
-    // Set frame counter from FrameGraph for compute shader consistency
+    // Update push constants with timing data and frame counter
+    pushConstants.time = time;
+    pushConstants.deltaTime = deltaTime;
     pushConstants.frame = frameGraph.getGlobalFrameCounter();
     
     // Create compute dispatch
@@ -119,7 +121,7 @@ void PhysicsComputeNode::execute(VkCommandBuffer commandBuffer, const FrameGraph
     // Configure push constants and dispatch
     pushConstants.entityCount = entityCount;
     dispatch.pushConstantData = &pushConstants;
-    dispatch.pushConstantSize = sizeof(PhysicsPushConstants);
+    dispatch.pushConstantSize = sizeof(NodePushConstants);
     dispatch.pushConstantStages = VK_SHADER_STAGE_COMPUTE_BIT;
     dispatch.calculateOptimalDispatch(entityCount, glm::uvec3(THREADS_PER_WORKGROUP, 1, 1));
     
@@ -150,8 +152,8 @@ void PhysicsComputeNode::execute(VkCommandBuffer commandBuffer, const FrameGraph
         return;
     }
     
-    // Debug logging (thread-safe) - once every 30 seconds
-    FRAME_GRAPH_DEBUG_LOG_THROTTLED(debugCounter, 1800, "PhysicsComputeNode: " << entityCount << " entities → " << dispatchParams.totalWorkgroups << " workgroups");
+    // Consolidated debug logging
+    FrameGraphDebug::logNodeExecution("PhysicsComputeNode", entityCount, dispatchParams.totalWorkgroups);
     
     const VulkanContext* context = frameGraph.getContext();
     if (!context) {
@@ -178,7 +180,7 @@ void PhysicsComputeNode::execute(VkCommandBuffer commandBuffer, const FrameGraph
         
         vk.vkCmdPushConstants(
             commandBuffer, dispatch.layout, VK_SHADER_STAGE_COMPUTE_BIT,
-            0, sizeof(PhysicsPushConstants), &pushConstants);
+            0, sizeof(NodePushConstants), &pushConstants);
         
         vk.vkCmdDispatch(commandBuffer, dispatchParams.totalWorkgroups, 1, 1);
         
@@ -233,12 +235,12 @@ void PhysicsComputeNode::executeChunkedDispatch(
         }
         
         // Update push constants for this chunk
-        PhysicsPushConstants chunkPushConstants = pushConstants;
-        chunkPushConstants.entityOffset = baseEntityOffset;
+        NodePushConstants chunkPushConstants = pushConstants;
+        chunkPushConstants.param1 = baseEntityOffset;  // entityOffset for physics compute
         
         vk.vkCmdPushConstants(
             commandBuffer, dispatch.layout, VK_SHADER_STAGE_COMPUTE_BIT,
-            0, sizeof(PhysicsPushConstants), &chunkPushConstants);
+            0, sizeof(NodePushConstants), &chunkPushConstants);
         
         vk.vkCmdDispatch(commandBuffer, currentChunkSize, 1, 1);
         
@@ -282,49 +284,27 @@ void PhysicsComputeNode::executeChunkedDispatch(
     
     vk.vkCmdPipelineBarrier2(commandBuffer, &finalDependencyInfo);
     
-    // Debug statistics logging (thread-safe)
+    // Consolidated chunked execution logging
+    FrameGraphDebug::logChunkedExecution("PhysicsComputeNode", chunkCount, maxWorkgroupsPerChunk, entityCount);
+    
+    // GPU stats logging (still specialized)
     if constexpr (FRAME_GRAPH_DEBUG_ENABLED) {
-        uint32_t chunkLogCounter = FrameGraphDebug::incrementCounter(debugCounter);
-        if (chunkLogCounter % 300 == 0) {
-            std::cout << "[FrameGraph Debug] PhysicsComputeNode: Split dispatch into " << chunkCount 
-                      << " chunks (" << maxWorkgroupsPerChunk << " max) for " << entityCount << " entities (occurrence #" << chunkLogCounter << ")" << std::endl;
-            
-            if (timeoutDetector) {
-                auto stats = timeoutDetector->getStats();
-                std::cout << "  GPU Stats: avg=" << stats.averageDispatchTimeMs 
-                          << "ms, peak=" << stats.peakDispatchTimeMs << "ms"
-                          << ", warnings=" << stats.warningCount 
-                          << ", critical=" << stats.criticalCount << std::endl;
-            }
+        static FrameGraphDebug::DebugCounter statsCounter{};
+        uint32_t statsLogCount = FrameGraphDebug::incrementCounter(statsCounter);
+        if (statsLogCount % 300 == 0 && timeoutDetector) {
+            auto stats = timeoutDetector->getStats();
+            std::cout << "[FrameGraph Debug] GPU Stats: avg=" << stats.averageDispatchTimeMs 
+                      << "ms, peak=" << stats.peakDispatchTimeMs << "ms"
+                      << ", warnings=" << stats.warningCount 
+                      << ", critical=" << stats.criticalCount << std::endl;
         }
     }
 }
 
-// Node lifecycle implementation
-bool PhysicsComputeNode::initializeNode(const FrameGraph& frameGraph) {
-    // One-time initialization - validate dependencies
-    if (!computeManager) {
-        std::cerr << "PhysicsComputeNode: ComputePipelineManager is null" << std::endl;
-        return false;
+// Optional dependency validation
+void PhysicsComputeNode::onFirstUse(const FrameGraph& frameGraph) {
+    if (!computeManager || !gpuEntityManager) {
+        std::cerr << "PhysicsComputeNode: Missing dependencies during first use" << std::endl;
     }
-    if (!gpuEntityManager) {
-        std::cerr << "PhysicsComputeNode: GPUEntityManager is null" << std::endl;
-        return false;
-    }
-    return true;
-}
-
-void PhysicsComputeNode::prepareFrame(uint32_t frameIndex, float time, float deltaTime) {
-    // Store timing data for execution
-    currentTime = time;
-    currentDeltaTime = deltaTime;
-    
-    // Update push constants with timing data - frame counter will be set in execute()
-    pushConstants.time = time;
-    pushConstants.deltaTime = deltaTime;
-}
-
-void PhysicsComputeNode::releaseFrame(uint32_t frameIndex) {
-    // Per-frame cleanup - nothing to clean up for physics compute node
 }
 

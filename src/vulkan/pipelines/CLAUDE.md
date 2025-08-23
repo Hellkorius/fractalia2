@@ -2,7 +2,7 @@
 
 ## src/vulkan/pipelines/
 
-(Unified pipeline management system with caching, hot reload, and performance optimization for both graphics and compute pipelines)
+(Unified pipeline management system with direct VulkanContext access, eliminating VulkanManagerBase inheritance for improved performance. Features caching, hot reload, and optimization for both graphics and compute pipelines using VulkanFunctionLoader pattern.)
 
 ### Compute Pipeline Components
 

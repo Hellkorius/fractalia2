@@ -40,3 +40,14 @@ struct ResourceDependency {
     ResourceAccess access;
     PipelineStage stage;
 };
+
+// Unified push constants for all frame graph compute nodes
+struct NodePushConstants {
+    float time;
+    float deltaTime;
+    uint32_t entityCount;
+    uint32_t frame;
+    uint32_t param1;        // Flexible parameter - entityOffset for physics, globalFrame for entity
+    uint32_t param2;        // Future expansion
+    uint32_t padding[2];    // Ensure 16-byte alignment
+};

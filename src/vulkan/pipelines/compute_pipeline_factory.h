@@ -6,14 +6,13 @@
 #include <vector>
 #include <chrono>
 #include "../core/vulkan_context.h"
-#include "../core/vulkan_manager_base.h"
 #include "../core/vulkan_raii.h"
 #include "compute_pipeline_types.h"
 
 class ShaderManager;
 class DescriptorLayoutManager;
 
-class ComputePipelineFactory : public VulkanManagerBase {
+class ComputePipelineFactory {
 public:
     explicit ComputePipelineFactory(VulkanContext* ctx);
     ~ComputePipelineFactory() = default;
@@ -29,6 +28,7 @@ public:
                            std::chrono::nanoseconds compilationTime) const;
 
 private:
+    VulkanContext* context;
     ShaderManager* shaderManager_ = nullptr;
     vulkan_raii::PipelineCache* pipelineCache_ = nullptr;
     

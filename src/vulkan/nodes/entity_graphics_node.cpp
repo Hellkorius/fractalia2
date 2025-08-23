@@ -63,7 +63,7 @@ std::vector<ResourceDependency> EntityGraphicsNode::getOutputs() const {
     };
 }
 
-void EntityGraphicsNode::execute(VkCommandBuffer commandBuffer, const FrameGraph& frameGraph) {
+void EntityGraphicsNode::execute(VkCommandBuffer commandBuffer, const FrameGraph& frameGraph, float time, float deltaTime) {
     
     // Validate dependencies are still valid
     if (!graphicsManager || !swapchain || !resourceCoordinator || !gpuEntityManager) {
@@ -313,40 +313,7 @@ void EntityGraphicsNode::updateUniformBuffer() {
     }
 }
 
-// Node lifecycle implementation
-bool EntityGraphicsNode::initializeNode(const FrameGraph& frameGraph) {
-    // One-time initialization - validate dependencies
-    if (!graphicsManager) {
-        std::cerr << "EntityGraphicsNode: GraphicsPipelineManager is null" << std::endl;
-        return false;
-    }
-    if (!swapchain) {
-        std::cerr << "EntityGraphicsNode: VulkanSwapchain is null" << std::endl;
-        return false;
-    }
-    if (!resourceCoordinator) {
-        std::cerr << "EntityGraphicsNode: ResourceCoordinator is null" << std::endl;
-        return false;
-    }
-    if (!gpuEntityManager) {
-        std::cerr << "EntityGraphicsNode: GPUEntityManager is null" << std::endl;
-        return false;
-    }
-    return true;
-}
-
-void EntityGraphicsNode::prepareFrame(uint32_t frameIndex, float time, float deltaTime) {
-    // Store timing data
-    frameTime = time;
-    frameDeltaTime = deltaTime;
-    currentFrameIndex = frameIndex;
-    
-    // Check if uniform buffer needs updating
-    if (uniformBufferDirty || lastUpdatedFrameIndex != frameIndex) {
-        updateUniformBuffer();
-    }
-}
-
-void EntityGraphicsNode::releaseFrame(uint32_t frameIndex) {
-    // Per-frame cleanup - nothing to clean up for graphics node
+// Optional dependency validation
+void EntityGraphicsNode::onFirstUse(const FrameGraph& frameGraph) {
+    // Dependencies validated in constructor
 }

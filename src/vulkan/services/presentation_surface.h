@@ -17,15 +17,13 @@ struct SurfaceAcquisitionResult {
 
 class PresentationSurface {
 public:
-    PresentationSurface();
-    ~PresentationSurface();
-
-    bool initialize(
+    PresentationSurface(
         VulkanContext* context,
         VulkanSwapchain* swapchain,
         GraphicsPipelineManager* graphicsManager,
         GPUSynchronizationService* syncManager
     );
+    ~PresentationSurface();
     
     void cleanup();
 

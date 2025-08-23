@@ -7,17 +7,13 @@ FrameGraphResourceRegistry::FrameGraphResourceRegistry() {
 }
 
 FrameGraphResourceRegistry::~FrameGraphResourceRegistry() {
-    cleanup();
+    // No cleanup needed - dependencies are managed externally
 }
 
 bool FrameGraphResourceRegistry::initialize(FrameGraph* frameGraph, GPUEntityManager* gpuEntityManager) {
     this->frameGraph = frameGraph;
     this->gpuEntityManager = gpuEntityManager;
     return true;
-}
-
-void FrameGraphResourceRegistry::cleanup() {
-    // Dependencies are managed externally
 }
 
 bool FrameGraphResourceRegistry::importEntityResources() {

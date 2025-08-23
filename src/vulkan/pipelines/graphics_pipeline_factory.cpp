@@ -1,9 +1,10 @@
 #include "graphics_pipeline_factory.h"
 #include "shader_manager.h"
+#include "../core/vulkan_function_loader.h"
 #include <iostream>
 #include <chrono>
 
-GraphicsPipelineFactory::GraphicsPipelineFactory(VulkanContext* ctx) : VulkanManagerBase(ctx), layoutBuilder_(ctx) {
+GraphicsPipelineFactory::GraphicsPipelineFactory(VulkanContext* ctx) : context(ctx), layoutBuilder_(ctx) {
 }
 
 bool GraphicsPipelineFactory::initialize(ShaderManager* shaderManager, vulkan_raii::PipelineCache* pipelineCache) {
@@ -103,8 +104,9 @@ std::unique_ptr<CachedGraphicsPipeline> GraphicsPipelineFactory::createPipeline(
         
         if (shaderModule == VK_NULL_HANDLE) {
             std::cerr << "GraphicsPipelineFactory: CRITICAL ERROR - Failed to load graphics shader: " << shaderPath << std::endl;
+            const auto& vk = context->getLoader();
             for (VkShaderModule module : shaderModules) {
-                destroyShaderModule(module);
+                vk.vkDestroyShaderModule(context->getDevice(), module, nullptr);
             }
             return nullptr;
         }
@@ -169,7 +171,8 @@ std::unique_ptr<CachedGraphicsPipeline> GraphicsPipelineFactory::createPipeline(
     std::cout << "  About to call vkCreateGraphicsPipelines..." << std::endl;
     
     VkPipeline rawPipeline;
-    VkResult result = createGraphicsPipelines(pipelineCache_->get(), 1, &pipelineInfo, &rawPipeline);
+    const auto& vk = context->getLoader();
+    VkResult result = vk.vkCreateGraphicsPipelines(context->getDevice(), pipelineCache_->get(), 1, &pipelineInfo, nullptr, &rawPipeline);
     
     if (result != VK_SUCCESS) {
         std::cerr << "GraphicsPipelineFactory: CRITICAL ERROR - Failed to create graphics pipeline!" << std::endl;

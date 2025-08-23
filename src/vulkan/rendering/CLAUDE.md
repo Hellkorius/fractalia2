@@ -17,6 +17,7 @@ src/vulkan/rendering/
 │   └── resource_manager.cpp        
 ├── frame_graph.h                   
 ├── frame_graph.cpp                 
+├── frame_graph_debug.h             
 ├── frame_graph_node_base.h         
 ├── frame_graph_resource_registry.h 
 ├── frame_graph_resource_registry.cpp
@@ -77,8 +78,8 @@ src/vulkan/rendering/
 
 ### frame_graph_node_base.h
 **Inputs:** Node identification and resource dependency specifications.  
-**Outputs:** Standardized lifecycle hooks for initialization, execution, and cleanup.  
-**Purpose:** Base class defining frame graph node interface with resource dependencies and queue requirements.
+**Outputs:** Simplified lifecycle with single execute() method and optional hooks.  
+**Purpose:** Base class defining streamlined node interface with unified execute() method replacing initializeNode/prepareFrame/releaseFrame.
 
 ### frame_graph_resource_registry.h
 **Inputs:** FrameGraph and GPUEntityManager references for resource import.  
@@ -93,4 +94,9 @@ src/vulkan/rendering/
 ### frame_graph_types.h
 **Inputs:** Type requirements for resource and node identification.  
 **Outputs:** Unified type definitions for ResourceId, NodeId, and dependency descriptors.  
-**Purpose:** Defines core types for resource access patterns, pipeline stages, and dependency relationships.
+**Purpose:** Defines core types for resource access patterns, pipeline stages, and NodePushConstants struct for unified compute shader parameters.
+
+### frame_graph_debug.h
+**Inputs:** Debug build configuration and frame graph execution context.  
+**Outputs:** Zero-overhead debug utilities with throttled logging and node execution tracking.  
+**Purpose:** Consolidated debug patterns eliminating duplicate logging code across compute nodes with compile-time optimization.

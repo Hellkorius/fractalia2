@@ -1,7 +1,8 @@
 #include "graphics_pipeline_layout_builder.h"
+#include "../core/vulkan_function_loader.h"
 #include <iostream>
 
-GraphicsPipelineLayoutBuilder::GraphicsPipelineLayoutBuilder(VulkanContext* ctx) : VulkanManagerBase(ctx) {
+GraphicsPipelineLayoutBuilder::GraphicsPipelineLayoutBuilder(VulkanContext* ctx) : context(ctx) {
 }
 
 VkPipelineLayout GraphicsPipelineLayoutBuilder::createPipelineLayout(const std::vector<VkDescriptorSetLayout>& setLayouts,
@@ -21,7 +22,8 @@ VkPipelineLayout GraphicsPipelineLayoutBuilder::createPipelineLayout(const std::
     layoutInfo.pPushConstantRanges = pushConstants.data();
     
     VkPipelineLayout layout;
-    VkResult result = vkCreatePipelineLayoutWrapper(&layoutInfo, &layout);
+    const auto& vk = context->getLoader();
+    VkResult result = vk.vkCreatePipelineLayout(context->getDevice(), &layoutInfo, nullptr, &layout);
     
     if (result != VK_SUCCESS) {
         std::cerr << "GraphicsPipelineLayoutBuilder: CRITICAL ERROR - Failed to create graphics pipeline layout!" << std::endl;

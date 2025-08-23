@@ -63,4 +63,34 @@ namespace FrameGraphDebug {
         } \
     } while(0)
 
+// Utility functions for common debug patterns
+#if FRAME_GRAPH_DEBUG_ENABLED
+    #include <unordered_map>
+    #include <string>
+    
+    // Consolidated node execution logging - eliminates duplicate debug code in all compute nodes
+    inline void logNodeExecution(const std::string& nodeName, uint32_t entityCount, uint32_t workgroups, uint32_t throttleInterval = 1800) {
+        static std::unordered_map<std::string, DebugCounter> nodeCounters;
+        auto& counter = nodeCounters[nodeName];
+        FRAME_GRAPH_DEBUG_LOG_THROTTLED(counter, throttleInterval, 
+            nodeName << ": " << entityCount << " entities → " << workgroups << " workgroups");
+    }
+    
+    // Consolidated chunked execution logging
+    inline void logChunkedExecution(const std::string& nodeName, uint32_t chunkCount, uint32_t maxWorkgroupsPerChunk, uint32_t entityCount) {
+        static std::unordered_map<std::string, DebugCounter> chunkCounters;
+        auto& counter = chunkCounters[nodeName + "_chunks"];
+        uint32_t logCount = incrementCounter(counter);
+        if (logCount % 300 == 0) {
+            std::cout << "[FrameGraph Debug] " << nodeName << ": Split dispatch into " << chunkCount 
+                      << " chunks (" << maxWorkgroupsPerChunk << " max) for " << entityCount 
+                      << " entities (occurrence #" << logCount << ")" << std::endl;
+        }
+    }
+#else
+    // No-op versions for release builds
+    inline void logNodeExecution(const std::string&, uint32_t, uint32_t, uint32_t = 1800) {}
+    inline void logChunkedExecution(const std::string&, uint32_t, uint32_t, uint32_t) {}
+#endif
+
 } // namespace FrameGraphDebug
