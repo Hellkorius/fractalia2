@@ -23,11 +23,13 @@ namespace {
     
     DispatchParams calculateDispatchParams(uint32_t entityCount, uint32_t maxWorkgroups, bool forceChunking) {
         const uint32_t totalWorkgroups = (entityCount + THREADS_PER_WORKGROUP - 1) / THREADS_PER_WORKGROUP;
-        return {
+        
+        DispatchParams result = {
             totalWorkgroups,
             maxWorkgroups,
             totalWorkgroups > maxWorkgroups || forceChunking
         };
+        return result;
     }
 }
 
@@ -150,6 +152,13 @@ void EntityComputeNode::execute(VkCommandBuffer commandBuffer, const FrameGraph&
     // Debug logging (thread-safe) - once every 30 seconds
     uint32_t logCounter = debugCounter.fetch_add(1, std::memory_order_relaxed);
     if (logCounter % 1800 == 0) {
+        // DEBUG: Check values right before corrupted print
+        std::cout << "PRE-PRINT DEBUG:" << std::endl;
+        std::cout << "  entityCount = " << entityCount << std::endl;
+        std::cout << "  dispatchParams.totalWorkgroups = " << dispatchParams.totalWorkgroups << std::endl;
+        std::cout << "  sizeof(dispatchParams.totalWorkgroups) = " << sizeof(dispatchParams.totalWorkgroups) << std::endl;
+        std::cout << "  address of dispatchParams.totalWorkgroups = " << (void*)&dispatchParams.totalWorkgroups << std::endl;
+        
         std::cout << "EntityComputeNode (Movement): " << entityCount << " entities → " << 
                      dispatchParams.totalWorkgroups << " workgroups" << std::endl;
     }

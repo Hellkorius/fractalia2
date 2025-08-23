@@ -81,6 +81,8 @@ private:
 namespace GraphicsPipelinePresets {
     GraphicsPipelineState createEntityRenderingState(VkRenderPass renderPass, 
                                                     VkDescriptorSetLayout descriptorLayout);
+    GraphicsPipelineState createParticleRenderingState(VkRenderPass renderPass, 
+                                                       VkDescriptorSetLayout descriptorLayout);
     
     GraphicsPipelineState createWireframeOverlayState(VkRenderPass renderPass);
     GraphicsPipelineState createUIRenderingState(VkRenderPass renderPass);

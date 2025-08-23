@@ -1,0 +1,158 @@
+#version 450
+
+// Sun system compute shader - simulates particles emanating from the sun
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+// Sun particle data structure
+struct SunParticle {
+    vec4 position;      // xyz = world position, w = life (0.0-1.0)
+    vec4 velocity;      // xyz = velocity, w = brightness
+    vec4 color;         // rgba = particle color with alpha
+    vec4 properties;    // x = size, y = age, z = type, w = spawn_timer
+};
+
+layout(std430, binding = 0) restrict buffer ParticleBuffer {
+    SunParticle particles[];
+};
+
+layout(binding = 1) uniform SunUBO {
+    mat4 viewMatrix;
+    mat4 projMatrix; 
+    vec4 sunPosition;       // xyz = position, w = radius
+    vec4 sunColor;          // rgb = color, a = intensity
+    vec4 cameraPos;         // xyz = camera position, w = fov
+    vec4 sceneInfo;         // x = time, y = deltaTime, z = particleCount, w = windStrength
+    vec4 lightParams;       // x = rayLength, y = rayIntensity, z = particleBrightness, w = gravityStrength
+} ubo;
+
+// Simple random number generation
+uint hash(uint x) {
+    x ^= x >> 16;
+    x *= 0x85ebca6bu;
+    x ^= x >> 13;
+    x *= 0xc2b2ae35u;
+    x ^= x >> 16;
+    return x;
+}
+
+float random(uint seed) {
+    return float(hash(seed)) / 4294967296.0;
+}
+
+vec3 randomDirection(uint seed) {
+    float u = random(seed);
+    float v = random(seed + 1u);
+    float theta = u * 6.28318530718; // 2 * PI
+    float cosTheta = 2.0 * v - 1.0;
+    float sinTheta = sqrt(1.0 - cosTheta * cosTheta);
+    return vec3(sinTheta * cos(theta), cosTheta, sinTheta * sin(theta));
+}
+
+vec3 randomSpherePoint(uint seed, float radius) {
+    return randomDirection(seed) * radius;
+}
+
+void main() {
+    uint index = gl_GlobalInvocationID.x;
+    if (index >= uint(ubo.sceneInfo.z)) return; // Beyond particle count
+    
+    uint seed = index * 1000u + uint(ubo.sceneInfo.x * 1000.0); // time-based seed
+    SunParticle particle = particles[index];
+    
+    // Check if particle is dead and needs respawning
+    if (particle.position.w <= 0.0) {
+        // Spawn new particle from sun
+        vec3 sunPos = ubo.sunPosition.xyz;
+        float sunRadius = ubo.sunPosition.w;
+        
+        // Spawn from sun surface with slight offset
+        vec3 spawnOffset = randomSpherePoint(seed, sunRadius * 1.2);
+        particle.position.xyz = sunPos + spawnOffset;
+        particle.position.w = 1.0; // Full life
+        
+        // Initial velocity - emanate outward from sun with some randomness
+        vec3 baseDirection = normalize(spawnOffset);
+        vec3 randomComponent = randomDirection(seed + 10u) * 0.3;
+        particle.velocity.xyz = normalize(baseDirection + randomComponent) * (2.0 + random(seed + 20u) * 3.0);
+        particle.velocity.w = 0.5 + random(seed + 30u) * 0.5; // Brightness variation
+        
+        // Color - warm sun tones with variation
+        vec3 baseColor = ubo.sunColor.rgb;
+        float colorVariation = random(seed + 40u);
+        if (colorVariation < 0.3) {
+            // Golden particles
+            particle.color.rgb = baseColor * vec3(1.0, 0.8, 0.4);
+        } else if (colorVariation < 0.7) {
+            // Orange particles  
+            particle.color.rgb = baseColor * vec3(1.0, 0.6, 0.2);
+        } else {
+            // Bright white particles
+            particle.color.rgb = baseColor * vec3(1.0, 0.95, 0.9);
+        }
+        particle.color.a = particle.velocity.w; // Alpha matches brightness
+        
+        // Properties
+        particle.properties.x = 0.1 + random(seed + 50u) * 0.3; // Size 0.1-0.4
+        particle.properties.y = 0.0; // Age
+        particle.properties.z = floor(random(seed + 60u) * 3.0); // Type 0,1,2
+        particle.properties.w = 0.0; // Spawn timer
+        
+    } else {
+        // Update existing particle
+        float deltaTime = ubo.sceneInfo.y;
+        
+        // Age the particle
+        particle.properties.y += deltaTime;
+        float ageNormalized = particle.properties.y / 10.0; // 10 second lifetime
+        particle.position.w = 1.0 - ageNormalized;
+        
+        // Calculate forces
+        vec3 forces = vec3(0.0);
+        
+        // Gravity (very light)
+        forces.y -= ubo.lightParams.w * 0.5;
+        
+        // Wind - horizontal drift
+        vec3 windDirection = normalize(vec3(1.0, 0.0, 0.5)); // Northeast wind
+        forces += windDirection * ubo.sceneInfo.w * (0.5 + random(seed + 100u) * 0.5);
+        
+        // Sun attraction/repulsion based on particle type
+        vec3 toSun = ubo.sunPosition.xyz - particle.position.xyz;
+        float distanceToSun = length(toSun);
+        vec3 sunDirection = toSun / distanceToSun;
+        
+        int particleType = int(particle.properties.z);
+        if (particleType == 0) {
+            // Type 0: Light particles - drift away slowly
+            forces -= sunDirection * 0.2;
+        } else if (particleType == 1) {
+            // Type 1: Heavy particles - affected by gravity more
+            forces.y -= ubo.lightParams.w * 1.5;
+        }
+        // Type 2: Neutral particles - just flow with wind
+        
+        // Apply forces
+        particle.velocity.xyz += forces * deltaTime;
+        
+        // Apply drag
+        particle.velocity.xyz *= pow(0.98, deltaTime * 60.0);
+        
+        // Update position
+        particle.position.xyz += particle.velocity.xyz * deltaTime;
+        
+        // Update brightness based on distance from sun
+        float sunDistance = distanceToSun / ubo.lightParams.x; // Normalize by ray length
+        float brightnessFalloff = exp(-sunDistance * sunDistance * 0.1);
+        particle.velocity.w = mix(particle.velocity.w, brightnessFalloff * ubo.lightParams.z, deltaTime);
+        
+        // Update color alpha based on life and brightness
+        particle.color.a = particle.position.w * particle.velocity.w * 0.8;
+        
+        // Kill particle if too old or too far
+        if (ageNormalized >= 1.0 || distanceToSun > ubo.lightParams.x * 2.0) {
+            particle.position.w = 0.0; // Mark as dead
+        }
+    }
+    
+    particles[index] = particle;
+}

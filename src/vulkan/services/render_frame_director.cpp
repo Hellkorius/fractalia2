@@ -10,6 +10,8 @@
 #include "../nodes/physics_compute_node.h"
 #include "../nodes/entity_graphics_node.h"
 #include "../nodes/swapchain_present_node.h"
+#include "../nodes/shadow_pass_node.h"
+#include "../nodes/sun_system_node.h"
 #include "../../ecs/gpu/gpu_entity_manager.h"
 #include <iostream>
 
@@ -147,6 +149,32 @@ void RenderFrameDirector::setupFrameGraph(uint32_t imageIndex) {
             gpuEntityManager
         );
         
+        // Create shadow depth target resource (2048x2048 depth texture)
+        shadowDepthTargetId = frameGraph->createImage(
+            "ShadowDepthTarget",
+            VK_FORMAT_D32_SFLOAT,
+            {2048, 2048},
+            VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT
+        );
+        
+        // Shadow pass node (renders depth for shadow mapping)
+        shadowNodeId = frameGraph->addNode<ShadowPassNode>(
+            entityBufferId,
+            positionBufferId,
+            shadowDepthTargetId,
+            pipelineSystem->getGraphicsManager(),
+            resourceCoordinator,
+            gpuEntityManager
+        );
+        
+        // Sun system node (renders sun and light particles)
+        sunSystemNodeId = frameGraph->addNode<SunSystemNode>(
+            pipelineSystem->getGraphicsManager(),
+            pipelineSystem->getComputeManager(), 
+            swapchain,
+            resourceCoordinator
+        );
+        
         // ELEGANT SOLUTION: Pass a dynamic swapchain image reference
         // Nodes will resolve the actual resource ID at execution time
         graphicsNodeId = frameGraph->addNode<EntityGraphicsNode>(
@@ -167,8 +195,9 @@ void RenderFrameDirector::setupFrameGraph(uint32_t imageIndex) {
         // Mark as initialized after nodes are added
         frameGraphInitialized = true;
         std::cout << "RenderFrameDirector: Created nodes - Compute:" << computeNodeId 
-                  << " Physics:" << physicsNodeId << " Graphics:" << graphicsNodeId 
-                  << " Present:" << presentNodeId << std::endl;
+                  << " Physics:" << physicsNodeId << " Shadow:" << shadowNodeId
+                  << " SunSystem:" << sunSystemNodeId 
+                  << " Graphics:" << graphicsNodeId << " Present:" << presentNodeId << std::endl;
     }
     
     // Configure nodes with frame-specific data will be done externally
@@ -176,6 +205,24 @@ void RenderFrameDirector::setupFrameGraph(uint32_t imageIndex) {
 
 void RenderFrameDirector::configureFrameGraphNodes(uint32_t imageIndex, flecs::world* world) {
     // ELEGANT ORCHESTRATION: Configure nodes with current frame's swapchain image
+    if (auto* shadowNode = frameGraph->getNode<ShadowPassNode>(shadowNodeId)) {
+        shadowNode->setWorld(world);
+        shadowNode->setSunDirection(sunDirection);
+        shadowNode->setShadowDistance(shadowDistance);
+        shadowNode->setCascadeCount(cascadeCount);
+    }
+    
+    // Configure sun system
+    if (auto* sunSystemNode = frameGraph->getNode<SunSystemNode>(sunSystemNodeId)) {
+        sunSystemNode->setWorld(world);
+        sunSystemNode->setImageIndex(imageIndex);
+        sunSystemNode->setCurrentSwapchainImageId(swapchainImageId);
+        sunSystemNode->setSunPosition(glm::vec3(sunDirection) * -50.0f); // Sun in sky opposite to light direction
+        sunSystemNode->setSunColor(glm::vec3(1.0f, 0.9f, 0.7f));
+        sunSystemNode->setSunIntensity(2.0f);
+        sunSystemNode->setParticleCount(1024);
+    }
+    
     if (auto* graphicsNode = frameGraph->getNode<EntityGraphicsNode>(graphicsNodeId)) {
         graphicsNode->setImageIndex(imageIndex);
         graphicsNode->setCurrentSwapchainImageId(swapchainImageId); // Dynamic resolution

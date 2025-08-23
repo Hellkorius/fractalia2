@@ -539,7 +539,7 @@ namespace DescriptorLayoutPresets {
         uboBinding.binding = 0;
         uboBinding.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
         uboBinding.descriptorCount = 1;
-        uboBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+        uboBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
         uboBinding.debugName = "cameraUBO";
         
         // Storage buffer for entity data
@@ -558,7 +558,29 @@ namespace DescriptorLayoutPresets {
         positionBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
         positionBinding.debugName = "positionBuffer";
         
-        spec.bindings = {uboBinding, entityBinding, positionBinding};
+        // Shadow map bindings for cascaded shadow mapping
+        DescriptorBinding shadowMap0Binding{};
+        shadowMap0Binding.binding = 3;
+        shadowMap0Binding.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        shadowMap0Binding.descriptorCount = 1;
+        shadowMap0Binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+        shadowMap0Binding.debugName = "shadowMap0";
+        
+        DescriptorBinding shadowMap1Binding{};
+        shadowMap1Binding.binding = 4;
+        shadowMap1Binding.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        shadowMap1Binding.descriptorCount = 1;
+        shadowMap1Binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+        shadowMap1Binding.debugName = "shadowMap1";
+        
+        DescriptorBinding shadowMap2Binding{};
+        shadowMap2Binding.binding = 5;
+        shadowMap2Binding.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        shadowMap2Binding.descriptorCount = 1;
+        shadowMap2Binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+        shadowMap2Binding.debugName = "shadowMap2";
+        
+        spec.bindings = {uboBinding, entityBinding, positionBinding, shadowMap0Binding, shadowMap1Binding, shadowMap2Binding};
         return spec;
     }
     
@@ -617,6 +639,54 @@ namespace DescriptorLayoutPresets {
         spatialMapBinding.debugName = "spatialMapBuffer";
         
         spec.bindings = {velocityBinding, movementParamsBinding, runtimeStateBinding, positionOutputBinding, currentPosBinding, spatialMapBinding};
+        return spec;
+    }
+
+    DescriptorLayoutSpec createParticleComputeLayout() {
+        DescriptorLayoutSpec spec;
+        spec.layoutName = "ParticleCompute";
+        
+        // Binding 0: Particle UBO (camera matrices, timing, sun data)
+        DescriptorBinding uboBinding{};
+        uboBinding.binding = 0;
+        uboBinding.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        uboBinding.descriptorCount = 1;
+        uboBinding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+        uboBinding.debugName = "particleUBO";
+        
+        // Binding 1: Particle Buffer (position, velocity, lifetime, etc.)
+        DescriptorBinding particleBinding{};
+        particleBinding.binding = 1;
+        particleBinding.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        particleBinding.descriptorCount = 1;
+        particleBinding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+        particleBinding.debugName = "particleBuffer";
+        
+        spec.bindings = {uboBinding, particleBinding};
+        return spec;
+    }
+
+    DescriptorLayoutSpec createParticleGraphicsLayout() {
+        DescriptorLayoutSpec spec;
+        spec.layoutName = "ParticleGraphics";
+        
+        // Binding 0: Particle UBO (camera matrices, timing, sun data)
+        DescriptorBinding uboBinding{};
+        uboBinding.binding = 0;
+        uboBinding.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        uboBinding.descriptorCount = 1;
+        uboBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+        uboBinding.debugName = "particleUBO";
+        
+        // Binding 1: Particle Buffer (position, velocity, lifetime, etc.)
+        DescriptorBinding particleBinding{};
+        particleBinding.binding = 1;
+        particleBinding.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        particleBinding.descriptorCount = 1;
+        particleBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+        particleBinding.debugName = "particleBuffer";
+        
+        spec.bindings = {uboBinding, particleBinding};
         return spec;
     }
 }

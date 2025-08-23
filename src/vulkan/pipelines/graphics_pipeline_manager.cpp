@@ -277,4 +277,52 @@ namespace GraphicsPipelinePresets {
         
         return state;
     }
+
+    GraphicsPipelineState createParticleRenderingState(VkRenderPass renderPass, 
+                                                       VkDescriptorSetLayout descriptorLayout) {
+        // Start with entity rendering state and modify for particles
+        GraphicsPipelineState state = createEntityRenderingState(renderPass, descriptorLayout);
+        
+        // Use particle-specific shaders
+        state.shaderStages = {
+            "shaders/sun_particles.vert.spv",
+            "shaders/sun_particles.frag.spv"
+        };
+        
+        // Update vertex input for particle quad (vec2 position)
+        state.vertexBindings.clear();
+        state.vertexAttributes.clear();
+        
+        VkVertexInputBindingDescription vertexBinding{};
+        vertexBinding.binding = 0;
+        vertexBinding.stride = sizeof(glm::vec2);  // Only 2D position for quad
+        vertexBinding.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+        state.vertexBindings.push_back(vertexBinding);
+        
+        VkVertexInputAttributeDescription posAttr{};
+        posAttr.binding = 0;
+        posAttr.location = 0;
+        posAttr.format = VK_FORMAT_R32G32_SFLOAT;  // vec2
+        posAttr.offset = 0;
+        state.vertexAttributes.push_back(posAttr);
+        
+        // Enable alpha blending for particles
+        state.colorBlendAttachments.clear();
+        VkPipelineColorBlendAttachmentState colorBlendAttachment{};
+        colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | 
+                                             VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+        colorBlendAttachment.blendEnable = VK_TRUE;
+        colorBlendAttachment.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+        colorBlendAttachment.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+        colorBlendAttachment.colorBlendOp = VK_BLEND_OP_ADD;
+        colorBlendAttachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+        colorBlendAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+        colorBlendAttachment.alphaBlendOp = VK_BLEND_OP_ADD;
+        state.colorBlendAttachments.push_back(colorBlendAttachment);
+        
+        // Disable depth writing for transparent particles
+        state.depthWriteEnable = VK_FALSE;
+        
+        return state;
+    }
 }

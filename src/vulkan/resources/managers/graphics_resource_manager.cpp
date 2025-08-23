@@ -53,7 +53,10 @@ void GraphicsResourceManager::cleanupBeforeContextDestruction() {
 }
 
 bool GraphicsResourceManager::createUniformBuffers() {
-    VkDeviceSize bufferSize = sizeof(glm::mat4) * 2;
+    // Extended UBO structure for shadow mapping:
+    // mat4 view + mat4 proj + 3x mat4 lightSpace + vec4 sunDir + vec4 cascadeSplits + 4 floats
+    // = 2*64 + 3*64 + 16 + 16 + 16 = 368 bytes
+    VkDeviceSize bufferSize = sizeof(glm::mat4) * 5 + sizeof(glm::vec4) * 2 + sizeof(float) * 4;
     
     uniformBufferHandles.resize(MAX_FRAMES_IN_FLIGHT);
     uniformBuffers.resize(MAX_FRAMES_IN_FLIGHT);

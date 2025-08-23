@@ -327,6 +327,25 @@ namespace ComputePipelinePresets {
         
         return state;
     }
+
+    ComputePipelineState createParticleUpdateState(VkDescriptorSetLayout descriptorLayout) {
+        ComputePipelineState state{};
+        state.shaderPath = "shaders/sun_particles.comp.spv";
+        state.descriptorSetLayouts.push_back(descriptorLayout);
+        state.workgroupSizeX = 64;  // MUST match shader local_size_x
+        state.workgroupSizeY = 1;
+        state.workgroupSizeZ = 1;
+        state.isFrequentlyUsed = true;
+        
+        // Add push constants for particle timing/configuration data
+        VkPushConstantRange pushConstant{};
+        pushConstant.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+        pushConstant.offset = 0;
+        pushConstant.size = sizeof(float) * 2;  // time, deltaTime
+        state.pushConstantRanges.push_back(pushConstant);
+        
+        return state;
+    }
 }
 
 void ComputePipelineManager::optimizeCache(uint64_t currentFrame) {

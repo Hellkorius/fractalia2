@@ -1,0 +1,184 @@
+#version 450
+
+// Sun particle system - creates atmospheric light particles that follow sun rays
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+// Particle data structure
+struct SunParticle {
+    vec4 position;        // xyz = position, w = life (0.0 = dead, 1.0 = fully alive)
+    vec4 velocity;        // xyz = velocity, w = age
+    vec4 properties;      // x = brightness, y = size, z = dispersion, w = type
+    vec4 sunInfluence;    // x = sun alignment, y = illumination, z = ray distance, w = spawn timer
+};
+
+layout(std430, binding = 0) restrict buffer ParticleBuffer {
+    SunParticle particles[];
+};
+
+layout(binding = 1) uniform ParticleUBO {
+    mat4 viewMatrix;
+    mat4 projMatrix;
+    vec4 sunDirection;      // xyz = direction, w = intensity
+    vec4 sunPosition;       // xyz = virtual sun position, w = ray strength
+    vec4 sceneCenter;       // xyz = center of scene, w = radius
+    float deltaTime;
+    float totalTime;
+    uint maxParticles;
+    uint emissionRate;      // Particles per second
+    float particleLifetime;
+    float windStrength;
+    float gravityStrength;
+    float sunRayLength;
+} ubo;
+
+// Random number generation
+uint hash(uint x) {
+    x ^= x >> 16;
+    x *= 0x85ebca6b;
+    x ^= x >> 13;
+    x *= 0xc2b2ae35;
+    x ^= x >> 16;
+    return x;
+}
+
+float random(uint seed) {
+    return float(hash(seed)) / 4294967296.0;
+}
+
+vec3 randomSpherePoint(uint seed) {
+    float u = random(seed);
+    float v = random(seed + 1);
+    float theta = u * 2.0 * 3.14159265359;
+    float phi = acos(2.0 * v - 1.0);
+    return vec3(sin(phi) * cos(theta), sin(phi) * sin(theta), cos(phi));
+}
+
+// Calculate point along sun ray through scene
+vec3 calculateSunRayPoint(float t, vec3 rayDirection) {
+    vec3 sunStart = ubo.sceneCenter.xyz - rayDirection * ubo.sunRayLength * 0.5;
+    return sunStart + rayDirection * t * ubo.sunRayLength;
+}
+
+// Calculate volumetric lighting influence
+float calculateSunInfluence(vec3 particlePos, vec3 sunDir) {
+    // Distance to sun ray line
+    vec3 toParticle = particlePos - ubo.sceneCenter.xyz;
+    vec3 projectedOnRay = dot(toParticle, sunDir) * sunDir;
+    vec3 perpendicular = toParticle - projectedOnRay;
+    float distanceToRay = length(perpendicular);
+    
+    // Falloff with distance from ray
+    float rayInfluence = exp(-distanceToRay * distanceToRay * 0.01);
+    
+    // Additional falloff with distance along ray
+    float rayProgress = dot(toParticle, sunDir) / ubo.sunRayLength;
+    float alongRayFalloff = 1.0 - abs(rayProgress - 0.5) * 2.0; // Peak at center
+    alongRayFalloff = max(0.0, alongRayFalloff);
+    
+    return rayInfluence * alongRayFalloff;
+}
+
+void main() {
+    uint index = gl_GlobalInvocationID.x;
+    if (index >= ubo.maxParticles) return;
+    
+    uint seed = index * 1000 + uint(ubo.totalTime * 1000.0);
+    SunParticle particle = particles[index];
+    
+    // Check if particle is dead and needs respawning
+    if (particle.position.w <= 0.0) {
+        // Spawn new particle along dramatic sun ray beams
+        vec3 sunDir = normalize(ubo.sunDirection.xyz);
+        
+        // Create multiple distinct light beams (god rays)
+        uint numBeams = 8;
+        uint beamIndex = uint(random(seed) * float(numBeams));
+        float beamAngle = float(beamIndex) * 6.28318 / float(numBeams);
+        
+        // Create beam direction with cone spread
+        vec3 perpendicular1 = normalize(cross(sunDir, vec3(0, 1, 0)));
+        vec3 perpendicular2 = cross(sunDir, perpendicular1);
+        float coneRadius = 0.15; // Tight cone for dramatic beams
+        vec3 beamOffset = perpendicular1 * cos(beamAngle) * coneRadius + 
+                          perpendicular2 * sin(beamAngle) * coneRadius;
+        vec3 beamDir = normalize(sunDir + beamOffset);
+        
+        // Position along the beam
+        float rayT = random(seed + 1);
+        vec3 rayPoint = calculateSunRayPoint(rayT, beamDir);
+        vec3 spread = randomSpherePoint(seed + 5) * 0.5; // Tighter spread for visible beams
+        
+        particle.position.xyz = rayPoint + spread;
+        particle.position.w = 1.0; // Full life
+        
+        // Initial velocity with some randomness
+        vec3 baseVelocity = cross(sunDir, vec3(0, 1, 0)) * 0.5; // Perpendicular to sun ray
+        vec3 randomVel = randomSpherePoint(seed + 10) * 0.3;
+        particle.velocity.xyz = baseVelocity + randomVel;
+        particle.velocity.w = 0.0; // Age
+        
+        // Particle properties
+        particle.properties.x = 0.5 + random(seed + 15) * 0.5; // Brightness 0.5-1.0
+        particle.properties.y = 0.1 + random(seed + 20) * 0.2; // Size 0.1-0.3
+        particle.properties.z = random(seed + 25); // Dispersion factor
+        particle.properties.w = floor(random(seed + 30) * 3.0); // Particle type (0,1,2)
+        
+        // Sun influence
+        particle.sunInfluence.x = calculateSunInfluence(particle.position.xyz, sunDir);
+        particle.sunInfluence.y = particle.sunInfluence.x;
+        particle.sunInfluence.z = 0.0;
+        particle.sunInfluence.w = 0.0;
+    } else {
+        // Update existing particle
+        vec3 sunDir = normalize(ubo.sunDirection.xyz);
+        
+        // Age particle
+        particle.velocity.w += ubo.deltaTime;
+        float ageNormalized = particle.velocity.w / ubo.particleLifetime;
+        particle.position.w = 1.0 - ageNormalized; // Life decreases with age
+        
+        // Calculate forces
+        vec3 forces = vec3(0.0);
+        
+        // Wind force (perpendicular to sun)
+        vec3 windDir = cross(sunDir, vec3(0, 1, 0));
+        forces += windDir * ubo.windStrength * (0.5 + particle.properties.z);
+        
+        // Gravity
+        forces += vec3(0, -ubo.gravityStrength, 0);
+        
+        // Sun ray attraction/repulsion based on particle type
+        float sunInfluence = calculateSunInfluence(particle.position.xyz, sunDir);
+        vec3 toSunRay = normalize(ubo.sceneCenter.xyz - particle.position.xyz);
+        
+        if (particle.properties.w < 1.0) {
+            // Type 0: Attracted to sun ray
+            forces += toSunRay * sunInfluence * 0.5;
+        } else if (particle.properties.w < 2.0) {
+            // Type 1: Repelled by sun ray (dust dispersion)
+            forces -= toSunRay * sunInfluence * 0.3;
+        }
+        // Type 2: Neutral (just flows)
+        
+        // Apply forces
+        particle.velocity.xyz += forces * ubo.deltaTime;
+        
+        // Apply drag
+        particle.velocity.xyz *= pow(0.95, ubo.deltaTime * 60.0);
+        
+        // Update position
+        particle.position.xyz += particle.velocity.xyz * ubo.deltaTime;
+        
+        // Update sun influence for brightness
+        particle.sunInfluence.x = sunInfluence;
+        particle.sunInfluence.y = mix(particle.sunInfluence.y, sunInfluence, ubo.deltaTime * 2.0);
+        
+        // Kill particle if too old or too far from scene
+        float distFromCenter = length(particle.position.xyz - ubo.sceneCenter.xyz);
+        if (ageNormalized >= 1.0 || distFromCenter > ubo.sceneCenter.w) {
+            particle.position.w = 0.0; // Mark as dead
+        }
+    }
+    
+    particles[index] = particle;
+}

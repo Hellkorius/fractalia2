@@ -3,6 +3,15 @@
 layout(binding = 0) uniform UBO {
     mat4 view;
     mat4 proj;
+    mat4 lightSpaceMatrix0;  // First cascade
+    mat4 lightSpaceMatrix1;  // Second cascade  
+    mat4 lightSpaceMatrix2;  // Third cascade
+    vec4 sunDirection;       // xyz = direction, w = intensity
+    vec4 cascadeSplits;      // Split distances for cascades
+    float shadowDistance;
+    uint cascadeCount;
+    float shadowBias;
+    float shadowNormalOffset;
 } ubo;
 
 layout(push_constant) uniform PC {
@@ -25,6 +34,11 @@ layout(std430, binding = 2) readonly buffer MovementParamsBuffer {
 
 
 layout(location = 0) out vec3 color;
+layout(location = 1) out vec4 worldPos;
+layout(location = 2) out vec3 worldNormal;
+layout(location = 3) out vec4 lightSpacePos0;
+layout(location = 4) out vec4 lightSpacePos1;
+layout(location = 5) out vec4 lightSpacePos2;
 
 /* ---------- HSV → RGB ---------- */
 vec3 hsv2rgb(float h, float s, float v) {
@@ -45,7 +59,7 @@ vec3 hsv2rgb(float h, float s, float v) {
 
 void main() {
     // Read computed positions from physics shader output
-    vec3 worldPos = computedPos[gl_InstanceIndex].xyz;
+    vec3 entityWorldPos = computedPos[gl_InstanceIndex].xyz;
     
     // Extract movement parameters for color calculation from SoA buffers
     vec4 entityMovementParams = movementParamsBuffer.movementParams[gl_InstanceIndex];
@@ -132,11 +146,23 @@ void main() {
         1, 0, 0, 0,
         0, 1, 0, 0,
         0, 0, 1, 0,
-        worldPos, 1
+        entityWorldPos, 1
     );
     
     // Final transformation: translate then rotate
     mat4 modelMatrix = translationMatrix * rotationMatrix;
     
-    gl_Position = ubo.proj * ubo.view * modelMatrix * vec4(inPos, 1.0);
+    // Calculate world position and normal
+    vec4 worldPosition = modelMatrix * vec4(inPos, 1.0);
+    worldPos = worldPosition;
+    
+    // Calculate normal (simplified - assuming uniform scaling)
+    worldNormal = normalize(mat3(modelMatrix) * vec3(0.0, 0.0, 1.0)); // Default normal for simple geometry
+    
+    // Transform position to light space for each cascade
+    lightSpacePos0 = ubo.lightSpaceMatrix0 * worldPosition;
+    lightSpacePos1 = ubo.lightSpaceMatrix1 * worldPosition; 
+    lightSpacePos2 = ubo.lightSpaceMatrix2 * worldPosition;
+    
+    gl_Position = ubo.proj * ubo.view * worldPosition;
 }

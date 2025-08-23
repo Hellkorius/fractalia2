@@ -247,12 +247,33 @@ void EntityGraphicsNode::updateUniformBuffer() {
     struct UniformBufferObject {
         glm::mat4 view;
         glm::mat4 proj;
+        glm::mat4 lightSpaceMatrix0;
+        glm::mat4 lightSpaceMatrix1;
+        glm::mat4 lightSpaceMatrix2;
+        glm::vec4 sunDirection;       
+        glm::vec4 cascadeSplits;      
+        float shadowDistance;
+        uint32_t cascadeCount;
+        float shadowBias;
+        float shadowNormalOffset;
     } newUBO{};
 
     // Get camera matrices from service
     auto& cameraService = ServiceLocator::instance().requireService<CameraService>();
     newUBO.view = cameraService.getViewMatrix();
     newUBO.proj = cameraService.getProjectionMatrix();
+    
+    // Shadow mapping parameters - temporary placeholder values
+    // TODO: Get actual light space matrices from shadow pass node
+    newUBO.lightSpaceMatrix0 = glm::mat4(1.0f);
+    newUBO.lightSpaceMatrix1 = glm::mat4(1.0f);  
+    newUBO.lightSpaceMatrix2 = glm::mat4(1.0f);
+    newUBO.sunDirection = glm::vec4(glm::normalize(glm::vec3(0.3f, -0.8f, 0.5f)), 2.5f); // w = higher intensity for dramatic effect
+    newUBO.cascadeSplits = glm::vec4(0.1f, 0.3f, 1.0f, 1.0f);
+    newUBO.shadowDistance = 1000.0f;
+    newUBO.cascadeCount = 3;
+    newUBO.shadowBias = 0.005f;
+    newUBO.shadowNormalOffset = 0.1f;
     
     // Debug camera matrix application (once every 30 seconds) - thread-safe
     uint32_t counter = debugCounter.fetch_add(1, std::memory_order_relaxed);
@@ -275,8 +296,8 @@ void EntityGraphicsNode::updateUniformBuffer() {
         }
     }
     
-    // Check if matrices actually changed (avoid memcmp by comparing key components)
-    bool matricesChanged = (newUBO.view != cachedUBO.view) || (newUBO.proj != cachedUBO.proj);
+    // Check if matrices actually changed (simplified for shadow mapping - always update for now)
+    bool matricesChanged = true; // TODO: Implement proper caching for extended UBO
     
     // Only update if dirty, frame changed, or matrices changed
     if (needsUpdate || matricesChanged) {
@@ -300,6 +321,7 @@ void EntityGraphicsNode::updateUniformBuffer() {
                 memcpy(data, &newUBO, sizeof(newUBO));
                 
                 // Update cache and tracking
+                // TODO: Update cached UBO with full structure
                 cachedUBO.view = newUBO.view;
                 cachedUBO.proj = newUBO.proj;
                 uniformBufferDirty = false;
