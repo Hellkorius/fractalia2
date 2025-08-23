@@ -93,6 +93,7 @@ protected:
         loader->vkCmdDispatchIndirect(commandBuffer, buffer, offset);
     }
     
+    // Legacy pipeline barrier wrapper (prefer cmdPipelineBarrier2 for new code)
     void cmdPipelineBarrier(VkCommandBuffer commandBuffer, VkPipelineStageFlags srcStageMask, VkPipelineStageFlags dstStageMask,
                           VkDependencyFlags dependencyFlags, uint32_t memoryBarrierCount, const VkMemoryBarrier* pMemoryBarriers,
                           uint32_t bufferMemoryBarrierCount, const VkBufferMemoryBarrier* pBufferMemoryBarriers,
@@ -100,5 +101,10 @@ protected:
         loader->vkCmdPipelineBarrier(commandBuffer, srcStageMask, dstStageMask, dependencyFlags,
                                    memoryBarrierCount, pMemoryBarriers, bufferMemoryBarrierCount, pBufferMemoryBarriers,
                                    imageMemoryBarrierCount, pImageMemoryBarriers);
+    }
+    
+    // Modern Synchronization2 pipeline barrier wrapper
+    void cmdPipelineBarrier2(VkCommandBuffer commandBuffer, const VkDependencyInfo* pDependencyInfo) {
+        loader->vkCmdPipelineBarrier2(commandBuffer, pDependencyInfo);
     }
 };

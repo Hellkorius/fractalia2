@@ -2,6 +2,83 @@
 #include <iostream>
 #include <cmath>
 
+namespace {
+    // Helper functions to convert legacy synchronization flags to Synchronization2
+    VkPipelineStageFlags2 convertLegacyPipelineStage(VkPipelineStageFlags legacyStage) {
+        switch (legacyStage) {
+            case VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT:
+                return VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT;
+            case VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT:
+                return VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT;
+            case VK_PIPELINE_STAGE_VERTEX_INPUT_BIT:
+                return VK_PIPELINE_STAGE_2_VERTEX_INPUT_BIT;
+            case VK_PIPELINE_STAGE_VERTEX_SHADER_BIT:
+                return VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT;
+            case VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT:
+                return VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
+            case VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT:
+                return VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT;
+            case VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT:
+                return VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT;
+            case VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT:
+                return VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+            case VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT:
+                return VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+            case VK_PIPELINE_STAGE_TRANSFER_BIT:
+                return VK_PIPELINE_STAGE_2_TRANSFER_BIT;
+            case VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT:
+                return VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT;
+            case VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT:
+                return VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT;
+            case VK_PIPELINE_STAGE_ALL_COMMANDS_BIT:
+                return VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+            default:
+                return VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT; // Conservative fallback
+        }
+    }
+    
+    VkAccessFlags2 convertLegacyAccessFlags(VkAccessFlags legacyAccess) {
+        VkAccessFlags2 result = 0;
+        
+        if (legacyAccess & VK_ACCESS_INDIRECT_COMMAND_READ_BIT)
+            result |= VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT;
+        if (legacyAccess & VK_ACCESS_INDEX_READ_BIT)
+            result |= VK_ACCESS_2_INDEX_READ_BIT;
+        if (legacyAccess & VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT)
+            result |= VK_ACCESS_2_VERTEX_ATTRIBUTE_READ_BIT;
+        if (legacyAccess & VK_ACCESS_UNIFORM_READ_BIT)
+            result |= VK_ACCESS_2_UNIFORM_READ_BIT;
+        if (legacyAccess & VK_ACCESS_INPUT_ATTACHMENT_READ_BIT)
+            result |= VK_ACCESS_2_INPUT_ATTACHMENT_READ_BIT;
+        if (legacyAccess & VK_ACCESS_SHADER_READ_BIT)
+            result |= VK_ACCESS_2_SHADER_READ_BIT;
+        if (legacyAccess & VK_ACCESS_SHADER_WRITE_BIT)
+            result |= VK_ACCESS_2_SHADER_WRITE_BIT;
+        if (legacyAccess & VK_ACCESS_COLOR_ATTACHMENT_READ_BIT)
+            result |= VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT;
+        if (legacyAccess & VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT)
+            result |= VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
+        if (legacyAccess & VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT)
+            result |= VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
+        if (legacyAccess & VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT)
+            result |= VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+        if (legacyAccess & VK_ACCESS_TRANSFER_READ_BIT)
+            result |= VK_ACCESS_2_TRANSFER_READ_BIT;
+        if (legacyAccess & VK_ACCESS_TRANSFER_WRITE_BIT)
+            result |= VK_ACCESS_2_TRANSFER_WRITE_BIT;
+        if (legacyAccess & VK_ACCESS_HOST_READ_BIT)
+            result |= VK_ACCESS_2_HOST_READ_BIT;
+        if (legacyAccess & VK_ACCESS_HOST_WRITE_BIT)
+            result |= VK_ACCESS_2_HOST_WRITE_BIT;
+        if (legacyAccess & VK_ACCESS_MEMORY_READ_BIT)
+            result |= VK_ACCESS_2_MEMORY_READ_BIT;
+        if (legacyAccess & VK_ACCESS_MEMORY_WRITE_BIT)
+            result |= VK_ACCESS_2_MEMORY_WRITE_BIT;
+            
+        return result;
+    }
+}
+
 ComputeDispatcher::ComputeDispatcher(VulkanContext* ctx) : VulkanManagerBase(ctx) {}
 
 void ComputeDispatcher::dispatch(VkCommandBuffer commandBuffer, const ComputeDispatch& dispatch) {
@@ -91,14 +168,50 @@ void ComputeDispatcher::insertOptimalBarriers(VkCommandBuffer commandBuffer,
     
     auto optimizedBufferBarriers = optimizeBufferBarriers(bufferBarriers);
     
-    cmdPipelineBarrier(
-        commandBuffer,
-        srcStage, dstStage,
-        0,
-        0, nullptr,
-        static_cast<uint32_t>(optimizedBufferBarriers.size()), optimizedBufferBarriers.data(),
-        static_cast<uint32_t>(imageBarriers.size()), imageBarriers.data()
-    );
+    // Convert legacy barriers to Synchronization2
+    std::vector<VkBufferMemoryBarrier2> bufferBarriers2;
+    bufferBarriers2.reserve(optimizedBufferBarriers.size());
+    for (const auto& barrier : optimizedBufferBarriers) {
+        VkBufferMemoryBarrier2 barrier2{};
+        barrier2.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2;
+        barrier2.srcStageMask = convertLegacyPipelineStage(srcStage);
+        barrier2.srcAccessMask = convertLegacyAccessFlags(barrier.srcAccessMask);
+        barrier2.dstStageMask = convertLegacyPipelineStage(dstStage);
+        barrier2.dstAccessMask = convertLegacyAccessFlags(barrier.dstAccessMask);
+        barrier2.srcQueueFamilyIndex = barrier.srcQueueFamilyIndex;
+        barrier2.dstQueueFamilyIndex = barrier.dstQueueFamilyIndex;
+        barrier2.buffer = barrier.buffer;
+        barrier2.offset = barrier.offset;
+        barrier2.size = barrier.size;
+        bufferBarriers2.push_back(barrier2);
+    }
+    
+    std::vector<VkImageMemoryBarrier2> imageBarriers2;
+    imageBarriers2.reserve(imageBarriers.size());
+    for (const auto& barrier : imageBarriers) {
+        VkImageMemoryBarrier2 barrier2{};
+        barrier2.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
+        barrier2.srcStageMask = convertLegacyPipelineStage(srcStage);
+        barrier2.srcAccessMask = convertLegacyAccessFlags(barrier.srcAccessMask);
+        barrier2.dstStageMask = convertLegacyPipelineStage(dstStage);
+        barrier2.dstAccessMask = convertLegacyAccessFlags(barrier.dstAccessMask);
+        barrier2.srcQueueFamilyIndex = barrier.srcQueueFamilyIndex;
+        barrier2.dstQueueFamilyIndex = barrier.dstQueueFamilyIndex;
+        barrier2.image = barrier.image;
+        barrier2.subresourceRange = barrier.subresourceRange;
+        barrier2.oldLayout = barrier.oldLayout;
+        barrier2.newLayout = barrier.newLayout;
+        imageBarriers2.push_back(barrier2);
+    }
+    
+    VkDependencyInfo dependencyInfo{};
+    dependencyInfo.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+    dependencyInfo.bufferMemoryBarrierCount = static_cast<uint32_t>(bufferBarriers2.size());
+    dependencyInfo.pBufferMemoryBarriers = bufferBarriers2.empty() ? nullptr : bufferBarriers2.data();
+    dependencyInfo.imageMemoryBarrierCount = static_cast<uint32_t>(imageBarriers2.size());
+    dependencyInfo.pImageMemoryBarriers = imageBarriers2.empty() ? nullptr : imageBarriers2.data();
+    
+    loader->vkCmdPipelineBarrier2(commandBuffer, &dependencyInfo);
 }
 
 void ComputeDispatcher::resetFrameStats() {

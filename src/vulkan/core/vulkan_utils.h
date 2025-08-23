@@ -67,7 +67,7 @@ public:
                                     VkCommandPool commandPool,
                                     VkCommandBuffer commandBuffer);
     
-    // Image transition utilities (using vkCmdPipelineBarrier)
+    // Image transition utilities (using Synchronization2)
     static void transitionImageLayout(VkDevice device,
                                     const VulkanFunctionLoader& loader,
                                     VkQueue queue,
