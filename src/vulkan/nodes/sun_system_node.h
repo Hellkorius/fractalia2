@@ -40,8 +40,8 @@ public:
     std::vector<ResourceDependency> getOutputs() const override;
     void execute(VkCommandBuffer commandBuffer, const FrameGraph& frameGraph) override;
     
-    // Queue requirements - needs compute for particles, graphics for rendering
-    bool needsComputeQueue() const override { return true; }
+    // Queue requirements - graphics only (compute will be separate node)
+    bool needsComputeQueue() const override { return false; }
     bool needsGraphicsQueue() const override { return true; }
     
     // Node lifecycle
@@ -61,6 +61,12 @@ public:
     void setSunColor(const glm::vec3& color) { sunColor = color; }
     void setSunIntensity(float intensity) { sunIntensity = intensity; }
     void setParticleCount(uint32_t count) { maxParticles = count; }
+    
+    // Access particle buffer for compute node
+    FrameGraphTypes::ResourceId getParticleBufferId() const { return particleBufferId; }
+    
+    // Link to compute node for buffer sharing
+    void setComputeNode(class SunParticleComputeNode* computeNode) { this->computeNode = computeNode; }
 
 private:
     // Sun particle structure - simple and efficient
@@ -95,10 +101,14 @@ private:
     // Execute graphics pass to render sun and particles
     void executeGraphicsRender(VkCommandBuffer commandBuffer, const FrameGraph& frameGraph);
     
+    // Execute simplified sun disc rendering (no particles, no particle buffer)
+    void executeSimplifiedSunRender(VkCommandBuffer commandBuffer, const FrameGraph& frameGraph);
+    
     // Resources
     FrameGraphTypes::ResourceId particleBufferId = 0;  // Created internally
     FrameGraphTypes::ResourceId currentSwapchainImageId = 0; // Dynamic per-frame
     ResourceHandle sunUBOHandle;                       // Sun uniform buffer
+    ResourceHandle staticParticleHandle;               // Static particle data for vertex shader
     VkBuffer quadVertexBuffer = VK_NULL_HANDLE;       // Fullscreen quad for sun disc
     
     // Descriptor resources
@@ -127,7 +137,7 @@ private:
     float sunRadius = 3.0f;                                // Visual sun disc size
     
     // Particle parameters
-    uint32_t maxParticles = 2048;                          // Reasonable particle count
+    uint32_t maxParticles = 4;                             // MINIMAL for memory safety testing
     float particleLifetime = 10.0f;                        // 10 second lifetime
     float windStrength = 0.3f;                            // Gentle wind drift
     float gravityStrength = 0.1f;                         // Very light gravity
@@ -138,6 +148,9 @@ private:
     SunUBO sunUBO{};
     bool uboNeedsUpdate = true;
     bool resourcesInitialized = false;
+    
+    // Link to compute node for buffer sharing
+    class SunParticleComputeNode* computeNode = nullptr;
     
     // Thread-safe counters
     mutable std::atomic<uint32_t> debugCounter{0};

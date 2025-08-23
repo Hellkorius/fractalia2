@@ -67,7 +67,7 @@ void main() {
         
     } else {
         // Render particle
-        uint particleIndex = uint(pc.instanceId);
+        uint particleIndex = uint(gl_InstanceIndex);
         
         // Skip dead particles
         if (particles[particleIndex].position.w <= 0.0) {

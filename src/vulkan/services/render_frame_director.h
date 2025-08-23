@@ -96,6 +96,7 @@ private:
     FrameGraphTypes::NodeId graphicsNodeId = 0;
     FrameGraphTypes::NodeId presentNodeId = 0;
     FrameGraphTypes::NodeId shadowNodeId = 0;
+    FrameGraphTypes::NodeId sunParticleComputeNodeId = 0;
     FrameGraphTypes::NodeId sunSystemNodeId = 0;
     
     // Shadow configuration

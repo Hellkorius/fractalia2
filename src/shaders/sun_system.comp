@@ -119,7 +119,7 @@ void main() {
         // Sun attraction/repulsion based on particle type
         vec3 toSun = ubo.sunPosition.xyz - particle.position.xyz;
         float distanceToSun = length(toSun);
-        vec3 sunDirection = toSun / distanceToSun;
+        vec3 sunDirection = distanceToSun > 0.001 ? toSun / distanceToSun : vec3(0.0, 1.0, 0.0); // Safe division
         
         int particleType = int(particle.properties.z);
         if (particleType == 0) {
@@ -131,8 +131,11 @@ void main() {
         }
         // Type 2: Neutral particles - just flow with wind
         
-        // Apply forces
+        // Apply forces with bounds checking
         particle.velocity.xyz += forces * deltaTime;
+        
+        // Clamp velocity to prevent extreme values
+        particle.velocity.xyz = clamp(particle.velocity.xyz, vec3(-100.0), vec3(100.0));
         
         // Apply drag
         particle.velocity.xyz *= pow(0.98, deltaTime * 60.0);
@@ -140,8 +143,11 @@ void main() {
         // Update position
         particle.position.xyz += particle.velocity.xyz * deltaTime;
         
+        // Clamp position to reasonable bounds
+        particle.position.xyz = clamp(particle.position.xyz, vec3(-1000.0), vec3(1000.0));
+        
         // Update brightness based on distance from sun
-        float sunDistance = distanceToSun / ubo.lightParams.x; // Normalize by ray length
+        float sunDistance = ubo.lightParams.x > 0.001 ? distanceToSun / ubo.lightParams.x : 0.0; // Safe division
         float brightnessFalloff = exp(-sunDistance * sunDistance * 0.1);
         particle.velocity.w = mix(particle.velocity.w, brightnessFalloff * ubo.lightParams.z, deltaTime);
         

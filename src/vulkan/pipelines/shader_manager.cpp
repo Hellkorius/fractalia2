@@ -458,20 +458,14 @@ bool ShaderManager::isFileNewer(const std::string& path, std::filesystem::file_t
 VkShaderStageFlagBits ShaderManager::getShaderStageFromFilename(const std::string& filename) const {
     std::string extension = std::filesystem::path(filename).extension().string();
     
-    std::cout << "DEBUG: getShaderStageFromFilename - filename: " << filename << ", extension: " << extension << std::endl;
-    
     // Handle .vert.spv, .frag.spv style filenames by checking the full filename
     if (extension == ".vert" || filename.find(".vert.") != std::string::npos || filename.find("vertex") != std::string::npos) {
-        std::cout << "DEBUG: Detected VERTEX shader" << std::endl;
         return VK_SHADER_STAGE_VERTEX_BIT;
     } else if (extension == ".frag" || filename.find(".frag.") != std::string::npos || filename.find("fragment") != std::string::npos) {
-        std::cout << "DEBUG: Detected FRAGMENT shader" << std::endl;
         return VK_SHADER_STAGE_FRAGMENT_BIT;
     } else if (extension == ".comp" || filename.find(".comp.") != std::string::npos || filename.find("compute") != std::string::npos) {
-        std::cout << "DEBUG: Detected COMPUTE shader" << std::endl;
         return VK_SHADER_STAGE_COMPUTE_BIT;
     } else if (extension == ".geom" || filename.find(".geom.") != std::string::npos || filename.find("geometry") != std::string::npos) {
-        std::cout << "DEBUG: Detected GEOMETRY shader" << std::endl;
         return VK_SHADER_STAGE_GEOMETRY_BIT;
     } else if (extension == ".tesc" || filename.find("tesscontrol") != std::string::npos) {
         return VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT;

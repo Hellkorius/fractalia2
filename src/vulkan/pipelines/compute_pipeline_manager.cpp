@@ -349,7 +349,7 @@ namespace ComputePipelinePresets {
 
     ComputePipelineState createSunParticleState(VkDescriptorSetLayout descriptorLayout) {
         ComputePipelineState state{};
-        state.shaderPath = "shaders/sun_system.comp.spv";
+        state.shaderPath = "shaders/sun_system_minimal.comp.spv";  // Minimal shader for testing
         state.descriptorSetLayouts.push_back(descriptorLayout);
         state.workgroupSizeX = 64;  // MUST match shader local_size_x (sun system shader)
         state.workgroupSizeY = 1;

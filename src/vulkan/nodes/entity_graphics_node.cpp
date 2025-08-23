@@ -17,6 +17,7 @@
 #include <flecs.h>
 #include <stdexcept>
 #include <memory>
+#include <vector>
 
 EntityGraphicsNode::EntityGraphicsNode(
     FrameGraphTypes::ResourceId entityBuffer, 
@@ -134,8 +135,8 @@ void EntityGraphicsNode::execute(VkCommandBuffer commandBuffer, const FrameGraph
 
     // Clear values: MSAA color, resolve color, depth buffer
     std::array<VkClearValue, 3> clearValues{};
-    clearValues[0].color = {{0.1f, 0.1f, 0.2f, 1.0f}};  // MSAA color attachment
-    clearValues[1].color = {{0.1f, 0.1f, 0.2f, 1.0f}};  // Resolve attachment  
+    clearValues[0].color = {{0.02f, 0.02f, 0.08f, 1.0f}};  // MSAA color attachment - deep space black
+    clearValues[1].color = {{0.02f, 0.02f, 0.08f, 1.0f}};  // Resolve attachment - deep space black  
     clearValues[2].depthStencil = {1.0f, 0};             // Depth buffer (1.0 = far plane)
     renderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
     renderPassInfo.pClearValues = clearValues.data();
@@ -234,6 +235,9 @@ void EntityGraphicsNode::execute(VkCommandBuffer commandBuffer, const FrameGraph
         }
     }
 
+    // === SUN SYSTEM RENDERING (within same render pass) ===
+    renderSunSystem(commandBuffer, vk);
+
     // End render pass
     vk.vkCmdEndRenderPass(commandBuffer);
 }
@@ -268,7 +272,9 @@ void EntityGraphicsNode::updateUniformBuffer() {
     newUBO.lightSpaceMatrix0 = glm::mat4(1.0f);
     newUBO.lightSpaceMatrix1 = glm::mat4(1.0f);  
     newUBO.lightSpaceMatrix2 = glm::mat4(1.0f);
-    newUBO.sunDirection = glm::vec4(glm::normalize(glm::vec3(0.3f, -0.8f, 0.5f)), 2.5f); // w = higher intensity for dramatic effect
+    // Use the SAME sun direction as the shadow system for consistency
+    glm::vec3 sunDir = sunDirection; // Use the class member variable
+    newUBO.sunDirection = glm::vec4(sunDir, 3.0f); // w = intensity
     newUBO.cascadeSplits = glm::vec4(0.1f, 0.3f, 1.0f, 1.0f);
     newUBO.shadowDistance = 1000.0f;
     newUBO.cascadeCount = 3;
@@ -376,4 +382,218 @@ void EntityGraphicsNode::prepareFrame(uint32_t frameIndex, float time, float del
 
 void EntityGraphicsNode::releaseFrame(uint32_t frameIndex) {
     // Per-frame cleanup - nothing to clean up for graphics node
+}
+
+void EntityGraphicsNode::renderSunSystem(VkCommandBuffer commandBuffer, const VulkanFunctionLoader& vk) {
+    // Initialize sun resources if not already done
+    if (!sunResourcesInitialized) {
+        if (!initializeSunResources()) {
+            static uint32_t errorCounter = 0;
+            errorCounter++;
+            if (errorCounter % 300 == 0) {
+                std::cerr << "EntityGraphicsNode: Failed to initialize sun resources!" << std::endl;
+            }
+            return;
+        }
+    }
+    
+    // Validate resources
+    if (sunQuadBuffer == VK_NULL_HANDLE || !graphicsManager) {
+        return;
+    }
+    
+    // Use the same render pass that the entity graphics are using
+    VkRenderPass currentRenderPass = graphicsManager->createRenderPass(
+        swapchain->getImageFormat(), 
+        VK_FORMAT_D24_UNORM_S8_UINT,  // Same depth format as entity rendering
+        VK_SAMPLE_COUNT_2_BIT,         // Same MSAA as entity rendering  
+        true                           // Enable depth testing
+    );
+    
+    // Get the same descriptor layout used by entity rendering (has UBO binding)
+    auto layoutSpec = DescriptorLayoutPresets::createEntityGraphicsLayout();
+    VkDescriptorSetLayout entityDescriptorLayout = graphicsManager->getLayoutManager()->getLayout(layoutSpec);
+    
+    // Create sun pipeline state compatible with current render pass and using same UBO  
+    GraphicsPipelineState sunPipelineState = GraphicsPipelinePresets::createSunSystemRenderingState(
+        currentRenderPass, 
+        entityDescriptorLayout
+    );
+    
+    // Get pipeline
+    VkPipeline sunPipeline = graphicsManager->getPipeline(sunPipelineState);
+    
+    if (sunPipeline == VK_NULL_HANDLE) {
+        static uint32_t pipelineErrorCounter = 0;
+        pipelineErrorCounter++;
+        if (pipelineErrorCounter % 300 == 0) {
+            std::cerr << "EntityGraphicsNode: Failed to get sun pipeline!" << std::endl;
+        }
+        return;
+    }
+    
+    // Bind sun pipeline
+    vk.vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, sunPipeline);
+    
+    // Bind the same descriptor set as entity rendering (contains UBO with camera matrices)
+    const auto& descriptorSets = resourceCoordinator->getGraphicsManager()->getDescriptorSets();
+    VkDescriptorSet entityDescriptorSet = !descriptorSets.empty() ? descriptorSets[currentFrameIndex % descriptorSets.size()] : VK_NULL_HANDLE;
+    if (entityDescriptorSet != VK_NULL_HANDLE) {
+        VkPipelineLayout sunPipelineLayout = graphicsManager->getPipelineLayout(sunPipelineState);
+        vk.vkCmdBindDescriptorSets(
+            commandBuffer,
+            VK_PIPELINE_BIND_POINT_GRAPHICS,
+            sunPipelineLayout,
+            0, 1, &entityDescriptorSet,
+            0, nullptr
+        );
+    }
+    
+    // Bind sun vertex buffer
+    VkBuffer vertexBuffers[] = { sunQuadBuffer };
+    VkDeviceSize offsets[] = { 0 };
+    vk.vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
+    
+    // Draw sun disc only (6 vertices for two triangles making a quad)
+    vk.vkCmdDraw(commandBuffer, 6, 1, 0, 0);
+    
+    // TODO: Add particle rendering later - for now just show sun disc
+    
+    // Debug logging - more frequent to see if it's working
+    static uint32_t sunCounter = 0;
+    sunCounter++;
+    if (sunCounter % 60 == 0) {
+        std::cout << "EntityGraphicsNode: Sun system active - pipeline=" << (sunPipeline != VK_NULL_HANDLE) 
+                  << " buffer=" << (sunQuadBuffer != VK_NULL_HANDLE) << std::endl;
+    }
+}
+
+bool EntityGraphicsNode::initializeSunResources() {
+    if (sunResourcesInitialized) {
+        return true;
+    }
+    
+    if (!resourceCoordinator || !resourceCoordinator->getContext()) {
+        std::cerr << "EntityGraphicsNode: Cannot initialize sun resources - missing resource coordinator or context!" << std::endl;
+        return false;
+    }
+    
+    const auto& vk = resourceCoordinator->getContext()->getLoader();
+    VkDevice device = resourceCoordinator->getContext()->getDevice();
+    
+    // Create simple quad vertex data (2 triangles = 6 vertices)
+    // Each vertex is just a 2D position (vec2)
+    std::vector<glm::vec2> quadVertices = {
+        // First triangle
+        {-1.0f, -1.0f},  // Bottom left
+        { 1.0f, -1.0f},  // Bottom right  
+        { 1.0f,  1.0f},  // Top right
+        
+        // Second triangle  
+        {-1.0f, -1.0f},  // Bottom left
+        { 1.0f,  1.0f},  // Top right
+        {-1.0f,  1.0f}   // Top left
+    };
+    
+    VkDeviceSize bufferSize = sizeof(glm::vec2) * quadVertices.size();
+    
+    // Create vertex buffer
+    VkBufferCreateInfo bufferInfo{};
+    bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    bufferInfo.size = bufferSize;
+    bufferInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+    bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    
+    VkResult result = vk.vkCreateBuffer(device, &bufferInfo, nullptr, &sunQuadBuffer);
+    if (result != VK_SUCCESS) {
+        std::cerr << "EntityGraphicsNode: Failed to create sun quad vertex buffer! VkResult=" << result << std::endl;
+        return false;
+    }
+    
+    // Allocate memory for vertex buffer
+    VkMemoryRequirements memRequirements;
+    vk.vkGetBufferMemoryRequirements(device, sunQuadBuffer, &memRequirements);
+    
+    // Find suitable memory type
+    VkPhysicalDeviceMemoryProperties memProperties;
+    vk.vkGetPhysicalDeviceMemoryProperties(resourceCoordinator->getContext()->getPhysicalDevice(), &memProperties);
+    
+    uint32_t memoryTypeIndex = UINT32_MAX;
+    VkMemoryPropertyFlags requiredProps = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+    
+    for (uint32_t i = 0; i < memProperties.memoryTypeCount; i++) {
+        if ((memRequirements.memoryTypeBits & (1 << i)) && 
+            (memProperties.memoryTypes[i].propertyFlags & requiredProps) == requiredProps) {
+            memoryTypeIndex = i;
+            break;
+        }
+    }
+    
+    if (memoryTypeIndex == UINT32_MAX) {
+        std::cerr << "EntityGraphicsNode: Failed to find suitable memory type for sun quad buffer!" << std::endl;
+        vk.vkDestroyBuffer(device, sunQuadBuffer, nullptr);
+        sunQuadBuffer = VK_NULL_HANDLE;
+        return false;
+    }
+    
+    VkMemoryAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    allocInfo.allocationSize = memRequirements.size;
+    allocInfo.memoryTypeIndex = memoryTypeIndex;
+    
+    result = vk.vkAllocateMemory(device, &allocInfo, nullptr, &sunQuadMemory);
+    if (result != VK_SUCCESS) {
+        std::cerr << "EntityGraphicsNode: Failed to allocate sun quad memory! VkResult=" << result << std::endl;
+        vk.vkDestroyBuffer(device, sunQuadBuffer, nullptr);
+        sunQuadBuffer = VK_NULL_HANDLE;
+        return false;
+    }
+    
+    // Bind memory to buffer
+    result = vk.vkBindBufferMemory(device, sunQuadBuffer, sunQuadMemory, 0);
+    if (result != VK_SUCCESS) {
+        std::cerr << "EntityGraphicsNode: Failed to bind sun quad memory! VkResult=" << result << std::endl;
+        vk.vkFreeMemory(device, sunQuadMemory, nullptr);
+        vk.vkDestroyBuffer(device, sunQuadBuffer, nullptr);
+        sunQuadBuffer = VK_NULL_HANDLE;
+        sunQuadMemory = VK_NULL_HANDLE;
+        return false;
+    }
+    
+    // Copy vertex data to buffer
+    void* data;
+    result = vk.vkMapMemory(device, sunQuadMemory, 0, bufferSize, 0, &data);
+    if (result != VK_SUCCESS) {
+        std::cerr << "EntityGraphicsNode: Failed to map sun quad memory! VkResult=" << result << std::endl;
+        cleanupSunResources();
+        return false;
+    }
+    
+    memcpy(data, quadVertices.data(), bufferSize);
+    vk.vkUnmapMemory(device, sunQuadMemory);
+    
+    sunResourcesInitialized = true;
+    std::cout << "EntityGraphicsNode: Successfully initialized sun quad vertex buffer" << std::endl;
+    return true;
+}
+
+void EntityGraphicsNode::cleanupSunResources() {
+    if (!resourceCoordinator || !resourceCoordinator->getContext()) {
+        return;
+    }
+    
+    const auto& vk = resourceCoordinator->getContext()->getLoader();
+    VkDevice device = resourceCoordinator->getContext()->getDevice();
+    
+    if (sunQuadMemory != VK_NULL_HANDLE) {
+        vk.vkFreeMemory(device, sunQuadMemory, nullptr);
+        sunQuadMemory = VK_NULL_HANDLE;
+    }
+    
+    if (sunQuadBuffer != VK_NULL_HANDLE) {
+        vk.vkDestroyBuffer(device, sunQuadBuffer, nullptr);
+        sunQuadBuffer = VK_NULL_HANDLE;
+    }
+    
+    sunResourcesInitialized = false;
 }

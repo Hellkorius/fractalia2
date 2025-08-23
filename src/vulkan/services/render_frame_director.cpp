@@ -12,6 +12,7 @@
 #include "../nodes/swapchain_present_node.h"
 #include "../nodes/shadow_pass_node.h"
 #include "../nodes/sun_system_node.h"
+#include "../nodes/sun_particle_compute_node.h"
 #include "../../ecs/gpu/gpu_entity_manager.h"
 #include <iostream>
 
@@ -167,13 +168,19 @@ void RenderFrameDirector::setupFrameGraph(uint32_t imageIndex) {
             gpuEntityManager
         );
         
-        // Sun system node (renders sun and light particles)
-        sunSystemNodeId = frameGraph->addNode<SunSystemNode>(
-            pipelineSystem->getGraphicsManager(),
-            pipelineSystem->getComputeManager(), 
-            swapchain,
-            resourceCoordinator
-        );
+        // TEMP: Disable compute node - using vertex-shader-only particles
+        // sunParticleComputeNodeId = frameGraph->addNode<SunParticleComputeNode>(
+        //     pipelineSystem->getComputeManager()
+        // );
+        
+        // TEMP: Disable separate sun node - will integrate into entity graphics
+        // sunSystemNodeId = frameGraph->addNode<SunSystemNode>(
+        //     pipelineSystem->getGraphicsManager(),
+        //     pipelineSystem->getComputeManager(), 
+        //     swapchain,
+        //     resourceCoordinator
+        // );
+        sunSystemNodeId = 0;
         
         // ELEGANT SOLUTION: Pass a dynamic swapchain image reference
         // Nodes will resolve the actual resource ID at execution time
@@ -212,12 +219,16 @@ void RenderFrameDirector::configureFrameGraphNodes(uint32_t imageIndex, flecs::w
         shadowNode->setCascadeCount(cascadeCount);
     }
     
-    // Configure sun system
+    // TEMP: Skip compute node configuration - using vertex-only particles
+    // auto* sunComputeNode = frameGraph->getNode<SunParticleComputeNode>(sunParticleComputeNodeId);
+    
+    // Configure sun system with reference to compute node
     if (auto* sunSystemNode = frameGraph->getNode<SunSystemNode>(sunSystemNodeId)) {
         sunSystemNode->setWorld(world);
         sunSystemNode->setImageIndex(imageIndex);
         sunSystemNode->setCurrentSwapchainImageId(swapchainImageId);
         sunSystemNode->setSunPosition(glm::vec3(sunDirection) * -50.0f); // Sun in sky opposite to light direction
+        sunSystemNode->setComputeNode(nullptr);  // No compute node - vertex-only particles
         sunSystemNode->setSunColor(glm::vec3(1.0f, 0.9f, 0.7f));
         sunSystemNode->setSunIntensity(2.0f);
         sunSystemNode->setParticleCount(1024);
@@ -227,6 +238,7 @@ void RenderFrameDirector::configureFrameGraphNodes(uint32_t imageIndex, flecs::w
         graphicsNode->setImageIndex(imageIndex);
         graphicsNode->setCurrentSwapchainImageId(swapchainImageId); // Dynamic resolution
         graphicsNode->setWorld(world);
+        graphicsNode->setSunDirection(sunDirection); // Ensure sun disc aligns with lighting
     }
     
     if (auto* presentNode = frameGraph->getNode<SwapchainPresentNode>(presentNodeId)) {

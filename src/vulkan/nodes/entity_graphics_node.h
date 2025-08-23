@@ -14,6 +14,7 @@ class GraphicsPipelineManager;
 class VulkanSwapchain;
 class ResourceCoordinator;
 class GPUEntityManager;
+class VulkanFunctionLoader;
 
 class EntityGraphicsNode : public FrameGraphNode {
     DECLARE_FRAME_GRAPH_NODE(EntityGraphicsNode)
@@ -52,12 +53,22 @@ public:
     // Set world reference for camera matrix access
     void setWorld(flecs::world* world) { this->world = world; }
     
+    // Set sun direction (must match lighting system)
+    void setSunDirection(const glm::vec3& direction) { 
+        sunDirection = glm::normalize(direction);
+        sunPosition = -sunDirection * 200.0f; // Update sun position accordingly
+        uniformBufferDirty = true; // Force UBO update
+    }
+    
     // Force uniform buffer update on next frame (call when camera changes)
     void markUniformBufferDirty() { uniformBufferDirty = true; }
 
 private:
     // Internal uniform buffer update
     void updateUniformBuffer();
+    
+    // Sun system rendering (integrated into entity render pass)
+    void renderSunSystem(VkCommandBuffer commandBuffer, const VulkanFunctionLoader& vk);
     
     // Uniform buffer optimization - cache and dirty tracking
     struct CachedUBO {
@@ -92,6 +103,22 @@ private:
     
     bool uniformBufferDirty = true;  // Force update on first frame
     uint32_t lastUpdatedFrameIndex = UINT32_MAX; // Track which frame index was last updated
+    
+    // Sun system resources
+    VkBuffer sunQuadBuffer = VK_NULL_HANDLE;
+    VkDeviceMemory sunQuadMemory = VK_NULL_HANDLE;
+    bool sunResourcesInitialized = false;
+    
+    // Sun system state - calculated from lighting direction
+    glm::vec3 sunDirection = glm::normalize(glm::vec3(0.3f, -0.8f, 0.5f)); // Same as lighting
+    glm::vec3 sunPosition = -sunDirection * 800.0f;        // Far away opposite to light
+    glm::vec3 sunColor = glm::vec3(1.0f, 0.98f, 0.9f);     // Pale, realistic sun
+    float sunIntensity = 1.0f;                              // Subdued intensity
+    uint32_t particleCount = 8;
+    
+    // Helper methods for sun system
+    bool initializeSunResources();
+    void cleanupSunResources();
     
     // Thread-safe debug counters
     mutable std::atomic<uint32_t> debugCounter{0};

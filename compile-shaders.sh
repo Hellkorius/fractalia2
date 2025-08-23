@@ -44,6 +44,14 @@ cp src/shaders/compiled/god_rays.frag.spv build/shaders/
 glslangValidator -V src/shaders/sun_disc.frag -o src/shaders/compiled/sun_disc.frag.spv
 cp src/shaders/compiled/sun_disc.frag.spv build/shaders/
 
+# Compile sun minimal
+glslangValidator -V src/shaders/sun_system_minimal.comp -o src/shaders/compiled/sun_system_minimal.comp.spv
+cp src/shaders/compiled/sun_system_minimal.comp.spv build/shaders/
+
+# Compile sun vertex particles
+glslangValidator -V src/shaders/sun_vertex_particles.vert -o src/shaders/compiled/sun_vertex_particles.vert.spv
+cp src/shaders/compiled/sun_vertex_particles.vert.spv build/shaders/
+
 # Compile sun particles vertex
 glslangValidator -V src/shaders/sun_particles.vert -o src/shaders/compiled/sun_particles.vert.spv
 cp src/shaders/compiled/sun_particles.vert.spv build/shaders/
@@ -65,6 +73,13 @@ cp src/shaders/compiled/sun_system.vert.spv build/shaders/
 
 glslangValidator -V src/shaders/sun_system.frag -o src/shaders/compiled/sun_system.frag.spv
 cp src/shaders/compiled/sun_system.frag.spv build/shaders/
+
+# Compile minimal test shaders
+glslangValidator -V src/shaders/sun_minimal_test.vert -o src/shaders/compiled/sun_minimal_test.vert.spv
+cp src/shaders/compiled/sun_minimal_test.vert.spv build/shaders/
+
+glslangValidator -V src/shaders/sun_minimal_test.frag -o src/shaders/compiled/sun_minimal_test.frag.spv
+cp src/shaders/compiled/sun_minimal_test.frag.spv build/shaders/
 
 # Export shaders to Windows build folder
 WINDOWS_DEST="/mnt/f/Projects/Fractalia2/build/shaders"

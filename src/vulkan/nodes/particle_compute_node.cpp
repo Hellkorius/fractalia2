@@ -121,8 +121,6 @@ void ParticleComputeNode::execute(VkCommandBuffer commandBuffer, const FrameGrap
             return;
         }
         
-        const auto& vk = context->getLoader();
-        
         // Create particle compute pipeline state
         auto layoutSpec = DescriptorLayoutPresets::createParticleComputeLayout();
         VkDescriptorSetLayout descriptorLayout = computeManager->getLayoutManager()->getLayout(layoutSpec);

@@ -1,0 +1,40 @@
+#version 450
+
+// Minimal sun system compute shader - just for testing GPU stability
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+// Sun particle data structure
+struct SunParticle {
+    vec4 position;      // xyz = world position, w = life (0.0-1.0)
+    vec4 velocity;      // xyz = velocity, w = brightness
+    vec4 color;         // rgba = particle color with alpha
+    vec4 properties;    // x = size, y = age, z = type, w = spawn_timer
+};
+
+layout(binding = 0) uniform SunUBO {
+    mat4 viewMatrix;
+    mat4 projMatrix; 
+    vec4 sunPosition;       // xyz = position, w = radius
+    vec4 sunColor;          // rgb = color, a = intensity
+    vec4 cameraPos;         // xyz = camera position, w = fov
+    vec4 sceneInfo;         // x = time, y = deltaTime, z = particleCount, w = windStrength
+    vec4 lightParams;       // x = rayLength, y = rayIntensity, z = particleBrightness, w = gravityStrength
+} ubo;
+
+layout(std430, binding = 1) restrict buffer ParticleBuffer {
+    SunParticle particles[];
+};
+
+void main() {
+    uint index = gl_GlobalInvocationID.x;
+    if (index >= uint(ubo.sceneInfo.z)) return; // Beyond particle count
+    
+    // MINIMAL TEST: Just read and write back the same data
+    SunParticle particle = particles[index];
+    
+    // Only do the absolute minimum - increment age slightly
+    particle.properties.y += 0.001;
+    
+    // Write back
+    particles[index] = particle;
+}

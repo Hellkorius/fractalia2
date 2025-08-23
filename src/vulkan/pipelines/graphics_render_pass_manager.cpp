@@ -24,7 +24,7 @@ VkRenderPass GraphicsRenderPassManager::createRenderPass(VkFormat colorFormat,
     VkAttachmentDescription colorAttachment{};
     colorAttachment.format = colorFormat;
     colorAttachment.samples = enableMSAA ? samples : VK_SAMPLE_COUNT_1_BIT;
-    colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;  // TEMP: Don't clear to see if sun is there
     colorAttachment.storeOp = enableMSAA ? VK_ATTACHMENT_STORE_OP_DONT_CARE : VK_ATTACHMENT_STORE_OP_STORE;
     colorAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
     colorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;

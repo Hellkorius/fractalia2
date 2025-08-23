@@ -1,4 +1,5 @@
 #include "sun_system_node.h"
+#include "sun_particle_compute_node.h"
 #include "../pipelines/graphics_pipeline_manager.h"
 #include "../pipelines/compute_pipeline_manager.h"
 #include "../pipelines/descriptor_layout_manager.h"
@@ -91,31 +92,22 @@ bool SunSystemNode::initializeNode(const FrameGraph& frameGraph) {
             return false;
         }
         
-        // Create particle buffer (4 vec4s per particle = 64 bytes per particle)
-        VkDeviceSize particleBufferSize = maxParticles * sizeof(SunParticle);
+        // TEMP: Skip frame graph particle buffer creation to isolate issue
+        std::cout << "SunSystemNode: Skipping particle buffer creation in frame graph" << std::endl;
+        particleBufferId = 0;  // No particle buffer
         
-        // Create the particle buffer in the frame graph
-        particleBufferId = const_cast<FrameGraph&>(frameGraph).createBuffer(
-            "SunParticleBuffer",
-            particleBufferSize,
-            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT
-        );
+        // TEMP: Delay resource creation to avoid initialization race conditions
+        // Resources will be created on first frame execution instead
+        std::cout << "SunSystemNode: Delaying resource creation to avoid race conditions" << std::endl;
         
-        std::cout << "SunSystemNode: Created particle buffer ID: " << particleBufferId 
-                  << " for " << maxParticles << " particles (" << particleBufferSize << " bytes)" << std::endl;
+        // TEMP: Skip descriptor resource creation to avoid interference  
+        // if (!createDescriptorResources(frameGraph)) {
+        //     std::cerr << "SunSystemNode: Failed to create descriptor resources" << std::endl;
+        //     return false;
+        // }
         
-        if (!createParticleResources(frameGraph)) {
-            std::cerr << "SunSystemNode: Failed to create particle resources" << std::endl;
-            return false;
-        }
-        
-        if (!createDescriptorResources(frameGraph)) {
-            std::cerr << "SunSystemNode: Failed to create descriptor resources" << std::endl;
-            return false;
-        }
-        
-        resourcesInitialized = true;
-        std::cout << "SunSystemNode: *** SUCCESSFULLY INITIALIZED SUN SYSTEM ***" << std::endl;
+        resourcesInitialized = false;  // Will create resources on first execution
+        std::cout << "SunSystemNode: *** INITIALIZED - will create resources during execution ***" << std::endl;
         std::cout << "  - Particle buffer ID: " << particleBufferId << std::endl;
         std::cout << "  - Max particles: " << maxParticles << std::endl;
         std::cout << "  - Resources initialized: " << resourcesInitialized << std::endl;
@@ -185,9 +177,31 @@ void SunSystemNode::execute(VkCommandBuffer commandBuffer, const FrameGraph& fra
                      << ", ParticleBufferID: " << particleBufferId << std::endl;
         }
         
+        // Create resources on first execution to avoid race conditions
+        std::cout << "SunSystemNode: Checking resourcesInitialized=" << resourcesInitialized << std::endl;
         if (!resourcesInitialized) {
-            std::cerr << "SunSystemNode: Resources not initialized, skipping execution" << std::endl;
-            return;
+            std::cout << "SunSystemNode: Creating resources on first execution (frame " << counter << ")" << std::endl;
+            
+            // No compute node needed - vertex shader approach uses static data
+            std::cout << "SunSystemNode: Using vertex-shader-only particle system" << std::endl;
+            
+            if (!createParticleResources(frameGraph)) {
+                std::cerr << "SunSystemNode: Failed to create resources during execution" << std::endl;
+                return;
+            }
+            
+            // TEMP: Skip descriptor creation when no particle buffer
+            if (staticParticleHandle.buffer.get() != VK_NULL_HANDLE) {
+                if (!createDescriptorResources(frameGraph)) {
+                    std::cerr << "SunSystemNode: Failed to create descriptor resources during execution" << std::endl;
+                    return;
+                }
+            } else {
+                std::cout << "SunSystemNode: Skipping descriptor creation - no particle buffer" << std::endl;
+            }
+            
+            resourcesInitialized = true;
+            std::cout << "SunSystemNode: Resources created successfully during execution" << std::endl;
         }
         
         // Skip if no valid swapchain image
@@ -198,24 +212,9 @@ void SunSystemNode::execute(VkCommandBuffer commandBuffer, const FrameGraph& fra
             return;
         }
         
-        // Execute compute pass first to update particles
-        executeParticleCompute(commandBuffer, frameGraph);
+        // Compute is now handled by separate SunParticleComputeNode
         
-        // Add compute-to-graphics barrier
-        VkMemoryBarrier barrier{};
-        barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
-        barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-        barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-        
-        const auto& vk = vulkanContext->getLoader();
-        vk.vkCmdPipelineBarrier(
-            commandBuffer,
-            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-            VK_PIPELINE_STAGE_VERTEX_SHADER_BIT,
-            0, 1, &barrier, 0, nullptr, 0, nullptr
-        );
-        
-        // Execute graphics pass to render sun and particles
+        // Execute full sun and particle rendering
         executeGraphicsRender(commandBuffer, frameGraph);
         
         if (counter % 1800 == 0) { // Every 30 seconds at 60 FPS
@@ -229,11 +228,18 @@ void SunSystemNode::execute(VkCommandBuffer commandBuffer, const FrameGraph& fra
 }
 
 bool SunSystemNode::createParticleResources(const FrameGraph& frameGraph) {
-    // Create fullscreen quad for sun disc and particle quads
+    std::cout << "SunSystemNode: ENTERING createParticleResources" << std::endl;
+    // TEMP: Only create the absolute minimum - just quad buffer for sun disc
+    // TEMP: Try simple triangle instead of quad
     std::vector<glm::vec2> quadVertices = {
-        {-1.0f, -1.0f}, {1.0f, -1.0f}, {1.0f, 1.0f},
-        {1.0f, 1.0f}, {-1.0f, 1.0f}, {-1.0f, -1.0f}
+        {-0.5f, -0.5f}, {0.5f, -0.5f}, {0.0f, 0.5f}
     };
+    
+    // Debug: Print vertex data
+    std::cout << "SunSystemNode: Quad vertices:" << std::endl;
+    for (size_t i = 0; i < quadVertices.size(); ++i) {
+        std::cout << "  [" << i << "]: (" << quadVertices[i].x << ", " << quadVertices[i].y << ")" << std::endl;
+    }
     
     VkDeviceSize quadBufferSize = quadVertices.size() * sizeof(glm::vec2);
     
@@ -246,7 +252,12 @@ bool SunSystemNode::createParticleResources(const FrameGraph& frameGraph) {
     resourceCoordinator->copyToBuffer(quadHandle, quadVertices.data(), quadBufferSize);
     quadVertexBuffer = quadHandle.buffer.get();
     
-    // Create sun UBO
+    std::cout << "SunSystemNode: Created quad vertex buffer: " << quadVertexBuffer << std::endl;
+    if (quadVertexBuffer == VK_NULL_HANDLE) {
+        std::cerr << "SunSystemNode: CRITICAL - Failed to create quad vertex buffer!" << std::endl;
+    }
+    
+    // Add back UBO creation for shader uniforms
     VkDeviceSize uboSize = sizeof(SunUBO);
     sunUBOHandle = resourceCoordinator->createBuffer(
         uboSize,
@@ -254,7 +265,11 @@ bool SunSystemNode::createParticleResources(const FrameGraph& frameGraph) {
         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
     );
     
-    std::cout << "SunSystemNode: Created particle resources (quad buffer and UBO)" << std::endl;
+    // TEMP: Skip particle buffer creation entirely - test sun disc only
+    std::cout << "SunSystemNode: SKIPPING particle buffer creation to isolate memory issue" << std::endl;
+    
+    std::cout << "SunSystemNode: Created resources (quad buffer + UBO + particle init)" << std::endl;
+    std::cout << "SunSystemNode: EXITING createParticleResources SUCCESS - quadBuffer=" << quadVertexBuffer << std::endl;
     return true;
 }
 
@@ -311,10 +326,10 @@ bool SunSystemNode::createDescriptorResources(const FrameGraph& frameGraph) {
         return false;
     }
     
-    // Get particle buffer from frame graph
-    VkBuffer particleBuffer = frameGraph.getBuffer(particleBufferId);
+    // Use static particle buffer (no frame graph needed)
+    VkBuffer particleBuffer = staticParticleHandle.buffer.get();
     if (particleBuffer == VK_NULL_HANDLE) {
-        std::cerr << "SunSystemNode: Failed to get particle buffer from frame graph" << std::endl;
+        std::cerr << "SunSystemNode: Static particle buffer is null" << std::endl;
         return false;
     }
     
@@ -439,72 +454,189 @@ void SunSystemNode::executeGraphicsRender(VkCommandBuffer commandBuffer, const F
     renderCounter++;
     
     try {
-        // TEMPORARY: Add detailed debugging to find the crash
-        uint32_t counter = renderCounter.load();
-        if (counter % 300 == 0) {
-            std::cout << "SunSystemNode: Graphics render pass - attempting pipeline creation..." << std::endl;
-        }
-        
         const auto& vk = vulkanContext->getLoader();
-        const VkDevice device = vulkanContext->getDevice();
         
-        std::cout << "SunSystemNode: DEBUG - About to create render pass" << std::endl;
-        
-        // Create render pass 
-        VkRenderPass renderPass = graphicsManager->createRenderPass(
+        // Use the current render pass from context (don't create our own!)
+        VkRenderPass renderPass = VK_NULL_HANDLE;
+        // TODO: Get current render pass from frame graph or context
+        // For now, create compatible render pass (same format as entities)
+        renderPass = graphicsManager->createRenderPass(
             swapchain->getImageFormat(), 
-            VK_FORMAT_D24_UNORM_S8_UINT,  // Depth buffer for proper layering
-            VK_SAMPLE_COUNT_2_BIT         // MSAA samples
+            VK_FORMAT_D24_UNORM_S8_UINT,  // Must match entity render pass
+            VK_SAMPLE_COUNT_2_BIT         // Must match entity render pass
         );
         
         if (renderPass == VK_NULL_HANDLE) {
-            std::cerr << "SunSystemNode: DEBUG - Failed to create render pass" << std::endl;
+            std::cerr << "SunSystemNode: Failed to create compatible render pass" << std::endl;
             return;
         }
         
-        std::cout << "SunSystemNode: DEBUG - Render pass created successfully: " << std::hex << renderPass << std::endl;
-        
-        std::cout << "SunSystemNode: DEBUG - About to get descriptor layout" << std::endl;
+        std::cout << "SunSystemNode: Created render pass " << renderPass << " (should match entity pass)" << std::endl;
         
         // Create pipeline state with sun system layout
         DescriptorLayoutSpec layoutSpec = DescriptorLayoutPresets::createSunSystemLayout();
         VkDescriptorSetLayout descriptorLayout = graphicsManager->getLayoutManager()->getLayout(layoutSpec);
+        GraphicsPipelineState pipelineState = GraphicsPipelinePresets::createSunSystemRenderingState(renderPass, descriptorLayout);
         
-        if (descriptorLayout == VK_NULL_HANDLE) {
-            std::cerr << "SunSystemNode: DEBUG - Failed to get descriptor layout" << std::endl;
+        // Get pipeline
+        VkPipeline pipeline = graphicsManager->getPipeline(pipelineState);
+        VkPipelineLayout pipelineLayout = graphicsManager->getPipelineLayout(pipelineState);
+        
+        if (pipeline == VK_NULL_HANDLE || pipelineLayout == VK_NULL_HANDLE) {
+            std::cerr << "SunSystemNode: CRITICAL - Pipeline or layout is NULL! Pipeline=" 
+                     << pipeline << " Layout=" << pipelineLayout << std::endl;
             return;
         }
         
-        std::cout << "SunSystemNode: DEBUG - Descriptor layout obtained: " << std::hex << descriptorLayout << std::endl;
+        std::cout << "SunSystemNode: Using pipeline=" << pipeline << " layout=" << pipelineLayout << std::endl;
         
-        std::cout << "SunSystemNode: DEBUG - About to create pipeline state" << std::endl;
+        // Bind pipeline
+        vk.vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
         
-        GraphicsPipelineState pipelineState = GraphicsPipelinePresets::createSunSystemRenderingState(renderPass, descriptorLayout);
+        // TEMP: Skip descriptor set binding to isolate UBO issues
+        // std::cout << "SunSystemNode: Binding descriptor set=" << graphicsDescriptorSet << std::endl;
+        // if (graphicsDescriptorSet == VK_NULL_HANDLE) {
+        //     std::cerr << "SunSystemNode: CRITICAL - Graphics descriptor set is NULL!" << std::endl;
+        //     return;
+        // }
+        // vk.vkCmdBindDescriptorSets(
+        //     commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout,
+        //     0, 1, &graphicsDescriptorSet, 0, nullptr
+        // );
+        std::cout << "SunSystemNode: SKIPPED descriptor binding to test minimal rendering" << std::endl;
         
-        std::cout << "SunSystemNode: DEBUG - Pipeline state created successfully" << std::endl;
-        std::cout << "SunSystemNode: DEBUG - Pipeline state has " << pipelineState.shaderStages.size() << " shader stages" << std::endl;
-        std::cout << "SunSystemNode: DEBUG - Shader stages: ";
-        for (const auto& stage : pipelineState.shaderStages) {
-            std::cout << stage << " ";
+        // Bind quad vertex buffer
+        VkBuffer vertexBuffers[] = {quadVertexBuffer};
+        VkDeviceSize offsets[] = {0};
+        std::cout << "SunSystemNode: BINDING VERTEX BUFFER - buffer=" << quadVertexBuffer << std::endl;
+        if (quadVertexBuffer == VK_NULL_HANDLE) {
+            std::cerr << "SunSystemNode: ERROR - Quad vertex buffer is NULL!" << std::endl;
+            return;
         }
-        std::cout << std::endl;
-        std::cout << "SunSystemNode: DEBUG - Vertex bindings: " << pipelineState.vertexBindings.size() << std::endl;
-        std::cout << "SunSystemNode: DEBUG - Vertex attributes: " << pipelineState.vertexAttributes.size() << std::endl;
-        std::cout << "SunSystemNode: DEBUG - Push constant ranges: " << pipelineState.pushConstantRanges.size() << std::endl;
-        std::cout << "SunSystemNode: DEBUG - Render pass: " << std::hex << pipelineState.renderPass << std::endl;
+        vk.vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
         
-        std::cout << "SunSystemNode: DEBUG - About to call getPipeline() - THIS IS THE CRASH POINT" << std::endl;
+        // TEMP: Skip push constants for minimal shader
+        // struct PushConstants {
+        //     int renderMode;
+        //     int instanceId;
+        // } pushConstants;
+        // 
+        // pushConstants.renderMode = 0;  // Sun disc
+        // pushConstants.instanceId = 0;
+        // vk.vkCmdPushConstants(commandBuffer, pipelineLayout, 
+        //     VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 
+        //     0, sizeof(PushConstants), &pushConstants);
+        std::cout << "SunSystemNode: SKIPPED push constants for minimal test" << std::endl;
         
-        // Get pipeline - THIS IS WHERE THE CRASH LIKELY OCCURS
-        VkPipeline pipeline = graphicsManager->getPipeline(pipelineState);
+        // TEMP: Skip draw call to test if render pass is the issue
+        std::cout << "SunSystemNode: SKIPPING draw call - testing render pass issue" << std::endl;
+        // vk.vkCmdDraw(commandBuffer, 3, 1, 0, 0);
         
-        std::cout << "SunSystemNode: DEBUG - Pipeline obtained: " << std::hex << pipeline << std::endl;
+        // TEMP: Skip particle rendering to isolate sun disc issue
+        // pushConstants.renderMode = 1;  // Particles
+        // vk.vkCmdPushConstants(commandBuffer, pipelineLayout, 
+        //     VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 
+        //     0, sizeof(PushConstants), &pushConstants);
+        // 
+        // // Draw particles (instanced - 6 vertices per quad, maxParticles instances)
+        // vk.vkCmdDraw(commandBuffer, 6, maxParticles, 0, 0);
         
-        // If we get here, the crash is NOT in pipeline creation
-        std::cout << "SunSystemNode: DEBUG - Pipeline creation succeeded, skipping actual rendering for now" << std::endl;
-        return;
+        std::cout << "SunSystemNode: Skipped particle rendering to test sun disc only" << std::endl;
+        
+        // Log progress periodically
+        uint32_t counter = renderCounter.load();
+        if (counter % 300 == 0) {
+            std::cout << "SunSystemNode: Rendered sun disc and " << maxParticles << " particles" << std::endl;
+        }
         
     } catch (const std::exception& e) {
         std::cerr << "SunSystemNode::executeGraphicsRender exception: " << e.what() << std::endl;
+    }
+}
+
+void SunSystemNode::executeSimplifiedSunRender(VkCommandBuffer commandBuffer, const FrameGraph& frameGraph) {
+    try {
+        const auto& vk = vulkanContext->getLoader();
+        
+        // Create render pass 
+        VkRenderPass renderPass = graphicsManager->createRenderPass(
+            swapchain->getImageFormat(), 
+            VK_FORMAT_D24_UNORM_S8_UINT,
+            VK_SAMPLE_COUNT_2_BIT
+        );
+        
+        if (renderPass == VK_NULL_HANDLE) {
+            std::cerr << "SunSystemNode: Failed to create render pass for simplified sun" << std::endl;
+            return;
+        }
+        
+        // Use a simple UBO-only descriptor layout (no particle buffer)
+        DescriptorLayoutSpec layoutSpec;
+        layoutSpec.bindings.push_back({0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT});
+        
+        VkDescriptorSetLayout descriptorLayout = graphicsManager->getLayoutManager()->getLayout(layoutSpec);
+        
+        // Create simplified graphics pipeline state manually
+        GraphicsPipelineState pipelineState{};
+        pipelineState.renderPass = renderPass;
+        pipelineState.descriptorSetLayouts.push_back(descriptorLayout);
+        
+        // Use sun disc shaders
+        pipelineState.shaderStages = {
+            "shaders/sun_disc.vert.spv",
+            "shaders/sun_disc.frag.spv"
+        };
+        
+        // Vertex input for 2D quad
+        VkVertexInputBindingDescription vertexBinding{};
+        vertexBinding.binding = 0;
+        vertexBinding.stride = sizeof(glm::vec2);
+        vertexBinding.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+        pipelineState.vertexBindings.push_back(vertexBinding);
+        
+        VkVertexInputAttributeDescription posAttr{};
+        posAttr.binding = 0;
+        posAttr.location = 0;
+        posAttr.format = VK_FORMAT_R32G32_SFLOAT;
+        posAttr.offset = 0;
+        pipelineState.vertexAttributes.push_back(posAttr);
+        
+        // Configure blending for transparency
+        VkPipelineColorBlendAttachmentState colorBlend{};
+        colorBlend.blendEnable = VK_TRUE;
+        colorBlend.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+        colorBlend.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+        colorBlend.colorBlendOp = VK_BLEND_OP_ADD;
+        colorBlend.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+        colorBlend.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+        colorBlend.alphaBlendOp = VK_BLEND_OP_ADD;
+        colorBlend.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+        pipelineState.colorBlendAttachments.push_back(colorBlend);
+        
+        // Get pipeline
+        VkPipeline pipeline = graphicsManager->getPipeline(pipelineState);
+        VkPipelineLayout pipelineLayout = graphicsManager->getPipelineLayout(pipelineState);
+        
+        if (pipeline == VK_NULL_HANDLE || pipelineLayout == VK_NULL_HANDLE) {
+            std::cerr << "SunSystemNode: Failed to get simplified sun pipeline" << std::endl;
+            return;
+        }
+        
+        // Bind pipeline
+        vk.vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline);
+        
+        // TODO: Create and bind UBO descriptor set
+        // For now, just bind vertex buffer and draw without descriptor set
+        VkBuffer vertexBuffers[] = {quadVertexBuffer};
+        VkDeviceSize offsets[] = {0};
+        vk.vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
+        
+        // Draw sun disc (6 vertices for fullscreen quad)
+        vk.vkCmdDraw(commandBuffer, 6, 1, 0, 0);
+        
+        std::cout << "SunSystemNode: Rendered simplified sun disc" << std::endl;
+        
+    } catch (const std::exception& e) {
+        std::cerr << "SunSystemNode::executeSimplifiedSunRender exception: " << e.what() << std::endl;
     }
 }

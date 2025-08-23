@@ -58,33 +58,19 @@ void GraphicsPipelineManager::cleanupBeforeContextDestruction() {
 }
 
 VkPipeline GraphicsPipelineManager::getPipeline(const GraphicsPipelineState& state) {
-    std::cout << "GraphicsPipelineManager::getPipeline - ENTRY" << std::endl;
-    
     VkPipeline cachedPipeline = cache_.getPipeline(state);
-    std::cout << "GraphicsPipelineManager::getPipeline - Cache check complete" << std::endl;
-    
     if (cachedPipeline != VK_NULL_HANDLE) {
-        std::cout << "GraphicsPipelineManager::getPipeline - Returning cached pipeline: " << std::hex << cachedPipeline << std::endl;
         return cachedPipeline;
     }
     
-    std::cout << "GraphicsPipelineManager::getPipeline - About to call factory.createPipeline() - CRASH LIKELY HERE" << std::endl;
-    
     auto newPipeline = factory_.createPipeline(state);
-    
-    std::cout << "GraphicsPipelineManager::getPipeline - Factory call completed" << std::endl;
-    
     if (!newPipeline) {
         std::cerr << "Failed to create graphics pipeline" << std::endl;
         return VK_NULL_HANDLE;
     }
     
-    std::cout << "GraphicsPipelineManager::getPipeline - About to store in cache" << std::endl;
-    
     VkPipeline pipeline = newPipeline->pipeline.get();
     cache_.storePipeline(state, std::move(newPipeline));
-    
-    std::cout << "GraphicsPipelineManager::getPipeline - SUCCESS: " << std::hex << pipeline << std::endl;
     
     return pipeline;
 }
@@ -349,8 +335,8 @@ namespace GraphicsPipelinePresets {
         
         // Use sun system specific shaders
         state.shaderStages = {
-            "shaders/sun_system.vert.spv",
-            "shaders/sun_system.frag.spv"
+            "shaders/sun_minimal_test.vert.spv",
+            "shaders/sun_minimal_test.frag.spv"
         };
         
         // Vertex input for simple 2D quad (vec2 position)
@@ -385,9 +371,9 @@ namespace GraphicsPipelinePresets {
         state.rasterizationSamples = VK_SAMPLE_COUNT_2_BIT;  // Match render pass
         state.minSampleShading = 1.0f;
         
-        // Depth/Stencil
-        state.depthTestEnable = VK_TRUE;
-        state.depthWriteEnable = VK_FALSE;  // Don't write depth for transparent particles
+        // Depth/Stencil - ENABLE depth test so entities can occlude the sun
+        state.depthTestEnable = VK_TRUE;    // Enable depth testing for occlusion
+        state.depthWriteEnable = VK_FALSE;  // Don't write depth (sun is background)
         state.depthCompareOp = VK_COMPARE_OP_LESS;
         state.stencilTestEnable = VK_FALSE;
         
@@ -395,9 +381,9 @@ namespace GraphicsPipelinePresets {
         VkPipelineColorBlendAttachmentState colorBlendAttachment{};
         colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | 
                                              VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
-        colorBlendAttachment.blendEnable = VK_TRUE;
-        colorBlendAttachment.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
-        colorBlendAttachment.dstColorBlendFactor = VK_BLEND_FACTOR_ONE; // Additive blending
+        colorBlendAttachment.blendEnable = VK_FALSE; // NO BLENDING - completely opaque
+        colorBlendAttachment.srcColorBlendFactor = VK_BLEND_FACTOR_ONE;
+        colorBlendAttachment.dstColorBlendFactor = VK_BLEND_FACTOR_ZERO;
         colorBlendAttachment.colorBlendOp = VK_BLEND_OP_ADD;
         colorBlendAttachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
         colorBlendAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
@@ -407,12 +393,12 @@ namespace GraphicsPipelinePresets {
         state.logicOpEnable = VK_FALSE;
         state.logicOp = VK_LOGIC_OP_COPY;
         
-        // Push constants for render mode (0=sun disc, 1=particles)
-        VkPushConstantRange pushConstant{};
-        pushConstant.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
-        pushConstant.offset = 0;
-        pushConstant.size = sizeof(int) * 2;  // renderMode, instanceId
-        state.pushConstantRanges.push_back(pushConstant);
+        // TEMP: No push constants for minimal test
+        // VkPushConstantRange pushConstant{};
+        // pushConstant.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+        // pushConstant.offset = 0;
+        // pushConstant.size = sizeof(int) * 2;  // renderMode, instanceId
+        // state.pushConstantRanges.push_back(pushConstant);
         
         return state;
     }

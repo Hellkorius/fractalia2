@@ -96,11 +96,11 @@ vec3 calculateLighting(vec3 baseColor) {
     // Calculate shadow factor (simplified - no shadow maps for now)
     float shadowFactor = 0.8f; // Most areas are lit, some shadow for depth
     
-    // Ambient lighting (soft blue-ish to simulate sky)
-    vec3 ambient = baseColor * vec3(0.4, 0.5, 0.7) * 0.3;
+    // Very dark ambient lighting - most things should be in shadow
+    vec3 ambient = baseColor * vec3(0.05, 0.05, 0.1) * 0.1;
     
-    // Direct sun lighting (warm golden)
-    vec3 sunColor = vec3(1.2, 0.9, 0.7) * ubo.sunDirection.w; // w component = intensity
+    // Bright, warm sun lighting - only things facing the sun are lit
+    vec3 sunColor = vec3(1.8, 1.4, 1.0) * ubo.sunDirection.w; // w component = intensity
     vec3 direct = baseColor * sunColor * NdotL * shadowFactor;
     
     // Subtle rim lighting for depth perception
@@ -111,27 +111,37 @@ vec3 calculateLighting(vec3 baseColor) {
     return ambient + direct + rimLight;
 }
 
-// Add visible sun in the sky
+// Add visible sun as direct light source that camera can "absorb"
 vec3 addVisibleSun(vec3 baseColor, vec3 worldPosition) {
     vec3 cameraPos = (inverse(ubo.view) * vec4(0, 0, 0, 1)).xyz;
     vec3 viewDir = normalize(worldPosition - cameraPos);
-    vec3 sunDir = normalize(-ubo.sunDirection.xyz);
     
-    // Calculate angle between view direction and sun direction
-    float sunAlignment = max(0.0, dot(viewDir, sunDir));
+    // Sun position in world space (same as sun system: (0, 50, 0))
+    vec3 sunPos = vec3(0.0, 50.0, 0.0);
+    vec3 toSun = normalize(sunPos - cameraPos);
     
-    // Create visible sun disc in sky
-    if (sunAlignment > 0.995) { // Very close to sun direction
-        float sunIntensity = pow((sunAlignment - 0.995) / 0.005, 0.5);
-        vec3 sunColor = vec3(3.0, 2.5, 1.8) * ubo.sunDirection.w; // Bright golden sun
+    // Calculate how directly we're looking at the sun
+    float sunAlignment = max(0.0, dot(viewDir, toSun));
+    
+    // Make sun visible as bright disc when looking toward it
+    if (sunAlignment > 0.998) { // Sun disc - very narrow cone
+        float sunIntensity = pow((sunAlignment - 0.998) / 0.002, 0.3);
+        vec3 sunColor = vec3(5.0, 4.0, 2.5) * ubo.sunDirection.w; // Extremely bright
         return baseColor + sunColor * sunIntensity;
     }
     
-    // Add sun glow/halo effect
-    if (sunAlignment > 0.98) {
-        float haloIntensity = pow((sunAlignment - 0.98) / 0.015, 2.0);
-        vec3 haloColor = vec3(1.5, 1.2, 0.8) * ubo.sunDirection.w * 0.3;
+    // Sun corona/halo - wider visible area
+    if (sunAlignment > 0.995) {
+        float haloIntensity = pow((sunAlignment - 0.995) / 0.003, 1.0);
+        vec3 haloColor = vec3(3.0, 2.0, 1.0) * ubo.sunDirection.w * 0.7;
         return baseColor + haloColor * haloIntensity;
+    }
+    
+    // Soft glow around sun
+    if (sunAlignment > 0.99) {
+        float glowIntensity = pow((sunAlignment - 0.99) / 0.005, 2.0);
+        vec3 glowColor = vec3(1.5, 1.2, 0.8) * ubo.sunDirection.w * 0.3;
+        return baseColor + glowColor * glowIntensity;
     }
     
     return baseColor;
