@@ -3,13 +3,13 @@
 #include "presentation_surface.h"
 #include "render_frame_director.h"
 #include <iostream>
+#include <stdexcept>
 
-void ErrorRecoveryService::initialize(PresentationSurface* presentationSurface) {
-    this->presentationSurface = presentationSurface;
-}
-
-void ErrorRecoveryService::cleanup() {
-    presentationSurface = nullptr;
+ErrorRecoveryService::ErrorRecoveryService(PresentationSurface* presentationSurface) 
+: presentationSurface(presentationSurface) {
+    if (!presentationSurface) {
+        throw std::runtime_error("ErrorRecoveryService: presentationSurface cannot be null");
+    }
 }
 
 bool ErrorRecoveryService::handleFrameFailure(const RenderFrameResult& frameResult, 

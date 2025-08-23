@@ -25,10 +25,7 @@ struct RenderFrameResult {
 
 class RenderFrameDirector {
 public:
-    RenderFrameDirector();
-    ~RenderFrameDirector();
-
-    bool initialize(
+    RenderFrameDirector(
         VulkanContext* context,
         VulkanSwapchain* swapchain,
         PipelineSystemManager* pipelineSystem,
@@ -38,8 +35,7 @@ public:
         FrameGraph* frameGraph,
         PresentationSurface* presentationSurface
     );
-
-    void cleanup();
+    ~RenderFrameDirector();
 
     // Main frame direction
     RenderFrameResult directFrame(

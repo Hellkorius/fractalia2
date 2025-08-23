@@ -13,14 +13,14 @@
 **Function:** Implements parallel async compute/graphics submission pattern where compute calculates frame N+1 while graphics renders frame N.
 
 ### error_recovery_service.h
-**Inputs:** RenderFrameResult indicating failure, frame timing data, Flecs world reference.  
+**Inputs:** PresentationSurface* via constructor dependency injection, RenderFrameResult indicating failure, frame timing data, Flecs world reference.  
 **Outputs:** Recovery success status and retry frame results after swapchain recreation.  
-**Function:** Defines error recovery interface that attempts swapchain recreation when frame execution fails.
+**Function:** Defines constructor-based error recovery interface with null validation that attempts swapchain recreation when frame execution fails.
 
 ### error_recovery_service.cpp
-**Inputs:** Failed frame results, PresentationSurface for swapchain management, RenderFrameDirector for retry attempts.  
+**Inputs:** Constructor dependency injection of PresentationSurface* with null validation, failed frame results, RenderFrameDirector for retry attempts.  
 **Outputs:** Boolean recovery success, retried frame execution through RenderFrameDirector.  
-**Function:** Analyzes frame failures and attempts recovery via proactive swapchain recreation with frame retry logic.
+**Function:** Constructor-based service with dependency validation that analyzes frame failures and attempts recovery via proactive swapchain recreation with frame retry logic.
 
 ### frame_state_manager.h
 **Inputs:** Frame indices, compute/graphics usage flags per frame.  
@@ -33,14 +33,14 @@
 **Function:** Maintains circular buffer of frame states to optimize fence waiting by skipping unused operations.
 
 ### gpu_synchronization_service.h
-**Inputs:** VulkanContext for device access, frame indices for fence selection.  
+**Inputs:** VulkanContext* via constructor dependency injection, frame indices for fence selection.  
 **Outputs:** VkFence handles for compute/graphics operations, timeout results from fence waits.  
-**Function:** Manages per-frame compute and graphics fences using RAII wrappers with robust timeout handling.
+**Function:** Constructor-based service with null validation that manages per-frame compute and graphics fences using RAII wrappers with robust timeout handling.
 
 ### gpu_synchronization_service.cpp
-**Inputs:** Frame-specific fence wait requests, swapchain recreation signals requiring all-frame synchronization.  
+**Inputs:** Constructor dependency injection of VulkanContext* with null validation, immediate fence creation, frame-specific fence wait requests, swapchain recreation signals requiring all-frame synchronization.  
 **Outputs:** Synchronized GPU state via fence waits, reset fence states after swapchain recreation.  
-**Function:** Provides robust fence waiting with timeout handling and critical fence reset logic to prevent corruption across swapchain recreation.
+**Function:** Constructor-based service that creates fences immediately during initialization and provides robust fence waiting with timeout handling and critical fence reset logic to prevent corruption across swapchain recreation.
 
 ### presentation_surface.h
 **Inputs:** VulkanContext, VulkanSwapchain, GraphicsPipelineManager, GPUSynchronizationService via constructor dependency injection.  
@@ -53,11 +53,11 @@
 **Function:** Implements constructor-based service pattern with full dependency injection. Handles swapchain image acquisition with timeout protection and orchestrates full swapchain recreation including pipeline cache regeneration.
 
 ### render_frame_director.h
-**Inputs:** All Vulkan subsystem managers, ECS world reference, frame timing data, resource IDs.  
+**Inputs:** Eight dependencies via constructor dependency injection (VulkanContext, VulkanSwapchain, PipelineSystemManager, VulkanSync, ResourceCoordinator, GPUEntityManager, FrameGraph, PresentationSurface), ECS world reference, frame timing data, resource IDs.  
 **Outputs:** RenderFrameResult containing execution success and acquired swapchain image index.  
-**Function:** Master frame orchestration service that coordinates image acquisition, frame graph setup, node configuration, and execution.
+**Function:** Constructor-based master frame orchestration service with comprehensive null validation that coordinates image acquisition, frame graph setup, node configuration, and execution.
 
 ### render_frame_director.cpp
-**Inputs:** Frame counters, timing data, Flecs world, swapchain images, GPU entity and resource managers.  
+**Inputs:** Constructor dependency injection of eight core Vulkan subsystems with comprehensive null validation, frame counters, timing data, Flecs world, swapchain images, GPU entity and resource managers.  
 **Outputs:** Configured and executed frame graph with proper node setup, updated descriptor sets after swapchain recreation.  
-**Function:** Implements complete frame direction flow from image acquisition through frame graph execution with dynamic swapchain image resolution and comprehensive swapchain recreation handling.
+**Function:** Constructor-based service that throws exceptions for null dependencies and implements complete frame direction flow from image acquisition through frame graph execution with dynamic swapchain image resolution and comprehensive swapchain recreation handling.

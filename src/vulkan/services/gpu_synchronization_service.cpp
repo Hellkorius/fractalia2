@@ -4,55 +4,35 @@
 #include "../core/vulkan_utils.h"
 #include "../core/vulkan_constants.h"
 #include <iostream>
+#include <stdexcept>
 
-GPUSynchronizationService::GPUSynchronizationService() {
-}
-
-GPUSynchronizationService::~GPUSynchronizationService() {
-    cleanup();
-}
-
-bool GPUSynchronizationService::initialize(const VulkanContext& context) {
-    this->context = &context;
+GPUSynchronizationService::GPUSynchronizationService(VulkanContext* context) 
+: context(context) {
+    if (!context) {
+        throw std::runtime_error("GPUSynchronizationService: context cannot be null");
+    }
     
-    const auto& vk = context.getLoader();
-    const VkDevice device = context.getDevice();
+    const auto& vk = context->getLoader();
+    const VkDevice device = context->getDevice();
     for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
         VkFence computeFenceHandle = VulkanUtils::createFence(device, vk, true);
         if (computeFenceHandle == VK_NULL_HANDLE) {
-            std::cerr << "GPUSynchronizationService: Failed to create compute fence for frame " << i << std::endl;
-            cleanup();
-            return false;
+            throw std::runtime_error("GPUSynchronizationService: Failed to create compute fence for frame " + std::to_string(i));
         }
-        computeFences[i] = vulkan_raii::make_fence(computeFenceHandle, &context);
+        computeFences[i] = vulkan_raii::make_fence(computeFenceHandle, context);
         
         VkFence graphicsFenceHandle = VulkanUtils::createFence(device, vk, true);
         if (graphicsFenceHandle == VK_NULL_HANDLE) {
-            std::cerr << "GPUSynchronizationService: Failed to create graphics fence for frame " << i << std::endl;
-            cleanup();
-            return false;
+            throw std::runtime_error("GPUSynchronizationService: Failed to create graphics fence for frame " + std::to_string(i));
         }
-        graphicsFences[i] = vulkan_raii::make_fence(graphicsFenceHandle, &context);
+        graphicsFences[i] = vulkan_raii::make_fence(graphicsFenceHandle, context);
         
         computeInUse[i] = false;
         graphicsInUse[i] = false;
     }
-    
-    initialized = true;
-    return true;
 }
 
-void GPUSynchronizationService::cleanup() {
-    if (!context || !initialized) return;
-    
-    // RAII wrappers handle automatic cleanup
-    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
-        computeFences[i].reset();
-        graphicsFences[i].reset();
-    }
-    
-    initialized = false;
-}
+GPUSynchronizationService::~GPUSynchronizationService() = default;
 
 void GPUSynchronizationService::cleanupBeforeContextDestruction() {
     // Explicit cleanup before context destruction to ensure proper destruction order

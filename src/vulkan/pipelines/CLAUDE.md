@@ -2,7 +2,7 @@
 
 ## src/vulkan/pipelines/
 
-(Unified pipeline management system with direct VulkanContext access, eliminating VulkanManagerBase inheritance for improved performance. Features caching, hot reload, and optimization for both graphics and compute pipelines using VulkanFunctionLoader pattern.)
+(Unified pipeline management system with direct VulkanContext access patterns. Core managers use VulkanContext* members with VulkanFunctionLoader pattern (const auto& vk = context->getLoader()), while system-level managers use const VulkanContext* with initialize() methods. Features caching, hot reload, and optimization for both graphics and compute pipelines.)
 
 ### Compute Pipeline Components
 

@@ -10,11 +10,8 @@ class VulkanContext;
 
 class GPUSynchronizationService {
 public:
-    GPUSynchronizationService();
+    GPUSynchronizationService(VulkanContext* context);
     ~GPUSynchronizationService();
-
-    bool initialize(const VulkanContext& context);
-    void cleanup();
 
     // Fence management
     VkResult waitForComputeFence(uint32_t frameIndex, const char* fenceName = "compute");
@@ -32,8 +29,7 @@ public:
     bool waitForAllFrames();
 
 private:
-    const VulkanContext* context = nullptr;
-    bool initialized = false;
+    VulkanContext* context = nullptr;
 
     std::array<vulkan_raii::Fence, MAX_FRAMES_IN_FLIGHT> computeFences{};
     std::array<vulkan_raii::Fence, MAX_FRAMES_IN_FLIGHT> graphicsFences{};

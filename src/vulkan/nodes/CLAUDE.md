@@ -17,8 +17,8 @@
 
 **entity_compute_node.cpp**
 - **Inputs**: Command buffer, frame timing data (time, deltaTime), entity count from GPUEntityManager
-- **Outputs**: Executed compute dispatches with memory barriers, unified push constants with `param1` for chunk offsets
-- **Function**: Implements chunked compute execution with GPU health monitoring using simplified lifecycle pattern.
+- **Outputs**: Executed compute dispatches with memory barriers, unified `NodePushConstants` with `param1` for chunk offsets
+- **Function**: Implements chunked compute execution with GPU health monitoring using streamlined `execute()` lifecycle and throttled debug logging.
 
 **entity_graphics_node.h**
 - **Inputs**: Entity/position buffer resource IDs, GraphicsPipelineManager, VulkanSwapchain, ResourceCoordinator, GPUEntityManager
@@ -27,8 +27,8 @@
 
 **entity_graphics_node.cpp**
 - **Inputs**: Command buffer, swapchain framebuffers, camera matrices from CameraService, entity count
-- **Outputs**: Render pass execution with MSAA, instanced draw calls, uniform buffer updates with dirty tracking
-- **Function**: Executes graphics rendering with viewport management, dynamic descriptor binding, and optimized uniform buffer caching.
+- **Outputs**: Dynamic rendering with MSAA resolve, instanced draw calls, uniform buffer updates with dirty tracking
+- **Function**: Executes graphics rendering with streamlined `execute()` lifecycle, viewport management, and throttled debug logging.
 
 **physics_compute_node.h**
 - **Inputs**: Entity/position buffer resource IDs, ComputePipelineManager, GPUEntityManager, GPUTimeoutDetector
@@ -38,7 +38,7 @@
 **physics_compute_node.cpp**
 - **Inputs**: Command buffer, frame timing, entity positions, spatial map size requirements
 - **Outputs**: Physics compute dispatches with unified `NodePushConstants`, memory barriers for data consistency, consolidated debug logging
-- **Function**: Implements physics simulation with spatial map management using unified push constants (`param1` for entityOffset) and streamlined debug utilities.
+- **Function**: Implements physics simulation with spatial map management using unified push constants (`param1` for entityOffset) and `FrameGraphDebug` utilities.
 
 **swapchain_present_node.h**
 - **Inputs**: Color target resource ID, VulkanSwapchain, current swapchain image index
@@ -48,4 +48,4 @@
 **swapchain_present_node.cpp**
 - **Inputs**: Frame graph context, swapchain state, image index validation
 - **Outputs**: Dependency validation results, presentation readiness confirmation
-- **Function**: Validates presentation dependencies and image bounds for queue-level presentation handled by frame graph execution.
+- **Function**: Validates presentation dependencies and image bounds using streamlined `execute()` lifecycle for queue-level presentation.

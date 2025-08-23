@@ -12,15 +12,9 @@
 #include "../nodes/swapchain_present_node.h"
 #include "../../ecs/gpu/gpu_entity_manager.h"
 #include <iostream>
+#include <stdexcept>
 
-RenderFrameDirector::RenderFrameDirector() {
-}
-
-RenderFrameDirector::~RenderFrameDirector() {
-    cleanup();
-}
-
-bool RenderFrameDirector::initialize(
+RenderFrameDirector::RenderFrameDirector(
     VulkanContext* context,
     VulkanSwapchain* swapchain,
     PipelineSystemManager* pipelineSystem,
@@ -29,22 +23,23 @@ bool RenderFrameDirector::initialize(
     GPUEntityManager* gpuEntityManager,
     FrameGraph* frameGraph,
     PresentationSurface* presentationSurface
-) {
-    this->context = context;
-    this->swapchain = swapchain;
-    this->pipelineSystem = pipelineSystem;
-    this->sync = sync;
-    this->resourceCoordinator = resourceCoordinator;
-    this->gpuEntityManager = gpuEntityManager;
-    this->frameGraph = frameGraph;
-    this->presentationSurface = presentationSurface;
-
-    return true;
+) : context(context)
+  , swapchain(swapchain)
+  , pipelineSystem(pipelineSystem)
+  , sync(sync)
+  , resourceCoordinator(resourceCoordinator)
+  , gpuEntityManager(gpuEntityManager)
+  , frameGraph(frameGraph)
+  , presentationSurface(presentationSurface) {
+    
+    // Validate dependencies
+    if (!context || !swapchain || !pipelineSystem || !sync || 
+        !resourceCoordinator || !gpuEntityManager || !frameGraph || !presentationSurface) {
+        throw std::runtime_error("RenderFrameDirector: All dependencies must be non-null");
+    }
 }
 
-void RenderFrameDirector::cleanup() {
-    // Nothing to cleanup, dependencies are managed externally
-}
+RenderFrameDirector::~RenderFrameDirector() = default;
 
 RenderFrameResult RenderFrameDirector::directFrame(
     uint32_t currentFrame,

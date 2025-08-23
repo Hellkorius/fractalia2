@@ -12,11 +12,8 @@ struct RenderFrameResult;
 
 class ErrorRecoveryService {
 public:
-    ErrorRecoveryService() = default;
+    ErrorRecoveryService(PresentationSurface* presentationSurface);
     ~ErrorRecoveryService() = default;
-
-    void initialize(PresentationSurface* presentationSurface);
-    void cleanup();
 
     // Main error recovery entry point
     bool handleFrameFailure(const RenderFrameResult& frameResult, 

@@ -312,17 +312,12 @@ bool VulkanRenderer::initializeModularArchitecture() {
         return false;
     }
     
-    syncService = std::make_unique<GPUSynchronizationService>();
-    if (!syncService->initialize(*context)) {
-        std::cerr << "Failed to initialize synchronization manager" << std::endl;
-        return false;
-    }
+    syncService = std::make_unique<GPUSynchronizationService>(context.get());
     
     presentationSurface = std::make_unique<PresentationSurface>(
         context.get(), swapchain.get(), pipelineSystem->getGraphicsManager(), syncService.get());
     
-    frameDirector = std::make_unique<RenderFrameDirector>();
-    if (!frameDirector->initialize(
+    frameDirector = std::make_unique<RenderFrameDirector>(
         context.get(),
         swapchain.get(), 
         pipelineSystem.get(),
@@ -331,10 +326,7 @@ bool VulkanRenderer::initializeModularArchitecture() {
         gpuEntityManager.get(),
         frameGraph.get(),
         presentationSurface.get()
-    )) {
-        std::cerr << "Failed to initialize frame orchestrator" << std::endl;
-        return false;
-    }
+    );
     
     frameDirector->updateResourceIds(
         resourceRegistry->getEntityBufferId(),
@@ -352,8 +344,7 @@ bool VulkanRenderer::initializeModularArchitecture() {
     frameStateManager = std::make_unique<FrameStateManager>();
     frameStateManager->initialize();
     
-    errorRecoveryService = std::make_unique<ErrorRecoveryService>();
-    errorRecoveryService->initialize(presentationSurface.get());
+    errorRecoveryService = std::make_unique<ErrorRecoveryService>(presentationSurface.get());
     
     std::cout << "Modular architecture initialized successfully" << std::endl;
     return true;

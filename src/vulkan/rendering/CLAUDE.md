@@ -78,8 +78,8 @@ src/vulkan/rendering/
 
 ### frame_graph_node_base.h
 **Inputs:** Node identification and resource dependency specifications.  
-**Outputs:** Simplified lifecycle with single execute() method and optional hooks.  
-**Purpose:** Base class defining streamlined node interface with unified execute() method replacing initializeNode/prepareFrame/releaseFrame.
+**Outputs:** Streamlined lifecycle with execute(commandBuffer, frameGraph, time, deltaTime) and optional onFirstUse() hook.  
+**Purpose:** Base class defining simplified node interface - reduced from 4 lifecycle methods to 2 essential methods with timing parameters moved into execute().
 
 ### frame_graph_resource_registry.h
 **Inputs:** FrameGraph and GPUEntityManager references for resource import.  
@@ -93,10 +93,10 @@ src/vulkan/rendering/
 
 ### frame_graph_types.h
 **Inputs:** Type requirements for resource and node identification.  
-**Outputs:** Unified type definitions for ResourceId, NodeId, and dependency descriptors.  
-**Purpose:** Defines core types for resource access patterns, pipeline stages, and NodePushConstants struct for unified compute shader parameters.
+**Outputs:** Unified type definitions for ResourceId, NodeId, dependency descriptors, and NodePushConstants struct.  
+**Purpose:** Defines core types for resource access patterns, pipeline stages, and standardized NodePushConstants with flexible param1/param2 fields for unified compute shader parameters across all frame graph nodes.
 
 ### frame_graph_debug.h
 **Inputs:** Debug build configuration and frame graph execution context.  
-**Outputs:** Zero-overhead debug utilities with throttled logging and node execution tracking.  
-**Purpose:** Consolidated debug patterns eliminating duplicate logging code across compute nodes with compile-time optimization.
+**Outputs:** Zero-overhead debug utilities with throttled logging, consolidated logNodeExecution() and logChunkedExecution() functions.  
+**Purpose:** Eliminates duplicate debug code across compute nodes with compile-time optimization - provides unified debug patterns with no-op implementations in release builds.
