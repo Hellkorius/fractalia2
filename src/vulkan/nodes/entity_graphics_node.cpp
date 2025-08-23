@@ -74,10 +74,7 @@ void EntityGraphicsNode::execute(VkCommandBuffer commandBuffer, const FrameGraph
     const uint32_t entityCount = gpuEntityManager->getEntityCount();
     
     if (entityCount == 0) {
-        uint32_t counter = noEntitiesCounter.fetch_add(1, std::memory_order_relaxed);
-        if (counter % 1800 == 0) {
-            std::cout << "EntityGraphicsNode: No entities to render" << std::endl;
-        }
+        FRAME_GRAPH_DEBUG_LOG_THROTTLED(noEntitiesCounter, 1800, "EntityGraphicsNode: No entities to render");
         return;
     }
     
@@ -225,12 +222,7 @@ void EntityGraphicsNode::execute(VkCommandBuffer commandBuffer, const FrameGraph
         );
         
         // Debug: confirm draw call (thread-safe)
-        uint32_t counter = drawCounter.fetch_add(1, std::memory_order_relaxed);
-        if (counter % 1800 == 0) {
-            std::cout << "EntityGraphicsNode: Drew " << entityCount 
-                      << " entities with " << resourceCoordinator->getGraphicsManager()->getIndexCount() 
-                      << " indices per triangle" << std::endl;
-        }
+        FRAME_GRAPH_DEBUG_LOG_THROTTLED(drawCounter, 1800, "EntityGraphicsNode: Drew " << entityCount << " entities with " << resourceCoordinator->getGraphicsManager()->getIndexCount() << " indices per triangle");
     }
 
     // End render pass
@@ -254,11 +246,13 @@ void EntityGraphicsNode::updateUniformBuffer() {
     newUBO.proj = cameraService.getProjectionMatrix();
     
     // Debug camera matrix application (once every 30 seconds) - thread-safe
-    uint32_t counter = debugCounter.fetch_add(1, std::memory_order_relaxed);
-    if (counter % 1800 == 0) {
-        std::cout << "EntityGraphicsNode: Using camera matrices from service" << std::endl;
-        std::cout << "  View matrix[3]: " << newUBO.view[3][0] << ", " << newUBO.view[3][1] << ", " << newUBO.view[3][2] << std::endl;
-        std::cout << "  Proj matrix[0][0]: " << newUBO.proj[0][0] << ", [1][1]: " << newUBO.proj[1][1] << std::endl;
+    if constexpr (FRAME_GRAPH_DEBUG_ENABLED) {
+        uint32_t counter = FrameGraphDebug::incrementCounter(debugCounter);
+        if (counter % 1800 == 0) {
+            std::cout << "[FrameGraph Debug] EntityGraphicsNode: Using camera matrices from service (occurrence #" << counter << ")" << std::endl;
+            std::cout << "  View matrix[3]: " << newUBO.view[3][0] << ", " << newUBO.view[3][1] << ", " << newUBO.view[3][2] << std::endl;
+            std::cout << "  Proj matrix[0][0]: " << newUBO.proj[0][0] << ", [1][1]: " << newUBO.proj[1][1] << std::endl;
+        }
     }
     
     // If no valid matrices, use fallback
@@ -268,10 +262,7 @@ void EntityGraphicsNode::updateUniformBuffer() {
         newUBO.proj = glm::ortho(-4.0f, 4.0f, -3.0f, 3.0f, -5.0f, 5.0f);
         newUBO.proj[1][1] *= -1; // Flip Y for Vulkan
         
-        uint32_t counter = debugCounter.fetch_add(1, std::memory_order_relaxed);
-        if (counter % 1800 == 0) {
-            std::cout << "EntityGraphicsNode: Using fallback matrices - no world reference" << std::endl;
-        }
+        FRAME_GRAPH_DEBUG_LOG_THROTTLED(debugCounter, 1800, "EntityGraphicsNode: Using fallback matrices - no world reference");
     }
     
     // Check if matrices actually changed (avoid memcmp by comparing key components)
@@ -305,10 +296,7 @@ void EntityGraphicsNode::updateUniformBuffer() {
                 lastUpdatedFrameIndex = currentFrameIndex;
                 
                 // Debug optimized updates (once every 30 seconds) - thread-safe
-                uint32_t counter = updateCounter.fetch_add(1, std::memory_order_relaxed);
-                if (counter % 1800 == 0) {
-                    std::cout << "EntityGraphicsNode: Updated uniform buffer (optimized)" << std::endl;
-                }
+                FRAME_GRAPH_DEBUG_LOG_THROTTLED(updateCounter, 1800, "EntityGraphicsNode: Updated uniform buffer (optimized)");
             }
         } else {
             std::cerr << "EntityGraphicsNode: ERROR: invalid currentFrameIndex (" << currentFrameIndex 

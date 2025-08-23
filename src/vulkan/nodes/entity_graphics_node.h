@@ -3,11 +3,11 @@
 #define VK_NO_PROTOTYPES
 #include <vulkan/vulkan.h>
 #include "../rendering/frame_graph.h"
+#include "../rendering/frame_graph_debug.h"
 #include <flecs.h>
 #include <cstdint>
 #include <glm/glm.hpp>
 #include <memory>
-#include <atomic>
 
 // Forward declarations
 class GraphicsPipelineManager;
@@ -93,9 +93,9 @@ private:
     bool uniformBufferDirty = true;  // Force update on first frame
     uint32_t lastUpdatedFrameIndex = UINT32_MAX; // Track which frame index was last updated
     
-    // Thread-safe debug counters
-    mutable std::atomic<uint32_t> debugCounter{0};
-    mutable std::atomic<uint32_t> noEntitiesCounter{0};
-    mutable std::atomic<uint32_t> drawCounter{0};
-    mutable std::atomic<uint32_t> updateCounter{0};
+    // Debug counters - zero overhead in release builds
+    mutable FrameGraphDebug::DebugCounter debugCounter{};
+    mutable FrameGraphDebug::DebugCounter noEntitiesCounter{};
+    mutable FrameGraphDebug::DebugCounter drawCounter{};
+    mutable FrameGraphDebug::DebugCounter updateCounter{};
 };

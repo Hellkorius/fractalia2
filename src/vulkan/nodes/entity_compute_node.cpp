@@ -77,10 +77,7 @@ void EntityComputeNode::execute(VkCommandBuffer commandBuffer, const FrameGraph&
     
     const uint32_t entityCount = gpuEntityManager->getEntityCount();
     if (entityCount == 0) {
-        uint32_t counter = debugCounter.fetch_add(1, std::memory_order_relaxed);
-        if (counter % 1800 == 0) {
-            std::cout << "EntityComputeNode: No entities to process" << std::endl;
-        }
+        FRAME_GRAPH_DEBUG_LOG_THROTTLED(debugCounter, 1800, "EntityComputeNode: No entities to process");
         return;
     }
     
@@ -148,11 +145,7 @@ void EntityComputeNode::execute(VkCommandBuffer commandBuffer, const FrameGraph&
     }
     
     // Debug logging (thread-safe) - once every 30 seconds
-    uint32_t logCounter = debugCounter.fetch_add(1, std::memory_order_relaxed);
-    if (logCounter % 1800 == 0) {
-        std::cout << "EntityComputeNode (Movement): " << entityCount << " entities → " << 
-                     dispatchParams.totalWorkgroups << " workgroups" << std::endl;
-    }
+    FRAME_GRAPH_DEBUG_LOG_THROTTLED(debugCounter, 1800, "EntityComputeNode (Movement): " << entityCount << " entities → " << dispatchParams.totalWorkgroups << " workgroups");
     
     const VulkanContext* context = frameGraph.getContext();
     if (!context) {
@@ -272,19 +265,19 @@ void EntityComputeNode::executeChunkedDispatch(
         VK_PIPELINE_STAGE_VERTEX_SHADER_BIT, 0, 1, &finalMemoryBarrier, 0, nullptr, 0, nullptr);
     
     // Debug statistics logging (thread-safe)
-    uint32_t chunkLogCounter = debugCounter.fetch_add(1, std::memory_order_relaxed);
-    if (chunkLogCounter % 300 == 0) {
-        std::string message = "EntityComputeNode: Split dispatch into " + std::to_string(chunkCount) + 
-                             " chunks (" + std::to_string(maxWorkgroupsPerChunk) + " max) for " + 
-                             std::to_string(entityCount) + " entities";
-        std::cout << message << std::endl;
-        
-        if (timeoutDetector) {
-            auto stats = timeoutDetector->getStats();
-            std::cout << "  GPU Stats: avg=" << stats.averageDispatchTimeMs 
-                      << "ms, peak=" << stats.peakDispatchTimeMs << "ms"
-                      << ", warnings=" << stats.warningCount 
-                      << ", critical=" << stats.criticalCount << std::endl;
+    if constexpr (FRAME_GRAPH_DEBUG_ENABLED) {
+        uint32_t chunkLogCounter = FrameGraphDebug::incrementCounter(debugCounter);
+        if (chunkLogCounter % 300 == 0) {
+            std::cout << "[FrameGraph Debug] EntityComputeNode: Split dispatch into " << chunkCount 
+                      << " chunks (" << maxWorkgroupsPerChunk << " max) for " << entityCount << " entities (occurrence #" << chunkLogCounter << ")" << std::endl;
+            
+            if (timeoutDetector) {
+                auto stats = timeoutDetector->getStats();
+                std::cout << "  GPU Stats: avg=" << stats.averageDispatchTimeMs 
+                          << "ms, peak=" << stats.peakDispatchTimeMs << "ms"
+                          << ", warnings=" << stats.warningCount 
+                          << ", critical=" << stats.criticalCount << std::endl;
+            }
         }
     }
 }

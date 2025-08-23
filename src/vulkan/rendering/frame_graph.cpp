@@ -202,8 +202,6 @@ bool FrameGraph::compile() {
                         compiler_.restoreState(executionOrder_, compiled_);
                         return false;
                     }
-                    // Maintain backward compatibility with setup()
-                    it->second->setup(*this);
                 }
             }
             
@@ -220,7 +218,8 @@ bool FrameGraph::compile() {
     barrierManager_.analyzeBarrierRequirements(executionOrder_, nodes_);
     barrierManager_.createOptimalBarrierBatches(executionOrder_, nodes_);
     
-    // Initialize nodes with new standardized lifecycle
+    // Initialize nodes with standardized lifecycle
+    // Lifecycle: initializeNode() once during compilation, then per-frame: prepareFrame() → execute() → releaseFrame()
     for (auto nodeId : executionOrder_) {
         auto it = nodes_.find(nodeId);
         if (it != nodes_.end()) {
@@ -228,8 +227,6 @@ bool FrameGraph::compile() {
                 std::cerr << "FrameGraph: Node initialization failed for node " << nodeId << std::endl;
                 return false;
             }
-            // Maintain backward compatibility with setup()
-            it->second->setup(*this);
         }
     }
     

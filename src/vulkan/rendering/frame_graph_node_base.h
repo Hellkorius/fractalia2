@@ -28,7 +28,6 @@ public:
     virtual void releaseFrame(uint32_t frameIndex) {}                           // Per-frame cleanup
     
     // Execution
-    virtual void setup(const FrameGraph& frameGraph) {}  // DEPRECATED: Use initializeNode instead
     virtual void execute(VkCommandBuffer commandBuffer, const FrameGraph& frameGraph) = 0;
     virtual void cleanup() {}
     

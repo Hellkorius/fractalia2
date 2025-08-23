@@ -3,9 +3,9 @@
 #define VK_NO_PROTOTYPES
 #include <vulkan/vulkan.h>
 #include "../rendering/frame_graph.h"
+#include "../rendering/frame_graph_debug.h"
 #include "../core/vulkan_constants.h"
 #include <memory>
-#include <atomic>
 
 // Forward declarations
 class ComputePipelineManager;
@@ -64,8 +64,8 @@ private:
     uint32_t adaptiveMaxWorkgroups = MAX_WORKGROUPS_PER_CHUNK;
     bool forceChunkedDispatch = true;     // Always use chunking for stability
     
-    // Thread-safe debug counter
-    mutable std::atomic<uint32_t> debugCounter{0};
+    // Debug counter - zero overhead in release builds
+    mutable FrameGraphDebug::DebugCounter debugCounter{};
     
     // Frame timing data for new lifecycle
     float currentTime = 0.0f;
