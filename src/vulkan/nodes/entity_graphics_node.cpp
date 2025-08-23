@@ -110,16 +110,15 @@ void EntityGraphicsNode::execute(VkCommandBuffer commandBuffer, const FrameGraph
         return;
     }
     
-    // Validate swapchain state before accessing framebuffers
-    const auto& framebuffers = swapchain->getFramebuffers();
-    if (imageIndex >= framebuffers.size()) {
+    // Validate swapchain state before accessing image views
+    const auto& swapchainImageViews = swapchain->getImageViews();
+    if (imageIndex >= swapchainImageViews.size()) {
         std::cerr << "EntityGraphicsNode: Invalid imageIndex " << imageIndex 
-                  << " >= framebuffer count " << framebuffers.size() << std::endl;
+                  << " >= swapchain image count " << swapchainImageViews.size() << std::endl;
         return;
     }
     
-    // Begin dynamic rendering - setup color and resolve attachments
-    const auto& swapchainImageViews = swapchain->getImageViews();
+    // Begin dynamic rendering - setup color and resolve attachments  
     VkImageView msaaColorImageView = swapchain->getMSAAColorImageView();
     
     VkRenderingAttachmentInfo colorAttachment{};
