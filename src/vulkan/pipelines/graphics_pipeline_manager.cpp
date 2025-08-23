@@ -271,4 +271,56 @@ namespace GraphicsPipelinePresets {
         
         return state;
     }
+    
+    GraphicsPipelineState createEntityRenderingStateDynamic(VkDescriptorSetLayout descriptorLayout,
+                                                           VkFormat colorFormat,
+                                                           VkFormat depthFormat,
+                                                           VkSampleCountFlagBits samples) {
+        GraphicsPipelineState state{};
+        
+        // Enable dynamic rendering instead of using render pass
+        state.useDynamicRendering = true;
+        state.colorAttachmentFormats.push_back(colorFormat);
+        state.depthAttachmentFormat = depthFormat;
+        state.stencilAttachmentFormat = VK_FORMAT_UNDEFINED;
+        state.rasterizationSamples = samples;
+        
+        state.descriptorSetLayouts.push_back(descriptorLayout);
+        
+        state.shaderStages = {
+            "shaders/vertex.vert.spv",
+            "shaders/fragment.frag.spv"
+        };
+        
+        VkVertexInputBindingDescription vertexBinding{};
+        vertexBinding.binding = 0;
+        vertexBinding.stride = sizeof(glm::vec3) + sizeof(glm::vec3);
+        vertexBinding.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+        state.vertexBindings.push_back(vertexBinding);
+        
+        // SoA approach: No instance binding for entity data (using storage buffers instead)
+        // Only keep vertex position attribute (geometry data)
+        
+        VkVertexInputAttributeDescription posAttr{};
+        posAttr.binding = 0;
+        posAttr.location = 0;
+        posAttr.format = VK_FORMAT_R32G32B32_SFLOAT;
+        posAttr.offset = 0;
+        state.vertexAttributes.push_back(posAttr);
+        
+        VkVertexInputAttributeDescription colorAttr{};
+        colorAttr.binding = 0;
+        colorAttr.location = 1;
+        colorAttr.format = VK_FORMAT_R32G32B32_SFLOAT;
+        colorAttr.offset = sizeof(glm::vec3);
+        state.vertexAttributes.push_back(colorAttr);
+        
+        VkPipelineColorBlendAttachmentState colorBlendAttachment{};
+        colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | 
+                                             VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+        colorBlendAttachment.blendEnable = VK_FALSE;
+        state.colorBlendAttachments.push_back(colorBlendAttachment);
+        
+        return state;
+    }
 }

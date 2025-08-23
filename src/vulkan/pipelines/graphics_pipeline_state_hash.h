@@ -46,6 +46,12 @@ struct GraphicsPipelineState {
     VkRenderPass renderPass = VK_NULL_HANDLE;
     uint32_t subpass = 0;
     
+    // Vulkan 1.3 Dynamic Rendering support
+    bool useDynamicRendering = false;
+    std::vector<VkFormat> colorAttachmentFormats;
+    VkFormat depthAttachmentFormat = VK_FORMAT_UNDEFINED;
+    VkFormat stencilAttachmentFormat = VK_FORMAT_UNDEFINED;
+    
     std::vector<VkDescriptorSetLayout> descriptorSetLayouts;
     std::vector<VkPushConstantRange> pushConstantRanges;
     

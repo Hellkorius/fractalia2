@@ -82,6 +82,12 @@ namespace GraphicsPipelinePresets {
     GraphicsPipelineState createEntityRenderingState(VkRenderPass renderPass, 
                                                     VkDescriptorSetLayout descriptorLayout);
     
+    // Vulkan 1.3 Dynamic Rendering version
+    GraphicsPipelineState createEntityRenderingStateDynamic(VkDescriptorSetLayout descriptorLayout,
+                                                           VkFormat colorFormat,
+                                                           VkFormat depthFormat = VK_FORMAT_UNDEFINED,
+                                                           VkSampleCountFlagBits samples = VK_SAMPLE_COUNT_1_BIT);
+    
     GraphicsPipelineState createWireframeOverlayState(VkRenderPass renderPass);
     GraphicsPipelineState createUIRenderingState(VkRenderPass renderPass);
     GraphicsPipelineState createShadowMappingState(VkRenderPass renderPass);

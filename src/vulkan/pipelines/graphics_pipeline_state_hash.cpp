@@ -58,6 +58,10 @@ bool GraphicsPipelineState::operator==(const GraphicsPipelineState& other) const
            rasterizationSamples == other.rasterizationSamples &&
            renderPass == other.renderPass &&
            subpass == other.subpass &&
+           useDynamicRendering == other.useDynamicRendering &&
+           colorAttachmentFormats == other.colorAttachmentFormats &&
+           depthAttachmentFormat == other.depthAttachmentFormat &&
+           stencilAttachmentFormat == other.stencilAttachmentFormat &&
            descriptorSetLayouts == other.descriptorSetLayouts;
 }
 
@@ -70,7 +74,11 @@ size_t GraphicsPipelineState::getHash() const {
           .combine(cullMode)
           .combine(rasterizationSamples)
           .combine(renderPass)
-          .combine(subpass);
+          .combine(subpass)
+          .combine(useDynamicRendering)
+          .combineContainer(colorAttachmentFormats)
+          .combine(depthAttachmentFormat)
+          .combine(stencilAttachmentFormat);
     
     for (const auto& binding : vertexBindings) {
         hasher.combine(binding.binding)

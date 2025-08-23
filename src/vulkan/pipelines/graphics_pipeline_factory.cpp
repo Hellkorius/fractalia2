@@ -126,8 +126,19 @@ std::unique_ptr<CachedGraphicsPipeline> GraphicsPipelineFactory::createPipeline(
     
     std::cout << "GraphicsPipelineFactory: All shaders loaded successfully, total stages: " << shaderStages.size() << std::endl;
     
+    // Setup dynamic rendering if enabled
+    VkPipelineRenderingCreateInfo dynamicRenderingInfo{};
+    if (state.useDynamicRendering) {
+        dynamicRenderingInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
+        dynamicRenderingInfo.colorAttachmentCount = static_cast<uint32_t>(state.colorAttachmentFormats.size());
+        dynamicRenderingInfo.pColorAttachmentFormats = state.colorAttachmentFormats.data();
+        dynamicRenderingInfo.depthAttachmentFormat = state.depthAttachmentFormat;
+        dynamicRenderingInfo.stencilAttachmentFormat = state.stencilAttachmentFormat;
+    }
+    
     VkGraphicsPipelineCreateInfo pipelineInfo{};
     pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+    pipelineInfo.pNext = state.useDynamicRendering ? &dynamicRenderingInfo : nullptr;
     pipelineInfo.stageCount = static_cast<uint32_t>(shaderStages.size());
     pipelineInfo.pStages = shaderStages.data();
     pipelineInfo.pVertexInputState = &vertexInputInfo;
@@ -139,15 +150,21 @@ std::unique_ptr<CachedGraphicsPipeline> GraphicsPipelineFactory::createPipeline(
     pipelineInfo.pDynamicState = &dynamicStateInfo;
     pipelineInfo.pDepthStencilState = state.depthTestEnable ? &depthStencilInfo : nullptr;
     pipelineInfo.layout = cachedPipeline->layout.get();
-    pipelineInfo.renderPass = state.renderPass;
-    pipelineInfo.subpass = state.subpass;
+    pipelineInfo.renderPass = state.useDynamicRendering ? VK_NULL_HANDLE : state.renderPass;
+    pipelineInfo.subpass = state.useDynamicRendering ? 0 : state.subpass;
     pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
     
     std::cout << "GraphicsPipelineFactory: Creating graphics pipeline with parameters:" << std::endl;
     std::cout << "  Pipeline layout: " << (void*)cachedPipeline->layout << std::endl;
     std::cout << "  Pipeline cache: " << (void*)pipelineCache_ << std::endl;
-    std::cout << "  Render pass: " << (void*)state.renderPass << std::endl;
-    std::cout << "  Subpass: " << state.subpass << std::endl;
+    if (state.useDynamicRendering) {
+        std::cout << "  Dynamic Rendering: ENABLED" << std::endl;
+        std::cout << "  Color attachment count: " << state.colorAttachmentFormats.size() << std::endl;
+        std::cout << "  Depth format: " << state.depthAttachmentFormat << std::endl;
+    } else {
+        std::cout << "  Render pass: " << (void*)state.renderPass << std::endl;
+        std::cout << "  Subpass: " << state.subpass << std::endl;
+    }
     std::cout << "  Shader stages count: " << pipelineInfo.stageCount << std::endl;
     std::cout << "  About to call vkCreateGraphicsPipelines..." << std::endl;
     
@@ -159,7 +176,11 @@ std::unique_ptr<CachedGraphicsPipeline> GraphicsPipelineFactory::createPipeline(
         std::cerr << "  VkResult: " << result << std::endl;
         std::cerr << "  Pipeline layout valid: " << (cachedPipeline->layout ? "YES" : "NO") << std::endl;
         std::cerr << "  Pipeline cache valid: " << (pipelineCache_ ? "YES" : "NO") << std::endl;
-        std::cerr << "  Render pass valid: " << (state.renderPass != VK_NULL_HANDLE ? "YES" : "NO") << std::endl;
+        if (state.useDynamicRendering) {
+            std::cerr << "  Dynamic Rendering: YES" << std::endl;
+        } else {
+            std::cerr << "  Render pass valid: " << (state.renderPass != VK_NULL_HANDLE ? "YES" : "NO") << std::endl;
+        }
         std::cerr << "  Device valid: " << (context->getDevice() != VK_NULL_HANDLE ? "YES" : "NO") << std::endl;
         
         return nullptr;
@@ -178,9 +199,21 @@ std::unique_ptr<CachedGraphicsPipeline> GraphicsPipelineFactory::createPipeline(
 }
 
 bool GraphicsPipelineFactory::validatePipelineState(const GraphicsPipelineState& state) const {
-    if (state.renderPass == VK_NULL_HANDLE) {
-        std::cerr << "Pipeline state validation failed: null render pass" << std::endl;
-        return false;
+    // For dynamic rendering, render pass must be null; for traditional rendering, it must be valid
+    if (state.useDynamicRendering) {
+        if (state.renderPass != VK_NULL_HANDLE) {
+            std::cerr << "Pipeline state validation failed: render pass must be null for dynamic rendering" << std::endl;
+            return false;
+        }
+        if (state.colorAttachmentFormats.empty()) {
+            std::cerr << "Pipeline state validation failed: dynamic rendering requires color attachment formats" << std::endl;
+            return false;
+        }
+    } else {
+        if (state.renderPass == VK_NULL_HANDLE) {
+            std::cerr << "Pipeline state validation failed: null render pass for traditional rendering" << std::endl;
+            return false;
+        }
     }
     
     if (state.shaderStages.empty()) {

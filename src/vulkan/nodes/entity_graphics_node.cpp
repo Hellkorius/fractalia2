@@ -92,16 +92,13 @@ void EntityGraphicsNode::execute(VkCommandBuffer commandBuffer, const FrameGraph
     auto layoutSpec = DescriptorLayoutPresets::createEntityGraphicsLayout();
     VkDescriptorSetLayout descriptorLayout = graphicsManager->getLayoutManager()->getLayout(layoutSpec);
     
-    // Get the render pass that was used to create the framebuffers
-    VkRenderPass renderPass = graphicsManager->createRenderPass(
-        swapchain->getImageFormat(), 
-        VK_FORMAT_UNDEFINED,  // No depth (match VulkanRenderer setup)
-        VK_SAMPLE_COUNT_2_BIT, // MSAA samples
-        true  // Enable MSAA
+    // Create graphics pipeline state for dynamic rendering (no render pass needed)
+    GraphicsPipelineState pipelineState = GraphicsPipelinePresets::createEntityRenderingStateDynamic(
+        descriptorLayout, 
+        swapchain->getImageFormat(),  // Color format for dynamic rendering
+        VK_FORMAT_UNDEFINED,          // No depth format
+        VK_SAMPLE_COUNT_2_BIT         // MSAA samples
     );
-    
-    GraphicsPipelineState pipelineState = GraphicsPipelinePresets::createEntityRenderingState(
-        renderPass, descriptorLayout);
     
     // Get pipeline and layout
     VkPipeline pipeline = graphicsManager->getPipeline(pipelineState);
@@ -121,25 +118,37 @@ void EntityGraphicsNode::execute(VkCommandBuffer commandBuffer, const FrameGraph
         return;
     }
     
-    // Begin render pass
-    VkRenderPassBeginInfo renderPassInfo{};
-    renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-    renderPassInfo.renderPass = renderPass;
-    renderPassInfo.framebuffer = framebuffers[imageIndex];
-    renderPassInfo.renderArea.offset = {0, 0};
-    renderPassInfo.renderArea.extent = swapchain->getExtent();
-
-    // Clear values: MSAA color, resolve color (no depth)
-    std::array<VkClearValue, 2> clearValues{};
-    clearValues[0].color = {{0.1f, 0.1f, 0.2f, 1.0f}};  // MSAA color attachment
-    clearValues[1].color = {{0.1f, 0.1f, 0.2f, 1.0f}};  // Resolve attachment
-    renderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
-    renderPassInfo.pClearValues = clearValues.data();
-
+    // Begin dynamic rendering - setup color and resolve attachments
+    const auto& swapchainImageViews = swapchain->getImageViews();
+    VkImageView msaaColorImageView = swapchain->getMSAAColorImageView();
+    
+    VkRenderingAttachmentInfo colorAttachment{};
+    colorAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+    colorAttachment.imageView = msaaColorImageView;
+    colorAttachment.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;  // MSAA is resolved, don't store
+    colorAttachment.clearValue.color = {{0.1f, 0.1f, 0.2f, 1.0f}};
+    
+    // Resolve attachment for MSAA
+    colorAttachment.resolveMode = VK_RESOLVE_MODE_AVERAGE_BIT;
+    colorAttachment.resolveImageView = swapchainImageViews[imageIndex];
+    colorAttachment.resolveImageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    
+    VkRenderingInfo renderingInfo{};
+    renderingInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+    renderingInfo.renderArea.offset = {0, 0};
+    renderingInfo.renderArea.extent = swapchain->getExtent();
+    renderingInfo.layerCount = 1;
+    renderingInfo.colorAttachmentCount = 1;
+    renderingInfo.pColorAttachments = &colorAttachment;
+    renderingInfo.pDepthAttachment = nullptr;    // No depth
+    renderingInfo.pStencilAttachment = nullptr;  // No stencil
+    
     // Cache loader reference for performance
     const auto& vk = context->getLoader();
-
-    vk.vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
+    
+    vk.vkCmdBeginRendering(commandBuffer, &renderingInfo);
 
     // Set dynamic viewport and scissor
     VkViewport viewport{};
@@ -225,8 +234,8 @@ void EntityGraphicsNode::execute(VkCommandBuffer commandBuffer, const FrameGraph
         FRAME_GRAPH_DEBUG_LOG_THROTTLED(drawCounter, 1800, "EntityGraphicsNode: Drew " << entityCount << " entities with " << resourceCoordinator->getGraphicsManager()->getIndexCount() << " indices per triangle");
     }
 
-    // End render pass
-    vk.vkCmdEndRenderPass(commandBuffer);
+    // End dynamic rendering
+    vk.vkCmdEndRendering(commandBuffer);
 }
 
 void EntityGraphicsNode::updateUniformBuffer() {
