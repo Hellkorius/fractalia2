@@ -58,19 +58,33 @@ void GraphicsPipelineManager::cleanupBeforeContextDestruction() {
 }
 
 VkPipeline GraphicsPipelineManager::getPipeline(const GraphicsPipelineState& state) {
+    std::cout << "GraphicsPipelineManager::getPipeline - ENTRY" << std::endl;
+    
     VkPipeline cachedPipeline = cache_.getPipeline(state);
+    std::cout << "GraphicsPipelineManager::getPipeline - Cache check complete" << std::endl;
+    
     if (cachedPipeline != VK_NULL_HANDLE) {
+        std::cout << "GraphicsPipelineManager::getPipeline - Returning cached pipeline: " << std::hex << cachedPipeline << std::endl;
         return cachedPipeline;
     }
     
+    std::cout << "GraphicsPipelineManager::getPipeline - About to call factory.createPipeline() - CRASH LIKELY HERE" << std::endl;
+    
     auto newPipeline = factory_.createPipeline(state);
+    
+    std::cout << "GraphicsPipelineManager::getPipeline - Factory call completed" << std::endl;
+    
     if (!newPipeline) {
         std::cerr << "Failed to create graphics pipeline" << std::endl;
         return VK_NULL_HANDLE;
     }
     
+    std::cout << "GraphicsPipelineManager::getPipeline - About to store in cache" << std::endl;
+    
     VkPipeline pipeline = newPipeline->pipeline.get();
     cache_.storePipeline(state, std::move(newPipeline));
+    
+    std::cout << "GraphicsPipelineManager::getPipeline - SUCCESS: " << std::hex << pipeline << std::endl;
     
     return pipeline;
 }

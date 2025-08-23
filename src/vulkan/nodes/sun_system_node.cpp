@@ -439,13 +439,69 @@ void SunSystemNode::executeGraphicsRender(VkCommandBuffer commandBuffer, const F
     renderCounter++;
     
     try {
-        // TEMPORARY: Skip graphics rendering to isolate crash issue
+        // TEMPORARY: Add detailed debugging to find the crash
         uint32_t counter = renderCounter.load();
         if (counter % 300 == 0) {
-            std::cout << "SunSystemNode: Graphics render pass - TEMPORARILY DISABLED for debugging" << std::endl;
+            std::cout << "SunSystemNode: Graphics render pass - attempting pipeline creation..." << std::endl;
         }
         
-        // TODO: Re-enable once we isolate the pipeline creation crash
+        const auto& vk = vulkanContext->getLoader();
+        const VkDevice device = vulkanContext->getDevice();
+        
+        std::cout << "SunSystemNode: DEBUG - About to create render pass" << std::endl;
+        
+        // Create render pass 
+        VkRenderPass renderPass = graphicsManager->createRenderPass(
+            swapchain->getImageFormat(), 
+            VK_FORMAT_D24_UNORM_S8_UINT,  // Depth buffer for proper layering
+            VK_SAMPLE_COUNT_2_BIT         // MSAA samples
+        );
+        
+        if (renderPass == VK_NULL_HANDLE) {
+            std::cerr << "SunSystemNode: DEBUG - Failed to create render pass" << std::endl;
+            return;
+        }
+        
+        std::cout << "SunSystemNode: DEBUG - Render pass created successfully: " << std::hex << renderPass << std::endl;
+        
+        std::cout << "SunSystemNode: DEBUG - About to get descriptor layout" << std::endl;
+        
+        // Create pipeline state with sun system layout
+        DescriptorLayoutSpec layoutSpec = DescriptorLayoutPresets::createSunSystemLayout();
+        VkDescriptorSetLayout descriptorLayout = graphicsManager->getLayoutManager()->getLayout(layoutSpec);
+        
+        if (descriptorLayout == VK_NULL_HANDLE) {
+            std::cerr << "SunSystemNode: DEBUG - Failed to get descriptor layout" << std::endl;
+            return;
+        }
+        
+        std::cout << "SunSystemNode: DEBUG - Descriptor layout obtained: " << std::hex << descriptorLayout << std::endl;
+        
+        std::cout << "SunSystemNode: DEBUG - About to create pipeline state" << std::endl;
+        
+        GraphicsPipelineState pipelineState = GraphicsPipelinePresets::createSunSystemRenderingState(renderPass, descriptorLayout);
+        
+        std::cout << "SunSystemNode: DEBUG - Pipeline state created successfully" << std::endl;
+        std::cout << "SunSystemNode: DEBUG - Pipeline state has " << pipelineState.shaderStages.size() << " shader stages" << std::endl;
+        std::cout << "SunSystemNode: DEBUG - Shader stages: ";
+        for (const auto& stage : pipelineState.shaderStages) {
+            std::cout << stage << " ";
+        }
+        std::cout << std::endl;
+        std::cout << "SunSystemNode: DEBUG - Vertex bindings: " << pipelineState.vertexBindings.size() << std::endl;
+        std::cout << "SunSystemNode: DEBUG - Vertex attributes: " << pipelineState.vertexAttributes.size() << std::endl;
+        std::cout << "SunSystemNode: DEBUG - Push constant ranges: " << pipelineState.pushConstantRanges.size() << std::endl;
+        std::cout << "SunSystemNode: DEBUG - Render pass: " << std::hex << pipelineState.renderPass << std::endl;
+        
+        std::cout << "SunSystemNode: DEBUG - About to call getPipeline() - THIS IS THE CRASH POINT" << std::endl;
+        
+        // Get pipeline - THIS IS WHERE THE CRASH LIKELY OCCURS
+        VkPipeline pipeline = graphicsManager->getPipeline(pipelineState);
+        
+        std::cout << "SunSystemNode: DEBUG - Pipeline obtained: " << std::hex << pipeline << std::endl;
+        
+        // If we get here, the crash is NOT in pipeline creation
+        std::cout << "SunSystemNode: DEBUG - Pipeline creation succeeded, skipping actual rendering for now" << std::endl;
         return;
         
     } catch (const std::exception& e) {
