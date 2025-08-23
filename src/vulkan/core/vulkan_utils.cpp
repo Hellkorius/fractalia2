@@ -4,6 +4,42 @@
 #include <iostream>
 #include <stdexcept>
 
+namespace {
+    // Helper function to convert legacy pipeline stage flags to Synchronization2
+    VkPipelineStageFlags2 convertPipelineStageToSynchronization2(VkPipelineStageFlags legacyStage) {
+        switch (legacyStage) {
+            case VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT:
+                return VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT;
+            case VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT:
+                return VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT;
+            case VK_PIPELINE_STAGE_VERTEX_INPUT_BIT:
+                return VK_PIPELINE_STAGE_2_VERTEX_INPUT_BIT;
+            case VK_PIPELINE_STAGE_VERTEX_SHADER_BIT:
+                return VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT;
+            case VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT:
+                return VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
+            case VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT:
+                return VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT;
+            case VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT:
+                return VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT;
+            case VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT:
+                return VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+            case VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT:
+                return VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+            case VK_PIPELINE_STAGE_TRANSFER_BIT:
+                return VK_PIPELINE_STAGE_2_TRANSFER_BIT;
+            case VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT:
+                return VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT;
+            case VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT:
+                return VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT;
+            case VK_PIPELINE_STAGE_ALL_COMMANDS_BIT:
+                return VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+            default:
+                return VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT; // Conservative fallback
+        }
+    }
+}
+
 uint32_t VulkanUtils::findMemoryType(VkPhysicalDevice physicalDevice, 
                                     const VulkanFunctionLoader& loader,
                                     uint32_t typeFilter, 
@@ -216,12 +252,18 @@ void VulkanUtils::endSingleTimeCommands(VkDevice device,
     
     vk.vkEndCommandBuffer(commandBuffer);
     
-    VkSubmitInfo submitInfo{};
-    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    submitInfo.commandBufferCount = 1;
-    submitInfo.pCommandBuffers = &commandBuffer;
+    // Use Synchronization2 for single-time command submission
+    VkCommandBufferSubmitInfo cmdSubmitInfo{};
+    cmdSubmitInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
+    cmdSubmitInfo.commandBuffer = commandBuffer;
+    cmdSubmitInfo.deviceMask = 0;
     
-    vk.vkQueueSubmit(queue, 1, &submitInfo, VK_NULL_HANDLE);
+    VkSubmitInfo2 submitInfo{};
+    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
+    submitInfo.commandBufferInfoCount = 1;
+    submitInfo.pCommandBufferInfos = &cmdSubmitInfo;
+    
+    vk.vkQueueSubmit2(queue, 1, &submitInfo, VK_NULL_HANDLE);
     vk.vkQueueWaitIdle(queue);
     
     // Note: Command buffer will be freed automatically when command pool is destroyed
@@ -428,9 +470,48 @@ VkResult VulkanUtils::submitCommands(VkQueue queue, const VulkanFunctionLoader& 
     
     const auto& vk = loader;
     
-    VkSubmitInfo submitInfo = createSubmitInfo(commandBuffers, waitSemaphores, waitStages, signalSemaphores);
+    // Convert to Synchronization2 structures
+    std::vector<VkCommandBufferSubmitInfo> cmdSubmitInfos(commandBuffers.size());
+    for (size_t i = 0; i < commandBuffers.size(); ++i) {
+        cmdSubmitInfos[i].sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
+        cmdSubmitInfos[i].commandBuffer = commandBuffers[i];
+        cmdSubmitInfos[i].deviceMask = 0;
+    }
     
-    return vk.vkQueueSubmit(queue, 1, &submitInfo, fence);
+    std::vector<VkSemaphoreSubmitInfo> waitSemaphoreInfos(waitSemaphores.size());
+    for (size_t i = 0; i < waitSemaphores.size(); ++i) {
+        waitSemaphoreInfos[i].sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+        waitSemaphoreInfos[i].semaphore = waitSemaphores[i];
+        // Convert legacy pipeline stage flags to Synchronization2
+        waitSemaphoreInfos[i].stageMask = (i < waitStages.size()) ? 
+            convertPipelineStageToSynchronization2(waitStages[i]) : VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+        waitSemaphoreInfos[i].deviceIndex = 0;
+    }
+    
+    std::vector<VkSemaphoreSubmitInfo> signalSemaphoreInfos(signalSemaphores.size());
+    for (size_t i = 0; i < signalSemaphores.size(); ++i) {
+        signalSemaphoreInfos[i].sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+        signalSemaphoreInfos[i].semaphore = signalSemaphores[i];
+        signalSemaphoreInfos[i].stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT; // Conservative for compatibility
+        signalSemaphoreInfos[i].deviceIndex = 0;
+    }
+    
+    VkSubmitInfo2 submitInfo{};
+    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
+    submitInfo.commandBufferInfoCount = static_cast<uint32_t>(cmdSubmitInfos.size());
+    submitInfo.pCommandBufferInfos = cmdSubmitInfos.data();
+    
+    if (!waitSemaphoreInfos.empty()) {
+        submitInfo.waitSemaphoreInfoCount = static_cast<uint32_t>(waitSemaphoreInfos.size());
+        submitInfo.pWaitSemaphoreInfos = waitSemaphoreInfos.data();
+    }
+    
+    if (!signalSemaphoreInfos.empty()) {
+        submitInfo.signalSemaphoreInfoCount = static_cast<uint32_t>(signalSemaphoreInfos.size());
+        submitInfo.pSignalSemaphoreInfos = signalSemaphoreInfos.data();
+    }
+    
+    return vk.vkQueueSubmit2(queue, 1, &submitInfo, fence);
 }
 
 VkResult VulkanUtils::allocateCommandBuffers(VkDevice device, const VulkanFunctionLoader& loader,

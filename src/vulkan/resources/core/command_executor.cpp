@@ -130,14 +130,19 @@ CommandExecutor::AsyncTransfer CommandExecutor::copyBufferToBufferAsync(VkBuffer
         return {};
     }
     
-    // Submit to optimal transfer queue (dedicated transfer or graphics fallback)
-    VkSubmitInfo submitInfo{};
-    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    submitInfo.commandBufferCount = 1;
-    submitInfo.pCommandBuffers = &transfer.commandBuffer;
+    // Submit to optimal transfer queue using Synchronization2
+    VkCommandBufferSubmitInfo cmdSubmitInfo{};
+    cmdSubmitInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
+    cmdSubmitInfo.commandBuffer = transfer.commandBuffer;
+    cmdSubmitInfo.deviceMask = 0;
+    
+    VkSubmitInfo2 submitInfo{};
+    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
+    submitInfo.commandBufferInfoCount = 1;
+    submitInfo.pCommandBufferInfos = &cmdSubmitInfo;
     
     VkQueue transferQueue = queueManager->getTransferQueue();
-    if (vk.vkQueueSubmit(transferQueue, 1, &submitInfo, transfer.fence.get()) != VK_SUCCESS) {
+    if (vk.vkQueueSubmit2(transferQueue, 1, &submitInfo, transfer.fence.get()) != VK_SUCCESS) {
         std::cerr << "CommandExecutor: Failed to submit async transfer command buffer!" << std::endl;
         queueManager->freeTransferCommand(transfer);
         return {};

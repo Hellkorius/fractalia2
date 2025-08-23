@@ -85,18 +85,23 @@ SubmissionResult CommandSubmissionService::submitComputeWorkAsync(uint32_t compu
         return result;
     }
 
-    // Submit compute work using VulkanUtils
+    // Submit compute work using Synchronization2
     // ASYNC COMPUTE: No semaphore signaling needed since compute works on frame N+1
     // Graphics reads from frame N-1 buffer, so no synchronization required
-    std::vector<VkCommandBuffer> computeCmdBuffers = {computeCommandBuffer};
+    VkCommandBufferSubmitInfo computeCmdSubmitInfo{};
+    computeCmdSubmitInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
+    computeCmdSubmitInfo.commandBuffer = computeCommandBuffer;
+    computeCmdSubmitInfo.deviceMask = 0;
     
-    VkResult computeSubmitResult = VulkanUtils::submitCommands(
+    VkSubmitInfo2 computeSubmitInfo{};
+    computeSubmitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
+    computeSubmitInfo.commandBufferInfoCount = 1;
+    computeSubmitInfo.pCommandBufferInfos = &computeCmdSubmitInfo;
+    
+    VkResult computeSubmitResult = vk.vkQueueSubmit2(
         queueManager->getComputeQueue(),
-        vk,
-        computeCmdBuffers,
-        {}, // no wait semaphores
-        {}, // no wait stages
-        {}, // no signal semaphores
+        1,
+        &computeSubmitInfo,
         computeFence
     );
 
@@ -130,24 +135,34 @@ SubmissionResult CommandSubmissionService::submitGraphicsWork(uint32_t currentFr
         return result;
     }
 
-    // Setup graphics submission - async compute model (no compute sync needed)
-    VkSubmitInfo graphicsSubmitInfo{};
-    graphicsSubmitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    // Setup graphics submission using Synchronization2 - async compute model (no compute sync needed)
+    VkSemaphoreSubmitInfo waitSemaphoreInfo{};
+    waitSemaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+    waitSemaphoreInfo.semaphore = sync->getImageAvailableSemaphore(currentFrame);
+    waitSemaphoreInfo.stageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+    waitSemaphoreInfo.deviceIndex = 0;
+    
+    VkCommandBufferSubmitInfo graphicsCmdSubmitInfo{};
+    graphicsCmdSubmitInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
+    graphicsCmdSubmitInfo.commandBuffer = graphicsCommandBuffer;
+    graphicsCmdSubmitInfo.deviceMask = 0;
+    
+    VkSemaphoreSubmitInfo signalSemaphoreInfo{};
+    signalSemaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+    signalSemaphoreInfo.semaphore = sync->getRenderFinishedSemaphores()[currentFrame];
+    signalSemaphoreInfo.stageMask = VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT;
+    signalSemaphoreInfo.deviceIndex = 0;
 
-    // Only wait for swapchain image availability (async compute works on different buffer)
-    VkSemaphore waitSemaphores[] = {sync->getImageAvailableSemaphore(currentFrame)};
-    VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
-    graphicsSubmitInfo.waitSemaphoreCount = 1;
-    graphicsSubmitInfo.pWaitSemaphores = waitSemaphores;
-    graphicsSubmitInfo.pWaitDstStageMask = waitStages;
-    graphicsSubmitInfo.commandBufferCount = 1;
-    graphicsSubmitInfo.pCommandBuffers = &graphicsCommandBuffer;
+    VkSubmitInfo2 graphicsSubmitInfo{};
+    graphicsSubmitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
+    graphicsSubmitInfo.waitSemaphoreInfoCount = 1;
+    graphicsSubmitInfo.pWaitSemaphoreInfos = &waitSemaphoreInfo;
+    graphicsSubmitInfo.commandBufferInfoCount = 1;
+    graphicsSubmitInfo.pCommandBufferInfos = &graphicsCmdSubmitInfo;
+    graphicsSubmitInfo.signalSemaphoreInfoCount = 1;
+    graphicsSubmitInfo.pSignalSemaphoreInfos = &signalSemaphoreInfo;
 
-    VkSemaphore signalSemaphores[] = {sync->getRenderFinishedSemaphores()[currentFrame]};
-    graphicsSubmitInfo.signalSemaphoreCount = 1;
-    graphicsSubmitInfo.pSignalSemaphores = signalSemaphores;
-
-    VkResult graphicsSubmitResult = vk.vkQueueSubmit(
+    VkResult graphicsSubmitResult = vk.vkQueueSubmit2(
         queueManager->getGraphicsQueue(), 
         1, 
         &graphicsSubmitInfo, 

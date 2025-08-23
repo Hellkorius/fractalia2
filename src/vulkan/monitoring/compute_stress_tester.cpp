@@ -161,14 +161,20 @@ bool ComputeStressTester::executeComputeDispatch(uint32_t workgroupCount, float&
         timeoutDetector->beginComputeDispatch("StressTest", workgroupCount);
     }
     
-    VkSubmitInfo submitInfo{};
-    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    submitInfo.commandBufferCount = 1;
-    submitInfo.pCommandBuffers = &testCommandBuffer;
+    // Use Synchronization2 for stress test submission
+    VkCommandBufferSubmitInfo cmdSubmitInfo{};
+    cmdSubmitInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
+    cmdSubmitInfo.commandBuffer = testCommandBuffer;
+    cmdSubmitInfo.deviceMask = 0;
     
-    result = vk.vkQueueSubmit(context->getGraphicsQueue(), 1, &submitInfo, testFence.get());
+    VkSubmitInfo2 submitInfo{};
+    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
+    submitInfo.commandBufferInfoCount = 1;
+    submitInfo.pCommandBufferInfos = &cmdSubmitInfo;
+    
+    result = vk.vkQueueSubmit2(context->getGraphicsQueue(), 1, &submitInfo, testFence.get());
     if (result != VK_SUCCESS) {
-        handleTestFailure("vkQueueSubmit", result);
+        handleTestFailure("vkQueueSubmit2", result);
         return false;
     }
     
