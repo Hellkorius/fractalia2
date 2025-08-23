@@ -23,7 +23,7 @@ fractalia2/
 │   └── vulkan/                      (Complete Vulkan subsystem with modern frame graph architecture)
 │       ├── core/                    (Foundational Vulkan infrastructure with RAII resource management)
 │       ├── monitoring/              (GPU performance monitoring with stress testing and timeout detection)
-│       ├── nodes/                   (Frame graph node implementations for compute, graphics, and presentation)
+│       ├── nodes/                   (Frame graph node implementations with BaseComputeNode eliminating 300+ lines of duplication)
 │       ├── pipelines/               (Sophisticated pipeline management with caching, hot-reload, and optimization)
 │       ├── rendering/               (Frame graph coordination with dependency analysis and barrier optimization)
 │       │   ├── compilation/         (Dependency graph analysis with topological sorting and cycle detection)
@@ -49,6 +49,7 @@ fractalia2/
 ## Key Principles
 
 - **Single Responsibility**: Each component has one well-defined purpose
+- **DRY Principle**: BaseComputeNode template method pattern eliminates massive code duplication
 - **Structure of Arrays**: GPU-optimized memory layout for 20-30% bandwidth reduction  
 - **Service Architecture**: Dependency injection with priority-based initialization
 - **Frame Graph**: Declarative rendering with automatic synchronization
