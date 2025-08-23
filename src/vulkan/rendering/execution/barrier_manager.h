@@ -82,6 +82,7 @@ private:
 
     // Access conversion helpers
     VkAccessFlags convertAccess(ResourceAccess access, PipelineStage stage) const;
+    VkPipelineStageFlags convertPipelineStage(PipelineStage stage) const;
 
     // State
     const VulkanContext* context_ = nullptr;

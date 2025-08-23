@@ -35,10 +35,10 @@ void BarrierManager::createOptimalBarrierBatches(const std::vector<FrameGraphTyp
                                                   const std::unordered_map<FrameGraphTypes::NodeId, std::unique_ptr<FrameGraphNode>>& nodes) {
     barrierBatches_.clear();
     
-    // Analyze each node's input dependencies
+    // Analyze ALL nodes for dependency barriers (compute-to-compute, compute-to-graphics, graphics-to-compute)
     for (auto nodeId : executionOrder) {
         auto nodeIt = nodes.find(nodeId);
-        if (nodeIt == nodes.end() || !nodeIt->second->needsGraphicsQueue()) continue;
+        if (nodeIt == nodes.end()) continue;
         
         auto& node = nodeIt->second;
         auto inputs = node->getInputs();
@@ -49,24 +49,44 @@ void BarrierManager::createOptimalBarrierBatches(const std::vector<FrameGraphTyp
                 auto& writeInfo = writeIt->second;
                 auto writerNodeIt = nodes.find(writeInfo.writerNode);
                 
-                // Create barriers for compute->graphics AND compute->compute transitions
-                if (writerNodeIt != nodes.end() && writerNodeIt->second->needsComputeQueue()) {
-                    addResourceBarrier(input.resourceId, nodeId, writeInfo.stage, input.stage, 
-                                     writeInfo.access, input.access);
+                if (writerNodeIt != nodes.end()) {
+                    // Check if barrier is needed for any queue transition or access pattern change
+                    bool needsBarrier = false;
+                    
+                    // Compute-to-graphics: Always needs barrier for queue family transfer
+                    if (writerNodeIt->second->needsComputeQueue() && node->needsGraphicsQueue()) {
+                        needsBarrier = true;
+                    }
+                    // Compute-to-compute: Needs barrier for write-after-write or read-after-write hazards
+                    else if (writerNodeIt->second->needsComputeQueue() && node->needsComputeQueue()) {
+                        needsBarrier = (writeInfo.access != ResourceAccess::Read || input.access != ResourceAccess::Read);
+                    }
+                    // Graphics-to-compute: Needs barrier for queue family transfer
+                    else if (writerNodeIt->second->needsGraphicsQueue() && node->needsComputeQueue()) {
+                        needsBarrier = true;
+                    }
+                    // Graphics-to-graphics: Needs barrier for write-after-write hazards
+                    else if (writerNodeIt->second->needsGraphicsQueue() && node->needsGraphicsQueue()) {
+                        needsBarrier = (writeInfo.access != ResourceAccess::Read);
+                    }
+                    
+                    if (needsBarrier) {
+                        addResourceBarrier(input.resourceId, nodeId, writeInfo.stage, input.stage, 
+                                         writeInfo.access, input.access);
+                    }
                 }
             }
         }
     }
 }
 
-void BarrierManager::insertBarriersForNode(FrameGraphTypes::NodeId nodeId, VkCommandBuffer graphicsCmd, 
+void BarrierManager::insertBarriersForNode(FrameGraphTypes::NodeId nodeId, VkCommandBuffer commandBuffer, 
                                            bool& computeExecuted, bool nodeNeedsGraphics) {
-    if (!computeExecuted || !nodeNeedsGraphics) return;
-    
+    // Insert barriers for ALL transition types, not just compute-to-graphics
     // Find barriers targeting this node
     for (const auto& batch : barrierBatches_) {
         if (batch.targetNodeId == nodeId) {
-            insertBarrierBatch(batch, graphicsCmd);
+            insertBarrierBatch(batch, commandBuffer);
         }
     }
 }
@@ -94,9 +114,15 @@ void BarrierManager::addResourceBarrier(FrameGraphTypes::ResourceId resourceId, 
         barrierBatches_.emplace_back();
         batchIt = barrierBatches_.end() - 1;
         batchIt->targetNodeId = targetNode;
+        batchIt->srcStage = convertPipelineStage(srcStage);
+        batchIt->dstStage = convertPipelineStage(dstStage);
+    } else {
+        // Update stage flags to include all stages in this batch
+        batchIt->srcStage |= convertPipelineStage(srcStage);
+        batchIt->dstStage |= convertPipelineStage(dstStage);
     }
     
-    // Add resource barrier to the batch (no deduplication for performance)
+    // Add resource barrier to the batch with deduplication within the same batch
     if (getBufferResource_) {
         const FrameGraphResources::FrameGraphBuffer* buffer = getBufferResource_(resourceId);
         if (buffer) {
@@ -110,7 +136,22 @@ void BarrierManager::addResourceBarrier(FrameGraphTypes::ResourceId resourceId, 
             barrier.offset = 0;
             barrier.size = VK_WHOLE_SIZE;
             
-            batchIt->bufferBarriers.push_back(barrier);
+            // Check for duplicate barriers within the same batch
+            bool isDuplicate = false;
+            for (const auto& existing : batchIt->bufferBarriers) {
+                if (existing.buffer == barrier.buffer &&
+                    existing.srcAccessMask == barrier.srcAccessMask &&
+                    existing.dstAccessMask == barrier.dstAccessMask &&
+                    existing.offset == barrier.offset &&
+                    existing.size == barrier.size) {
+                    isDuplicate = true;
+                    break;
+                }
+            }
+            
+            if (!isDuplicate) {
+                batchIt->bufferBarriers.push_back(barrier);
+            }
             return;
         }
     }
@@ -133,7 +174,25 @@ void BarrierManager::addResourceBarrier(FrameGraphTypes::ResourceId resourceId, 
             barrier.subresourceRange.baseArrayLayer = 0;
             barrier.subresourceRange.layerCount = 1;
             
-            batchIt->imageBarriers.push_back(barrier);
+            // Check for duplicate image barriers within the same batch
+            bool isDuplicate = false;
+            for (const auto& existing : batchIt->imageBarriers) {
+                if (existing.image == barrier.image &&
+                    existing.srcAccessMask == barrier.srcAccessMask &&
+                    existing.dstAccessMask == barrier.dstAccessMask &&
+                    existing.oldLayout == barrier.oldLayout &&
+                    existing.newLayout == barrier.newLayout &&
+                    existing.subresourceRange.aspectMask == barrier.subresourceRange.aspectMask &&
+                    existing.subresourceRange.baseMipLevel == barrier.subresourceRange.baseMipLevel &&
+                    existing.subresourceRange.levelCount == barrier.subresourceRange.levelCount) {
+                    isDuplicate = true;
+                    break;
+                }
+            }
+            
+            if (!isDuplicate) {
+                batchIt->imageBarriers.push_back(barrier);
+            }
         }
     }
 }
@@ -184,6 +243,25 @@ VkAccessFlags BarrierManager::convertAccess(ResourceAccess access, PipelineStage
             return VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
         default: 
             return 0;
+    }
+}
+
+VkPipelineStageFlags BarrierManager::convertPipelineStage(PipelineStage stage) const {
+    switch (stage) {
+        case PipelineStage::ComputeShader:
+            return VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+        case PipelineStage::VertexShader:
+            return VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_VERTEX_INPUT_BIT;
+        case PipelineStage::FragmentShader:
+            return VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+        case PipelineStage::ColorAttachment:
+            return VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+        case PipelineStage::DepthAttachment:
+            return VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+        case PipelineStage::Transfer:
+            return VK_PIPELINE_STAGE_TRANSFER_BIT;
+        default:
+            return VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
     }
 }
 
