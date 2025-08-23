@@ -1,14 +1,15 @@
 # Spatial Map Implementation
 
 ## Overview
-Lock-free spatial hash grid for entity collision detection and spatial queries. Maps 2D world positions to 64x64 grid cells using atomic linked lists.
+Lock-free 3D spatial hash grid for entity collision detection and spatial queries. Maps 3D world positions to 32x32x32 grid cells using atomic linked lists.
 
 ## Constants
 ```glsl
-const float CELL_SIZE = 2.0f;           // World units per cell
-const uint GRID_WIDTH = 64;             // Grid dimensions (power of 2)
-const uint GRID_HEIGHT = 64;
-const uint SPATIAL_MAP_SIZE = 4096;     // Total cells (64×64)
+const float CELL_SIZE = 2.0f;           // World units per cell (larger for 3D cubes)
+const uint GRID_WIDTH = 32;             // 3D grid dimensions (power of 2)
+const uint GRID_HEIGHT = 32;
+const uint GRID_DEPTH = 32;
+const uint SPATIAL_MAP_SIZE = 32768;    // Total cells (32³ = 32,768)
 const uint NULL_INDEX = 0xFFFFFFFF;     // Null pointer sentinel
 ```
 
@@ -25,11 +26,12 @@ Each cell contains:
 
 ## Hash Function
 ```glsl
-uint spatialHash(vec2 position) {
-    ivec2 gridCoord = ivec2(floor(position / CELL_SIZE));
-    uint x = uint(gridCoord.x) & (GRID_WIDTH - 1);   // Wrap with bitwise AND
+uint spatialHash(vec3 position) {
+    ivec3 gridCoord = ivec3(floor(position / CELL_SIZE));
+    uint x = uint(gridCoord.x) & (GRID_WIDTH - 1);    // Wrap with bitwise AND
     uint y = uint(gridCoord.y) & (GRID_HEIGHT - 1);
-    return x + y * GRID_WIDTH;
+    uint z = uint(gridCoord.z) & (GRID_DEPTH - 1);
+    return x + y * GRID_WIDTH + z * GRID_WIDTH * GRID_HEIGHT;
 }
 ```
 
@@ -44,7 +46,7 @@ if (gl_GlobalInvocationID.x < SPATIAL_MAP_SIZE) {
 barrier();
 memoryBarrierShared();
 ```
-- 4096 threads clear 4096 cells in parallel
+- 32,768 threads clear 32,768 cells in parallel (3D grid)
 - Synchronization barrier ensures clearing completes before entity processing
 
 ### 2. Physics Integration
@@ -53,7 +55,7 @@ memoryBarrierShared();
 
 ### 3. Spatial Map Update
 ```glsl
-void updateSpatialMap(uint entityIndex, vec2 position) {
+void updateSpatialMap(uint entityIndex, vec3 position) {
     uint cellIndex = spatialHash(position);
     
     // Atomic compare-swap loop for race-free linked list insertion
@@ -78,7 +80,7 @@ void updateSpatialMap(uint entityIndex, vec2 position) {
 ## Dispatch Configuration
 ```cpp
 // Calculate workgroups for both spatial clearing and entity processing
-const uint32_t spatialClearWorkgroups = (4096 + 63) / 64;  // 64 workgroups
+const uint32_t spatialClearWorkgroups = (32768 + 63) / 64;  // 512 workgroups (3D grid)
 const uint32_t entityWorkgroups = (entityCount + 63) / 64;
 const uint32_t totalWorkgroups = std::max(spatialClearWorkgroups, entityWorkgroups);
 ```
@@ -91,22 +93,23 @@ const uint32_t totalWorkgroups = std::max(spatialClearWorkgroups, entityWorkgrou
 ## Debug Readback
 ```cpp
 // Synchronized readback prevents race conditions
-bool readbackEntityAtPositionSafe(glm::vec2 worldPos, EntityDebugInfo& info) {
+bool readbackEntityAtPositionSafe(glm::vec3 worldPos, EntityDebugInfo& info) {
     vkDeviceWaitIdle(device);  // Wait for GPU compute completion
     return readbackEntityAtPosition(worldPos, info);
 }
 ```
 
 **Search Process**:
-1. Calculate clicked cell using same hash function as GPU
-2. Search 5×5 grid around clicked cell (25 cells total)
+1. Calculate clicked cell using same 3D hash function as GPU
+2. Search 3×3×3 grid around clicked cell (27 cells total in 3D space)
 3. Read linked list head from each cell
-4. Find closest entity by distance to click point
+4. Find closest entity by 3D distance to click point
 5. Map GPU index back to ECS entity ID
 
 ## Performance Characteristics
-- **Clearing**: O(1) parallel clear of all cells
+- **Clearing**: O(1) parallel clear of all cells (3D optimized)
 - **Insertion**: O(1) atomic insertion per entity  
 - **Query**: O(k) where k = entities per cell
-- **Memory**: 32KB for 4096 cells (8 bytes per uvec2)
+- **Memory**: 256KB for 32,768 cells (8 bytes per uvec2, 8x larger for 3D)
 - **Collision**: Lock-free, no GPU stalls or deadlocks
+- **3D Collision**: Layered approach (spatial → sphere → cube) for optimal performance

@@ -451,8 +451,9 @@ void GameControlService::actionCreateSwarm() {
 }
 
 void GameControlService::actionDebugEntity() {
-    glm::vec2 mouseWorldPos = inputService->getMouseWorldPosition();
-    debugEntityAtPosition(mouseWorldPos);
+    glm::vec2 mouseWorldPos2D = inputService->getMouseWorldPosition();
+    glm::vec3 mouseWorldPos3D = glm::vec3(mouseWorldPos2D.x, mouseWorldPos2D.y, 0.0f); // Convert 2D mouse to 3D with Z=0
+    debugEntityAtPosition(mouseWorldPos3D);
 }
 
 void GameControlService::actionShowStats() {
@@ -709,7 +710,7 @@ void GameControlService::printControlInstructions() const {
     std::cout << "===============================================\n" << std::endl;
 }
 
-void GameControlService::debugEntityAtPosition(const glm::vec2& worldPos) {
+void GameControlService::debugEntityAtPosition(const glm::vec3& worldPos) {
     if (!renderer) {
         std::cerr << "GameControlService::debugEntityAtPosition - No renderer available" << std::endl;
         return;
@@ -746,14 +747,16 @@ void GameControlService::debugEntityAtPosition(const glm::vec2& worldPos) {
                   << ") | Damping: " << debugInfo.velocity.z << std::endl;
         std::cout << "Spatial Cell: " << debugInfo.spatialCell << std::endl;
         
-        // Calculate spatial cell coordinates for readability
-        const uint32_t GRID_WIDTH = 64;
+        // Calculate 3D spatial cell coordinates for readability  
+        const uint32_t GRID_WIDTH = 32;
+        const uint32_t GRID_HEIGHT = 32;
         uint32_t cellX = debugInfo.spatialCell % GRID_WIDTH;
-        uint32_t cellY = debugInfo.spatialCell / GRID_WIDTH;
-        std::cout << "Spatial Grid: (" << cellX << ", " << cellY << ")" << std::endl;
+        uint32_t cellY = (debugInfo.spatialCell / GRID_WIDTH) % GRID_HEIGHT;
+        uint32_t cellZ = debugInfo.spatialCell / (GRID_WIDTH * GRID_HEIGHT);
+        std::cout << "Spatial Grid: (" << cellX << ", " << cellY << ", " << cellZ << ")" << std::endl;
         std::cout << "========================\n" << std::endl;
     } else {
-        std::cout << "No entity found at world position (" << worldPos.x << ", " << worldPos.y << ")" << std::endl;
+        std::cout << "No entity found at world position (" << worldPos.x << ", " << worldPos.y << ", " << worldPos.z << ")" << std::endl;
     }
 }
 

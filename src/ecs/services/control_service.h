@@ -93,7 +93,7 @@ public:
     void toggleMovementType();
     void createEntity(const glm::vec2& position);
     void createSwarm(size_t count, const glm::vec3& center, float radius);
-    void debugEntityAtPosition(const glm::vec2& worldPos);
+    void debugEntityAtPosition(const glm::vec3& worldPos);
     void showPerformanceStats();
     void runGraphicsTests();
     void toggleDebugMode();

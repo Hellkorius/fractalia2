@@ -37,28 +37,30 @@ layout(std430, binding = 7) buffer SpatialMapBuffer {
 
 /* ---------- Spatial Map Constants and Functions ---------- */
 
-// Spatial grid configuration
-const float CELL_SIZE = 1.5;           // Size of each spatial cell
-const uint GRID_WIDTH = 64;            // Grid dimensions (must be power of 2)
-const uint GRID_HEIGHT = 64;
-const uint SPATIAL_MAP_SIZE = GRID_WIDTH * GRID_HEIGHT; // 4096 cells
+// 3D Spatial grid configuration
+const float CELL_SIZE = 2.0;           // Size of each spatial cell (larger for 3D cubes)
+const uint GRID_WIDTH = 32;            // Reduced grid dimensions for 3D (32^3 = 32768 cells)
+const uint GRID_HEIGHT = 32;
+const uint GRID_DEPTH = 32;
+const uint SPATIAL_MAP_SIZE = GRID_WIDTH * GRID_HEIGHT * GRID_DEPTH;
 const uint NULL_INDEX = 0xFFFFFFFF;    // Null pointer for linked list
 
-// Fast spatial hash function using bit mixing
-uint spatialHash(vec2 position) {
+// Fast 3D spatial hash function using bit mixing
+uint spatialHash(vec3 position) {
     // Convert world position to grid coordinates
-    ivec2 gridCoord = ivec2(floor(position / CELL_SIZE));
+    ivec3 gridCoord = ivec3(floor(position / CELL_SIZE));
     
     // Wrap to grid bounds using bitwise AND (requires power-of-2 dimensions)
     uint x = uint(gridCoord.x) & (GRID_WIDTH - 1);
     uint y = uint(gridCoord.y) & (GRID_HEIGHT - 1);
+    uint z = uint(gridCoord.z) & (GRID_DEPTH - 1);
     
-    // Simple hash: x + y * width
-    return x + y * GRID_WIDTH;
+    // 3D hash: x + y * width + z * width * height
+    return x + y * GRID_WIDTH + z * GRID_WIDTH * GRID_HEIGHT;
 }
 
 // Update spatial map entry for this entity
-void updateSpatialMap(uint entityIndex, vec2 position) {
+void updateSpatialMap(uint entityIndex, vec3 position) {
     uint cellIndex = spatialHash(position);
     
     // Atomic compare-swap loop to safely update the linked list head
@@ -73,17 +75,10 @@ void updateSpatialMap(uint entityIndex, vec2 position) {
 
 /* ---------- Collision Detection Constants and Functions ---------- */
 
-// Collision detection configuration
-const uint MAX_ENTITIES_PER_CELL = 64;    // Maximum entities to check per cell (much higher)
-const float TRIANGLE_RADIUS = 1.5;        // Bounding circle radius for triangle (larger)
-const float MIN_SEPARATION = 0.2;         // Minimum separation distance (larger)
-
-// Triangle vertices relative to entity center
-const vec2 TRIANGLE_VERTICES[3] = vec2[](
-    vec2(0.0, 0.5),      // Top vertex
-    vec2(-0.4, -0.25),   // Bottom left
-    vec2(0.4, -0.25)     // Bottom right
-);
+// 3D Collision detection configuration
+const uint MAX_ENTITIES_PER_CELL = 32;    // Reduced for 3D (more expensive checks)
+const float CUBE_RADIUS = 1.8;            // Bounding sphere radius for cube (√3 * cube_half_size)
+const float MIN_SEPARATION = 0.3;         // Minimum separation distance for 3D
 
 // Fast entity collection using spatial map (optimized)
 uint collectEntitiesInCell(uint cellIndex, out uint entities[MAX_ENTITIES_PER_CELL]) {
@@ -110,79 +105,33 @@ uint collectEntitiesInCell(uint cellIndex, out uint entities[MAX_ENTITIES_PER_CE
     return count;
 }
 
-// Circle-circle collision test for quick culling
-bool circleCollision(vec2 pos1, vec2 pos2, float radius1, float radius2) {
-    float distSq = dot(pos2 - pos1, pos2 - pos1);
+// 3D Sphere-sphere collision test (simple and efficient for cubes)
+bool sphereCollision(vec3 pos1, vec3 pos2, float radius1, float radius2) {
+    vec3 diff = pos2 - pos1;
+    float distSq = dot(diff, diff);
     float radiusSum = radius1 + radius2;
     return distSq < (radiusSum * radiusSum);
 }
 
-// Point-in-triangle test using barycentric coordinates
-bool pointInTriangle(vec2 p, vec2 a, vec2 b, vec2 c) {
-    vec2 v0 = c - a;
-    vec2 v1 = b - a;
-    vec2 v2 = p - a;
-    
-    float dot00 = dot(v0, v0);
-    float dot01 = dot(v0, v1);
-    float dot02 = dot(v0, v2);
-    float dot11 = dot(v1, v1);
-    float dot12 = dot(v1, v2);
-    
-    float invDenom = 1.0 / (dot00 * dot11 - dot01 * dot01);
-    float u = (dot11 * dot02 - dot01 * dot12) * invDenom;
-    float v = (dot00 * dot12 - dot01 * dot02) * invDenom;
-    
-    return (u >= 0.0) && (v >= 0.0) && (u + v <= 1.0);
-}
-
-// Triangle-triangle intersection test
-bool triangleTriangleCollision(vec2 pos1, vec2 pos2) {
-    // Get triangle vertices in world space
-    vec2 tri1[3];
-    vec2 tri2[3];
-    
-    for (int i = 0; i < 3; i++) {
-        tri1[i] = pos1 + TRIANGLE_VERTICES[i];
-        tri2[i] = pos2 + TRIANGLE_VERTICES[i];
-    }
-    
-    // Check if any vertex of tri1 is inside tri2
-    for (int i = 0; i < 3; i++) {
-        if (pointInTriangle(tri1[i], tri2[0], tri2[1], tri2[2])) {
-            return true;
-        }
-    }
-    
-    // Check if any vertex of tri2 is inside tri1
-    for (int i = 0; i < 3; i++) {
-        if (pointInTriangle(tri2[i], tri1[0], tri1[1], tri1[2])) {
-            return true;
-        }
-    }
-    
-    return false;
-}
-
-// Resolve collision with strong separation force
-vec2 resolveCollision(vec2 currentPos, vec2 newPos, vec2 otherPos) {
-    vec2 toOther = otherPos - currentPos;
+// Resolve 3D collision with strong separation force
+vec3 resolveCollision(vec3 currentPos, vec3 newPos, vec3 otherPos) {
+    vec3 toOther = otherPos - currentPos;
     float distToOther = length(toOther);
     
     // Calculate safe distance (sum of bounding radii + separation)
-    float safeDistance = TRIANGLE_RADIUS * 2.0 + MIN_SEPARATION;
+    float safeDistance = CUBE_RADIUS * 2.0 + MIN_SEPARATION;
     
     if (distToOther < safeDistance) {
         // Force strong separation - push entity away from collision
-        vec2 separationDirection = normalize(currentPos - otherPos);
+        vec3 separationDirection = normalize(currentPos - otherPos);
         
         // If entities are exactly on top of each other, use random direction
         if (length(separationDirection) < 0.001) {
-            separationDirection = vec2(1.0, 0.0); // Default direction
+            separationDirection = vec3(1.0, 0.0, 0.0); // Default direction
         }
         
         // Position entity at safe distance away from other entity
-        vec2 safePos = otherPos + separationDirection * safeDistance;
+        vec3 safePos = otherPos + separationDirection * safeDistance;
         return safePos;
     }
     
@@ -242,56 +191,58 @@ void main() {
     // Write tentative position to current buffer first
     currentPos.currentPositions[entityIndex] = vec4(currentPosition, 1.0);
     
-    // Update spatial map with new position (still using 2D projection for spatial hashing)
-    updateSpatialMap(entityIndex, currentPosition.xy);
+    // Update spatial map with new 3D position
+    updateSpatialMap(entityIndex, currentPosition);
     
     // Wait for all threads to update their positions and spatial maps
     barrier();
     memoryBarrierShared();
     
-    // Spatial hash collision detection - much faster than O(N²)
+    // 3D Layered collision detection (spatial cell > sphere > cube calculation)
     vec3 resolvedPosition = currentPosition;
     bool hadCollision = false;
     
-    // Pre-calculate collision parameters
-    const float collisionRadius = TRIANGLE_RADIUS * 2.0;
-    const float collisionRadiusSq = collisionRadius * collisionRadius;
-    
     // Get our spatial cell
-    uint cellIndex = spatialHash(currentPosition.xy);
+    uint cellIndex = spatialHash(currentPosition);
     
-    // Check all 8 neighboring cells plus current cell (3x3 grid)
-    const int offsets[9][2] = int[9][2](
-        int[2](0, 0),   // Current cell
-        int[2](-1, 0),  // Left
-        int[2](1, 0),   // Right  
-        int[2](0, -1),  // Up
-        int[2](0, 1),   // Down
-        int[2](-1, -1), // Top-left diagonal
-        int[2](1, -1),  // Top-right diagonal
-        int[2](-1, 1),  // Bottom-left diagonal
-        int[2](1, 1)    // Bottom-right diagonal
+    // Check neighboring cells in 3D space - current cell plus 6 direct neighbors
+    const int offsets[7][3] = int[7][3](
+        int[3](0, 0, 0),   // Current cell
+        int[3](-1, 0, 0),  // Left
+        int[3](1, 0, 0),   // Right
+        int[3](0, -1, 0),  // Front
+        int[3](0, 1, 0),   // Back
+        int[3](0, 0, -1),  // Down
+        int[3](0, 0, 1)    // Up
     );
     
-    for (int cellIdx = 0; cellIdx < 9; cellIdx++) {
+    for (int cellIdx = 0; cellIdx < 7 && !hadCollision; cellIdx++) {
         int dx = offsets[cellIdx][0];
         int dy = offsets[cellIdx][1];
+        int dz = offsets[cellIdx][2];
         
-        // Calculate neighbor cell coordinates
-        int cellX = int(cellIndex % GRID_WIDTH) + dx;
-        int cellY = int(cellIndex / GRID_WIDTH) + dy;
+        // Calculate 3D neighbor cell coordinates
+        uint cellX = (cellIndex % GRID_WIDTH);
+        uint cellY = (cellIndex / GRID_WIDTH) % GRID_HEIGHT;
+        uint cellZ = cellIndex / (GRID_WIDTH * GRID_HEIGHT);
+        
+        int newX = int(cellX) + dx;
+        int newY = int(cellY) + dy;
+        int newZ = int(cellZ) + dz;
         
         // Wrap around grid boundaries
-        cellX = ((cellX % int(GRID_WIDTH)) + int(GRID_WIDTH)) % int(GRID_WIDTH);
-        cellY = ((cellY % int(GRID_HEIGHT)) + int(GRID_HEIGHT)) % int(GRID_HEIGHT);
-        uint neighborCell = uint(cellX + cellY * int(GRID_WIDTH));
+        newX = ((newX % int(GRID_WIDTH)) + int(GRID_WIDTH)) % int(GRID_WIDTH);
+        newY = ((newY % int(GRID_HEIGHT)) + int(GRID_HEIGHT)) % int(GRID_HEIGHT);
+        newZ = ((newZ % int(GRID_DEPTH)) + int(GRID_DEPTH)) % int(GRID_DEPTH);
         
-        // Collect entities in this neighboring cell
+        uint neighborCell = uint(newX + newY * int(GRID_WIDTH) + newZ * int(GRID_WIDTH) * int(GRID_HEIGHT));
+        
+        // LAYER 1: Spatial cell - collect entities in this neighboring cell
         uint entitiesInCell[MAX_ENTITIES_PER_CELL];
         uint entityCount = collectEntitiesInCell(neighborCell, entitiesInCell);
         
         // Check collision with entities in this cell
-        for (uint i = 0; i < entityCount; i++) {
+        for (uint i = 0; i < entityCount && !hadCollision; i++) {
             uint otherEntityIndex = entitiesInCell[i];
             if (otherEntityIndex == entityIndex) continue; // Skip self
             if (otherEntityIndex >= pc.entityCount) continue;
@@ -299,25 +250,19 @@ void main() {
             // Get other entity's position
             vec3 otherPos = currentPos.currentPositions[otherEntityIndex].xyz;
             
-            // Fast squared distance check (no expensive sqrt)
-            vec2 diff = currentPosition.xy - otherPos.xy;
-            float distSq = dot(diff, diff);
-            
-            if (distSq < collisionRadiusSq && distSq > 0.000001) {
-                // Collision detected! Fast separation using diff vector
-                float invDist = inversesqrt(distSq); // Fast inverse sqrt
-                vec2 separationDir = diff * invDist;
-                resolvedPosition.xy = otherPos.xy + separationDir * collisionRadius;
-                // Keep Z position unchanged in collision resolution
+            // LAYER 2: Sphere collision test (fast - bounding sphere around cubes)
+            if (sphereCollision(currentPosition, otherPos, CUBE_RADIUS, CUBE_RADIUS)) {
+                // LAYER 3: Expensive cube calculation - precise collision resolution
+                resolvedPosition = resolveCollision(currentPosition, currentPosition, otherPos);
                 
-                // Stop movement entirely on collision
-                vel = vec3(0.0, 0.0, 0.0);
-                hadCollision = true;
-                break; // Handle first collision only
+                // If position was changed, we had a collision
+                if (length(resolvedPosition - currentPosition) > 0.001) {
+                    // Stop movement on collision and apply strong separation
+                    vel = vec3(0.0, 0.0, 0.0);
+                    hadCollision = true;
+                }
             }
         }
-        
-        if (hadCollision) break; // Exit loop
     }
     
     // Write back final velocity and resolved position

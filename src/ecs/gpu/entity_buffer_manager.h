@@ -71,12 +71,12 @@ public:
         uint32_t entityId;
     };
     
-    bool readbackEntityAtPosition(glm::vec2 worldPos, EntityDebugInfo& info) const;
+    bool readbackEntityAtPosition(glm::vec3 worldPos, EntityDebugInfo& info) const;
     bool readbackEntityById(uint32_t entityId, EntityDebugInfo& info) const;
     bool readbackSpatialCell(uint32_t cellIndex, std::vector<uint32_t>& entityIds) const;
     
     // GPU-synchronized readback (waits for compute shader completion)
-    bool readbackEntityAtPositionSafe(glm::vec2 worldPos, EntityDebugInfo& info) const;
+    bool readbackEntityAtPositionSafe(glm::vec3 worldPos, EntityDebugInfo& info) const;
 
 private:
     // Configuration

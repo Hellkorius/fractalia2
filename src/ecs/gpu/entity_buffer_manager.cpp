@@ -51,7 +51,7 @@ bool EntityBufferManager::initialize(const VulkanContext& context, ResourceCoord
         return false;
     }
     
-    if (!spatialMapBuffer.initialize(context, resourceCoordinator, 4096)) { // 64x64 grid
+    if (!spatialMapBuffer.initialize(context, resourceCoordinator, 32768)) { // 32x32x32 grid = 32,768 cells
         std::cerr << "EntityBufferManager: Failed to initialize spatial map buffer" << std::endl;
         return false;
     }
@@ -175,24 +175,26 @@ bool EntityBufferManager::readGPUBuffer(VkBuffer srcBuffer, void* dstData, VkDev
 }
 
 // Debug readback implementations
-bool EntityBufferManager::readbackEntityAtPosition(glm::vec2 worldPos, EntityDebugInfo& info) const {
-    // Calculate clicked spatial cell using same logic as GPU shader
+bool EntityBufferManager::readbackEntityAtPosition(glm::vec3 worldPos, EntityDebugInfo& info) const {
+    // Calculate clicked spatial cell using same logic as GPU shader (3D)
     const float CELL_SIZE = 2.0f;
-    const uint32_t GRID_WIDTH = 64;
-    const uint32_t GRID_HEIGHT = 64;
+    const uint32_t GRID_WIDTH = 32;
+    const uint32_t GRID_HEIGHT = 32;
+    const uint32_t GRID_DEPTH = 32;
     
-    // Convert world position to grid coordinates (same as GPU)
-    glm::ivec2 gridCoord = glm::ivec2(glm::floor(worldPos / CELL_SIZE));
+    // Convert world position to grid coordinates (same as GPU 3D)
+    glm::ivec3 gridCoord = glm::ivec3(glm::floor(worldPos / CELL_SIZE));
     uint32_t clickedX = static_cast<uint32_t>(gridCoord.x) & (GRID_WIDTH - 1);
     uint32_t clickedY = static_cast<uint32_t>(gridCoord.y) & (GRID_HEIGHT - 1);
-    uint32_t clickedCellIndex = clickedX + clickedY * GRID_WIDTH;
+    uint32_t clickedZ = static_cast<uint32_t>(gridCoord.z) & (GRID_DEPTH - 1);
+    uint32_t clickedCellIndex = clickedX + clickedY * GRID_WIDTH + clickedZ * GRID_WIDTH * GRID_HEIGHT;
     
-    std::cout << "=== ENTITY SEARCH DEBUG ===" << std::endl;
-    std::cout << "Click position: (" << worldPos.x << ", " << worldPos.y << ")" << std::endl;
-    std::cout << "CELL_SIZE: " << CELL_SIZE << ", GRID_WIDTH: " << GRID_WIDTH << ", GRID_HEIGHT: " << GRID_HEIGHT << std::endl;
-    std::cout << "Raw grid coord: (" << gridCoord.x << ", " << gridCoord.y << ")" << std::endl;
-    std::cout << "Wrapped grid coord: (" << clickedX << ", " << clickedY << ")" << std::endl;
-    std::cout << "Clicked cell: " << clickedCellIndex << " (formula: " << clickedX << " + " << clickedY << " * " << GRID_WIDTH << ")" << std::endl;
+    std::cout << "=== 3D ENTITY SEARCH DEBUG ===" << std::endl;
+    std::cout << "Click position: (" << worldPos.x << ", " << worldPos.y << ", " << worldPos.z << ")" << std::endl;
+    std::cout << "CELL_SIZE: " << CELL_SIZE << ", GRID: " << GRID_WIDTH << "x" << GRID_HEIGHT << "x" << GRID_DEPTH << std::endl;
+    std::cout << "Raw grid coord: (" << gridCoord.x << ", " << gridCoord.y << ", " << gridCoord.z << ")" << std::endl;
+    std::cout << "Wrapped grid coord: (" << clickedX << ", " << clickedY << ", " << clickedZ << ")" << std::endl;
+    std::cout << "Clicked cell: " << clickedCellIndex << " (formula: " << clickedX << " + " << clickedY << "*" << GRID_WIDTH << " + " << clickedZ << "*" << GRID_WIDTH*GRID_HEIGHT << ")" << std::endl;
     
     // Search nearby spatial cells for entities (much more efficient!)
     uint32_t closestEntity = 0;
@@ -201,52 +203,57 @@ bool EntityBufferManager::readbackEntityAtPosition(glm::vec2 worldPos, EntityDeb
     uint32_t cellsChecked = 0;
     uint32_t entitiesFound = 0;
     
-    // Search in a 5x5 grid around the clicked cell (25 cells total)
-    const int SEARCH_RADIUS = 2; // cells in each direction
+    // Search in a 3x3x3 grid around the clicked cell (27 cells total)
+    const int SEARCH_RADIUS = 1; // cells in each direction (3D)
     
-    for (int dy = -SEARCH_RADIUS; dy <= SEARCH_RADIUS; ++dy) {
-        for (int dx = -SEARCH_RADIUS; dx <= SEARCH_RADIUS; ++dx) {
-            // Calculate neighboring cell coordinates
-            int neighborX = (int)clickedX + dx;
-            int neighborY = (int)clickedY + dy;
+    for (int dz = -SEARCH_RADIUS; dz <= SEARCH_RADIUS; ++dz) {
+        for (int dy = -SEARCH_RADIUS; dy <= SEARCH_RADIUS; ++dy) {
+            for (int dx = -SEARCH_RADIUS; dx <= SEARCH_RADIUS; ++dx) {
+                // Calculate neighboring cell coordinates
+                int neighborX = (int)clickedX + dx;
+                int neighborY = (int)clickedY + dy;
+                int neighborZ = (int)clickedZ + dz;
+                
+                // Wrap around grid boundaries (handle negative coordinates properly)
+                uint32_t searchX = ((uint32_t)(neighborX % (int)GRID_WIDTH + GRID_WIDTH)) & (GRID_WIDTH - 1);
+                uint32_t searchY = ((uint32_t)(neighborY % (int)GRID_HEIGHT + GRID_HEIGHT)) & (GRID_HEIGHT - 1);
+                uint32_t searchZ = ((uint32_t)(neighborZ % (int)GRID_DEPTH + GRID_DEPTH)) & (GRID_DEPTH - 1);
+                uint32_t searchCellIndex = searchX + searchY * GRID_WIDTH + searchZ * GRID_WIDTH * GRID_HEIGHT;
             
-            // Wrap around grid boundaries (handle negative coordinates properly)
-            uint32_t searchX = ((uint32_t)(neighborX % (int)GRID_WIDTH + GRID_WIDTH)) & (GRID_WIDTH - 1);
-            uint32_t searchY = ((uint32_t)(neighborY % (int)GRID_HEIGHT + GRID_HEIGHT)) & (GRID_HEIGHT - 1);
-            uint32_t searchCellIndex = searchX + searchY * GRID_WIDTH;
-            
-            cellsChecked++;
-            
-            // Check entities in this cell
-            std::vector<uint32_t> entitiesInCell;
-            std::cout << "Searching cell " << searchCellIndex << " (grid: " << searchX << ", " << searchY << ")" << std::endl;
-            if (readbackSpatialCell(searchCellIndex, entitiesInCell)) {
-                for (uint32_t entityId : entitiesInCell) {
-                    if (entityId >= maxEntities) continue;
-                    entitiesFound++;
-                    
-                    // Read position for this entity
-                    glm::vec4 entityPosition;
-                    if (readGPUBuffer(positionCoordinator.getPrimaryBuffer(), 
-                                     &entityPosition, sizeof(glm::vec4), 
-                                     entityId * sizeof(glm::vec4))) {
+                cellsChecked++;
+                
+                // Check entities in this cell
+                std::vector<uint32_t> entitiesInCell;
+                std::cout << "Searching cell " << searchCellIndex << " (grid: " << searchX << ", " << searchY << ", " << searchZ << ")" << std::endl;
+                if (readbackSpatialCell(searchCellIndex, entitiesInCell)) {
+                    for (uint32_t entityId : entitiesInCell) {
+                        if (entityId >= maxEntities) continue;
+                        entitiesFound++;
                         
-                        // Calculate entity's spatial cell using same logic as shader
-                        glm::vec2 entityPos2D = glm::vec2(entityPosition);
-                        glm::ivec2 entityGridCoord = glm::ivec2(glm::floor(entityPos2D / CELL_SIZE));
+                        // Read position for this entity
+                        glm::vec4 entityPosition;
+                        if (readGPUBuffer(positionCoordinator.getPrimaryBuffer(), 
+                                         &entityPosition, sizeof(glm::vec4), 
+                                         entityId * sizeof(glm::vec4))) {
+                        
+                        // Calculate entity's spatial cell using same logic as shader (3D)
+                        glm::vec3 entityPos3D = glm::vec3(entityPosition);
+                        glm::ivec3 entityGridCoord = glm::ivec3(glm::floor(entityPos3D / CELL_SIZE));
                         uint32_t entityCellX = static_cast<uint32_t>(entityGridCoord.x) & (GRID_WIDTH - 1);
                         uint32_t entityCellY = static_cast<uint32_t>(entityGridCoord.y) & (GRID_HEIGHT - 1);
-                        uint32_t entityActualCell = entityCellX + entityCellY * GRID_WIDTH;
+                        uint32_t entityCellZ = static_cast<uint32_t>(entityGridCoord.z) & (GRID_DEPTH - 1);
+                        uint32_t entityActualCell = entityCellX + entityCellY * GRID_WIDTH + entityCellZ * GRID_WIDTH * GRID_HEIGHT;
                         
-                        float distance = glm::distance(worldPos, glm::vec2(entityPosition));
-                        std::cout << "  Entity " << entityId << " at (" << entityPosition.x << ", " << entityPosition.y 
+                        float distance = glm::distance(worldPos, entityPos3D);
+                        std::cout << "  Entity " << entityId << " at (" << entityPosition.x << ", " << entityPosition.y << ", " << entityPosition.z
                                   << ") in search cell " << searchCellIndex << " but actual cell " << entityActualCell 
                                   << " distance " << distance << std::endl;
                         
-                        if (distance < closestDistance) {
-                            closestDistance = distance;
-                            closestEntity = entityId;
-                            closestPosition = entityPosition;
+                            if (distance < closestDistance) {
+                                closestDistance = distance;
+                                closestEntity = entityId;
+                                closestPosition = entityPosition;
+                            }
                         }
                     }
                 }
@@ -261,12 +268,13 @@ bool EntityBufferManager::readbackEntityAtPosition(glm::vec2 worldPos, EntityDeb
         return false;
     }
     
-    // Calculate which cell the closest entity is actually in
-    glm::vec2 entityPos2D = glm::vec2(closestPosition);
-    glm::ivec2 entityGridCoord = glm::ivec2(glm::floor(entityPos2D / CELL_SIZE));
+    // Calculate which cell the closest entity is actually in (3D)
+    glm::vec3 entityPos3D = glm::vec3(closestPosition);
+    glm::ivec3 entityGridCoord = glm::ivec3(glm::floor(entityPos3D / CELL_SIZE));
     uint32_t entityX = static_cast<uint32_t>(entityGridCoord.x) & (GRID_WIDTH - 1);
-    uint32_t entityY = static_cast<uint32_t>(entityGridCoord.y) & (GRID_WIDTH - 1);
-    uint32_t entityCellIndex = entityX + entityY * GRID_WIDTH;
+    uint32_t entityY = static_cast<uint32_t>(entityGridCoord.y) & (GRID_HEIGHT - 1);
+    uint32_t entityZ = static_cast<uint32_t>(entityGridCoord.z) & (GRID_DEPTH - 1);
+    uint32_t entityCellIndex = entityX + entityY * GRID_WIDTH + entityZ * GRID_WIDTH * GRID_HEIGHT;
     
     // Fill in the debug info
     info.entityId = closestEntity;
@@ -281,8 +289,8 @@ bool EntityBufferManager::readbackEntityAtPosition(glm::vec2 worldPos, EntityDeb
     }
     
     std::cout << "Closest entity: " << closestEntity << " at distance " << closestDistance << std::endl;
-    std::cout << "Entity position: (" << closestPosition.x << ", " << closestPosition.y << ")" << std::endl;
-    std::cout << "Entity cell: " << entityCellIndex << " (grid: " << entityX << ", " << entityY << ")" << std::endl;
+    std::cout << "Entity position: (" << closestPosition.x << ", " << closestPosition.y << ", " << closestPosition.z << ")" << std::endl;
+    std::cout << "Entity cell: " << entityCellIndex << " (grid: " << entityX << ", " << entityY << ", " << entityZ << ")" << std::endl;
     std::cout << "Cell difference: clicked=" << clickedCellIndex << ", entity=" << entityCellIndex 
               << " (diff=" << (int)entityCellIndex - (int)clickedCellIndex << ")" << std::endl;
     
@@ -310,21 +318,24 @@ bool EntityBufferManager::readbackEntityById(uint32_t entityId, EntityDebugInfo&
         info.velocity = glm::vec4(0.0f);
     }
     
-    // Calculate spatial cell from position (same logic as GPU)
+    // Calculate spatial cell from position (same logic as GPU 3D)
     const float CELL_SIZE = 2.0f;
-    const uint32_t GRID_WIDTH = 64;
+    const uint32_t GRID_WIDTH = 32;
+    const uint32_t GRID_HEIGHT = 32;
+    const uint32_t GRID_DEPTH = 32;
     
-    glm::vec2 pos2D = glm::vec2(info.position);
-    glm::ivec2 gridCoord = glm::ivec2(glm::floor(pos2D / CELL_SIZE));
+    glm::vec3 pos3D = glm::vec3(info.position);
+    glm::ivec3 gridCoord = glm::ivec3(glm::floor(pos3D / CELL_SIZE));
     uint32_t x = static_cast<uint32_t>(gridCoord.x) & (GRID_WIDTH - 1);
-    uint32_t y = static_cast<uint32_t>(gridCoord.y) & (GRID_WIDTH - 1);
-    info.spatialCell = x + y * GRID_WIDTH;
+    uint32_t y = static_cast<uint32_t>(gridCoord.y) & (GRID_HEIGHT - 1);
+    uint32_t z = static_cast<uint32_t>(gridCoord.z) & (GRID_DEPTH - 1);
+    info.spatialCell = x + y * GRID_WIDTH + z * GRID_WIDTH * GRID_HEIGHT;
     
     return true;
 }
 
 bool EntityBufferManager::readbackSpatialCell(uint32_t cellIndex, std::vector<uint32_t>& entityIds) const {
-    const uint32_t SPATIAL_MAP_SIZE = 4096; // 64x64
+    const uint32_t SPATIAL_MAP_SIZE = 32768; // 32x32x32 = 32,768 (3D spatial grid)
     if (cellIndex >= SPATIAL_MAP_SIZE) {
         return false;
     }
@@ -377,7 +388,7 @@ bool EntityBufferManager::readbackSpatialCell(uint32_t cellIndex, std::vector<ui
 }
 
 bool EntityBufferManager::initializeSpatialMapBuffer() {
-    const uint32_t SPATIAL_MAP_SIZE = 4096; // 64x64 grid
+    const uint32_t SPATIAL_MAP_SIZE = 32768; // 32x32x32 = 32,768 (3D spatial grid)
     const uint32_t NULL_INDEX = 0xFFFFFFFF;
     
     // Create initialization data with NULL values
@@ -399,7 +410,7 @@ bool EntityBufferManager::initializeSpatialMapBuffer() {
     return success;
 }
 
-bool EntityBufferManager::readbackEntityAtPositionSafe(glm::vec2 worldPos, EntityDebugInfo& info) const {
+bool EntityBufferManager::readbackEntityAtPositionSafe(glm::vec3 worldPos, EntityDebugInfo& info) const {
     if (!context) {
         std::cerr << "EntityBufferManager::readbackEntityAtPositionSafe - No Vulkan context available" << std::endl;
         return false;

@@ -21,7 +21,7 @@ namespace {
     
     DispatchParams calculateDispatchParams(uint32_t entityCount, uint32_t maxWorkgroups, bool forceChunking) {
         // Calculate workgroups needed for both spatial map clearing and entity processing
-        const uint32_t SPATIAL_MAP_SIZE = 4096;
+        const uint32_t SPATIAL_MAP_SIZE = 32768;  // 3D spatial grid: 32³ = 32,768 cells
         const uint32_t spatialClearWorkgroups = (SPATIAL_MAP_SIZE + THREADS_PER_WORKGROUP - 1) / THREADS_PER_WORKGROUP;
         const uint32_t entityWorkgroups = (entityCount + THREADS_PER_WORKGROUP - 1) / THREADS_PER_WORKGROUP;
         
