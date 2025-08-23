@@ -1,145 +1,96 @@
-# Vulkan Rendering - Frame Graph System
+# Vulkan Rendering System
 
-## Purpose
-Declarative frame graph execution engine that orchestrates GPU compute and graphics workloads with automatic dependency resolution, optimal barrier insertion, and resource lifecycle management. Central coordinator for 80,000+ entity GPU-driven rendering pipeline.
+## Folder Structure
 
-## Architecture Overview
-
-### Core Components
 ```
-rendering/
-├── frame_graph.h/cpp              # Main coordinator - node execution & resource access
-├── frame_graph_types.h            # Type definitions & enums
-├── frame_graph_node_base.h        # Node interface & dependency declarations
-├── frame_graph_resource_registry.* # ECS buffer import bridge
-├── compilation/                   # Dependency analysis & execution ordering
-│   ├── dependency_graph.*         # Topological sorting & cycle detection
-│   └── frame_graph_compiler.*     # Compilation orchestration & error recovery
-├── execution/                     # Runtime execution coordination
-│   └── barrier_manager.*          # Memory barrier optimization & insertion
-└── resources/                     # Resource lifecycle management
-    └── resource_manager.*         # RAII buffers/images & memory pressure handling
-```
-
-### Data Flow
-```
-1. Registration: Nodes → Resources → Dependencies
-2. Compilation: Dependency graph → Topological sort → Barrier analysis
-3. Execution: Command buffer setup → Node execution → Barrier insertion
+src/vulkan/rendering/
+├── compilation/                    (Transforms frame graph nodes into executable order with dependency analysis)
+│   ├── dependency_graph.h          
+│   ├── dependency_graph.cpp        
+│   ├── frame_graph_compiler.h      
+│   └── frame_graph_compiler.cpp    
+├── execution/                      (Manages Vulkan synchronization barriers during frame graph execution)
+│   ├── barrier_manager.h           
+│   └── barrier_manager.cpp         
+├── resources/                      (Handles Vulkan buffer/image allocation with fallback strategies and cleanup)
+│   ├── resource_manager.h          
+│   └── resource_manager.cpp        
+├── frame_graph.h                   
+├── frame_graph.cpp                 
+├── frame_graph_node_base.h         
+├── frame_graph_resource_registry.h 
+├── frame_graph_resource_registry.cpp
+└── frame_graph_types.h             
 ```
 
-## Key Classes & Interfaces
+## File Descriptions
 
-### FrameGraph (Main Coordinator)
-**Responsibilities**: Node execution orchestration, resource access, lifecycle management
+### compilation/dependency_graph.h
+**Inputs:** FrameGraph nodes with input/output resource dependencies.  
+**Outputs:** GraphData structure containing resource producer mappings and adjacency lists for topological sorting.  
+**Purpose:** Builds optimized dependency graphs for O(1) resource producer lookups during compilation.
 
-**Key Methods**:
-- `addNode<T>()` - Template node registration with automatic dependency tracking
-- `createBuffer/Image()` - Managed resource creation with RAII cleanup
-- `importExternalBuffer/Image()` - ECS buffer integration (external lifecycle)
-- `compile()` - Dependency resolution with cycle detection & recovery
-- `execute()` - Command buffer generation with optimal barrier placement
+### compilation/dependency_graph.cpp
+**Inputs:** Map of NodeId->FrameGraphNode pairs with resource dependencies.  
+**Outputs:** Complete dependency graph with adjacency lists and in-degree tracking.  
+**Purpose:** Constructs directed acyclic graphs from resource producer-consumer relationships between nodes.
 
-**Resource Categories**:
-- **External**: ECS-managed VkBuffers (entity/position data) - handle imports only
-- **Internal**: Frame graph-owned resources with automatic RAII cleanup
-- **Critical**: Device-local required (entity buffers) - fail-fast allocation
-- **Evictable**: Memory pressure candidates with LRU-based cleanup
+### compilation/frame_graph_compiler.h
+**Inputs:** Frame graph nodes and their resource dependencies.  
+**Outputs:** Topologically sorted execution order with circular dependency analysis.  
+**Purpose:** Compiles frame graphs into executable order with cycle detection and partial compilation fallback.
 
-### FrameGraphNode (Base Interface)
-**Pure Virtual Interface** for render operations:
-```cpp
-virtual std::vector<ResourceDependency> getInputs() = 0;    // Read dependencies
-virtual std::vector<ResourceDependency> getOutputs() = 0;   // Write dependencies  
-virtual bool needsComputeQueue() = 0;                       // Queue requirements
-virtual bool needsGraphicsQueue() = 0;
-virtual void setup(FrameGraph& frameGraph) = 0;             // Pre-execution setup
-virtual void execute(VkCommandBuffer cmd, FrameGraph& frameGraph) = 0;
-```
+### compilation/frame_graph_compiler.cpp
+**Inputs:** Node dependency graphs and resource access patterns.  
+**Outputs:** Validated execution order or detailed cycle analysis with resolution suggestions.  
+**Purpose:** Implements Kahn's algorithm with enhanced cycle detection and generates actionable dependency resolution strategies.
 
-### ResourceManager
-**RAII Resource Lifecycle** with memory pressure handling:
-- `FrameGraphBuffer/Image` - vulkan_raii wrappers with automatic cleanup
-- Device-local allocation with fallback strategies per criticality
-- LRU-based eviction on memory pressure (>3s access time threshold)
-- Allocation telemetry for performance optimization
+### execution/barrier_manager.h
+**Inputs:** Execution order and node resource access patterns.  
+**Outputs:** Optimal Vulkan memory barriers for compute-graphics synchronization.  
+**Purpose:** Analyzes resource dependencies to insert minimal barriers at optimal points for async execution.
 
-### FrameGraphCompiler  
-**Dependency Resolution Engine**:
-- Kahn's algorithm topological sorting with enhanced cycle detection
-- Detailed circular dependency analysis with resolution suggestions
-- Partial compilation fallback for robust error recovery
-- Transactional state backup/restore for compilation safety
+### execution/barrier_manager.cpp
+**Inputs:** Resource write tracking and node pipeline stage information.  
+**Outputs:** VkBufferMemoryBarrier and VkImageMemoryBarrier batches inserted into command buffers.  
+**Purpose:** Creates and inserts Vulkan barriers to synchronize resource access between compute and graphics queues.
 
-### BarrierManager
-**Memory Synchronization Optimization**:
-- Single O(n) pass resource write tracking across all nodes
-- Per-node barrier batching for optimal async execution points
-- Automatic compute→graphics synchronization insertion
-- Pipeline stage optimization (COMPUTE_SHADER → VERTEX_SHADER/VERTEX_INPUT)
+### resources/resource_manager.h
+**Inputs:** Resource creation requests with size, format, and usage specifications.  
+**Outputs:** Vulkan buffers/images with RAII wrappers and memory pressure tracking.  
+**Purpose:** Manages Vulkan resource allocation with criticality-based strategies and memory pressure handling.
 
-## Integration Patterns
+### resources/resource_manager.cpp
+**Inputs:** Buffer/image specifications and external Vulkan handles for import.  
+**Outputs:** Allocated Vulkan resources with fallback memory strategies and eviction candidates.  
+**Purpose:** Implements robust allocation with device/host memory fallbacks and performs automatic cleanup under memory pressure.
 
-### ECS Buffer Import (via FrameGraphResourceRegistry)
-```cpp
-// Standard ECS resource registration
-resourceRegistry.importECSBuffers(frameGraph, gpuEntityManager);
-// Results in: "EntityBuffer", "PositionBuffer", "CurrentPositionBuffer", "TargetPositionBuffer"
-```
+### frame_graph.h
+**Inputs:** Vulkan context, sync objects, and queue managers for initialization.  
+**Outputs:** Compiled frame graph with resource handles and execution coordination.  
+**Purpose:** Main coordinator orchestrating modular compilation, barrier management, and resource allocation components.
 
-### Node Dependency Declaration
-```cpp
-std::vector<ResourceDependency> getInputs() override {
-    return {{entityBufferId, ResourceAccess::Read, PipelineStage::ComputeShader}};
-}
-std::vector<ResourceDependency> getOutputs() override {
-    return {{positionBufferId, ResourceAccess::Write, PipelineStage::ComputeShader}};
-}
-```
+### frame_graph.cpp
+**Inputs:** Frame timing data and node execution parameters.  
+**Outputs:** Command buffer recordings with optimal barriers and resource transitions.  
+**Purpose:** Executes compiled frame graphs with timeout monitoring and delegates resource management to specialized components.
 
-### Resource Access in Nodes
-```cpp
-void execute(VkCommandBuffer cmd, FrameGraph& frameGraph) override {
-    VkBuffer entityBuffer = frameGraph.getBuffer(entityBufferId);
-    VkBuffer positionBuffer = frameGraph.getBuffer(positionBufferId);
-    // Use buffers in compute/graphics operations
-}
-```
+### frame_graph_node_base.h
+**Inputs:** Node identification and resource dependency specifications.  
+**Outputs:** Standardized lifecycle hooks for initialization, execution, and cleanup.  
+**Purpose:** Base class defining frame graph node interface with resource dependencies and queue requirements.
 
-## Performance Characteristics
+### frame_graph_resource_registry.h
+**Inputs:** FrameGraph and GPUEntityManager references for resource import.  
+**Outputs:** Resource IDs for entity buffers imported into frame graph system.  
+**Purpose:** Bridges ECS GPU buffers into frame graph resource management for unified access.
 
-### Compilation (O(V + E))
-- **Dependency Analysis**: O(1) producer mapping, O(n) consumer iteration
-- **Topological Sort**: O(V + E) via Kahn's algorithm with cycle detection
-- **Barrier Analysis**: Single O(n) pass, no deduplication for CPU performance
+### frame_graph_resource_registry.cpp
+**Inputs:** External entity and position buffer handles from GPU entity manager.  
+**Outputs:** Imported frame graph resource IDs for entity rendering pipeline.  
+**Purpose:** Imports ECS-managed buffers as external resources while preserving their lifecycle management.
 
-### Memory Management
-- **Pressure Detection**: Optional GPUMemoryMonitor integration
-- **Eviction Strategy**: LRU-based with access time tracking
-- **Allocation**: Device-local preferred, intelligent fallback per criticality
-- **Cleanup**: RAII with `cleanupBeforeContextDestruction()` ordering
-
-### Error Recovery
-- **Circular Dependencies**: Detailed cycle analysis → partial compilation fallback
-- **Memory Pressure**: Automatic eviction → continued execution
-- **GPU Timeouts**: Optional detector integration → execution abort
-- **Critical Failures**: Fail-fast entity buffer allocation with performance warnings
-
-## External Dependencies
-
-### Required
-- **VulkanContext**: Device/loader/physical device access
-- **QueueManager**: Per-frame command buffer provision (separate from sync)
-- **VulkanSync**: Fence/semaphore primitives (NO command buffer management)
-- **vulkan_raii**: RAII wrappers for automatic resource cleanup
-
-### Optional Monitoring
-- **GPUMemoryMonitor**: Memory pressure detection for eviction triggers
-- **GPUTimeoutDetector**: GPU health monitoring with execution abort capability
-
-### Node Implementations
-- **nodes/entity_compute_node**: Movement computation (needsComputeQueue=true)
-- **nodes/entity_graphics_node**: Instanced rendering (needsGraphicsQueue=true)
-
----
-**Status**: Production-ready. Handles 80,000+ entities with automatic dependency resolution, memory pressure management, and robust error recovery. All external integrations stable.
+### frame_graph_types.h
+**Inputs:** Type requirements for resource and node identification.  
+**Outputs:** Unified type definitions for ResourceId, NodeId, and dependency descriptors.  
+**Purpose:** Defines core types for resource access patterns, pipeline stages, and dependency relationships.

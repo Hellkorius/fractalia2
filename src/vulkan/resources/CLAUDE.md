@@ -1,120 +1,47 @@
-# Vulkan Resources Architecture
+# src/vulkan/resources
 
-## Overview
-Resource management subsystem providing unified access to Vulkan buffers, images, memory allocation, and descriptors through a coordinated facade pattern that eliminates circular dependencies and delegation overhead.
-
-## Core Architecture
-
-### ResourceCoordinator (Central Hub)
-Primary entry point for all resource operations - delegates to specialized managers:
-- **Resource Creation**: Buffers, images, image views via ResourceFactory
-- **Memory Management**: Allocation, mapping, pressure detection via MemoryAllocator  
-- **Transfer Operations**: CPU→GPU data transfers via TransferManager
-- **Graphics Resources**: Uniform buffers, vertex/index data via GraphicsResourceManager
-- **Descriptor Management**: Pool and set allocation via DescriptorPoolManager
-
-### Resource Handle System
-```cpp
-struct ResourceHandle {
-    vulkan_raii::Buffer buffer;           // RAII buffer wrapper
-    vulkan_raii::Image image;             // RAII image wrapper  
-    vulkan_raii::ImageView imageView;     // RAII image view wrapper
-    vulkan_raii::DeviceMemory memory;     // RAII memory wrapper
-    void* mappedData;                     // Persistent mapping pointer
-    VkDeviceSize size;                    // Allocation size
-};
 ```
-
-## Key Subsystems
-
-### buffers/ - Buffer Management
-**BufferManager**: Facade coordinating specialized buffer components:
-- **StagingBufferPool**: Temporary upload staging with region allocation
-- **BufferRegistry**: GPU buffer lifecycle and tracking
-- **TransferOrchestrator**: Batch transfer operations optimization
-- **BufferStatisticsCollector**: Memory usage and performance monitoring
-
-### core/ - Resource Coordination
-**ResourceFactory**: Pure resource creation (SRP compliance)
-- Buffer/image creation with memory binding
-- Resource destruction with proper cleanup ordering
-
-**MemoryAllocator**: VMA wrapper for memory management
-- Memory pressure detection and recovery
-- Unified mapping interface for all resource types
-- Statistics tracking with fragmentation analysis
-
-**CommandExecutor**: Command buffer management for transfers
-- Async transfer support with completion tracking
-- Queue family optimization for transfer operations
-
-### descriptors/ - Descriptor Management
-**DescriptorSetManagerBase**: Common descriptor management patterns (DRY principle)
-- Template method pattern for specialized implementations
-- Shared pool management and validation
-- Lifecycle coordination with proper cleanup ordering
-
-### managers/ - High-Level Resource Managers
-**GraphicsResourceManager**: Consolidated graphics pipeline resources
-- Uniform buffer creation and management
-- Vertex/index buffer handling
-- Descriptor set allocation and updates with unified binding system
-
-**DescriptorPoolManager**: Descriptor pool allocation and recycling
-- Pool size optimization based on usage patterns
-- Automatic pool expansion under pressure
-
-## Data Flow Patterns
-
-### Resource Creation
-1. **Request** → ResourceCoordinator
-2. **Delegate** → ResourceFactory for creation
-3. **Allocate** → MemoryAllocator for memory binding  
-4. **Return** → ResourceHandle with RAII wrappers
-
-### Buffer Upload
-1. **Request** → BufferManager
-2. **Stage** → StagingBufferPool allocation
-3. **Transfer** → TransferOrchestrator batch optimization
-4. **Execute** → CommandExecutor async operations
-
-### Memory Management
-1. **Monitor** → MemoryAllocator pressure detection
-2. **Recover** → Automatic resource optimization
-3. **Track** → Statistics collection for performance analysis
-
-## RAII Integration
-All Vulkan resources use RAII wrappers from `vulkan_raii.h`:
-- **Automatic cleanup** on scope exit or exception
-- **Move semantics** for efficient resource transfer
-- **Explicit cleanup ordering** via `cleanupBeforeContextDestruction()`
-
-## Usage Patterns
-
-### Basic Resource Creation
-```cpp
-ResourceCoordinator coordinator;
-auto bufferHandle = coordinator.createBuffer(size, usage, properties);
-coordinator.copyToBuffer(bufferHandle, data, size);
+src/vulkan/resources/
+├── buffers/ (Specialized buffer lifecycle, staging, transfer coordination, and statistics)
+│   ├── buffer_factory.cpp
+│   ├── buffer_factory.h - Consumes VulkanContext, MemoryAllocator, staging pool, command executor. Produces ResourceHandles for buffers/images with memory allocation and transfer operations.
+│   ├── buffer_manager.cpp  
+│   ├── buffer_manager.h - Consumes ResourceCoordinator and component factories. Orchestrates buffer operations through staging pool, registry, transfer orchestrator, and statistics collector delegation.
+│   ├── buffer_registry.cpp
+│   ├── buffer_registry.h - Consumes ResourceCoordinator and BufferFactory. Maintains registry of managed GPUBuffer instances with lifecycle tracking and statistical reporting.
+│   ├── buffer_statistics_collector.cpp
+│   ├── buffer_statistics_collector.h - Consumes staging pool, buffer registry, transfer orchestrator. Produces aggregated buffer statistics and memory pressure indicators.
+│   ├── gpu_buffer.cpp
+│   ├── gpu_buffer.h - Consumes ResourceCoordinator and BufferManager. Provides GPU buffer abstraction with staging data management and upload coordination.
+│   ├── staging_buffer_pool.cpp
+│   ├── staging_buffer_pool.h - Consumes VulkanContext for ring buffer allocation. Produces staging regions with fragmentation tracking and memory pressure detection.
+│   ├── transfer_orchestrator.cpp
+│   └── transfer_orchestrator.h - Consumes staging pool, buffer registry, command executor. Orchestrates single/batch/async buffer transfers with staging optimization.
+├── core/ (Fundamental resource primitives and coordination infrastructure)
+│   ├── buffer_operation_utils.cpp
+│   ├── buffer_operation_utils.h - Consumes CommandExecutor and ResourceHandles. Provides centralized buffer copy operations and validation utilities to eliminate duplication.
+│   ├── command_executor.cpp
+│   ├── command_executor.h - Consumes VulkanContext and QueueManager. Executes synchronous/asynchronous buffer operations with optimal queue selection and transfer command management.
+│   ├── memory_allocator.cpp
+│   ├── memory_allocator.h - Consumes VulkanContext for VMA wrapper. Provides memory allocation, mapping, pressure detection, and budget management with statistics tracking.
+│   ├── resource_coordinator.cpp
+│   ├── resource_coordinator.h - Consumes VulkanContext and QueueManager. Coordinates resource creation, transfer operations, and manager access through delegation pattern.
+│   ├── resource_factory.cpp
+│   ├── resource_factory.h - Consumes VulkanContext and MemoryAllocator. Produces ResourceHandles for buffers, images, and image views with pure creation responsibility.
+│   ├── resource_handle.h - Defines resource handle structure combining RAII Vulkan objects with memory allocation and mapping state.
+│   ├── statistics_provider.h - Provides template-based statistics collection interface with performance monitoring and aggregation capabilities.
+│   ├── transfer_manager.cpp
+│   ├── transfer_manager.h - Consumes TransferOrchestrator for delegation. Provides pure transfer operations interface with single responsibility.
+│   ├── validation_utils.cpp
+│   └── validation_utils.h - Provides centralized validation utilities for dependencies, resources, operations, and error logging to eliminate duplication.
+├── descriptors/ (Descriptor set lifecycle and update coordination)
+│   ├── descriptor_set_manager_base.cpp
+│   ├── descriptor_set_manager_base.h - Consumes VulkanContext and DescriptorPoolManager. Provides common descriptor set management patterns with template method lifecycle.
+│   ├── descriptor_update_helper.cpp
+│   └── descriptor_update_helper.h - Consumes VulkanContext and descriptor specifications. Provides pure descriptor set update utilities with templated binding patterns.
+└── managers/ (High-level resource coordination and graphics pipeline management)
+    ├── descriptor_pool_manager.cpp
+    ├── descriptor_pool_manager.h - Consumes VulkanContext with pool configuration. Produces RAII descriptor pools with configurable sizing and bindless readiness.
+    ├── graphics_resource_manager.cpp
+    └── graphics_resource_manager.h - Consumes VulkanContext and BufferFactory. Manages graphics pipeline resources including uniform buffers, vertex/index buffers, and descriptor coordination.
 ```
-
-### Advanced Buffer Operations
-```cpp
-BufferManager& buffers = coordinator.getBufferManager();
-auto staging = buffers.allocateStagingGuarded(size);
-buffers.copyToBufferAsync(bufferHandle, data, size);
-```
-
-### Graphics Resource Management
-```cpp
-GraphicsResourceManager& graphics = coordinator.getGraphicsManager();
-graphics.createAllGraphicsResources();
-graphics.updateDescriptorSetsWithEntityAndPositionBuffers(entityBuffer, posBuffer);
-```
-
-## Performance Characteristics
-- **Zero-copy staging** with persistent mapping
-- **Batch transfer optimization** for multiple operations
-- **Memory pressure detection** with automatic recovery
-- **RAII overhead elimination** through move semantics
-- **Cache-friendly resource handles** (128-byte alignment)

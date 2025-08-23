@@ -1,168 +1,68 @@
-# Vulkan Pipelines Subsystem
+# CLAUDE.md
 
-## Overview
-High-performance pipeline management system for compute and graphics pipelines with advanced caching, state hashing, and optimization features. Supports both traditional and bindless descriptor layouts with hot-reloading capabilities.
+## src/vulkan/pipelines/
 
-## Architecture
+(Unified pipeline management system with caching, hot reload, and performance optimization for both graphics and compute pipelines)
 
-### Core Components
+### Compute Pipeline Components
 
-**PipelineSystemManager** - Unified interface coordinating all pipeline operations
-- Manages graphics, compute, shader, and descriptor layout managers
-- Provides high-level pipeline creation convenience methods
-- Handles system-wide operations like cache warming and recreation
+**compute_device_info.h/cpp**  
+Inputs: VulkanContext, device properties/features queries. Outputs: Optimal workgroup sizes, device capability data, compute-specific optimization parameters for pipeline creation.
 
-**Pipeline Managers** - Specialized managers for each pipeline type
-- `GraphicsPipelineManager` - Graphics pipeline state objects with render pass management
-- `ComputePipelineManager` - Compute pipelines with workgroup optimization and dispatch helpers
-- Both support async compilation, cache management, and performance profiling
+**compute_dispatcher.h/cpp**  
+Inputs: Command buffers, compute dispatch parameters, buffer/image barriers. Outputs: Optimized compute dispatches, barrier insertion, dispatch statistics and performance tracking.
 
-**Resource Managers** - Supporting infrastructure
-- `ShaderManager` - SPIR-V loading, GLSL compilation, hot-reloading, reflection
-- `DescriptorLayoutManager` - Descriptor set layout caching with bindless support
+**compute_pipeline_cache.h/cpp**  
+Inputs: ComputePipelineState specifications, compilation callbacks. Outputs: Cached VkPipeline objects, hit/miss statistics, LRU eviction management for compute pipelines.
 
-### Data Flow
+**compute_pipeline_factory.h/cpp**  
+Inputs: ComputePipelineState, ShaderManager, RAII pipeline cache. Outputs: CachedComputePipeline instances, VkPipelineLayout objects, shader specialization and validation.
 
-```
-1. Pipeline Creation Request
-   ↓
-2. State Specification (GraphicsPipelineState/ComputePipelineState)
-   ↓
-3. Cache Lookup (by state hash)
-   ↓
-4. Factory Creation (if cache miss)
-   → Shader Loading → Layout Creation → Pipeline Compilation
-   ↓
-5. Cached Pipeline Return (VkPipeline + VkPipelineLayout)
-```
+**compute_pipeline_manager.h/cpp**  
+Inputs: Shader/descriptor layout managers, pipeline states, dispatch requests. Outputs: Unified compute pipeline operations, batch compilation, async loading, profiling data and preset configurations.
 
-## Key Classes
+**compute_pipeline_types.h/cpp**  
+Inputs: Pipeline specifications, workgroup parameters, specialization constants. Outputs: ComputePipelineState structs, dispatch optimization data, cached pipeline metadata with performance metrics.
 
-### Pipeline State Objects
-```cpp
-struct GraphicsPipelineState {
-    // Complete graphics state for caching
-    std::vector<std::string> shaderStages;
-    VkRenderPass renderPass;
-    std::vector<VkDescriptorSetLayout> descriptorSetLayouts;
-    // Vertex input, rasterization, blending, etc.
-};
+### Graphics Pipeline Components
 
-struct ComputePipelineState {
-    std::string shaderPath;
-    std::vector<VkDescriptorSetLayout> descriptorSetLayouts;
-    glm::uvec3 workgroupSize;  // Optimization hints
-};
-```
+**graphics_pipeline_cache.h/cpp**  
+Inputs: GraphicsPipelineState objects, pipeline creation callbacks. Outputs: Cached graphics VkPipeline objects, usage statistics, memory-efficient caching with eviction policies.
 
-### Caching System
-- **State-based hashing** - Pipeline states generate unique hashes for cache keys
-- **LRU eviction** - Least recently used pipelines are evicted when cache is full
-- **Usage tracking** - Frame-based access patterns for optimization
-- **Hot path detection** - Frequently used pipelines marked for priority retention
+**graphics_pipeline_factory.h/cpp**  
+Inputs: GraphicsPipelineState, render passes, shader modules. Outputs: Complete graphics pipeline objects, pipeline layout creation, state validation and compilation timing.
+
+**graphics_pipeline_layout_builder.h/cpp**  
+Inputs: Descriptor set layouts, push constant ranges, graphics requirements. Outputs: VkPipelineLayout objects, layout compatibility validation, builder pattern for complex layouts.
+
+**graphics_pipeline_manager.h/cpp**  
+Inputs: Shader/layout managers, graphics states, render pass specifications. Outputs: Graphics pipeline operations, MSAA/wireframe presets, hot reload support, integrated cache management.
+
+**graphics_pipeline_state_hash.h/cpp**  
+Inputs: GraphicsPipelineState components, vertex attributes, blend states. Outputs: Hash values for pipeline caching, state comparison utilities, optimized hash computation.
+
+**graphics_render_pass_manager.h/cpp**  
+Inputs: Color/depth formats, sample counts, MSAA requirements. Outputs: VkRenderPass objects, render pass caching, format compatibility validation and subpass management.
+
+### Descriptor and Layout Management
+
+**descriptor_layout_manager.h/cpp**  
+Inputs: DescriptorLayoutSpec, binding configurations, device capabilities. Outputs: VkDescriptorSetLayout objects, descriptor pool sizing, bindless layout support, usage analytics.
 
 ### Shader Management
-```cpp
-struct ShaderModuleSpec {
-    std::string filePath;
-    ShaderSourceType sourceType;  // SPIRV_BINARY, GLSL_SOURCE
-    ShaderStageInfo stageInfo;
-    bool enableHotReload;
-};
-```
 
-**Features:**
-- SPIR-V binary loading and GLSL compilation (via glslc)
-- Shader reflection for automatic descriptor layout generation
-- Hot-reloading with file system monitoring
-- Specialization constants and preprocessor defines
+**shader_manager.h/cpp**  
+Inputs: SPIR-V files, GLSL source, compilation parameters, hot reload configuration. Outputs: VkShaderModule objects, shader reflection data, compilation statistics, automatic recompilation on file changes.
 
-### Descriptor Layout Management
-```cpp
-struct DescriptorLayoutSpec {
-    std::vector<DescriptorBinding> bindings;
-    bool enableBindless;
-    bool enableUpdateAfterBind;
-};
-```
+### System Coordination
 
-**Features:**
-- Bindless texture/buffer support (up to 65K descriptors)
-- Pool size calculation based on layout analysis
-- Common layout presets (uniform buffers, storage buffers, combined image samplers)
-- Builder pattern for complex layouts
+**pipeline_system_manager.h/cpp**  
+Inputs: VulkanContext, initialization parameters. Outputs: Unified access to all pipeline managers, integrated statistics, coordinated cache optimization and system-wide pipeline operations.
 
-## Essential Patterns
+### Utilities
 
-### Pipeline Creation
-```cpp
-// High-level convenience
-auto& pipelineSystem = getPipelineSystemManager();
-VkPipeline pipeline = pipelineSystem.createGraphicsPipeline({
-    .vertexShaderPath = "vertex.spv",
-    .fragmentShaderPath = "fragment.spv",
-    .renderPass = renderPass,
-    .enableMSAA = true
-});
+**hash_utils.h**  
+Inputs: Various data types, containers, pipeline state components. Outputs: Hash combination utilities, consistent hash generation, cache key computation with collision avoidance.
 
-// Direct manager access for advanced control
-auto* graphics = pipelineSystem.getGraphicsManager();
-GraphicsPipelineState state = graphics->createInstancedState();
-VkPipeline pipeline = graphics->getPipeline(state);
-```
-
-### Compute Dispatch Optimization
-```cpp
-auto* compute = pipelineSystem.getComputeManager();
-
-// Automatic workgroup calculation
-compute->dispatchBuffer(commandBuffer, state, entityCount, descriptorSets);
-
-// Manual optimization
-glm::uvec3 optimalSize = compute->calculateOptimalWorkgroupSize(dataSize);
-ComputeDispatch dispatch = {
-    .pipeline = pipeline,
-    .groupCountX = (dataSize + optimalSize.x - 1) / optimalSize.x
-};
-compute->dispatch(commandBuffer, dispatch);
-```
-
-### Cache Management
-```cpp
-// Warmup common pipelines at startup
-std::vector<GraphicsPipelineState> commonStates = {
-    graphics->createDefaultState(),
-    graphics->createInstancedState(),
-    graphics->createMSAAState()
-};
-graphics->warmupCache(commonStates);
-
-// Per-frame optimization
-graphics->optimizeCache(currentFrame);
-graphics->resetFrameStats();
-```
-
-### Hot Reloading
-```cpp
-shaderManager->enableHotReload(true);
-shaderManager->registerReloadCallback("movement.comp", [](VkShaderModule newShader) {
-    // Recreate dependent pipelines
-    compute->reloadPipeline(computeState);
-});
-```
-
-## Performance Features
-
-**Async Compilation** - Background pipeline compilation for reduced frame time impact
-**Batch Operations** - Multi-pipeline creation reduces driver overhead
-**RAII Resource Management** - Automatic cleanup with `vulkan_raii` wrappers
-**Statistics Tracking** - Cache hit ratios, compilation times, usage patterns
-**Memory Barriers** - Optimized compute-to-compute synchronization
-
-## Usage Notes
-
-- Pipeline state objects are immutable - changes require new state creation
-- Cache size limits prevent unbounded memory growth (configurable defaults)
-- Hot reloading requires file system monitoring (development builds only)
-- Bindless support requires VK_EXT_descriptor_indexing device extension
-- MSAA requires explicit render pass configuration with appropriate sample counts
+**pipeline_utils.h/cpp**  
+Inputs: Vulkan objects, pipeline specifications, creation parameters. Outputs: Common pipeline creation utilities, render pass helpers, barrier generation, debug naming functions.

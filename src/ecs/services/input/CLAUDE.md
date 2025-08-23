@@ -1,123 +1,66 @@
-# ECS Input Services
+# Input Services Module
 
-## Overview
-Action-based input system providing configurable key bindings, context switching, and seamless ECS integration for the Fractalia2 engine.
+(Modular input system providing action-based input management with SDL event processing, context switching, and ECS integration)
 
-## Architecture
+## Folder Structure
 
-### Core Pattern: Action → Binding → Context
 ```
-Physical Input (SDL) → InputBinding → InputAction → ECS Components
-                         ↓               ↓            ↓
-                    Raw events      Logical actions  Game state
-```
-
-### Key Classes
-
-**InputActionSystem** - Core action management
-- Maps physical inputs to logical actions (move, jump, shoot)
-- Supports digital (on/off), analog 1D (triggers), analog 2D (mouse/stick)
-- Action queries: `isActionJustPressed()`, `getActionAnalog2D()`
-- Callback registration for immediate response
-
-**InputContextManager** - Context switching with priority
-- Groups bindings by context (menu, gameplay, debug)
-- Priority-based resolution (higher priority overrides lower)
-- Context stack for temporary mode switching
-- Example: Menu context blocks gameplay actions
-
-**InputEventProcessor** - SDL event handling
-- Raw keyboard/mouse state tracking
-- Frame-based pressed/released detection
-- Window event processing (resize, quit)
-- Input consumption for UI systems
-
-**InputConfigManager** - Configuration persistence
-- Load/save key bindings from files
-- Default action/context setup
-- Runtime binding modification
-
-**InputECSBridge** - ECS integration
-- Synchronizes input state to ECS components
-- World coordinate conversion for mouse
-- Frame tracking for consistent updates
-
-### Data Flow
-
-1. **Event Processing**: SDL events → `InputEventProcessor` → Raw state
-2. **Action Evaluation**: Raw state + Context bindings → `InputActionSystem` → Action states
-3. **ECS Sync**: Action states → `InputECSBridge` → ECS components
-4. **Game Logic**: ECS systems query components or use action callbacks
-
-### Input Types & Binding
-
-```cpp
-// Action types
-InputActionType::DIGITAL     // Keys, buttons (true/false)
-InputActionType::ANALOG_1D   // Mouse wheel, triggers (float)
-InputActionType::ANALOG_2D   // Mouse position, sticks (vec2)
-
-// Binding structure
-InputBinding {
-    InputType inputType;     // KEYBOARD_KEY, MOUSE_BUTTON, etc.
-    int keycode/mouseButton; // Physical input identifier
-    float sensitivity;       // Analog scaling
-    bool requiresShift/Ctrl; // Modifier requirements
-}
+input/
+├── input_types.h
+├── input_action_system.h/cpp
+├── input_event_processor.h/cpp
+├── input_context_manager.h/cpp
+├── input_config_manager.h/cpp
+├── input_ecs_bridge.h/cpp
+└── Input.md
 ```
 
-### Context System
+## Files
 
-**Priority Resolution**: Higher priority contexts override lower ones
-- Menu (100) > Debug (50) > Gameplay (0)
-- Action bindings resolved in priority order
+### input_types.h
+**Inputs:** None (type definitions only)
+**Outputs:** InputActionType enum (DIGITAL, ANALOG_1D, ANALOG_2D), InputBinding struct with modifiers/sensitivity/deadzone, InputActionDefinition with name/type/default bindings, InputActionState with digital/analog values and timing. Provides core type system for input action mapping and state management.
 
-**Context Stack**: Temporary activation
-```cpp
-contextManager.pushContext("debug");    // Activate debug mode
-// ... debug actions available
-contextManager.popContext();           // Return to previous
-```
+### input_action_system.h
+**Inputs:** InputActionDefinition registration, KeyboardState/MouseState from event processor, InputContextManager for binding resolution, action callbacks
+**Outputs:** InputActionState updates with digital/analog values, action query results (active/pressed/released states), callback execution for registered actions. Manages action-to-input binding evaluation and provides high-level action queries.
 
-### Essential Usage Patterns
+### input_action_system.cpp
+**Inputs:** Raw keyboard/mouse state, active context bindings, deltaTime for duration tracking
+**Outputs:** Updated action states with timing information, executed callbacks for state changes, binding evaluation results. Implements core action system logic including modifier checking and analog value processing.
 
-**Action Registration**:
-```cpp
-InputActionDefinition moveAction {
-    .name = "move_forward",
-    .type = InputActionType::DIGITAL,
-    .defaultBindings = { InputBinding(KEYBOARD_KEY, SDLK_W) }
-};
-actionSystem.registerAction(moveAction);
-```
+### input_event_processor.h
+**Inputs:** SDL_Event queue, SDL_Window reference for coordinate systems
+**Outputs:** KeyboardState arrays with pressed/released tracking, MouseState with position/delta/wheel, window event flags (resize/quit). Provides raw SDL input processing and state maintenance.
 
-**Action Queries**:
-```cpp
-if (actionSystem.isActionJustPressed("jump")) { /* handle jump */ }
-glm::vec2 moveDir = actionSystem.getActionAnalog2D("mouse_look");
-```
+### input_event_processor.cpp
+**Inputs:** SDL event polling, keyboard scancode mappings, mouse button/motion/wheel events
+**Outputs:** Frame-coherent keyboard/mouse state arrays, modifier key tracking, window event consumption. Handles SDL event loop processing and maintains raw input state buffers.
 
-**Context Management**:
-```cpp
-// Setup contexts with priority
-contextManager.registerContext("gameplay", 0);
-contextManager.registerContext("menu", 100);
+### input_context_manager.h
+**Inputs:** InputContextDefinition registration, context activation/deactivation requests, priority-based context stack operations
+**Outputs:** Active context resolution, binding priority ordering, context stack state management. Manages input context switching and binding resolution with priority systems.
 
-// Bind actions to contexts
-contextManager.bindAction("gameplay", "move_forward", keyBinding);
-contextManager.setContextActive("menu", true);  // Activates menu, blocks gameplay
-```
+### input_context_manager.cpp
+**Inputs:** Context definitions with priority levels, push/pop context operations, action binding queries
+**Outputs:** Priority-sorted active contexts, filtered binding lists per action, context stack maintenance. Implements context priority resolution and binding conflict management.
 
-## Integration Points
+### input_config_manager.h
+**Inputs:** Configuration file paths, default action/context definitions, reset-to-defaults requests
+**Outputs:** Loaded InputActionDefinition and InputContextDefinition configurations, saved configuration persistence, default binding restoration. Manages input configuration loading/saving and default setup.
 
-- **Service Pattern**: Integrates with ServiceLocator for dependency injection
-- **ECS Bridge**: Synchronizes to ECS components for system queries
-- **Camera Service**: Mouse world coordinate conversion
-- **UI Systems**: Input consumption to prevent game action bleeding
+### input_config_manager.cpp
+**Inputs:** JSON/config file parsing, InputActionSystem and InputContextManager references for configuration
+**Outputs:** Registered default actions (movement, mouse, system), created default contexts, configuration file persistence. Implements configuration management and default input scheme setup.
 
-## Performance Notes
+### input_ecs_bridge.h
+**Inputs:** flecs::world reference, input entity creation, processed input states from other modules
+**Outputs:** ECS component synchronization (KeyboardInput, MouseInput, InputState, InputEvents), world coordinate transformations with CameraService integration. Bridges input system data to ECS components.
 
-- Frame-based state tracking prevents missed inputs
-- Context resolution cached per frame
-- Action callbacks for immediate response without polling
-- Minimal allocation during runtime (setup-time only)
+### input_ecs_bridge.cpp
+**Inputs:** KeyboardState, MouseState from event processor, action states from action system, camera service for world coordinate conversion
+**Outputs:** Updated ECS input components per frame, mouse world position calculations, synchronized input entity state. Implements ECS integration layer for input data access.
+
+### Input.md
+**Inputs:** None (documentation file)
+**Outputs:** Comprehensive module documentation including data flow diagrams, API reference, initialization order, and integration patterns. Serves as detailed technical reference for the input service architecture.

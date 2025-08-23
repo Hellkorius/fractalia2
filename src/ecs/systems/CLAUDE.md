@@ -1,56 +1,25 @@
 # ECS Systems
 
-## Purpose
-CPU side Entity management.
+(CPU-side system infrastructure for entity lifecycle and movement coordination with GPU compute)
 
-## Key Components
+## Files
 
-### Lifetime System (`lifetime_system.h/cpp`)
-- **Function**: Automatic entity destruction based on age
-- **Input**: `Lifetime` component with `maxAge`, `currentAge`, `autoDestroy`
-- **Process**: Updates age per frame, destroys entities when `currentAge >= maxAge`
-- **Usage**: Simple entity cleanup without manual management
+### systems_common.h
+**Inputs:** None (header aggregation)  
+**Outputs:** Common includes for Flecs ECS, components, utilities, profiler, and GPU entity management across system files.
 
-### Movement System (`movement_system.h/cpp`)
-- **Function**: ECS phase setup and statistics tracking
-- **Phases**: MovementPhase → PhysicsPhase → MovementSyncPhase
-- **Statistics**: Observer-based entity counting for `MovementPattern` and `Velocity`
-- **Note**: Movement computation handled by GPU compute shaders
+### lifetime_system.h
+**Inputs:** Flecs entity and component headers  
+**Outputs:** Function signature for lifetime system processing.
 
-## Data Flow
+### lifetime_system.cpp
+**Inputs:** Flecs entity with Lifetime component, world delta time  
+**Outputs:** Updated Lifetime component age, entity destruction when maxAge exceeded.
 
-1. **Registration**: WorldManager calls `MovementSystem::registerSystems(world, nullptr)`
-2. **Execution**: Only lifetime system runs per-entity per-frame
-3. **GPU Movement**: `/src/shaders/movement_random.comp` handles all position updates
-4. **Statistics**: Flecs observers track component add/remove events
+### movement_system.h
+**Inputs:** Systems common headers, Flecs world  
+**Outputs:** Movement phase registration functions, statistics structures, and GPU-CPU coordination interface.
 
-## Migration Status
-
-### GPU-Driven Architecture
-- **CPU**: Entity lifecycle, statistics, initial component setup
-- **GPU**: All movement computation via compute shaders
-- **Bridge**: GPUEntityManager handles CPU→GPU data transfer
-
-## Essential Files
-```
-systems_common.h         # Shared includes for all systems
-lifetime_system.h/cpp    # Entity auto-destruction
-movement_system.h/cpp    # ECS phases + statistics tracking
-```
-
-## Key Patterns
-
-### Observer-Based Statistics
-```cpp
-world.observer<MovementPattern>("MovementStatsObserver")
-    .event(flecs::OnAdd)
-    .each([](flecs::entity e, MovementPattern&) {
-        stats_.entitiesWithMovement++;
-    });
-```
-
-## Integration Points
-- **Registration**: `/src/ecs/core/world_manager.cpp`
-- **Components**: `/src/ecs/components/component.h`
-- **GPU Bridge**: `/src/ecs/gpu/gpu_entity_manager.h`
-- **Services**: Service architecture handles high-level game logic
+### movement_system.cpp
+**Inputs:** Flecs world, MovementPattern and Velocity components, ECS observers  
+**Outputs:** ECS execution phases (Movement, Physics, Sync), component statistics tracking, movement pattern reset functionality.

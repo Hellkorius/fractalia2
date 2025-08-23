@@ -1,224 +1,55 @@
-# Fractalia2 Project Documentation
+# Fractalia2 Codebase Architecture
 
-## Overview
-Cross-compiled (Linux→Windows) engine for 80,000+ entities at 60 FPS using GPU-driven instanced rendering.
+Cross-compiled (Linux→Windows) engine for 80,000+ entities at 60 FPS using GPU-driven instanced rendering with Structure of Arrays (SoA) optimization and Vulkan frame graphs.
 
-This project strictly adheres to established software engineering principles:
+## Project Structure
 
-- **SRP (Single Responsibility Principle)**:  
-  Each class, function, or module should have one well-defined responsibility.  
-  Avoid mixing concerns.
-
-- **DRY (Don’t Repeat Yourself)**:  
-  Eliminate code duplication by abstracting common functionality into shared helpers,  
-  utilities, or modules.
-
-## Stack
-- SDL3, Vulkan, Flecs ECS, GLM, MinGW
-- Service-based architecture with dependency injection
-
-## Architecture
-
-### CPU/GPU Pipeline
-1. **CPU (Flecs ECS + Services)**: Entity lifecycle, input, camera, control logic
-2. **GPU Compute**: Random walk movement calculation  
-3. **GPU Graphics**: Instanced rendering
-4. **Bridge**: GPUEntityManager + RenderingService handle CPU→GPU transfer
-
-### Data Flow
-1. Flecs components → Service layer → GPUEntity structs (128-byte layout)
-2. Compute shader calculates positions with interpolation  
-3. RenderingService culls and batches → Graphics reads entity buffer + position buffer
-4. Optimized instanced draw calls
-
-## Structure
 ```
-docs/                           # Project documentation
-├── Build.md                    # Build instructions
-├── Controls.md                 # User controls
-├── architecture.md             # System architecture
-├── hierarchy.md                # Component hierarchy
-└── rendergraph.md              # Render graph design
-src/
-├── main.cpp                    # Application entry
-├── vulkan_renderer.*           # Master renderer, frame loop
-├── vulkan/                     # Vulkan subsystems
-│   ├── core/                   # Core Vulkan infrastructure
-│   ├── pipelines/              # Pipeline management systems
-│   ├── resources/              # Memory and resource management
-│   ├── rendering/              # Frame graph and rendering coordination
-│   ├── services/               # High-level services
-│   ├── nodes/                  # Render graph nodes
-│   └── monitoring/             # Performance monitoring and debugging
-├── ecs/                        # ECS components, systems, and services
-│   ├── core/                   # Core service infrastructure
-│   │   ├── service_locator.*   # Service dependency injection
-│   │   ├── world_manager.*     # ECS world management with modules
-│   │   └── entity_factory.*    # Entity creation and management
-│   ├── services/               # High-level game services
-│   │   ├── input_service.*     # Advanced input with action mapping
-│   │   ├── camera_service.*    # Multi-camera with transitions
-│   │   ├── rendering_service.* # Render queue with culling/batching
-│   │   └── control_service.*   # Game control logic coordination
-│   ├── events/                 # Event system architecture
-│   │   ├── event_bus.*         # Central event dispatching
-│   │   ├── event_types.*       # Event type definitions
-│   │   └── event_listeners.*   # Event handler interfaces
-│   ├── modules/                # Flecs module implementations
-│   │   ├── movement_module.*   # Entity movement logic
-│   │   └── rendering_module.*  # Rendering integration
-│   ├── utilities/              # ECS utility functions
-│   │   ├── component_queries.* # Component query helpers
-│   │   ├── performance_tools.* # Profiling and monitoring
-│   │   ├── memory_manager.*    # Memory allocation utilities
-│   │   └── system_scheduler.*  # System execution coordination
-│   ├── gpu_entity_manager.*    # CPU→GPU bridge
-│   ├── systems/                # ECS systems
-│   └── components/             # Component definitions
-└── shaders/
-    ├── movement_random.comp    # Compute movement
-    ├── vertex.vert            # Vertex shader
-    └── fragment.frag          # Fragment shader
+fractalia2/
+├── docs/                           (Project documentation with build, architecture, and controls)
+├── src/
+│   ├── main.cpp, vulkan_renderer.*  (Application entry point and master frame loop coordinator)
+│   ├── shaders/                     (GLSL compute and graphics shaders with compiled SPIR-V)
+│   ├── ecs/                         (Entity Component System with service-based architecture)
+│   │   ├── components/              (Core ECS data structures for GPU synchronization and camera)
+│   │   ├── core/                    (Service locator with dependency injection and world management)
+│   │   ├── events/                  (Decoupled event bus architecture with type-safe dispatching)
+│   │   ├── gpu/                     (CPU-GPU bridge implementing Structure of Arrays for optimal GPU performance)
+│   │   ├── services/                (High-level game services coordinating input, camera, and rendering)
+│   │   │   ├── camera/              (Multi-camera management with frustum culling and smooth transitions)
+│   │   │   └── input/               (SDL event processing with action-based input and context switching)
+│   │   ├── systems/                 (ECS system infrastructure for entity lifecycle and movement coordination)
+│   │   └── utilities/               (Common debugging, profiling, and configuration utilities)
+│   └── vulkan/                      (Complete Vulkan subsystem with modern frame graph architecture)
+│       ├── core/                    (Foundational Vulkan infrastructure with RAII resource management)
+│       ├── monitoring/              (GPU performance monitoring with stress testing and timeout detection)
+│       ├── nodes/                   (Frame graph node implementations for compute, graphics, and presentation)
+│       ├── pipelines/               (Sophisticated pipeline management with caching, hot-reload, and optimization)
+│       ├── rendering/               (Frame graph coordination with dependency analysis and barrier optimization)
+│       │   ├── compilation/         (Dependency graph analysis with topological sorting and cycle detection)
+│       │   ├── execution/           (Memory barrier management for async compute-graphics synchronization)
+│       │   └── resources/           (Frame graph resource lifecycle with memory pressure handling)
+│       ├── resources/               (Comprehensive resource management infrastructure)
+│       │   ├── buffers/             (Buffer lifecycle with staging, transfer orchestration, and statistics)
+│       │   ├── core/                (Core resource utilities with validation and coordination patterns)
+│       │   ├── descriptors/         (Descriptor set management with update batching and lifecycle tracking)
+│       │   └── managers/            (High-level resource coordination for graphics pipeline components)
+│       └── services/                (High-level Vulkan services orchestrating frame execution and error recovery)
+├── build/                           (CMake build artifacts and compilation outputs)
+└── build-fast.sh, compile-shaders.sh (Development automation scripts for cross-compilation and shader processing)
 ```
 
-## GPUEntity Structure
-```cpp
-struct GPUEntity {
-    // Cache Line 1 (bytes 0-63) - HOT DATA: All frequently accessed in compute shaders
-    glm::vec4 velocity;           // 16 bytes - velocity.xy, damping (0.001), reserved
-    glm::vec4 movementParams;     // 16 bytes - amplitude, frequency, phase, timeOffset
-    glm::vec4 runtimeState;       // 16 bytes - totalTime, initialized, stateTimer, entityState
-    glm::vec4 color;              // 16 bytes - RGBA color
-    
-    // Cache Line 2 (bytes 64-127) - COLD DATA: Rarely accessed
-    glm::mat4 modelMatrix;        // 64 bytes - transform matrix
-}; // 128 bytes total (2 cache lines optimized)
-```
+## Architecture Overview
 
-## Service Architecture
+**CPU Pipeline**: Flecs ECS → Service Layer → GPU Entity Manager (SoA conversion)  
+**GPU Pipeline**: Movement Compute → Physics Compute → Graphics Rendering  
+**Coordination**: Frame Graph with automatic barrier insertion and resource dependency tracking  
+**Performance**: 80,000+ entities at 60 FPS with cache-optimized 128-byte entity layout and ping-pong buffers
 
-### Service Pattern
-The engine uses a service-based architecture for high-level systems:
+## Key Principles
 
-```cpp
-// Service registration with dependency injection
-auto worldManager = ServiceLocator::instance().createAndRegister<WorldManager>("WorldManager", 100);
-auto inputService = ServiceLocator::instance().createAndRegister<InputService>("InputService", 90);
-
-// Declare dependencies
-serviceLocator.declareDependencies<InputService, WorldManager>();
-
-// Access services
-InputService& input = ServiceLocator::instance().requireService<InputService>();
-// Or via convenience macro
-SERVICE(InputService).isActionJustPressed("jump");
-```
-
-### Service Lifecycle
-- **Priority-based initialization**: Higher priority services initialize first
-- **Dependency validation**: Ensures all dependencies are satisfied
-- **Lifecycle tracking**: UNINITIALIZED → INITIALIZING → INITIALIZED → SHUTTING_DOWN → SHUTDOWN
-- **Ordered cleanup**: Services shut down in reverse initialization order
-
-### Core Services
-
-1. **WorldManager** (Priority: 100)
-   - Manages Flecs world and module loading
-   - Provides ECS frame execution
-   - Performance monitoring integration
-
-2. **InputService** (Priority: 90)
-   - Action-based input system with context switching
-   - SDL event processing and raw input access
-   - Configurable key bindings and analog inputs
-
-3. **CameraService** (Priority: 80)
-   - Multi-camera management with smooth transitions
-   - Viewport support for split-screen
-   - Frustum culling and coordinate transformations
-
-4. **RenderingService** (Priority: 70)
-   - Render queue management with priority sorting
-   - LOD (Level of Detail) system integration
-   - Frustum and occlusion culling optimization
-
-5. **ControlService** (Priority: 60)
-   - Game control logic and action coordination
-   - Integration between input, camera, and rendering
-   - Debug commands and performance monitoring
-
-### Service Integration Pattern
-```cpp
-// Services communicate through well-defined interfaces
-class ControlService {
-    InputService* inputService;    // Dependency injection
-    CameraService* cameraService;
-    RenderingService* renderingService;
-    
-public:
-    void processFrame(float deltaTime) {
-        handleInput();      // → InputService
-        updateCamera();     // → CameraService  
-        optimizeRendering(); // → RenderingService
-    }
-};
-```
-
-## Code Conventions
-
-### Vulkan Function Call Pattern
-Vulkan subsystem uses local caching pattern for VulkanFunctionLoader calls:
-
-- **Pattern**: `const auto& vk = context->getLoader(); const VkDevice device = context->getDevice();`
-- **Usage**: Apply in functions with multiple Vulkan API calls to avoid repeated `context->getLoader().vkFunction()` 
-- **Files Using Pattern**: vulkan_utils.cpp, entity_compute_node.cpp, entity_graphics_node.cpp, gpu_synchronization_service.cpp, vulkan_swapchain.cpp, command_executor.cpp, vulkan_sync.cpp, descriptor_layout_manager.cpp, frame_graph.cpp, compute_stress_tester.cpp
-- **Alternative**: VulkanManagerBase provides wrapper methods for pipeline managers
-
-### RAII Vulkan Resource Management
-Vulkan resources use RAII wrappers for automatic cleanup and exception safety:
-
-- **Implementation**: `vulkan_raii.h/cpp` - Template-based RAII wrappers with move semantics
-- **Wrappers**: ShaderModule, Semaphore, Fence, Pipeline, DescriptorSetLayout, etc.
-- **Usage**: `vulkan_raii::ShaderModule shader = vulkan_raii::make_shader_module(handle, context)` or `vulkan_raii::create_pipeline_cache(context, &info)`
-- **Destruction Order**: Explicit `cleanupBeforeContextDestruction()` methods prevent use-after-free
-- **Migrated Components**: ShaderManager, VulkanSync (semaphores/fences)
-- **Access Pattern**: `wrapper.get()` for raw handle, automatic cleanup on scope exit
-
-### Service Development Guidelines
-
-1. **Service Definition**
-   - Inherit from service pattern: `DECLARE_SERVICE(MyService)`
-   - Implement initialization with clear dependencies
-   - Provide cleanup and proper resource management
-
-2. **Service Integration**
-   - Use ServiceLocator for dependency access
-   - Declare dependencies explicitly for validation
-   - Provide convenience namespaces for global access
-
-3. **Error Handling**
-   - Return false from initialize() on failure
-   - Throw exceptions for critical dependency failures
-   - Log errors with context for debugging
-
-4. **Performance**
-   - Cache service references to avoid repeated lookups
-   - Use lifecycle states to avoid accessing uninitialized services
-   - Batch operations where possible for frame coherency
-
-### Service Architecture Migration Notes
-
-**Completed:**
-- Full service-based architecture implementation
-- Dependency injection with ServiceLocator pattern
-- Service lifecycle management and cleanup ordering
-- Input, Camera, Rendering, and Control services fully implemented
-- Legacy system integration removed (SimpleControlSystem, direct InputManager calls)
-- Convenience namespaces for backward compatibility
-
-**Service Benefits:**
-- Clean separation of concerns
-- Testable and mockable dependencies
-- Proper initialization order with validation
-- Resource cleanup in correct order
-- Thread-safe service access with lifecycle tracking
+- **Single Responsibility**: Each component has one well-defined purpose
+- **Structure of Arrays**: GPU-optimized memory layout for 20-30% bandwidth reduction  
+- **Service Architecture**: Dependency injection with priority-based initialization
+- **Frame Graph**: Declarative rendering with automatic synchronization
+- **RAII Resource Management**: Exception-safe Vulkan object lifecycle

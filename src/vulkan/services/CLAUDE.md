@@ -1,164 +1,63 @@
-# Vulkan Services
+# CLAUDE.md
 
-## Overview
-High-level Vulkan services that orchestrate frame rendering coordination, command submission, synchronization, and error recovery for the 80,000+ entity GPU-driven rendering pipeline.
+## src/vulkan/services/ (High-level Vulkan coordination services that orchestrate frame execution, error recovery, and GPU synchronization)
 
-## Architecture
+### command_submission_service.h
+**Inputs:** Frame indices, execution results from FrameGraph, VulkanContext, VulkanSync, VulkanSwapchain, QueueManager.  
+**Outputs:** SubmissionResult with success/failure status and swapchain recreation flags.  
+**Function:** Defines service interface for async compute and graphics command submission with presentation coordination.
 
-### Service Coordination Pattern
-Services follow a dependency injection pattern with clear separation of concerns:
+### command_submission_service.cpp
+**Inputs:** Current frame data, command buffers from QueueManager, synchronization primitives from VulkanSync.  
+**Outputs:** Submitted GPU work to compute and graphics queues, presentation requests to present queue.  
+**Function:** Implements parallel async compute/graphics submission pattern where compute calculates frame N+1 while graphics renders frame N.
 
-```cpp
-// Frame rendering orchestration
-RenderFrameDirector -> CommandSubmissionService -> GPUSynchronizationService
-                  -> PresentationSurface -> ErrorRecoveryService
-                  -> FrameStateManager
-```
+### error_recovery_service.h
+**Inputs:** RenderFrameResult indicating failure, frame timing data, Flecs world reference.  
+**Outputs:** Recovery success status and retry frame results after swapchain recreation.  
+**Function:** Defines error recovery interface that attempts swapchain recreation when frame execution fails.
 
-### Data Flow
-1. **Frame Direction**: RenderFrameDirector coordinates frame execution through FrameGraph
-2. **Command Submission**: Async compute (frame N+1) + graphics (frame N) submission
-3. **Synchronization**: Per-frame fence management with robust waiting
-4. **Presentation**: Swapchain image acquisition and recreation handling
-5. **Error Recovery**: Automatic swapchain recreation and frame retry logic
+### error_recovery_service.cpp
+**Inputs:** Failed frame results, PresentationSurface for swapchain management, RenderFrameDirector for retry attempts.  
+**Outputs:** Boolean recovery success, retried frame execution through RenderFrameDirector.  
+**Function:** Analyzes frame failures and attempts recovery via proactive swapchain recreation with frame retry logic.
 
-## Core Services
+### frame_state_manager.h
+**Inputs:** Frame indices, compute/graphics usage flags per frame.  
+**Outputs:** Lists of VkFences that need waiting based on previous frame usage patterns.  
+**Function:** Tracks which GPU operations were used per frame to determine required fence synchronization.
 
-### RenderFrameDirector
-**Purpose**: Main frame coordination orchestrator
+### frame_state_manager.cpp
+**Inputs:** Per-frame usage state updates from rendering pipeline, VulkanSync fence references.  
+**Outputs:** Filtered fence arrays containing only fences that require waiting based on usage history.  
+**Function:** Maintains circular buffer of frame states to optimize fence waiting by skipping unused operations.
 
-**Key Responsibilities**:
-- FrameGraph setup and node configuration
-- Resource ID management (entity buffers, position buffers, swapchain images)
-- Frame compilation and execution coordination
-- Swapchain cache invalidation on recreation
+### gpu_synchronization_service.h
+**Inputs:** VulkanContext for device access, frame indices for fence selection.  
+**Outputs:** VkFence handles for compute/graphics operations, timeout results from fence waits.  
+**Function:** Manages per-frame compute and graphics fences using RAII wrappers with robust timeout handling.
 
-**Critical Pattern**:
-```cpp
-RenderFrameResult directFrame(uint32_t currentFrame, float totalTime, float deltaTime, 
-                             uint32_t frameCounter, flecs::world* world);
-```
+### gpu_synchronization_service.cpp
+**Inputs:** Frame-specific fence wait requests, swapchain recreation signals requiring all-frame synchronization.  
+**Outputs:** Synchronized GPU state via fence waits, reset fence states after swapchain recreation.  
+**Function:** Provides robust fence waiting with timeout handling and critical fence reset logic to prevent corruption across swapchain recreation.
 
-### CommandSubmissionService
-**Purpose**: Async compute + graphics command submission
+### presentation_surface.h
+**Inputs:** VulkanContext, VulkanSwapchain, frame indices for image acquisition.  
+**Outputs:** SurfaceAcquisitionResult containing acquired image indices and recreation flags.  
+**Function:** Coordinates swapchain image acquisition with recreation detection and framebuffer resize handling.
 
-**Key Responsibilities**:
-- Parallel compute/graphics work submission (compute frame N+1, graphics frame N)
-- Queue management through QueueManager dependency
-- Fence-based synchronization coordination
-- Swapchain recreation detection
+### presentation_surface.cpp
+**Inputs:** Current frame index, framebuffer resize events, graphics pipeline and sync managers.  
+**Outputs:** Acquired swapchain images with proper timeout handling, recreated swapchain resources.  
+**Function:** Handles swapchain image acquisition with timeout protection and orchestrates full swapchain recreation including pipeline cache regeneration.
 
-**Critical Pattern**:
-```cpp
-// ASYNC COMPUTE: Submit compute for next frame while graphics renders current
-submitComputeWorkAsync(currentFrame + 1);  // No waiting
-submitGraphicsWork(currentFrame);          // With sync
-```
+### render_frame_director.h
+**Inputs:** All Vulkan subsystem managers, ECS world reference, frame timing data, resource IDs.  
+**Outputs:** RenderFrameResult containing execution success and acquired swapchain image index.  
+**Function:** Master frame orchestration service that coordinates image acquisition, frame graph setup, node configuration, and execution.
 
-### GPUSynchronizationService
-**Purpose**: Per-frame fence management with RAII safety
-
-**Key Responsibilities**:
-- Dual fence management (compute + graphics per frame)
-- Robust fence waiting with timeout handling
-- In-use tracking to prevent double-submission
-- RAII cleanup before context destruction
-
-**Critical Pattern**:
-```cpp
-std::array<vulkan_raii::Fence, MAX_FRAMES_IN_FLIGHT> computeFences;
-std::array<vulkan_raii::Fence, MAX_FRAMES_IN_FLIGHT> graphicsFences;
-```
-
-### PresentationSurface
-**Purpose**: Swapchain image acquisition and recreation coordination
-
-**Key Responsibilities**:
-- Next image acquisition with error handling
-- Swapchain recreation state management
-- Framebuffer resize detection and coordination
-- Render pass tracking for recreation
-
-**Critical Pattern**:
-```cpp
-SurfaceAcquisitionResult acquireNextImage(uint32_t currentFrame);
-bool recreateSwapchain(); // Coordinates with graphics pipeline manager
-```
-
-### FrameStateManager
-**Purpose**: Per-frame usage tracking for fence optimization
-
-**Key Responsibilities**:
-- Track compute/graphics usage per frame
-- Provide fence lists for selective waiting
-- Optimize fence waits (skip unused work)
-
-**Critical Pattern**:
-```cpp
-struct FrameState {
-    bool computeUsed = true;   // Initialize true for safety
-    bool graphicsUsed = true;
-};
-```
-
-### ErrorRecoveryService
-**Purpose**: Automatic error recovery and retry logic
-
-**Key Responsibilities**:
-- Frame failure analysis and recovery decisions
-- Swapchain recreation coordination
-- Frame retry after successful recovery
-
-**Critical Pattern**:
-```cpp
-bool handleFrameFailure(const RenderFrameResult& frameResult, /* retry params */);
-```
-
-## Service Integration Patterns
-
-### Dependency Chain
-```cpp
-// Service initialization with clear dependencies
-RenderFrameDirector.initialize(context, swapchain, pipelineSystem, sync, 
-                              resourceCoordinator, gpuEntityManager, 
-                              frameGraph, presentationSurface);
-```
-
-### Error Propagation
-```cpp
-struct SubmissionResult {
-    bool success = false;
-    bool swapchainRecreationNeeded = false;
-    VkResult lastResult = VK_SUCCESS;
-};
-```
-
-### Async Coordination
-- **Compute Pipeline**: Frame N+1 position calculation (no sync dependencies)
-- **Graphics Pipeline**: Frame N rendering (waits for compute N completion)
-- **Presentation**: Image acquisition → graphics → present with error recovery
-
-## Critical Implementation Details
-
-### Fence Management
-- **RAII Safety**: vulkan_raii::Fence prevents resource leaks
-- **Robust Waiting**: Timeout handling with detailed error reporting
-- **Usage Tracking**: Prevent fence double-submission and optimize waits
-
-### Frame Synchronization
-- **Global Frame Counter**: Atomic counter for compute shader consistency
-- **Per-Frame Resources**: Independent resource sets for MAX_FRAMES_IN_FLIGHT
-- **Cache Invalidation**: Swapchain recreation invalidates cached resource IDs
-
-### Error Recovery Strategy
-1. Detect frame failure (acquisition, submission, or presentation)
-2. Analyze error type (swapchain out-of-date, device lost, etc.)
-3. Attempt swapchain recreation if appropriate
-4. Retry frame execution with fresh resources
-5. Propagate unrecoverable errors to caller
-
-## Performance Characteristics
-- **Async Compute**: Overlapped compute/graphics execution for maximum GPU utilization
-- **Fence Optimization**: Skip unnecessary fence waits based on usage tracking
-- **Resource Caching**: Minimize resource allocation/deallocation overhead
-- **Robust Recovery**: Automatic swapchain recreation without frame drops
+### render_frame_director.cpp
+**Inputs:** Frame counters, timing data, Flecs world, swapchain images, GPU entity and resource managers.  
+**Outputs:** Configured and executed frame graph with proper node setup, updated descriptor sets after swapchain recreation.  
+**Function:** Implements complete frame direction flow from image acquisition through frame graph execution with dynamic swapchain image resolution and comprehensive swapchain recreation handling.

@@ -1,111 +1,44 @@
-# ECS Services - Core Game Systems
+# ECS Services Directory
 
-## Purpose
-High-level service-based architecture for game functionality coordination. Provides dependency-injected services that bridge ECS components with external systems (SDL, Vulkan) using priority-based initialization.
+**camera/** (Camera system management and viewport handling)
+- **camera.md** - Documentation for camera system architecture and features
+- **camera_culling.cpp** - Consumes camera bounds and entity transforms. Produces visibility flags for entities within camera frustum
+- **camera_culling.h** - Defines camera culling interface and visibility testing functions
+- **camera_manager.cpp** - Consumes camera creation requests and ECS world. Produces camera entities with proper component initialization and lifecycle management
+- **camera_manager.h** - Defines camera management interface with ID-based camera access and entity mapping
+- **camera_transforms.cpp** - Consumes camera position/rotation/zoom parameters. Produces view and projection matrices for rendering pipeline
+- **camera_transforms.h** - Defines camera transformation calculations and matrix generation interface
+- **camera_transition_system.cpp** - Consumes transition requests and timing data. Produces smooth camera interpolation between states over time
+- **camera_transition_system.h** - Defines camera transition interface with easing functions and state management
+- **viewport_manager.cpp** - Consumes viewport definitions and camera associations. Produces viewport configurations for multi-camera rendering
+- **viewport_manager.h** - Defines viewport management interface with name-based viewport access and activation
 
-## Architecture Pattern
-- **Service Locator**: `DECLARE_SERVICE()` macro for standardized interface
-- **Priority Initialization**: Services initialize in dependency order (100→60)
-- **Dependency Injection**: Services access each other through ServiceLocator
-- **Frame Coordination**: Single-threaded frame processing with proper ordering
+**input/** (Input processing and action mapping subsystem)
+- **Input.md** - Documentation for input system architecture and action mapping
+- **input_action_system.cpp** - Consumes raw input states and context bindings. Produces action states with analog values and callback execution
+- **input_action_system.h** - Defines action system interface with binding evaluation and callback management
+- **input_config_manager.cpp** - Consumes configuration files and binding definitions. Produces saved/loaded input configurations with validation
+- **input_config_manager.h** - Defines configuration management interface for persistent input settings
+- **input_context_manager.cpp** - Consumes context registration and activation requests. Produces prioritized context stack for input resolution
+- **input_context_manager.h** - Defines context management interface with priority-based activation system
+- **input_ecs_bridge.cpp** - Consumes ECS world and input states. Produces ECS components synchronized with input system state
+- **input_ecs_bridge.h** - Defines ECS integration interface for input component management
+- **input_event_processor.cpp** - Consumes SDL events and window context. Produces processed keyboard/mouse states with event tracking
+- **input_event_processor.h** - Defines event processing interface with raw input state management
+- **input_types.h** - Defines input system data structures including bindings, actions, and state representations
 
-## Core Services
+**camera_service.cpp** - Consumes camera requests, viewport definitions, and frame updates. Produces unified camera management with transitions, culling, and coordinate transformations
 
-### CameraService (Priority: 80)
-**Purpose**: Multi-camera management with smooth transitions and viewport support
-```cpp
-// Key APIs
-CameraID createCamera(const std::string& name = "");
-void transitionToCamera(CameraID target, CameraTransitionType type, float duration);
-std::vector<CullingInfo> performFrustumCulling(const std::vector<Transform>& transforms, const std::vector<Bounds>& bounds);
-glm::vec2 worldToScreen(const glm::vec3& worldPos, const glm::vec2& screenSize);
-```
-**Modules**: camera_manager, camera_transitions, viewport_manager, camera_culling, camera_transforms
+**camera_service.h** - Defines comprehensive camera service interface integrating all camera subsystems with ECS world
 
-### InputService (Priority: 90)
-**Purpose**: Action-based input system with context switching
-```cpp
-// Key APIs
-bool isActionJustPressed(const std::string& actionName);
-glm::vec2 getActionAnalog2D(const std::string& actionName);
-void setContextActive(const std::string& contextName, bool active);
-glm::vec2 getMouseWorldPosition();
-```
-**Modules**: input_action_system, input_event_processor, input_context_manager, input_config_manager, input_ecs_bridge
+**control_service.cpp** - Consumes input actions, camera service, and rendering service. Produces game control logic with entity creation, debug commands, and performance monitoring
 
-### RenderingService (Priority: 70)
-**Purpose**: ECS-Vulkan bridge with render queue management and culling optimization
-```cpp
-// Key APIs
-void buildRenderQueue();
-void performCulling();
-void createRenderBatches();
-void submitRenderQueue();
-const CullingStats& getCullingStats();
-```
-**Features**: LOD system, frustum culling, render batching, GPU-driven pipeline
+**control_service.h** - Defines control service interface with action registration, state management, and service coordination
 
-### GameControlService (Priority: 60)
-**Purpose**: Game control logic and inter-service coordination
-```cpp
-// Key APIs
-void processFrame(float deltaTime);
-void createEntity(const glm::vec2& position);
-void createSwarm(size_t count, const glm::vec3& center, float radius);
-void toggleMovementType();
-```
-**Integration**: Coordinates input → camera → rendering pipeline
+**input_service.cpp** - Consumes SDL events, window context, and action definitions. Produces comprehensive input management with context switching and callback execution
 
-## Data Flow
-```
-Frame Processing:
-GameControlService.processFrame()
-  → InputService.processFrame()    // SDL events → actions
-  → CameraService.update()         // Transitions, active camera
-  → RenderingService.processFrame()
-    → buildRenderQueue()           // ECS entities
-    → performCulling()             // CameraService culling
-    → createRenderBatches()        // GPU optimization
-    → submitRenderQueue()          // VulkanRenderer
+**input_service.h** - Defines input service interface integrating all input subsystems with action-based input handling
 
-Inter-Service Communication:
-Input → Camera: Mouse world coords, viewport queries
-Camera → Rendering: View matrices, culling results
-Rendering → GPU: Entity data, transform buffers
-Control → All: Commands, state changes, debug toggles
-```
+**rendering_service.cpp** - Consumes ECS entities with renderable components and camera data. Produces render queue with culling, batching, and GPU synchronization
 
-## Key Interfaces
-
-### Service Pattern
-```cpp
-class MyService {
-    DECLARE_SERVICE(MyService);
-    bool initialize(flecs::world& world, ...);
-    void cleanup();
-    void processFrame(float deltaTime);
-};
-```
-
-### Dependency Access
-```cpp
-// Initialize dependencies
-cameraService = &ServiceLocator::instance().requireService<CameraService>();
-
-// Or use convenience macro
-SERVICE(InputService).isActionJustPressed("jump");
-```
-
-## Integration Points
-- **ECS World**: All services operate on shared `flecs::world&`
-- **SDL Integration**: InputService processes SDL events
-- **Vulkan Pipeline**: RenderingService submits to VulkanRenderer
-- **GPU Bridge**: Services coordinate through GPUEntityManager
-- **Service Locator**: Centralized dependency management with lifecycle tracking
-
-## Performance Considerations
-- **Cached Service References**: Avoid repeated ServiceLocator lookups
-- **Batch Processing**: Camera culling operates on entity arrays  
-- **GPU Optimization**: Render service minimizes draw calls through batching
-- **Early Termination**: Skip rendering when no entities visible
-- **Thread Safety**: Service access protected by mutex, frame processing single-threaded
+**rendering_service.h** - Defines rendering service interface with render queue management, statistics tracking, and GPU pipeline coordination

@@ -1,164 +1,61 @@
-# Camera Service Module
+# Camera Services Directory
 
-## Purpose
-Multi-camera system with smooth transitions, frustum culling, and viewport support for GPU-driven rendering pipeline. Provides unified camera management through service-based architecture.
+(Modular camera system providing multi-camera management, coordinate transformations, frustum culling, smooth transitions, and viewport support for split-screen rendering)
 
-## Core Components
+## Folder Hierarchy
 
-### CameraService (`camera_service.h`)
-**Main interface** aggregating all camera functionality via unique_ptr composition:
-- `CameraManager` - ECS entity lifecycle and active camera tracking
-- `CameraTransitionSystem` - Smooth interpolated camera state changes
-- `ViewportManager` - Multi-viewport split-screen support
-- `CameraCulling` - Frustum culling and LOD calculations
-- `CameraTransforms` - Coordinate transformations and matrix generation
-
-### Key Classes
-
-#### CameraManager
-**Purpose**: Camera entity lifecycle in ECS
-- **Creates**: `CameraID` (uint32_t) for camera identification
-- **Manages**: `flecs::entity` with Camera components, active camera state
-- **Methods**: `createCamera()`, `setActiveCamera()`, movement/zoom/rotation controls
-- **Pattern**: ID-based access preventing pointer instability
-
-#### CameraCulling  
-**Purpose**: Visibility optimization for rendering pipeline
-- **Input**: `std::vector<Transform>`, `std::vector<Bounds>`, `Camera*`
-- **Output**: `std::vector<CullingInfo>` with visibility/distance/LOD data
-- **Method**: `performFrustumCulling()` - batch processes entity arrays
-- **LOD**: Distance-based levels (0-3) with configurable thresholds
-
-#### CameraTransitionSystem
-**Purpose**: Smooth camera state interpolation
-- **Types**: `INSTANT`, `LINEAR`, `SMOOTH_STEP`, `EASE_IN/OUT`, `SPRING`
-- **State**: `CameraTransition` struct with duration/callbacks/custom easing
-- **Method**: `transitionToCamera()` - interpolates position/zoom/rotation
-- **Pattern**: Frame-based updates with completion callbacks
-
-#### CameraTransforms
-**Purpose**: Coordinate system conversions
-- **Conversions**: `worldToScreen()`, `screenToWorld()`, `viewportToWorld()`
-- **Matrices**: `getViewMatrix()`, `getProjectionMatrix()`, `getViewProjectionMatrix()`
-- **Integration**: Provides matrices to GPU pipeline via RenderingService
-
-#### ViewportManager
-**Purpose**: Multi-viewport split-screen rendering
-- **Data**: `Viewport` struct with normalized coordinates (0.0-1.0)
-- **Features**: Render order, clear settings, camera assignments
-- **Methods**: `createViewport()`, `findViewportAtScreenPoint()` for input routing
-
-## Data Flow
-
-### Frame Update Cycle
 ```
-CameraService::update(deltaTime)
-  → CameraTransitionSystem::update() [interpolates active transitions]
-  → updateActiveCamera() [applies transition results]
-  → CameraTransforms provides matrices to RenderingService
-  → CameraCulling processes entity batches for visibility
-  → ViewportManager provides screen regions for multi-pass rendering
+src/ecs/services/camera/
+├── camera.md                       # Documentation file
+├── camera_culling.h/cpp           # Frustum culling system
+├── camera_manager.h/cpp           # Camera entity lifecycle management
+├── camera_transforms.h/cpp        # World/screen coordinate transformations
+├── camera_transition_system.h/cpp # Smooth camera state transitions
+└── viewport_manager.h/cpp         # Multi-viewport screen region management
 ```
 
-### Service Integration
-- **InputService** → coordinate transformations for mouse/touch input
-- **RenderingService** → consumes view-projection matrices and culling results
-- **ControlService** → triggers camera movements and transitions
-- **WorldManager** → provides ECS world for camera entity management
+## Files
 
-## Key Data Structures
+### camera.md
+**Inputs:** None (documentation file)
+**Outputs:** Design documentation for the camera services architecture, component integration patterns, and API references.
 
-### Camera Component (in `camera_component.h`)
-```cpp
-struct Camera {
-    glm::vec3 position;           // World position
-    float zoom;                   // Zoom level (no limits)
-    float rotation;               // Rotation in radians
-    glm::vec2 viewSize;          // Orthographic view dimensions
-    
-    // Lazy-computed matrices (dirty flags)
-    glm::mat4 viewMatrix;
-    glm::mat4 projectionMatrix;
-    bool matricesDirty = true;
-};
-```
+### camera_culling.h
+**Inputs:** Transform and Bounds component references, Camera state for frustum calculations.
+**Outputs:** CullingInfo struct, CameraBounds struct, visibility test interfaces. Provides frustum culling and camera bounds calculation declarations.
 
-### CullingInfo
-```cpp
-struct CullingInfo {
-    glm::vec3 position;
-    glm::vec3 bounds;
-    bool visible;
-    float distanceToCamera;
-    int lodLevel;                 // 0=highest detail, 3=lowest
-};
-```
+### camera_culling.cpp
+**Inputs:** Entity transforms, bounding boxes, camera position/zoom/viewSize parameters.
+**Outputs:** Boolean visibility results, calculated camera frustum bounds with validity flags. Performs 2D frustum culling using AABB intersection tests.
 
-### Viewport
-```cpp
-struct Viewport {
-    std::string name;
-    CameraID cameraID;
-    glm::vec2 offset;            // Normalized (0.0-1.0)
-    glm::vec2 size;              // Normalized (0.0-1.0)
-    int renderOrder;
-    glm::vec4 clearColor;
-};
-```
+### camera_manager.h
+**Inputs:** Flecs ECS world reference, Camera component data, string identifiers.
+**Outputs:** CameraID handles, camera entity management interface, active camera tracking. Declares multi-camera lifecycle management with name-based lookup.
 
-## Essential Patterns
+### camera_manager.cpp
+**Inputs:** ECS world for entity creation, Camera structs, window resize events, movement/zoom requests.
+**Outputs:** Camera entities in ECS world, CameraID mappings, active camera state updates. Manages camera entity lifecycle with aspect ratio updates and cleanup ordering.
 
-### Service Registration
-```cpp
-// In service initialization
-auto cameraService = ServiceLocator::instance()
-    .createAndRegister<CameraService>("CameraService", 80);
-serviceLocator.declareDependencies<CameraService, WorldManager>();
+### camera_transforms.h
+**Inputs:** World positions, screen coordinates, Camera and Viewport state references.
+**Outputs:** Coordinate transformation interface, matrix accessor declarations. Provides world↔screen coordinate conversion and matrix calculation methods.
 
-// Usage
-SERVICE(CameraService).createCamera("main");
-SERVICE(CameraService).transitionToCamera(cameraID, LINEAR, 2.0f);
-```
+### camera_transforms.cpp
+**Inputs:** 3D world positions, 2D screen coordinates, camera position/zoom/viewSize, viewport configurations.
+**Outputs:** Converted coordinate vectors, view/projection matrices from camera state. Handles coordinate transformations with proper Y-axis flipping for SDL screen space.
 
-### Camera Operations
-```cpp
-// Create and manage cameras
-CameraID mainCam = cameraService.createCamera("main");
-cameraService.setActiveCamera(mainCam);
-cameraService.setCameraPosition(mainCam, {0, 0, 10});
+### camera_transition_system.h
+**Inputs:** Delta time, source/target camera states, transition configuration parameters.
+**Outputs:** CameraTransition struct, easing function interface, interpolated camera states. Declares smooth camera transitions with multiple easing curve types.
 
-// Smooth transitions
-cameraService.transitionToCamera(targetCam, EASE_IN_OUT, 1.5f);
+### camera_transition_system.cpp
+**Inputs:** Frame delta time, Camera start/end states, transition duration and type parameters.
+**Outputs:** Interpolated camera positions/zoom/rotation, transition completion callbacks. Implements easing functions and camera state interpolation with angle wrapping.
 
-// Coordinate transformations
-glm::vec2 screenPos = cameraService.worldToScreen(worldPos, screenSize);
-glm::mat4 mvp = cameraService.getViewProjectionMatrix();
-```
+### viewport_manager.h
+**Inputs:** Viewport configuration, camera assignments, screen coordinates for hit testing.
+**Outputs:** Viewport struct with screen rectangle calculations, multi-viewport management interface. Declares viewport creation and screen region management for split-screen support.
 
-### Culling Integration
-```cpp
-// In rendering pipeline
-std::vector<CullingInfo> visible = cameraService.performFrustumCulling(
-    entityTransforms, entityBounds);
-    
-// Filter by visibility and LOD
-for (const auto& info : visible) {
-    if (info.visible && info.lodLevel <= maxLOD) {
-        renderEntity(info);
-    }
-}
-```
-
-## Performance Optimizations
-
-1. **Batch Culling**: Process entity arrays efficiently vs per-entity calls
-2. **Lazy Matrix Computation**: Camera matrices calculated only when dirty
-3. **ID-Based Access**: Stable camera references without pointer invalidation
-4. **LOD System**: Distance-based detail reduction for GPU workload optimization
-5. **Service Composition**: Modular design enables efficient sub-system access
-
-## Dependencies
-
-- **Core**: `flecs.h` (ECS), `glm/` (math), `service_locator.h` (DI pattern)
-- **Components**: `camera_component.h`, `component.h` (Transform/Bounds)
-- **Pipeline**: Integrates with VulkanRenderer and RenderingService for GPU rendering
+### viewport_manager.cpp
+**Inputs:** Named viewport configurations, screen size, point coordinates for viewport hit testing.
+**Outputs:** Active viewport collections sorted by render order, screen point collision results. Manages viewport lifecycle with normalized coordinate conversion to pixel space.
