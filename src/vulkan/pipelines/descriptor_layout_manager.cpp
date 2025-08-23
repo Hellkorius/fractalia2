@@ -689,6 +689,30 @@ namespace DescriptorLayoutPresets {
         spec.bindings = {uboBinding, particleBinding};
         return spec;
     }
+
+    DescriptorLayoutSpec createSunSystemLayout() {
+        DescriptorLayoutSpec spec;
+        spec.layoutName = "SunSystem";
+        
+        // Binding 0: Sun UBO (camera matrices, sun data, timing info)
+        DescriptorBinding uboBinding{};
+        uboBinding.binding = 0;
+        uboBinding.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        uboBinding.descriptorCount = 1;
+        uboBinding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT | VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+        uboBinding.debugName = "sunUBO";
+        
+        // Binding 1: Particle Buffer (particle data storage)
+        DescriptorBinding particleBinding{};
+        particleBinding.binding = 1;
+        particleBinding.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        particleBinding.descriptorCount = 1;
+        particleBinding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT | VK_SHADER_STAGE_VERTEX_BIT;
+        particleBinding.debugName = "sunParticleBuffer";
+        
+        spec.bindings = {uboBinding, particleBinding};
+        return spec;
+    }
 }
 
 // DescriptorLayoutBuilder implementation

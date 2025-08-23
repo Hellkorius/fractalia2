@@ -325,4 +325,81 @@ namespace GraphicsPipelinePresets {
         
         return state;
     }
+
+    GraphicsPipelineState createSunSystemRenderingState(VkRenderPass renderPass, 
+                                                        VkDescriptorSetLayout descriptorLayout) {
+        // Create a clean state from scratch to avoid inheritance issues
+        GraphicsPipelineState state{};
+        state.renderPass = renderPass;
+        state.descriptorSetLayouts.push_back(descriptorLayout);
+        
+        // Use sun system specific shaders
+        state.shaderStages = {
+            "shaders/sun_system.vert.spv",
+            "shaders/sun_system.frag.spv"
+        };
+        
+        // Vertex input for simple 2D quad (vec2 position)
+        VkVertexInputBindingDescription vertexBinding{};
+        vertexBinding.binding = 0;
+        vertexBinding.stride = sizeof(glm::vec2);  // Only 2D position for quad
+        vertexBinding.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+        state.vertexBindings.push_back(vertexBinding);
+        
+        VkVertexInputAttributeDescription posAttr{};
+        posAttr.binding = 0;
+        posAttr.location = 0;
+        posAttr.format = VK_FORMAT_R32G32_SFLOAT;  // vec2
+        posAttr.offset = 0;
+        state.vertexAttributes.push_back(posAttr);
+        
+        // Input assembly
+        state.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+        state.primitiveRestartEnable = VK_FALSE;
+        
+        // Rasterization
+        state.depthClampEnable = VK_FALSE;
+        state.rasterizerDiscardEnable = VK_FALSE;
+        state.polygonMode = VK_POLYGON_MODE_FILL;
+        state.lineWidth = 1.0f;
+        state.cullMode = VK_CULL_MODE_NONE;  // Billboard quads, no culling
+        state.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+        state.depthBiasEnable = VK_FALSE;
+        
+        // Multisampling
+        state.sampleShadingEnable = VK_FALSE;
+        state.rasterizationSamples = VK_SAMPLE_COUNT_2_BIT;  // Match render pass
+        state.minSampleShading = 1.0f;
+        
+        // Depth/Stencil
+        state.depthTestEnable = VK_TRUE;
+        state.depthWriteEnable = VK_FALSE;  // Don't write depth for transparent particles
+        state.depthCompareOp = VK_COMPARE_OP_LESS;
+        state.stencilTestEnable = VK_FALSE;
+        
+        // Color blending - additive blending for light effect
+        VkPipelineColorBlendAttachmentState colorBlendAttachment{};
+        colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | 
+                                             VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+        colorBlendAttachment.blendEnable = VK_TRUE;
+        colorBlendAttachment.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+        colorBlendAttachment.dstColorBlendFactor = VK_BLEND_FACTOR_ONE; // Additive blending
+        colorBlendAttachment.colorBlendOp = VK_BLEND_OP_ADD;
+        colorBlendAttachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+        colorBlendAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+        colorBlendAttachment.alphaBlendOp = VK_BLEND_OP_ADD;
+        state.colorBlendAttachments.push_back(colorBlendAttachment);
+        
+        state.logicOpEnable = VK_FALSE;
+        state.logicOp = VK_LOGIC_OP_COPY;
+        
+        // Push constants for render mode (0=sun disc, 1=particles)
+        VkPushConstantRange pushConstant{};
+        pushConstant.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+        pushConstant.offset = 0;
+        pushConstant.size = sizeof(int) * 2;  // renderMode, instanceId
+        state.pushConstantRanges.push_back(pushConstant);
+        
+        return state;
+    }
 }

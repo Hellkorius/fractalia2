@@ -163,6 +163,9 @@ namespace ComputePipelinePresets {
     // Particle system update
     ComputePipelineState createParticleUpdateState(VkDescriptorSetLayout descriptorLayout);
     
+    // Sun particle system simulation
+    ComputePipelineState createSunParticleState(VkDescriptorSetLayout descriptorLayout);
+    
     // Frustum culling
     ComputePipelineState createFrustumCullingState(VkDescriptorSetLayout descriptorLayout);
     

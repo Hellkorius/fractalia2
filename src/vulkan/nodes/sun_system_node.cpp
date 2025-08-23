@@ -282,10 +282,106 @@ bool SunSystemNode::createDescriptorResources(const FrameGraph& frameGraph) {
         return false;
     }
     
-    // TODO: Create and allocate descriptor sets
-    // This would require proper descriptor layouts from the pipeline managers
+    // Get sun system descriptor layout
+    DescriptorLayoutSpec layoutSpec = DescriptorLayoutPresets::createSunSystemLayout();
+    VkDescriptorSetLayout descriptorLayout = computeManager->getLayoutManager()->getLayout(layoutSpec);
     
-    std::cout << "SunSystemNode: Created descriptor resources" << std::endl;
+    if (descriptorLayout == VK_NULL_HANDLE) {
+        std::cerr << "SunSystemNode: Failed to get sun system descriptor layout" << std::endl;
+        return false;
+    }
+    
+    // Allocate compute descriptor set
+    VkDescriptorSetAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    allocInfo.descriptorPool = descriptorPool;
+    allocInfo.descriptorSetCount = 1;
+    allocInfo.pSetLayouts = &descriptorLayout;
+    
+    result = vk.vkAllocateDescriptorSets(device, &allocInfo, &computeDescriptorSet);
+    if (result != VK_SUCCESS) {
+        std::cerr << "SunSystemNode: Failed to allocate compute descriptor set: " << result << std::endl;
+        return false;
+    }
+    
+    // Allocate graphics descriptor set
+    result = vk.vkAllocateDescriptorSets(device, &allocInfo, &graphicsDescriptorSet);
+    if (result != VK_SUCCESS) {
+        std::cerr << "SunSystemNode: Failed to allocate graphics descriptor set: " << result << std::endl;
+        return false;
+    }
+    
+    // Get particle buffer from frame graph
+    VkBuffer particleBuffer = frameGraph.getBuffer(particleBufferId);
+    if (particleBuffer == VK_NULL_HANDLE) {
+        std::cerr << "SunSystemNode: Failed to get particle buffer from frame graph" << std::endl;
+        return false;
+    }
+    
+    // Update descriptor sets
+    VkDescriptorBufferInfo uboBufferInfo{};
+    uboBufferInfo.buffer = sunUBOHandle.buffer.get();
+    uboBufferInfo.offset = 0;
+    uboBufferInfo.range = sizeof(SunUBO);
+    
+    VkDescriptorBufferInfo particleBufferInfo{};
+    particleBufferInfo.buffer = particleBuffer;
+    particleBufferInfo.offset = 0;
+    particleBufferInfo.range = VK_WHOLE_SIZE;
+    
+    VkWriteDescriptorSet descriptorWrites[4]; // 2 bindings × 2 sets = 4 writes
+    
+    // Compute descriptor set - binding 0: UBO
+    descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    descriptorWrites[0].pNext = nullptr;
+    descriptorWrites[0].dstSet = computeDescriptorSet;
+    descriptorWrites[0].dstBinding = 0;
+    descriptorWrites[0].dstArrayElement = 0;
+    descriptorWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    descriptorWrites[0].descriptorCount = 1;
+    descriptorWrites[0].pBufferInfo = &uboBufferInfo;
+    descriptorWrites[0].pImageInfo = nullptr;
+    descriptorWrites[0].pTexelBufferView = nullptr;
+    
+    // Compute descriptor set - binding 1: particle buffer
+    descriptorWrites[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    descriptorWrites[1].pNext = nullptr;
+    descriptorWrites[1].dstSet = computeDescriptorSet;
+    descriptorWrites[1].dstBinding = 1;
+    descriptorWrites[1].dstArrayElement = 0;
+    descriptorWrites[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    descriptorWrites[1].descriptorCount = 1;
+    descriptorWrites[1].pBufferInfo = &particleBufferInfo;
+    descriptorWrites[1].pImageInfo = nullptr;
+    descriptorWrites[1].pTexelBufferView = nullptr;
+    
+    // Graphics descriptor set - binding 0: UBO
+    descriptorWrites[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    descriptorWrites[2].pNext = nullptr;
+    descriptorWrites[2].dstSet = graphicsDescriptorSet;
+    descriptorWrites[2].dstBinding = 0;
+    descriptorWrites[2].dstArrayElement = 0;
+    descriptorWrites[2].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    descriptorWrites[2].descriptorCount = 1;
+    descriptorWrites[2].pBufferInfo = &uboBufferInfo;
+    descriptorWrites[2].pImageInfo = nullptr;
+    descriptorWrites[2].pTexelBufferView = nullptr;
+    
+    // Graphics descriptor set - binding 1: particle buffer
+    descriptorWrites[3].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    descriptorWrites[3].pNext = nullptr;
+    descriptorWrites[3].dstSet = graphicsDescriptorSet;
+    descriptorWrites[3].dstBinding = 1;
+    descriptorWrites[3].dstArrayElement = 0;
+    descriptorWrites[3].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    descriptorWrites[3].descriptorCount = 1;
+    descriptorWrites[3].pBufferInfo = &particleBufferInfo;
+    descriptorWrites[3].pImageInfo = nullptr;
+    descriptorWrites[3].pTexelBufferView = nullptr;
+    
+    vk.vkUpdateDescriptorSets(device, 4, descriptorWrites, 0, nullptr);
+    
+    std::cout << "SunSystemNode: Created descriptor resources and allocated descriptor sets" << std::endl;
     return true;
 }
 
@@ -293,17 +389,46 @@ void SunSystemNode::executeParticleCompute(VkCommandBuffer commandBuffer, const 
     computeCounter++;
     
     try {
+        const auto& vk = vulkanContext->getLoader();
+        
+        // Create pipeline state with sun system layout
+        DescriptorLayoutSpec layoutSpec = DescriptorLayoutPresets::createSunSystemLayout();
+        VkDescriptorSetLayout descriptorLayout = computeManager->getLayoutManager()->getLayout(layoutSpec);
+        ComputePipelineState pipelineState = ComputePipelinePresets::createSunParticleState(descriptorLayout);
+        
+        // Get pipeline
+        VkPipeline pipeline = computeManager->getPipeline(pipelineState);
+        VkPipelineLayout pipelineLayout = computeManager->getPipelineLayout(pipelineState);
+        
+        if (pipeline == VK_NULL_HANDLE || pipelineLayout == VK_NULL_HANDLE) {
+            uint32_t counter = computeCounter.load();
+            if (counter % 300 == 0) {
+                std::cerr << "SunSystemNode: Failed to get pipeline or layout for compute" << std::endl;
+            }
+            return;
+        }
+        
+        // Bind pipeline
+        vk.vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
+        
+        // Bind descriptor sets
+        vk.vkCmdBindDescriptorSets(
+            commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipelineLayout,
+            0, 1, &computeDescriptorSet, 0, nullptr
+        );
+        
         // Calculate dispatch parameters
         uint32_t workgroupSize = 64; // From shader local_size_x
         uint32_t numWorkgroups = (maxParticles + workgroupSize - 1) / workgroupSize;
         
-        // For now, just log that we would dispatch
+        // Dispatch compute shader
+        vk.vkCmdDispatch(commandBuffer, numWorkgroups, 1, 1);
+        
+        // Log progress periodically
         uint32_t counter = computeCounter.load();
         if (counter % 300 == 0) {
-            std::cout << "SunSystemNode: Would dispatch " << numWorkgroups << " workgroups for " << maxParticles << " particles" << std::endl;
+            std::cout << "SunSystemNode: Dispatched " << numWorkgroups << " workgroups for " << maxParticles << " particles" << std::endl;
         }
-        
-        // TODO: Actual pipeline creation and dispatch once descriptor layouts are ready
         
     } catch (const std::exception& e) {
         std::cerr << "SunSystemNode::executeParticleCompute exception: " << e.what() << std::endl;
@@ -314,14 +439,14 @@ void SunSystemNode::executeGraphicsRender(VkCommandBuffer commandBuffer, const F
     renderCounter++;
     
     try {
-        // Log progress
+        // TEMPORARY: Skip graphics rendering to isolate crash issue
         uint32_t counter = renderCounter.load();
         if (counter % 300 == 0) {
-            std::cout << "SunSystemNode: Graphics render pass - sun and particles rendering (placeholder)" << std::endl;
+            std::cout << "SunSystemNode: Graphics render pass - TEMPORARILY DISABLED for debugging" << std::endl;
         }
         
-        // TODO: Implement actual graphics rendering once pipeline system integration is complete
-        // For now, just track that we're being called
+        // TODO: Re-enable once we isolate the pipeline creation crash
+        return;
         
     } catch (const std::exception& e) {
         std::cerr << "SunSystemNode::executeGraphicsRender exception: " << e.what() << std::endl;

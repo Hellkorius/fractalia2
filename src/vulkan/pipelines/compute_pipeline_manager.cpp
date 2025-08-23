@@ -346,6 +346,20 @@ namespace ComputePipelinePresets {
         
         return state;
     }
+
+    ComputePipelineState createSunParticleState(VkDescriptorSetLayout descriptorLayout) {
+        ComputePipelineState state{};
+        state.shaderPath = "shaders/sun_system.comp.spv";
+        state.descriptorSetLayouts.push_back(descriptorLayout);
+        state.workgroupSizeX = 64;  // MUST match shader local_size_x (sun system shader)
+        state.workgroupSizeY = 1;
+        state.workgroupSizeZ = 1;
+        state.isFrequentlyUsed = true;
+        
+        // Sun system shader uses UBO for all data, no push constants needed
+        
+        return state;
+    }
 }
 
 void ComputePipelineManager::optimizeCache(uint64_t currentFrame) {

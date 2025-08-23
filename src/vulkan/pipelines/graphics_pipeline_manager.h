@@ -83,6 +83,8 @@ namespace GraphicsPipelinePresets {
                                                     VkDescriptorSetLayout descriptorLayout);
     GraphicsPipelineState createParticleRenderingState(VkRenderPass renderPass, 
                                                        VkDescriptorSetLayout descriptorLayout);
+    GraphicsPipelineState createSunSystemRenderingState(VkRenderPass renderPass, 
+                                                        VkDescriptorSetLayout descriptorLayout);
     
     GraphicsPipelineState createWireframeOverlayState(VkRenderPass renderPass);
     GraphicsPipelineState createUIRenderingState(VkRenderPass renderPass);

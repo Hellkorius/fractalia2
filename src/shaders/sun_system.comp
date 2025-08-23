@@ -11,11 +11,7 @@ struct SunParticle {
     vec4 properties;    // x = size, y = age, z = type, w = spawn_timer
 };
 
-layout(std430, binding = 0) restrict buffer ParticleBuffer {
-    SunParticle particles[];
-};
-
-layout(binding = 1) uniform SunUBO {
+layout(binding = 0) uniform SunUBO {
     mat4 viewMatrix;
     mat4 projMatrix; 
     vec4 sunPosition;       // xyz = position, w = radius
@@ -24,6 +20,10 @@ layout(binding = 1) uniform SunUBO {
     vec4 sceneInfo;         // x = time, y = deltaTime, z = particleCount, w = windStrength
     vec4 lightParams;       // x = rayLength, y = rayIntensity, z = particleBrightness, w = gravityStrength
 } ubo;
+
+layout(std430, binding = 1) restrict buffer ParticleBuffer {
+    SunParticle particles[];
+};
 
 // Simple random number generation
 uint hash(uint x) {
