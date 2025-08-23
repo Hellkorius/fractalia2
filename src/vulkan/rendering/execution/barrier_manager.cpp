@@ -114,22 +114,18 @@ void BarrierManager::addResourceBarrier(FrameGraphTypes::ResourceId resourceId, 
         barrierBatches_.emplace_back();
         batchIt = barrierBatches_.end() - 1;
         batchIt->targetNodeId = targetNode;
-        batchIt->srcStage = convertPipelineStage(srcStage);
-        batchIt->dstStage = convertPipelineStage(dstStage);
-    } else {
-        // Update stage flags to include all stages in this batch
-        batchIt->srcStage |= convertPipelineStage(srcStage);
-        batchIt->dstStage |= convertPipelineStage(dstStage);
     }
     
     // Add resource barrier to the batch with deduplication within the same batch
     if (getBufferResource_) {
         const FrameGraphResources::FrameGraphBuffer* buffer = getBufferResource_(resourceId);
         if (buffer) {
-            VkBufferMemoryBarrier barrier{};
-            barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-            barrier.srcAccessMask = convertAccess(srcAccess, srcStage);
-            barrier.dstAccessMask = convertAccess(dstAccess, dstStage);
+            VkBufferMemoryBarrier2 barrier{};
+            barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2;
+            barrier.srcStageMask = convertPipelineStage2(srcStage);
+            barrier.srcAccessMask = convertAccess2(srcAccess, srcStage);
+            barrier.dstStageMask = convertPipelineStage2(dstStage);
+            barrier.dstAccessMask = convertAccess2(dstAccess, dstStage);
             barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
             barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
             barrier.buffer = buffer->buffer.get();
@@ -140,7 +136,9 @@ void BarrierManager::addResourceBarrier(FrameGraphTypes::ResourceId resourceId, 
             bool isDuplicate = false;
             for (const auto& existing : batchIt->bufferBarriers) {
                 if (existing.buffer == barrier.buffer &&
+                    existing.srcStageMask == barrier.srcStageMask &&
                     existing.srcAccessMask == barrier.srcAccessMask &&
+                    existing.dstStageMask == barrier.dstStageMask &&
                     existing.dstAccessMask == barrier.dstAccessMask &&
                     existing.offset == barrier.offset &&
                     existing.size == barrier.size) {
@@ -159,10 +157,12 @@ void BarrierManager::addResourceBarrier(FrameGraphTypes::ResourceId resourceId, 
     if (getImageResource_) {
         const FrameGraphResources::FrameGraphImage* image = getImageResource_(resourceId);
         if (image) {
-            VkImageMemoryBarrier barrier{};
-            barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-            barrier.srcAccessMask = convertAccess(srcAccess, srcStage);
-            barrier.dstAccessMask = convertAccess(dstAccess, dstStage);
+            VkImageMemoryBarrier2 barrier{};
+            barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
+            barrier.srcStageMask = convertPipelineStage2(srcStage);
+            barrier.srcAccessMask = convertAccess2(srcAccess, srcStage);
+            barrier.dstStageMask = convertPipelineStage2(dstStage);
+            barrier.dstAccessMask = convertAccess2(dstAccess, dstStage);
             barrier.oldLayout = VK_IMAGE_LAYOUT_GENERAL;
             barrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
             barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
@@ -178,7 +178,9 @@ void BarrierManager::addResourceBarrier(FrameGraphTypes::ResourceId resourceId, 
             bool isDuplicate = false;
             for (const auto& existing : batchIt->imageBarriers) {
                 if (existing.image == barrier.image &&
+                    existing.srcStageMask == barrier.srcStageMask &&
                     existing.srcAccessMask == barrier.srcAccessMask &&
+                    existing.dstStageMask == barrier.dstStageMask &&
                     existing.dstAccessMask == barrier.dstAccessMask &&
                     existing.oldLayout == barrier.oldLayout &&
                     existing.newLayout == barrier.newLayout &&
@@ -217,17 +219,15 @@ void BarrierManager::insertBarrierBatch(const NodeBarrierInfo& batch, VkCommandB
     
     const auto& vk = context_->getLoader();
     
-    vk.vkCmdPipelineBarrier(
-        commandBuffer,
-        batch.srcStage,
-        batch.dstStage,
-        0, // dependencyFlags
-        0, nullptr, // memory barriers
-        static_cast<uint32_t>(batch.bufferBarriers.size()), 
-        batch.bufferBarriers.data(),
-        static_cast<uint32_t>(batch.imageBarriers.size()), 
-        batch.imageBarriers.data()
-    );
+    // Use Synchronization2 with unified VkDependencyInfo
+    VkDependencyInfo dependencyInfo{};
+    dependencyInfo.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+    dependencyInfo.bufferMemoryBarrierCount = static_cast<uint32_t>(batch.bufferBarriers.size());
+    dependencyInfo.pBufferMemoryBarriers = batch.bufferBarriers.data();
+    dependencyInfo.imageMemoryBarrierCount = static_cast<uint32_t>(batch.imageBarriers.size());
+    dependencyInfo.pImageMemoryBarriers = batch.imageBarriers.data();
+    
+    vk.vkCmdPipelineBarrier2(commandBuffer, &dependencyInfo);
 }
 
 VkAccessFlags BarrierManager::convertAccess(ResourceAccess access, PipelineStage stage) const {
@@ -262,6 +262,42 @@ VkPipelineStageFlags BarrierManager::convertPipelineStage(PipelineStage stage) c
             return VK_PIPELINE_STAGE_TRANSFER_BIT;
         default:
             return VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+    }
+}
+
+// Synchronization2 conversion methods with enhanced pipeline stage flags
+VkAccessFlags2 BarrierManager::convertAccess2(ResourceAccess access, PipelineStage stage) const {
+    switch (access) {
+        case ResourceAccess::Read: 
+            if (stage == PipelineStage::VertexShader) {
+                return VK_ACCESS_2_VERTEX_ATTRIBUTE_READ_BIT | VK_ACCESS_2_SHADER_READ_BIT;
+            }
+            return VK_ACCESS_2_SHADER_READ_BIT;
+        case ResourceAccess::Write: 
+            return VK_ACCESS_2_SHADER_WRITE_BIT;
+        case ResourceAccess::ReadWrite: 
+            return VK_ACCESS_2_SHADER_READ_BIT | VK_ACCESS_2_SHADER_WRITE_BIT;
+        default: 
+            return VK_ACCESS_2_NONE;
+    }
+}
+
+VkPipelineStageFlags2 BarrierManager::convertPipelineStage2(PipelineStage stage) const {
+    switch (stage) {
+        case PipelineStage::ComputeShader:
+            return VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+        case PipelineStage::VertexShader:
+            return VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_2_VERTEX_INPUT_BIT;
+        case PipelineStage::FragmentShader:
+            return VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
+        case PipelineStage::ColorAttachment:
+            return VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+        case PipelineStage::DepthAttachment:
+            return VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT;
+        case PipelineStage::Transfer:
+            return VK_PIPELINE_STAGE_2_COPY_BIT;
+        default:
+            return VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT;
     }
 }
 

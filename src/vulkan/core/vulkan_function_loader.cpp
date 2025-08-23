@@ -198,6 +198,12 @@ void VulkanFunctionLoader::loadSynchronizationFunctions() {
     LOAD_DEVICE_FUNCTION(vkGetFenceStatus);
     LOAD_DEVICE_FUNCTION(vkCreateQueryPool);
     LOAD_DEVICE_FUNCTION(vkDestroyQueryPool);
+    
+    // Vulkan 1.3 functions
+    LOAD_DEVICE_FUNCTION(vkCmdBeginRendering);
+    LOAD_DEVICE_FUNCTION(vkCmdEndRendering);
+    LOAD_DEVICE_FUNCTION(vkCmdPipelineBarrier2);
+    LOAD_DEVICE_FUNCTION(vkQueueSubmit2);
 }
 
 void VulkanFunctionLoader::loadCommandFunctions() {

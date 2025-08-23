@@ -180,17 +180,20 @@ void EntityComputeNode::execute(VkCommandBuffer commandBuffer, const FrameGraph&
             timeoutDetector->endComputeDispatch();
         }
         
-        // Memory barrier for compute→graphics synchronization (SoA uses storage buffers)
-        VkMemoryBarrier memoryBarrier{};
-        memoryBarrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
-        memoryBarrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-        memoryBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;  // SoA reads from storage buffers, not vertex attributes
+        // Memory barrier for compute→graphics synchronization using Synchronization2
+        VkMemoryBarrier2 memoryBarrier{};
+        memoryBarrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2;
+        memoryBarrier.srcStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+        memoryBarrier.srcAccessMask = VK_ACCESS_2_SHADER_WRITE_BIT;
+        memoryBarrier.dstStageMask = VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT;
+        memoryBarrier.dstAccessMask = VK_ACCESS_2_SHADER_READ_BIT;  // SoA reads from storage buffers
         
-        vk.vkCmdPipelineBarrier(
-            commandBuffer,
-            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-            VK_PIPELINE_STAGE_VERTEX_SHADER_BIT,  // Graphics reads in vertex shader stage
-            0, 1, &memoryBarrier, 0, nullptr, 0, nullptr);
+        VkDependencyInfo dependencyInfo{};
+        dependencyInfo.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+        dependencyInfo.memoryBarrierCount = 1;
+        dependencyInfo.pMemoryBarriers = &memoryBarrier;
+        
+        vk.vkCmdPipelineBarrier2(commandBuffer, &dependencyInfo);
     } else {
         executeChunkedDispatch(commandBuffer, context, dispatch, 
                               dispatchParams.totalWorkgroups, dispatchParams.maxWorkgroupsPerChunk, entityCount);
@@ -238,31 +241,41 @@ void EntityComputeNode::executeChunkedDispatch(
             timeoutDetector->endComputeDispatch();
         }
         
-        // Inter-chunk memory barrier
+        // Inter-chunk memory barrier using Synchronization2
         if (processedWorkgroups + currentChunkSize < totalWorkgroups) {
-            VkMemoryBarrier memoryBarrier{};
-            memoryBarrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
-            memoryBarrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-            memoryBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+            VkMemoryBarrier2 memoryBarrier{};
+            memoryBarrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2;
+            memoryBarrier.srcStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+            memoryBarrier.srcAccessMask = VK_ACCESS_2_SHADER_WRITE_BIT;
+            memoryBarrier.dstStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+            memoryBarrier.dstAccessMask = VK_ACCESS_2_SHADER_READ_BIT | VK_ACCESS_2_SHADER_WRITE_BIT;
             
-            vk.vkCmdPipelineBarrier(
-                commandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-                VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &memoryBarrier, 0, nullptr, 0, nullptr);
+            VkDependencyInfo dependencyInfo{};
+            dependencyInfo.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+            dependencyInfo.memoryBarrierCount = 1;
+            dependencyInfo.pMemoryBarriers = &memoryBarrier;
+            
+            vk.vkCmdPipelineBarrier2(commandBuffer, &dependencyInfo);
         }
         
         processedWorkgroups += currentChunkSize;
         chunkCount++;
     }
     
-    // Final memory barrier for compute→graphics synchronization (SoA uses storage buffers)
-    VkMemoryBarrier finalMemoryBarrier{};
-    finalMemoryBarrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
-    finalMemoryBarrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-    finalMemoryBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;  // SoA reads from storage buffers
+    // Final memory barrier for compute→graphics synchronization using Synchronization2
+    VkMemoryBarrier2 finalMemoryBarrier{};
+    finalMemoryBarrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2;
+    finalMemoryBarrier.srcStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+    finalMemoryBarrier.srcAccessMask = VK_ACCESS_2_SHADER_WRITE_BIT;
+    finalMemoryBarrier.dstStageMask = VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT;
+    finalMemoryBarrier.dstAccessMask = VK_ACCESS_2_SHADER_READ_BIT;  // SoA reads from storage buffers
     
-    vk.vkCmdPipelineBarrier(
-        commandBuffer, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-        VK_PIPELINE_STAGE_VERTEX_SHADER_BIT, 0, 1, &finalMemoryBarrier, 0, nullptr, 0, nullptr);
+    VkDependencyInfo finalDependencyInfo{};
+    finalDependencyInfo.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+    finalDependencyInfo.memoryBarrierCount = 1;
+    finalDependencyInfo.pMemoryBarriers = &finalMemoryBarrier;
+    
+    vk.vkCmdPipelineBarrier2(commandBuffer, &finalDependencyInfo);
     
     // Debug statistics logging (thread-safe)
     if constexpr (FRAME_GRAPH_DEBUG_ENABLED) {

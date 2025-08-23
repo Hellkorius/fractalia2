@@ -20,12 +20,10 @@ namespace FrameGraphResources {
 
 namespace FrameGraphExecution {
 
-// Per-node barrier tracking for optimal async execution
+// Per-node barrier tracking for optimal async execution with Synchronization2
 struct NodeBarrierInfo {
-    std::vector<VkBufferMemoryBarrier> bufferBarriers;
-    std::vector<VkImageMemoryBarrier> imageBarriers;
-    VkPipelineStageFlags srcStage = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
-    VkPipelineStageFlags dstStage = VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_VERTEX_INPUT_BIT;
+    std::vector<VkBufferMemoryBarrier2> bufferBarriers;
+    std::vector<VkImageMemoryBarrier2> imageBarriers;
     FrameGraphTypes::NodeId targetNodeId = 0;
     
     void clear() {
@@ -80,7 +78,11 @@ private:
 
     void insertBarrierBatch(const NodeBarrierInfo& batch, VkCommandBuffer commandBuffer);
 
-    // Access conversion helpers
+    // Access conversion helpers for Synchronization2
+    VkAccessFlags2 convertAccess2(ResourceAccess access, PipelineStage stage) const;
+    VkPipelineStageFlags2 convertPipelineStage2(PipelineStage stage) const;
+    
+    // Legacy conversion helpers (for compatibility)
     VkAccessFlags convertAccess(ResourceAccess access, PipelineStage stage) const;
     VkPipelineStageFlags convertPipelineStage(PipelineStage stage) const;
 

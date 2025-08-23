@@ -131,6 +131,14 @@ public:
     PFN_vkCreateQueryPool vkCreateQueryPool = nullptr;
     PFN_vkDestroyQueryPool vkDestroyQueryPool = nullptr;
     
+    // Vulkan 1.3 Dynamic Rendering functions
+    PFN_vkCmdBeginRendering vkCmdBeginRendering = nullptr;
+    PFN_vkCmdEndRendering vkCmdEndRendering = nullptr;
+    
+    // Vulkan 1.3 Synchronization2 functions  
+    PFN_vkCmdPipelineBarrier2 vkCmdPipelineBarrier2 = nullptr;
+    PFN_vkQueueSubmit2 vkQueueSubmit2 = nullptr;
+    
     // Command buffer functions
     PFN_vkCreateCommandPool vkCreateCommandPool = nullptr;
     PFN_vkDestroyCommandPool vkDestroyCommandPool = nullptr;
