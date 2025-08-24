@@ -248,7 +248,7 @@ namespace GraphicsPipelinePresets {
         state.vertexBindings.push_back(vertexBinding);
         
         // SoA approach: No instance binding for entity data (using storage buffers instead)
-        // Only keep vertex position attribute (geometry data)
+        // Only send vertex position - colors derived from GPU entity data
         
         VkVertexInputAttributeDescription posAttr{};
         posAttr.binding = 0;
@@ -257,18 +257,16 @@ namespace GraphicsPipelinePresets {
         posAttr.offset = 0;
         state.vertexAttributes.push_back(posAttr);
         
-        VkVertexInputAttributeDescription colorAttr{};
-        colorAttr.binding = 0;
-        colorAttr.location = 1;
-        colorAttr.format = VK_FORMAT_R32G32B32_SFLOAT;
-        colorAttr.offset = sizeof(glm::vec3);
-        state.vertexAttributes.push_back(colorAttr);
-        
         VkPipelineColorBlendAttachmentState colorBlendAttachment{};
         colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | 
                                              VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
         colorBlendAttachment.blendEnable = VK_FALSE;
         state.colorBlendAttachments.push_back(colorBlendAttachment);
+        
+        // Enable depth testing for proper 3D rendering
+        state.depthTestEnable = VK_TRUE;
+        state.depthWriteEnable = VK_TRUE;
+        state.depthCompareOp = VK_COMPARE_OP_LESS;
         
         return state;
     }
@@ -300,7 +298,7 @@ namespace GraphicsPipelinePresets {
         state.vertexBindings.push_back(vertexBinding);
         
         // SoA approach: No instance binding for entity data (using storage buffers instead)
-        // Only keep vertex position attribute (geometry data)
+        // Only send vertex position - colors derived from GPU entity data
         
         VkVertexInputAttributeDescription posAttr{};
         posAttr.binding = 0;
@@ -309,18 +307,16 @@ namespace GraphicsPipelinePresets {
         posAttr.offset = 0;
         state.vertexAttributes.push_back(posAttr);
         
-        VkVertexInputAttributeDescription colorAttr{};
-        colorAttr.binding = 0;
-        colorAttr.location = 1;
-        colorAttr.format = VK_FORMAT_R32G32B32_SFLOAT;
-        colorAttr.offset = sizeof(glm::vec3);
-        state.vertexAttributes.push_back(colorAttr);
-        
         VkPipelineColorBlendAttachmentState colorBlendAttachment{};
         colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | 
                                              VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
         colorBlendAttachment.blendEnable = VK_FALSE;
         state.colorBlendAttachments.push_back(colorBlendAttachment);
+        
+        // Enable depth testing for proper 3D rendering
+        state.depthTestEnable = VK_TRUE;
+        state.depthWriteEnable = VK_TRUE;
+        state.depthCompareOp = VK_COMPARE_OP_LESS;
         
         return state;
     }

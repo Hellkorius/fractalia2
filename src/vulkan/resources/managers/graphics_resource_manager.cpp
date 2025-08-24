@@ -79,11 +79,11 @@ bool GraphicsResourceManager::createUniformBuffers() {
     return true;
 }
 
-bool GraphicsResourceManager::createTriangleBuffers() {
-    PolygonMesh triangle = PolygonFactory::createTriangle();
+bool GraphicsResourceManager::createMeshBuffers() {
+    PolygonMesh cube = PolygonFactory::createCube();
     
     // Create vertex buffer
-    VkDeviceSize vertexBufferSize = sizeof(Vertex) * triangle.vertices.size();
+    VkDeviceSize vertexBufferSize = sizeof(Vertex) * cube.vertices.size();
     
     // Create staging buffer
     ResourceHandle stagingHandle = bufferFactory->createMappedBuffer(
@@ -98,7 +98,7 @@ bool GraphicsResourceManager::createTriangleBuffers() {
     }
     
     // Copy vertex data to staging buffer
-    memcpy(stagingHandle.mappedData, triangle.vertices.data(), (size_t)vertexBufferSize);
+    memcpy(stagingHandle.mappedData, cube.vertices.data(), (size_t)vertexBufferSize);
     
     // Create device-local vertex buffer
     vertexBufferHandle = bufferFactory->createBuffer(
@@ -120,8 +120,8 @@ bool GraphicsResourceManager::createTriangleBuffers() {
     bufferFactory->destroyResource(stagingHandle);
     
     // Create index buffer
-    indexCount = static_cast<uint32_t>(triangle.indices.size());
-    VkDeviceSize indexBufferSize = sizeof(uint16_t) * triangle.indices.size();
+    indexCount = static_cast<uint32_t>(cube.indices.size());
+    VkDeviceSize indexBufferSize = sizeof(uint16_t) * cube.indices.size();
     
     // Create index staging buffer
     ResourceHandle indexStagingHandle = bufferFactory->createMappedBuffer(
@@ -136,7 +136,7 @@ bool GraphicsResourceManager::createTriangleBuffers() {
     }
     
     // Copy index data to staging buffer
-    memcpy(indexStagingHandle.mappedData, triangle.indices.data(), (size_t)indexBufferSize);
+    memcpy(indexStagingHandle.mappedData, cube.indices.data(), (size_t)indexBufferSize);
     
     // Create device-local index buffer
     indexBufferHandle = bufferFactory->createBuffer(
@@ -412,7 +412,7 @@ bool GraphicsResourceManager::createAllGraphicsResources() {
     bool success = true;
     
     success &= createUniformBuffers();
-    success &= createTriangleBuffers();
+    success &= createMeshBuffers();
     
     if (success) {
         clearRecreationFlag();

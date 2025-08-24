@@ -17,4 +17,5 @@ class PolygonFactory {
 public:
     static PolygonMesh createTriangle();
     static PolygonMesh createSquare();
+    static PolygonMesh createCube();
 };

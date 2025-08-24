@@ -107,9 +107,16 @@ void main() {
     // Read rotation from dedicated rotation buffer
     float rot = entityBuffers[ROTATION_STATE_BUFFER].data[gl_InstanceIndex].x;
     
-    color = hsv2rgb(hue, saturation, brightness);
+    // Read base entity color from GPU entity data
+    vec3 entityBaseColor = entityBuffers[COLOR_BUFFER].data[gl_InstanceIndex].rgb;
     
-    // ROTATE THE ACTUAL TRIANGLE VERTICES (now supporting 3D)
+    // Generate dynamic color and blend with entity base color
+    vec3 dynamicColor = hsv2rgb(hue, saturation, brightness);
+    
+    // Combine entity color with dynamic effects (weighted blend)
+    color = mix(entityBaseColor, dynamicColor, 0.7); // 70% dynamic, 30% base entity color
+    
+    // ROTATE THE ACTUAL MESH VERTICES (3D cube geometry)
     float cosRot = cos(rot);
     float sinRot = sin(rot);
     

@@ -141,6 +141,7 @@ void main() {
         velocity.x = speed * cosElev * cos(randAngle + movementAngularVel);
         velocity.y = speed * cosElev * sin(randAngle + movementAngularVel);
         velocity.z = speed * sin(elevation); // Vertical movement component
+        velocity.w = 0.001; // Set damping value for proper 3D physics
         
         // Rotation is now handled entirely by physics shader
         

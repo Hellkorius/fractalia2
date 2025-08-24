@@ -223,31 +223,40 @@ void main() {
     
     float initialized = runtimeState.w; // initialized flag is in .w
     
-    // Extract velocity and damping
-    vec2 vel = velocity.xy;
-    float damping = velocity.z;
+    // Extract velocity and damping (now supporting 3D velocity)
+    vec3 vel = velocity.xyz;
+    float damping = velocity.w;
     
     // SIMPLIFIED: Read position directly from output buffer, integrate velocity
     vec3 currentPosition = entityBuffers[POSITION_OUTPUT_BUFFER].data[entityIndex].xyz;
     
     // On first frame, initialize position if it's zero
     if (length(currentPosition) < 0.01) {
-        // Use spawn position from entity index (simple grid)
-        currentPosition = vec3(
-            float(entityIndex % 10) * 0.8 - 4.0,
-            float(entityIndex / 10) * 0.8 - 4.0, 
-            0.0
-        );
+        // Use spawn position from entity index (3D grid with height variation)
+        float gridX = float(entityIndex % 100) * 0.8 - 40.0;  // Wider X spread
+        float gridY = float((entityIndex / 100) % 100) * 0.8 - 40.0;  // Wider Y spread
+        float gridZ = float(entityIndex / 10000) * 2.0 - 10.0;  // Z layers: -10 to +10
+        
+        // Add randomization to grid positions for more natural distribution
+        uint seed = entityIndex * 2654435761u;
+        float randX = (float(seed & 0xFFFFu) / 65535.0 - 0.5) * 4.0;
+        seed = seed * 1664525u + 1013904223u;
+        float randY = (float(seed & 0xFFFFu) / 65535.0 - 0.5) * 4.0;  
+        seed = seed * 1664525u + 1013904223u;
+        float randZ = (float(seed & 0xFFFFu) / 65535.0 - 0.5) * 8.0;
+        
+        currentPosition = vec3(gridX + randX, gridY + randY, gridZ + randZ);
     }
     
-    // Physics integration: position += velocity * deltaTime (only if velocity is non-zero)
+    // Physics integration: position += velocity * deltaTime (3D movement)
     if (length(vel) > 0.01) {
-        // Enhanced physics integration for frequent movement updates
+        // Enhanced physics integration for frequent movement updates (3D)
         currentPosition.x += vel.x * pc.deltaTime * 15.0;
         currentPosition.y += vel.y * pc.deltaTime * 15.0;
+        currentPosition.z += vel.z * pc.deltaTime * 15.0;  // Add Z-axis movement
     }
     
-    // Moderate damping to balance frequent updates with momentum retention
+    // Moderate damping to balance frequent updates with momentum retention (3D)
     vel *= 0.998;
     
     // Generate individual rotation physics directly in physics shader
@@ -265,8 +274,8 @@ void main() {
     barrier();
     memoryBarrierShared();
     
-    // Spatial hash collision detection - much faster than O(N²)
-    vec2 resolvedPosition = currentPosition.xy;
+    // Spatial hash collision detection - much faster than O(N²) (2D XY only)
+    vec2 resolvedPositionXY = currentPosition.xy;
     bool hadCollision = false;
     
     // Pre-calculate collision parameters
@@ -323,10 +332,10 @@ void main() {
                 // Collision detected! Fast separation using diff vector
                 float invDist = inversesqrt(distSq); // Fast inverse sqrt
                 vec2 separationDir = diff * invDist;
-                resolvedPosition = otherPos.xy + separationDir * collisionRadius;
+                resolvedPositionXY = otherPos.xy + separationDir * collisionRadius;
                 
-                // Stop movement entirely on collision
-                vel = vec2(0.0, 0.0);
+                // Stop XY movement on collision, preserve Z velocity
+                vel.xy = vec2(0.0, 0.0);
                 hadCollision = true;
                 break; // Handle first collision only
             }
@@ -335,8 +344,8 @@ void main() {
         if (hadCollision) break; // Exit loop
     }
     
-    // Write back final velocity, rotation state, and position
-    entityBuffers[VELOCITY_BUFFER].data[entityIndex].xy = vel;
+    // Write back final velocity, rotation state, and 3D position
+    entityBuffers[VELOCITY_BUFFER].data[entityIndex] = vec4(vel, damping);
     entityBuffers[ROTATION_STATE_BUFFER].data[entityIndex] = rotationState;
-    entityBuffers[POSITION_OUTPUT_BUFFER].data[entityIndex] = vec4(resolvedPosition, currentPosition.z, 0.0);
+    entityBuffers[POSITION_OUTPUT_BUFFER].data[entityIndex] = vec4(resolvedPositionXY, currentPosition.z, 0.0);
 }
