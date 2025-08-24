@@ -99,8 +99,8 @@ void main() {
     float saturation = 0.1 + entitySaturationBase * 0.8 + saturationPhase; // Range: -0.7 to 1.7
     saturation = clamp(saturation, 0.0, 1.0); // Allow completely desaturated to fully saturated
     
-    // Read rotation from physics shader via position buffer .w component
-    float rot = computedPos[gl_InstanceIndex].w;
+    // Read rotation from dedicated rotation buffer
+    float rot = rotationStateBuffer.rotationStates[gl_InstanceIndex].x;
     
     color = hsv2rgb(hue, saturation, brightness);
     

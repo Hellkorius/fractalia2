@@ -152,9 +152,7 @@ vec2 rotateVector(vec2 v, float angle) {
 
 // Triangle-triangle intersection test with rotation support
 bool triangleTriangleCollision(vec2 pos1, vec2 pos2, float rotation1, float rotation2) {
-    // Use the same rotation calculation as vertex shader
-    rotation1 = sin(pc.time * 0.2) * 0.5; // Match vertex shader rotation
-    rotation2 = sin(pc.time * 0.2) * 0.5; // Match vertex shader rotation
+    // Use actual entity rotations passed as parameters
     
     // Get triangle vertices in world space with rotation
     vec2 tri1[3];
@@ -342,8 +340,8 @@ void main() {
         if (hadCollision) break; // Exit loop
     }
     
-    // Write back final velocity, rotation state, and resolved position
+    // Write back final velocity, rotation state, and position
     velocityBuffer.velocities[entityIndex].xy = vel;
     rotationStateBuffer.rotationStates[entityIndex] = rotationState;
-    outPositions.positions[entityIndex] = vec4(resolvedPosition, currentPosition.z, rotationState.x);
+    outPositions.positions[entityIndex] = vec4(resolvedPosition, currentPosition.z, 0.0);
 }

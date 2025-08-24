@@ -625,6 +625,14 @@ namespace DescriptorLayoutPresets {
         currentPosBinding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
         currentPosBinding.debugName = "currentPositionBuffer";
         
+        // Binding 5: RotationStateBuffer (rotation, angularVelocity, angularDamping, reserved)
+        DescriptorBinding rotationStateBinding{};
+        rotationStateBinding.binding = 5;
+        rotationStateBinding.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        rotationStateBinding.descriptorCount = 1;
+        rotationStateBinding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+        rotationStateBinding.debugName = "rotationStateBuffer";
+        
         // Binding 7: SpatialMapBuffer (spatial hash grid for collision detection)
         DescriptorBinding spatialMapBinding{};
         spatialMapBinding.binding = 7;
@@ -633,7 +641,7 @@ namespace DescriptorLayoutPresets {
         spatialMapBinding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
         spatialMapBinding.debugName = "spatialMapBuffer";
         
-        spec.bindings = {velocityBinding, movementParamsBinding, runtimeStateBinding, positionOutputBinding, currentPosBinding, spatialMapBinding};
+        spec.bindings = {velocityBinding, movementParamsBinding, runtimeStateBinding, positionOutputBinding, currentPosBinding, rotationStateBinding, spatialMapBinding};
         return spec;
     }
 }
