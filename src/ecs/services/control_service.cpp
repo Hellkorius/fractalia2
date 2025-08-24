@@ -679,7 +679,7 @@ void GameControlService::handleCameraControls() {
             // For perspective cameras, adjust FOV instead of zoom
             float fovDelta = wheelDelta * -2.0f; // Negative to make wheel up = zoom in
             float newFov = glm::clamp(activeCamera->fov + fovDelta, 15.0f, 120.0f);
-            activeCamera->fov = newFov;
+            activeCamera->setFOV(newFov);
             std::cout << "FOV: " << activeCamera->fov << std::endl;
         } else {
             // For orthographic cameras, use traditional zoom
@@ -777,7 +777,7 @@ void GameControlService::resetCamera() {
     activeCamera->up = defaultUp;
     
     if (activeCamera->projectionType == Camera::ProjectionType::Perspective) {
-        activeCamera->fov = 45.0f; // Default FOV
+        activeCamera->setFOV(45.0f); // Default FOV
     } else {
         cameraService->setCameraZoom(activeCameraID, 1.0f);
     }
