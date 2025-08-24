@@ -41,6 +41,11 @@ bool EntityBufferManager::initialize(const VulkanContext& context, ResourceCoord
         return false;
     }
     
+    if (!rotationStateBuffer.initialize(context, resourceCoordinator, maxEntities)) {
+        std::cerr << "EntityBufferManager: Failed to initialize rotation state buffer" << std::endl;
+        return false;
+    }
+    
     if (!colorBuffer.initialize(context, resourceCoordinator, maxEntities)) {
         std::cerr << "EntityBufferManager: Failed to initialize color buffer" << std::endl;
         return false;
@@ -78,6 +83,7 @@ void EntityBufferManager::cleanup() {
     spatialMapBuffer.cleanup();
     modelMatrixBuffer.cleanup();
     colorBuffer.cleanup();
+    rotationStateBuffer.cleanup();
     runtimeStateBuffer.cleanup();
     movementParamsBuffer.cleanup();
     velocityBuffer.cleanup();
@@ -97,6 +103,10 @@ bool EntityBufferManager::uploadMovementParamsData(const void* data, VkDeviceSiz
 
 bool EntityBufferManager::uploadRuntimeStateData(const void* data, VkDeviceSize size, VkDeviceSize offset) {
     return uploadService.upload(runtimeStateBuffer, data, size, offset);
+}
+
+bool EntityBufferManager::uploadRotationStateData(const void* data, VkDeviceSize size, VkDeviceSize offset) {
+    return uploadService.upload(rotationStateBuffer, data, size, offset);
 }
 
 bool EntityBufferManager::uploadColorData(const void* data, VkDeviceSize size, VkDeviceSize offset) {

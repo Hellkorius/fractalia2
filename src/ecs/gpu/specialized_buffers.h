@@ -47,6 +47,19 @@ protected:
     const char* getBufferTypeName() const override { return "RuntimeState"; }
 };
 
+// SINGLE responsibility: rotation state management
+class RotationStateBuffer : public BufferBase {
+public:
+    using BufferBase::initialize; // Bring base class initialize into scope
+    
+    bool initialize(const VulkanContext& context, ResourceCoordinator* resourceCoordinator, uint32_t maxEntities) {
+        return BufferBase::initialize(context, resourceCoordinator, maxEntities, sizeof(glm::vec4), 0);
+    }
+    
+protected:
+    const char* getBufferTypeName() const override { return "RotationState"; }
+};
+
 // SINGLE responsibility: color data management
 class ColorBuffer : public BufferBase {
 public:

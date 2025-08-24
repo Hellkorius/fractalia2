@@ -1,6 +1,7 @@
 #include "descriptor_layout_manager.h"
 #include "../core/vulkan_function_loader.h"
 #include "hash_utils.h"
+#include "../../ecs/gpu/entity_descriptor_bindings.h"
 #include <iostream>
 #include <algorithm>
 #include <cassert>
@@ -534,31 +535,47 @@ namespace DescriptorLayoutPresets {
         DescriptorLayoutSpec spec;
         spec.layoutName = "EntityGraphics";
         
-        // UBO for camera/view matrices
-        DescriptorBinding uboBinding{};
-        uboBinding.binding = 0;
-        uboBinding.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        uboBinding.descriptorCount = 1;
-        uboBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-        uboBinding.debugName = "cameraUBO";
+        // Automatically create bindings based on EntityDescriptorBindings::Graphics constants
+        spec.bindings.reserve(EntityDescriptorBindings::Graphics::BINDING_COUNT);
         
-        // Storage buffer for entity data
-        DescriptorBinding entityBinding{};
-        entityBinding.binding = 1;
-        entityBinding.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-        entityBinding.descriptorCount = 1;
-        entityBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-        entityBinding.debugName = "entityBuffer";
+        for (uint32_t i = 0; i < EntityDescriptorBindings::Graphics::BINDING_COUNT; ++i) {
+            DescriptorBinding binding{};
+            binding.binding = i;
+            binding.descriptorCount = 1;
+            binding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+            
+            // Configure each binding based on EntityDescriptorBindings::Graphics enum
+            switch (i) {
+                case EntityDescriptorBindings::Graphics::UNIFORM_BUFFER:
+                    binding.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+                    binding.debugName = "cameraUBO";
+                    break;
+                    
+                case EntityDescriptorBindings::Graphics::POSITION_BUFFER:
+                    binding.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+                    binding.debugName = "positionBuffer";
+                    break;
+                    
+                case EntityDescriptorBindings::Graphics::MOVEMENT_PARAMS_BUFFER:
+                    binding.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+                    binding.debugName = "movementParamsBuffer";
+                    break;
+                    
+                case EntityDescriptorBindings::Graphics::ROTATION_STATE_BUFFER:
+                    binding.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+                    binding.debugName = "rotationStateBuffer";
+                    break;
+                    
+                default:
+                    // For any future bindings, default to storage buffer
+                    binding.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+                    binding.debugName = "entityBuffer_" + std::to_string(i);
+                    break;
+            }
+            
+            spec.bindings.push_back(binding);
+        }
         
-        // Storage buffer for positions
-        DescriptorBinding positionBinding{};
-        positionBinding.binding = 2;
-        positionBinding.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-        positionBinding.descriptorCount = 1;
-        positionBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-        positionBinding.debugName = "positionBuffer";
-        
-        spec.bindings = {uboBinding, entityBinding, positionBinding};
         return spec;
     }
     

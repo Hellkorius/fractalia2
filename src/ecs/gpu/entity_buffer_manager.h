@@ -26,6 +26,7 @@ public:
     VkBuffer getVelocityBuffer() const { return velocityBuffer.getBuffer(); }
     VkBuffer getMovementParamsBuffer() const { return movementParamsBuffer.getBuffer(); }
     VkBuffer getRuntimeStateBuffer() const { return runtimeStateBuffer.getBuffer(); }
+    VkBuffer getRotationStateBuffer() const { return rotationStateBuffer.getBuffer(); }
     VkBuffer getColorBuffer() const { return colorBuffer.getBuffer(); }
     VkBuffer getModelMatrixBuffer() const { return modelMatrixBuffer.getBuffer(); }
     VkBuffer getSpatialMapBuffer() const { return spatialMapBuffer.getBuffer(); }
@@ -45,6 +46,7 @@ public:
     VkDeviceSize getVelocityBufferSize() const { return velocityBuffer.getSize(); }
     VkDeviceSize getMovementParamsBufferSize() const { return movementParamsBuffer.getSize(); }
     VkDeviceSize getRuntimeStateBufferSize() const { return runtimeStateBuffer.getSize(); }
+    VkDeviceSize getRotationStateBufferSize() const { return rotationStateBuffer.getSize(); }
     VkDeviceSize getColorBufferSize() const { return colorBuffer.getSize(); }
     VkDeviceSize getModelMatrixBufferSize() const { return modelMatrixBuffer.getSize(); }
     VkDeviceSize getSpatialMapBufferSize() const { return spatialMapBuffer.getSize(); }
@@ -58,6 +60,7 @@ public:
     bool uploadVelocityData(const void* data, VkDeviceSize size, VkDeviceSize offset = 0);
     bool uploadMovementParamsData(const void* data, VkDeviceSize size, VkDeviceSize offset = 0);
     bool uploadRuntimeStateData(const void* data, VkDeviceSize size, VkDeviceSize offset = 0);
+    bool uploadRotationStateData(const void* data, VkDeviceSize size, VkDeviceSize offset = 0);
     bool uploadColorData(const void* data, VkDeviceSize size, VkDeviceSize offset = 0);
     bool uploadModelMatrixData(const void* data, VkDeviceSize size, VkDeviceSize offset = 0);
     bool uploadSpatialMapData(const void* data, VkDeviceSize size, VkDeviceSize offset = 0);
@@ -93,6 +96,7 @@ private:
     VelocityBuffer velocityBuffer;
     MovementParamsBuffer movementParamsBuffer;
     RuntimeStateBuffer runtimeStateBuffer;
+    RotationStateBuffer rotationStateBuffer;
     ColorBuffer colorBuffer;
     ModelMatrixBuffer modelMatrixBuffer;
     SpatialMapBuffer spatialMapBuffer;

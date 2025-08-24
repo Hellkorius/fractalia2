@@ -23,6 +23,10 @@ layout(std430, binding = 2) readonly buffer MovementParamsBuffer {
     vec4 movementParams[];  // amplitude, frequency, phase, timeOffset
 } movementParamsBuffer;
 
+layout(std430, binding = 3) readonly buffer RotationStateBuffer {
+    vec4 rotationStates[];  // rotation, angularVelocity, angularDamping, reserved
+} rotationStateBuffer;
+
 
 layout(location = 0) out vec3 color;
 
@@ -95,16 +99,22 @@ void main() {
     float saturation = 0.1 + entitySaturationBase * 0.8 + saturationPhase; // Range: -0.7 to 1.7
     saturation = clamp(saturation, 0.0, 1.0); // Allow completely desaturated to fully saturated
     
+    // Read rotation from physics shader via position buffer .w component
+    float rot = computedPos[gl_InstanceIndex].w;
+    
     color = hsv2rgb(hue, saturation, brightness);
     
-    // Apply rotation based on time and final transformation
-    float rot = entityTime * 0.1;
-    mat4 rotationMatrix = mat4(
-        cos(rot),  sin(rot), 0, 0,
-       -sin(rot),  cos(rot), 0, 0,
-        0,         0,        1, 0,
-        worldPos,             1
+    // ROTATE THE ACTUAL TRIANGLE VERTICES
+    float cosRot = cos(rot);
+    float sinRot = sin(rot);
+    
+    // Rotate the triangle vertex coordinates around (0,0) before adding world position
+    vec2 rotatedVertex = vec2(
+        inPos.x * cosRot - inPos.y * sinRot,
+        inPos.x * sinRot + inPos.y * cosRot
     );
     
-    gl_Position = ubo.proj * ubo.view * rotationMatrix * vec4(inPos, 1.0);
+    // Add rotated vertex to world position
+    vec3 finalPos = vec3(worldPos.xy + rotatedVertex, 0.0);
+    gl_Position = ubo.proj * ubo.view * vec4(finalPos, 1.0);
 }

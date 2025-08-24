@@ -38,6 +38,15 @@ void GPUEntitySoA::addFromECS(const Transform& transform, const Renderable& rend
         0.0f                           // initialized flag (starts as 0.0)
     );
     
+    // Rotation state (initialized to default values)
+    // Start with zero rotation for simplicity
+    rotationStates.emplace_back(
+        0.0f,                          // current rotation angle in radians
+        0.0f,                          // angular velocity (rad/s)
+        0.999f,                        // angular damping factor (lighter damping)
+        0.0f                           // reserved
+    );
+    
     // Color
     colors.emplace_back(renderable.color);
     
@@ -127,12 +136,14 @@ void GPUEntityManager::uploadPendingEntities() {
     VkDeviceSize velocityOffset = activeEntityCount * sizeof(glm::vec4);
     VkDeviceSize movementParamsOffset = activeEntityCount * sizeof(glm::vec4);
     VkDeviceSize runtimeStateOffset = activeEntityCount * sizeof(glm::vec4);
+    VkDeviceSize rotationStateOffset = activeEntityCount * sizeof(glm::vec4);
     VkDeviceSize colorOffset = activeEntityCount * sizeof(glm::vec4);
     VkDeviceSize modelMatrixOffset = activeEntityCount * sizeof(glm::mat4);
     
     VkDeviceSize velocitySize = entityCount * sizeof(glm::vec4);
     VkDeviceSize movementParamsSize = entityCount * sizeof(glm::vec4);
     VkDeviceSize runtimeStateSize = entityCount * sizeof(glm::vec4);
+    VkDeviceSize rotationStateSize = entityCount * sizeof(glm::vec4);
     VkDeviceSize colorSize = entityCount * sizeof(glm::vec4);
     VkDeviceSize modelMatrixSize = entityCount * sizeof(glm::mat4);
     
@@ -140,6 +151,7 @@ void GPUEntityManager::uploadPendingEntities() {
     bufferManager.uploadVelocityData(stagingEntities.velocities.data(), velocitySize, velocityOffset);
     bufferManager.uploadMovementParamsData(stagingEntities.movementParams.data(), movementParamsSize, movementParamsOffset);
     bufferManager.uploadRuntimeStateData(stagingEntities.runtimeStates.data(), runtimeStateSize, runtimeStateOffset);
+    bufferManager.uploadRotationStateData(stagingEntities.rotationStates.data(), rotationStateSize, rotationStateOffset);
     bufferManager.uploadColorData(stagingEntities.colors.data(), colorSize, colorOffset);
     bufferManager.uploadModelMatrixData(stagingEntities.modelMatrices.data(), modelMatrixSize, modelMatrixOffset);
     

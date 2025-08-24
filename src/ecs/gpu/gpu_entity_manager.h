@@ -19,6 +19,7 @@ struct GPUEntitySoA {
     std::vector<glm::vec4> velocities;        // velocity.xy, damping, reserved
     std::vector<glm::vec4> movementParams;    // amplitude, frequency, phase, timeOffset
     std::vector<glm::vec4> runtimeStates;     // totalTime, initialized, stateTimer, entityState
+    std::vector<glm::vec4> rotationStates;    // rotation, angularVelocity, angularDamping, reserved
     std::vector<glm::vec4> colors;            // RGBA color
     std::vector<glm::mat4> modelMatrices;     // transform matrices (cold data)
     
@@ -26,6 +27,7 @@ struct GPUEntitySoA {
         velocities.reserve(capacity);
         movementParams.reserve(capacity);
         runtimeStates.reserve(capacity);
+        rotationStates.reserve(capacity);
         colors.reserve(capacity);
         modelMatrices.reserve(capacity);
     }
@@ -34,6 +36,7 @@ struct GPUEntitySoA {
         velocities.clear();
         movementParams.clear();
         runtimeStates.clear();
+        rotationStates.clear();
         colors.clear();
         modelMatrices.clear();
     }
@@ -65,6 +68,7 @@ public:
     VkBuffer getVelocityBuffer() const { return bufferManager.getVelocityBuffer(); }
     VkBuffer getMovementParamsBuffer() const { return bufferManager.getMovementParamsBuffer(); }
     VkBuffer getRuntimeStateBuffer() const { return bufferManager.getRuntimeStateBuffer(); }
+    VkBuffer getRotationStateBuffer() const { return bufferManager.getRotationStateBuffer(); }
     VkBuffer getColorBuffer() const { return bufferManager.getColorBuffer(); }
     VkBuffer getModelMatrixBuffer() const { return bufferManager.getModelMatrixBuffer(); }
     
@@ -83,6 +87,7 @@ public:
     VkDeviceSize getVelocityBufferSize() const { return bufferManager.getVelocityBufferSize(); }
     VkDeviceSize getMovementParamsBufferSize() const { return bufferManager.getMovementParamsBufferSize(); }
     VkDeviceSize getRuntimeStateBufferSize() const { return bufferManager.getRuntimeStateBufferSize(); }
+    VkDeviceSize getRotationStateBufferSize() const { return bufferManager.getRotationStateBufferSize(); }
     VkDeviceSize getColorBufferSize() const { return bufferManager.getColorBufferSize(); }
     VkDeviceSize getModelMatrixBufferSize() const { return bufferManager.getModelMatrixBufferSize(); }
     VkDeviceSize getPositionBufferSize() const { return bufferManager.getPositionBufferSize(); }

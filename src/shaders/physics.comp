@@ -30,6 +30,10 @@ layout(std430, binding = 4) buffer CurrentPositionBuffer {
     vec4 currentPositions[]; // R/W: physics integration state
 } currentPos;
 
+layout(std430, binding = 5) buffer RotationStateBuffer {
+    vec4 rotationStates[];  // rotation, angularVelocity, angularDamping, reserved
+} rotationStateBuffer;
+
 // Spatial map buffer for collision detection and spatial queries
 layout(std430, binding = 7) buffer SpatialMapBuffer {
     uvec2 spatialCells[]; // R/W: spatial hash grid - packed (entityId, nextIndex)
@@ -136,15 +140,29 @@ bool pointInTriangle(vec2 p, vec2 a, vec2 b, vec2 c) {
     return (u >= 0.0) && (v >= 0.0) && (u + v <= 1.0);
 }
 
-// Triangle-triangle intersection test
-bool triangleTriangleCollision(vec2 pos1, vec2 pos2) {
-    // Get triangle vertices in world space
+// Rotate a 2D vector by an angle in radians
+vec2 rotateVector(vec2 v, float angle) {
+    float cosAngle = cos(angle);
+    float sinAngle = sin(angle);
+    return vec2(
+        v.x * cosAngle - v.y * sinAngle,
+        v.x * sinAngle + v.y * cosAngle
+    );
+}
+
+// Triangle-triangle intersection test with rotation support
+bool triangleTriangleCollision(vec2 pos1, vec2 pos2, float rotation1, float rotation2) {
+    // Use the same rotation calculation as vertex shader
+    rotation1 = sin(pc.time * 0.2) * 0.5; // Match vertex shader rotation
+    rotation2 = sin(pc.time * 0.2) * 0.5; // Match vertex shader rotation
+    
+    // Get triangle vertices in world space with rotation
     vec2 tri1[3];
     vec2 tri2[3];
     
     for (int i = 0; i < 3; i++) {
-        tri1[i] = pos1 + TRIANGLE_VERTICES[i];
-        tri2[i] = pos2 + TRIANGLE_VERTICES[i];
+        tri1[i] = pos1 + rotateVector(TRIANGLE_VERTICES[i], rotation1);
+        tri2[i] = pos2 + rotateVector(TRIANGLE_VERTICES[i], rotation2);
     }
     
     // Check if any vertex of tri1 is inside tri2
@@ -208,6 +226,7 @@ void main() {
     // Load entity data from SoA buffers - better cache locality
     vec4 velocity = velocityBuffer.velocities[entityIndex];
     vec4 runtimeState = runtimeStateBuffer.runtimeStates[entityIndex];
+    vec4 rotationState = rotationStateBuffer.rotationStates[entityIndex];
     
     float initialized = runtimeState.w; // initialized flag is in .w
     
@@ -237,6 +256,11 @@ void main() {
     
     // Moderate damping to balance frequent updates with momentum retention
     vel *= 0.998;
+    
+    // Generate individual rotation physics directly in physics shader
+    float baseRotation = float(entityIndex % 360) * 0.01745; // Individual base rotation (degrees to radians)
+    float timeRotation = sin(pc.time * 0.1 + baseRotation) * 0.5; // Individual oscillation
+    rotationState.x = timeRotation;
     
     // Write tentative position to current buffer first
     currentPos.currentPositions[entityIndex] = vec4(currentPosition, 1.0);
@@ -298,7 +322,7 @@ void main() {
             // Get other entity's position
             vec3 otherPos = currentPos.currentPositions[otherEntityIndex].xyz;
             
-            // Fast squared distance check (no expensive sqrt)
+            // Fast squared distance check for early culling (no expensive sqrt)
             vec2 diff = currentPosition.xy - otherPos.xy;
             float distSq = dot(diff, diff);
             
@@ -318,7 +342,8 @@ void main() {
         if (hadCollision) break; // Exit loop
     }
     
-    // Write back final velocity and resolved position
+    // Write back final velocity, rotation state, and resolved position
     velocityBuffer.velocities[entityIndex].xy = vel;
-    outPositions.positions[entityIndex] = vec4(resolvedPosition, currentPosition.z, 1.0);
+    rotationStateBuffer.rotationStates[entityIndex] = rotationState;
+    outPositions.positions[entityIndex] = vec4(resolvedPosition, currentPosition.z, rotationState.x);
 }

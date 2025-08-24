@@ -25,8 +25,12 @@ layout(std430, binding = 2) buffer RuntimeStateBuffer {
     vec4 runtimeStates[];
 } runtimeStateBuffer;
 
+layout(std430, binding = 5) buffer RotationStateBuffer {
+    vec4 rotationStates[];  // rotation, angularVelocity, angularDamping, reserved
+} rotationStateBuffer;
+
 // Position buffers are not used by movement shader - only physics shader uses them
-// This shader only updates velocity every 900 frames
+// This shader only updates velocity and rotation every 120 frames
 
 /* ---------- Optimized Random Walk Movement Functions ---------- */
 
@@ -124,11 +128,13 @@ void main() {
         
         // Add moderate angular momentum for dynamic movement
         uint spiralHash = fastHash(seed + 67890u);
-        float angularVelocity = (hashToFloat(spiralHash) - 0.5) * 0.15; // -0.075 to +0.075 rad/frame
+        float movementAngularVel = (hashToFloat(spiralHash) - 0.5) * 0.15; // -0.075 to +0.075 rad/frame
         
         // Use basic trig for random direction with enhanced velocity
-        velocity.x = speed * cos(randAngle + angularVelocity);
-        velocity.y = speed * sin(randAngle + angularVelocity);
+        velocity.x = speed * cos(randAngle + movementAngularVel);
+        velocity.y = speed * sin(randAngle + movementAngularVel);
+        
+        // Rotation is now handled entirely by physics shader
         
         // Write updated velocity back to SoA buffer
         velocityBuffer.velocities[entityIndex] = velocity;
