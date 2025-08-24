@@ -132,15 +132,21 @@ void main() {
         uint spiralHash = fastHash(seed + 67890u);
         float movementAngularVel = (hashToFloat(spiralHash) - 0.5) * 0.15; // -0.075 to +0.075 rad/frame
         
-        // 3D random movement - generate random spherical coordinates
+        // Enhanced 3D random movement - full spherical coordinates
         uint angleHash2 = fastHash(seed + 11111u);
-        float elevation = (hashToFloat(angleHash2) - 0.5) * 1.5; // Vertical angle: -0.75 to +0.75 radians
+        uint angleHash3 = fastHash(seed + 22222u);
         
-        // Use spherical coordinates for 3D direction
+        // More varied elevation for full 3D movement
+        float elevation = (hashToFloat(angleHash2) - 0.5) * 2.0; // Vertical angle: -1.0 to +1.0 radians (wider range)
+        
+        // Add azimuth variation for more 3D complexity
+        float azimuth = hashToFloat(angleHash3) * TWO_PI;
+        
+        // Use spherical coordinates for full 3D direction with more Z movement
         float cosElev = cos(elevation);
-        velocity.x = speed * cosElev * cos(randAngle + movementAngularVel);
-        velocity.y = speed * cosElev * sin(randAngle + movementAngularVel);
-        velocity.z = speed * sin(elevation); // Vertical movement component
+        velocity.x = speed * cosElev * cos(azimuth + movementAngularVel);
+        velocity.y = speed * cosElev * sin(azimuth + movementAngularVel);
+        velocity.z = speed * sin(elevation) * 1.5; // Enhanced vertical movement component
         velocity.w = 0.001; // Set damping value for proper 3D physics
         
         // Rotation is now handled entirely by physics shader

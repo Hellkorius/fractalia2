@@ -61,7 +61,7 @@ bool EntityBufferManager::initialize(const VulkanContext& context, ResourceCoord
         return false;
     }
     
-    if (!spatialMapBuffer.initialize(context, resourceCoordinator, 4096)) { // 64x64 grid
+    if (!spatialMapBuffer.initialize(context, resourceCoordinator, 16384)) { // 32x32x16 3D grid
         std::cerr << "EntityBufferManager: Failed to initialize spatial map buffer" << std::endl;
         return false;
     }
@@ -344,7 +344,7 @@ bool EntityBufferManager::readbackEntityById(uint32_t entityId, EntityDebugInfo&
 }
 
 bool EntityBufferManager::readbackSpatialCell(uint32_t cellIndex, std::vector<uint32_t>& entityIds) const {
-    const uint32_t SPATIAL_MAP_SIZE = 4096; // 64x64
+    const uint32_t SPATIAL_MAP_SIZE = 16384; // 32x32x16 (3D spatial grid)
     if (cellIndex >= SPATIAL_MAP_SIZE) {
         return false;
     }
@@ -397,7 +397,7 @@ bool EntityBufferManager::readbackSpatialCell(uint32_t cellIndex, std::vector<ui
 }
 
 bool EntityBufferManager::initializeSpatialMapBuffer() {
-    const uint32_t SPATIAL_MAP_SIZE = 4096; // 64x64 grid
+    const uint32_t SPATIAL_MAP_SIZE = 16384; // 32x32x16 (3D spatial grid) grid
     const uint32_t NULL_INDEX = 0xFFFFFFFF;
     
     // Create initialization data with NULL values
