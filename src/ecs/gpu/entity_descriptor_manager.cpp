@@ -1,11 +1,13 @@
 #include "entity_descriptor_manager.h"
 #include "entity_buffer_manager.h"
 #include "entity_descriptor_bindings.h"
+#include "entity_buffer_types.h"
 #include "../../vulkan/core/vulkan_context.h"
 #include "../../vulkan/core/vulkan_function_loader.h"
 #include "../../vulkan/resources/core/resource_coordinator.h"
 #include "../../vulkan/resources/descriptors/descriptor_update_helper.h"
 #include "../../vulkan/resources/managers/descriptor_pool_manager.h"
+#include "../../vulkan/pipelines/descriptor_layout_manager.h"
 #include <iostream>
 #include <array>
 
@@ -16,12 +18,18 @@ bool EntityDescriptorManager::initializeEntity(EntityBufferManager& bufferManage
     this->bufferManager = &bufferManager;
     this->resourceCoordinator = resourceCoordinator;
     
-    if (!createDescriptorSetLayouts()) {
-        std::cerr << "EntityDescriptorManager: Failed to create descriptor set layouts" << std::endl;
+    // Use Vulkan 1.3 descriptor indexing
+    if (!createIndexedDescriptorSetLayout()) {
+        std::cerr << "EntityDescriptorManager: Failed to create indexed descriptor set layout" << std::endl;
         return false;
     }
     
-    std::cout << "EntityDescriptorManager: Initialized successfully with descriptor layouts" << std::endl;
+    if (!createIndexedDescriptorSet()) {
+        std::cerr << "EntityDescriptorManager: Failed to create indexed descriptor set" << std::endl;
+        return false;
+    }
+    
+    std::cout << "EntityDescriptorManager: Initialized successfully with indexed descriptor system" << std::endl;
     return true;
 }
 
@@ -35,6 +43,7 @@ void EntityDescriptorManager::cleanupSpecialized() {
     // Cleanup entity-specific resources
     computeDescriptorPool.reset();
     graphicsDescriptorPool.reset();
+    indexedDescriptorPool.reset();
     
     cleanupDescriptorSetLayouts();
     
@@ -417,5 +426,193 @@ bool EntityDescriptorManager::recreateGraphicsDescriptorSets() {
     }
 
     std::cout << "EntityDescriptorManager: Graphics descriptor sets successfully recreated" << std::endl;
+    return true;
+}
+
+// Vulkan 1.3 descriptor indexing implementation
+bool EntityDescriptorManager::createIndexedDescriptorSetLayout() {
+    if (!getContext()) {
+        std::cerr << "EntityDescriptorManager: ERROR - VulkanContext is null" << std::endl;
+        return false;
+    }
+
+    // Use the new indexed layout from DescriptorLayoutPresets
+    try {
+        auto spec = DescriptorLayoutPresets::createEntityIndexedLayout();
+        
+        DescriptorLayoutManager layoutManager;
+        layoutManager.initialize(*getContext());
+        
+        VkDescriptorSetLayout layout = layoutManager.createLayout(spec);
+        if (layout == VK_NULL_HANDLE) {
+            std::cerr << "EntityDescriptorManager: ERROR - Failed to create indexed descriptor set layout" << std::endl;
+            return false;
+        }
+        
+        indexedDescriptorSetLayout = layout;
+        
+        std::cout << "EntityDescriptorManager: Indexed descriptor set layout created successfully" << std::endl;
+        return true;
+    } catch (const std::exception& e) {
+        std::cerr << "EntityDescriptorManager: ERROR - Exception creating indexed layout: " << e.what() << std::endl;
+        return false;
+    }
+}
+
+bool EntityDescriptorManager::createIndexedDescriptorSet() {
+    if (!getContext()) {
+        std::cerr << "EntityDescriptorManager: ERROR - VulkanContext is null" << std::endl;
+        return false;
+    }
+    
+    if (indexedDescriptorSetLayout == VK_NULL_HANDLE) {
+        std::cerr << "EntityDescriptorManager: ERROR - Indexed descriptor set layout not created" << std::endl;
+        return false;
+    }
+
+    // Create descriptor pool for indexed descriptors
+    std::vector<VkDescriptorPoolSize> poolSizes;
+    poolSizes.push_back({VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1}); // For camera matrices
+    poolSizes.push_back({VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, EntityBufferType::MAX_ENTITY_BUFFERS + 1}); // +1 for spatial map
+
+    VkDescriptorPoolCreateInfo poolInfo{};
+    poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    poolInfo.flags = VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT; // Required for descriptor indexing
+    poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
+    poolInfo.pPoolSizes = poolSizes.data();
+    poolInfo.maxSets = 1;
+
+    indexedDescriptorPool = vulkan_raii::create_descriptor_pool(getContext(), &poolInfo);
+    if (!indexedDescriptorPool.get()) {
+        std::cerr << "EntityDescriptorManager: ERROR - Failed to create indexed descriptor pool" << std::endl;
+        return false;
+    }
+
+    // Allocate descriptor set
+    VkDescriptorSetAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    allocInfo.descriptorPool = indexedDescriptorPool.get();
+    allocInfo.descriptorSetCount = 1;
+    allocInfo.pSetLayouts = &indexedDescriptorSetLayout;
+
+    if (getContext()->getLoader().vkAllocateDescriptorSets(getContext()->getDevice(), &allocInfo, &indexedDescriptorSet) != VK_SUCCESS) {
+        std::cerr << "EntityDescriptorManager: ERROR - Failed to allocate indexed descriptor set" << std::endl;
+        return false;
+    }
+
+    if (!updateIndexedDescriptorSet()) {
+        std::cerr << "EntityDescriptorManager: ERROR - Failed to update indexed descriptor set" << std::endl;
+        return false;
+    }
+
+    std::cout << "EntityDescriptorManager: Indexed descriptor set created successfully" << std::endl;
+    return true;
+}
+
+bool EntityDescriptorManager::updateIndexedDescriptorSet() {
+    if (!bufferManager) {
+        std::cerr << "EntityDescriptorManager: ERROR - Buffer manager is null" << std::endl;
+        return false;
+    }
+    
+    if (!resourceCoordinator) {
+        std::cerr << "EntityDescriptorManager: ERROR - ResourceCoordinator not available for uniform buffer binding" << std::endl;
+        return false;
+    }
+    
+    if (indexedDescriptorSet == VK_NULL_HANDLE) {
+        std::cerr << "EntityDescriptorManager: ERROR - Indexed descriptor set is null" << std::endl;
+        return false;
+    }
+
+    // Update all descriptors in the indexed descriptor set
+    std::vector<VkWriteDescriptorSet> writes;
+    std::vector<VkDescriptorBufferInfo> bufferInfos(EntityBufferType::MAX_ENTITY_BUFFERS);
+    
+    // Add uniform buffer binding at binding 0 (camera matrices)
+    const auto& uniformBuffers = resourceCoordinator->getUniformBuffers();
+    if (uniformBuffers.empty()) {
+        std::cerr << "EntityDescriptorManager: ERROR - No uniform buffers available from ResourceCoordinator" << std::endl;
+        return false;
+    }
+    
+    VkDescriptorBufferInfo uniformBufferInfo = {uniformBuffers[0], 0, VK_WHOLE_SIZE};
+    VkWriteDescriptorSet uniformWrite{};
+    uniformWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    uniformWrite.dstSet = indexedDescriptorSet;
+    uniformWrite.dstBinding = 0; // Camera matrices at binding 0
+    uniformWrite.dstArrayElement = 0;
+    uniformWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    uniformWrite.descriptorCount = 1;
+    uniformWrite.pBufferInfo = &uniformBufferInfo;
+    writes.push_back(uniformWrite);
+    
+    // Map buffer types to their corresponding buffers
+    struct BufferMapping {
+        uint32_t bufferType;
+        VkBuffer buffer;
+        const char* name;
+    };
+    
+    std::vector<BufferMapping> bufferMappings = {
+        {EntityBufferType::VELOCITY, bufferManager->getVelocityBuffer(), "VelocityBuffer"},
+        {EntityBufferType::MOVEMENT_PARAMS, bufferManager->getMovementParamsBuffer(), "MovementParamsBuffer"},
+        {EntityBufferType::RUNTIME_STATE, bufferManager->getRuntimeStateBuffer(), "RuntimeStateBuffer"},
+        {EntityBufferType::ROTATION_STATE, bufferManager->getRotationStateBuffer(), "RotationStateBuffer"},
+        {EntityBufferType::COLOR, bufferManager->getColorBuffer(), "ColorBuffer"},
+        {EntityBufferType::MODEL_MATRIX, bufferManager->getModelMatrixBuffer(), "ModelMatrixBuffer"},
+        {EntityBufferType::POSITION_OUTPUT, bufferManager->getPositionBuffer(), "PositionOutputBuffer"},
+        {EntityBufferType::CURRENT_POSITION, bufferManager->getCurrentPositionBuffer(), "CurrentPositionBuffer"},
+        {EntityBufferType::SPATIAL_MAP, bufferManager->getSpatialMapBuffer(), "SpatialMapBuffer"}
+    };
+
+    // Update each buffer in the indexed array
+    for (const auto& mapping : bufferMappings) {
+        if (mapping.buffer == VK_NULL_HANDLE) {
+            std::cerr << "EntityDescriptorManager: WARNING - " << mapping.name << " is null, skipping" << std::endl;
+            continue;
+        }
+        
+        bufferInfos[mapping.bufferType] = {mapping.buffer, 0, VK_WHOLE_SIZE};
+        
+        VkWriteDescriptorSet write{};
+        write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        write.dstSet = indexedDescriptorSet;
+        write.dstBinding = 1; // Entity buffer array at binding 1
+        write.dstArrayElement = mapping.bufferType; // Index into the buffer array
+        write.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        write.descriptorCount = 1;
+        write.pBufferInfo = &bufferInfos[mapping.bufferType];
+        
+        writes.push_back(write);
+    }
+
+    // Add spatial map buffer binding (binding 2)
+    if (bufferManager->getSpatialMapBuffer() != VK_NULL_HANDLE) {
+        VkDescriptorBufferInfo spatialMapInfo = {bufferManager->getSpatialMapBuffer(), 0, VK_WHOLE_SIZE};
+        
+        VkWriteDescriptorSet spatialMapWrite{};
+        spatialMapWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        spatialMapWrite.dstSet = indexedDescriptorSet;
+        spatialMapWrite.dstBinding = 2; // Spatial map at binding 2
+        spatialMapWrite.dstArrayElement = 0;
+        spatialMapWrite.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        spatialMapWrite.descriptorCount = 1;
+        spatialMapWrite.pBufferInfo = &spatialMapInfo;
+        
+        writes.push_back(spatialMapWrite);
+    }
+
+    if (!writes.empty()) {
+        getContext()->getLoader().vkUpdateDescriptorSets(
+            getContext()->getDevice(),
+            static_cast<uint32_t>(writes.size()),
+            writes.data(),
+            0,
+            nullptr
+        );
+        std::cout << "EntityDescriptorManager: Updated " << writes.size() << " indexed descriptors" << std::endl;
+    }
+
     return true;
 }

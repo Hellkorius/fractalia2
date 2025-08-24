@@ -161,9 +161,11 @@ bool GraphicsResourceManager::createTriangleBuffers() {
 }
 
 bool GraphicsResourceManager::createGraphicsDescriptorPool(VkDescriptorSetLayout descriptorSetLayout) {
+    // Pool sizes updated for unified descriptor indexing system
+    // Increased storage buffer count to accommodate entity buffer arrays
     std::vector<VkDescriptorPoolSize> poolSizes = {
         {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, DEFAULT_MAX_DESCRIPTOR_SETS},
-        {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, DEFAULT_MAX_DESCRIPTOR_SETS}
+        {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, DEFAULT_MAX_DESCRIPTOR_SETS * 10}  // Increased for entity buffer arrays
     };
     
     VkDescriptorPoolCreateInfo poolInfo{};
@@ -207,9 +209,14 @@ bool GraphicsResourceManager::createGraphicsDescriptorSets(VkDescriptorSetLayout
         bufferInfo.offset = 0;
         bufferInfo.range = sizeof(glm::mat4) * 2;
         
-        // Use helper for uniform buffer (binding 0)
-        std::vector<VkDescriptorBufferInfo> bufferInfos = {bufferInfo};
-        VulkanUtils::writeDescriptorSets(context->getDevice(), context->getLoader(), graphicsDescriptorSets[i], bufferInfos, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
+        // Use DescriptorUpdateHelper for uniform buffer (binding 0)
+        DescriptorUpdateHelper::BufferBinding uniformBinding(0, uniformBuffers[i], 0, sizeof(glm::mat4) * 2, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
+        std::vector<DescriptorUpdateHelper::BufferBinding> bindings = {uniformBinding};
+        
+        if (!DescriptorUpdateHelper::updateDescriptorSet(*context, graphicsDescriptorSets[i], bindings)) {
+            std::cerr << "Failed to update descriptor set for frame " << i << std::endl;
+            return false;
+        }
     }
     
     return true;
@@ -305,8 +312,10 @@ bool GraphicsResourceManager::updateDescriptorSetsWithPositionBuffer(VkBuffer po
         return false;
     }
     
+    // Updated for new unified descriptor indexing system
+    // Spatial map buffer uses binding 2 in the new system
     std::vector<DescriptorUpdateHelper::BufferBinding> bindings = {
-        {2, positionBuffer, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER}  // Position buffer at binding 2
+        {2, positionBuffer, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER}  // Spatial map buffer at binding 2
     };
     
     return updateDescriptorSets(bindings);
@@ -323,9 +332,11 @@ bool GraphicsResourceManager::updateDescriptorSetsWithPositionBuffers(VkBuffer c
         return false;
     }
     
+    // Updated for new unified descriptor indexing system
+    // Note: New system uses bindless entity buffer arrays, so this method may need revision
+    // For now, using spatial map buffer (binding 2) - consider if dual buffers are needed
     std::vector<DescriptorUpdateHelper::BufferBinding> bindings = {
-        {2, currentPositionBuffer, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER},  // Current position at binding 2
-        {3, targetPositionBuffer, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER}    // Target position at binding 3
+        {2, currentPositionBuffer, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER}  // Spatial map buffer at binding 2
     };
     
     return updateDescriptorSets(bindings);
@@ -342,12 +353,53 @@ bool GraphicsResourceManager::updateDescriptorSetsWithEntityAndPositionBuffers(V
         return false;
     }
     
+    // Updated for new unified descriptor indexing system
+    // Binding 1: Entity buffer array with nonuniform qualifier
+    // Binding 2: Spatial map buffer for atomic operations
     std::vector<DescriptorUpdateHelper::BufferBinding> bindings = {
-        {1, entityBuffer, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER},   // Entity buffer at binding 1
-        {2, positionBuffer, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER}  // Position buffer at binding 2
+        {1, entityBuffer, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER},   // Entity buffer array at binding 1
+        {2, positionBuffer, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER}  // Spatial map buffer at binding 2
     };
     
     return updateDescriptorSets(bindings);
+}
+
+bool GraphicsResourceManager::updateDescriptorSetsWithEntityBufferArray(const std::vector<VkBuffer>& entityBuffers, VkBuffer spatialMapBuffer) {
+    // Validate inputs
+    if (entityBuffers.empty()) {
+        std::cerr << "GraphicsResourceManager: ERROR - Entity buffer array is empty" << std::endl;
+        return false;
+    }
+    if (spatialMapBuffer == VK_NULL_HANDLE) {
+        std::cerr << "GraphicsResourceManager: ERROR - Spatial map buffer is null" << std::endl;
+        return false;
+    }
+    
+    // New unified descriptor indexing system:
+    // Binding 0: Uniform buffer (camera matrices) - VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER
+    // Binding 1: Entity buffer array - VK_DESCRIPTOR_TYPE_STORAGE_BUFFER with nonuniform_qualifier  
+    // Binding 2: Spatial map buffer - VK_DESCRIPTOR_TYPE_STORAGE_BUFFER (for atomic operations)
+    
+    // Use new array binding method for entity buffers
+    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
+        // Update entity buffer array (binding 1)
+        if (!DescriptorUpdateHelper::updateDescriptorSetWithBufferArray(
+                *context, graphicsDescriptorSets[i], 1, entityBuffers, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER)) {
+            std::cerr << "GraphicsResourceManager: Failed to update entity buffer array for frame " << i << std::endl;
+            return false;
+        }
+        
+        // Update spatial map buffer (binding 2)
+        std::vector<DescriptorUpdateHelper::BufferBinding> spatialBinding = {
+            {2, spatialMapBuffer, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER}
+        };
+        if (!DescriptorUpdateHelper::updateDescriptorSet(*context, graphicsDescriptorSets[i], spatialBinding)) {
+            std::cerr << "GraphicsResourceManager: Failed to update spatial map buffer for frame " << i << std::endl;
+            return false;
+        }
+    }
+    
+    return true;
 }
 
 // High-level resource operations (consolidated from facade)

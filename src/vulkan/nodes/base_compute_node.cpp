@@ -64,8 +64,8 @@ void BaseComputeNode::executeComputeNode(
         return;
     }
     
-    // Create compute pipeline state using derived class implementation
-    auto layoutSpec = DescriptorLayoutPresets::createEntityComputeLayout();
+    // Create compute pipeline state using Vulkan 1.3 descriptor indexing
+    auto layoutSpec = DescriptorLayoutPresets::createEntityIndexedLayout();
     VkDescriptorSetLayout descriptorLayout = computeManager->getLayoutManager()->getLayout(layoutSpec);
     ComputePipelineState pipelineState = this->createPipelineState(descriptorLayout);
     
@@ -82,8 +82,8 @@ void BaseComputeNode::executeComputeNode(
         return;
     }
     
-    // Set up descriptor sets
-    VkDescriptorSet computeDescriptorSet = gpuEntityManager->getDescriptorManager().getComputeDescriptorSet();
+    // Set up descriptor sets (using Vulkan 1.3 indexing)
+    VkDescriptorSet computeDescriptorSet = gpuEntityManager->getDescriptorManager().getIndexedDescriptorSet();
     
     if (computeDescriptorSet != VK_NULL_HANDLE) {
         dispatch.descriptorSets.push_back(computeDescriptorSet);

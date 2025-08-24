@@ -42,6 +42,9 @@ public:
     bool updateDescriptorSetsWithPositionBuffers(VkBuffer currentPositionBuffer, VkBuffer targetPositionBuffer);
     bool updateDescriptorSetsWithEntityAndPositionBuffers(VkBuffer entityBuffer, VkBuffer positionBuffer);
     
+    // New unified descriptor indexing system methods
+    bool updateDescriptorSetsWithEntityBufferArray(const std::vector<VkBuffer>& entityBuffers, VkBuffer spatialMapBuffer);
+    
     // Recreation for swapchain rebuild
     bool recreateGraphicsDescriptors();
     

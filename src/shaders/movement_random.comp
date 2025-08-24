@@ -1,4 +1,16 @@
 #version 450
+#extension GL_EXT_nonuniform_qualifier : require
+
+// Shared entity buffer indices for descriptor indexing
+const uint VELOCITY_BUFFER = 0u;           
+const uint MOVEMENT_PARAMS_BUFFER = 1u;    
+const uint RUNTIME_STATE_BUFFER = 2u;      
+const uint ROTATION_STATE_BUFFER = 3u;     
+const uint COLOR_BUFFER = 4u;              
+const uint MODEL_MATRIX_BUFFER = 5u;       
+const uint POSITION_OUTPUT_BUFFER = 6u;    
+const uint CURRENT_POSITION_BUFFER = 7u;   
+const uint SPATIAL_MAP_BUFFER = 8u;
 
 // Optimized workgroup size for maximum GPU occupancy
 layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
@@ -12,22 +24,10 @@ layout(push_constant) uniform ComputePushConstants {
     uint entityOffset;  // For chunked dispatches
 } pc;
 
-// SoA (Structure of Arrays) buffers for better cache locality and vectorization
-layout(std430, binding = 0) buffer VelocityBuffer {
-    vec4 velocities[];
-} velocityBuffer;
-
-layout(std430, binding = 1) buffer MovementParamsBuffer {
-    vec4 movementParams[];
-} movementParamsBuffer;
-
-layout(std430, binding = 2) buffer RuntimeStateBuffer {
-    vec4 runtimeStates[];
-} runtimeStateBuffer;
-
-layout(std430, binding = 5) buffer RotationStateBuffer {
-    vec4 rotationStates[];  // rotation, angularVelocity, angularDamping, reserved
-} rotationStateBuffer;
+// Vulkan 1.3 descriptor indexing - single array of all entity buffers
+layout(std430, binding = 1) buffer EntityBuffers {
+    vec4 data[];
+} entityBuffers[];
 
 // Position buffers are not used by movement shader - only physics shader uses them
 // This shader only updates velocity and rotation every 120 frames
@@ -97,9 +97,9 @@ void main() {
     }
     
     // Load entity data from SoA buffers - much better cache locality
-    vec4 velocity = velocityBuffer.velocities[entityIndex];
-    vec4 movementParams = movementParamsBuffer.movementParams[entityIndex];
-    vec4 runtimeState = runtimeStateBuffer.runtimeStates[entityIndex];
+    vec4 velocity = entityBuffers[VELOCITY_BUFFER].data[entityIndex];
+    vec4 movementParams = entityBuffers[MOVEMENT_PARAMS_BUFFER].data[entityIndex];
+    vec4 runtimeState = entityBuffers[RUNTIME_STATE_BUFFER].data[entityIndex];
     
     // Extract movement parameters
     float amplitude = movementParams.x;
@@ -108,7 +108,7 @@ void main() {
     
     // Mark entity as initialized if not already
     if (initialized < 0.5) {
-        runtimeStateBuffer.runtimeStates[entityIndex].w = 1.0; // Mark as initialized
+        entityBuffers[RUNTIME_STATE_BUFFER].data[entityIndex].w = 1.0; // Mark as initialized
     }
     
     // Calculate cycle using frame number and entity offset for staggering
@@ -137,6 +137,6 @@ void main() {
         // Rotation is now handled entirely by physics shader
         
         // Write updated velocity back to SoA buffer
-        velocityBuffer.velocities[entityIndex] = velocity;
+        entityBuffers[VELOCITY_BUFFER].data[entityIndex] = velocity;
     }
 }

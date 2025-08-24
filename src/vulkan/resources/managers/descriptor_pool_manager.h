@@ -28,7 +28,7 @@ public:
         uint32_t storageImages = DEFAULT_COMPUTE_CACHE_SIZE;
         uint32_t samplers = DEFAULT_COMPUTE_CACHE_SIZE;
         bool allowFreeDescriptorSets = true;
-        bool bindlessReady = false; // Future-proof for bindless
+        bool bindlessReady = true;  // Enable for new unified descriptor indexing system
     };
     
     // Descriptor pool creation/destruction

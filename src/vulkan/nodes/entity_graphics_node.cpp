@@ -88,8 +88,8 @@ void EntityGraphicsNode::execute(VkCommandBuffer commandBuffer, const FrameGraph
     // Update uniform buffer with camera matrices (now handled by EntityDescriptorManager)
     updateUniformBuffer();
     
-    // Create graphics pipeline state for entity rendering - use same layout as ResourceContext
-    auto layoutSpec = DescriptorLayoutPresets::createEntityGraphicsLayout();
+    // Create graphics pipeline state for entity rendering - use Vulkan 1.3 descriptor indexing
+    auto layoutSpec = DescriptorLayoutPresets::createEntityIndexedLayout();
     VkDescriptorSetLayout descriptorLayout = graphicsManager->getLayoutManager()->getLayout(layoutSpec);
     
     // Create graphics pipeline state for dynamic rendering (no render pass needed)
@@ -173,8 +173,8 @@ void EntityGraphicsNode::execute(VkCommandBuffer commandBuffer, const FrameGraph
         pipeline
     );
     
-    // Bind single descriptor set with unified layout (uniform + storage buffers)
-    VkDescriptorSet entityDescriptorSet = gpuEntityManager->getDescriptorManager().getGraphicsDescriptorSet();
+    // Bind single descriptor set with unified layout (uniform + storage buffers, using Vulkan 1.3 indexing)
+    VkDescriptorSet entityDescriptorSet = gpuEntityManager->getDescriptorManager().getIndexedDescriptorSet();
     
     if (entityDescriptorSet != VK_NULL_HANDLE) {
         vk.vkCmdBindDescriptorSets(

@@ -10,6 +10,7 @@
 #include "../core/vulkan_context.h"
 #include "../core/vulkan_raii.h"
 #include "../core/vulkan_constants.h"
+#include "../../ecs/gpu/entity_buffer_types.h"
 
 // Descriptor binding specification for flexible layout creation
 struct DescriptorBinding {
@@ -243,9 +244,8 @@ private:
 
 // Utility functions for common descriptor layout patterns
 namespace DescriptorLayoutPresets {
-    // Entity rendering layouts (for your use case)
-    DescriptorLayoutSpec createEntityGraphicsLayout();
-    DescriptorLayoutSpec createEntityComputeLayout();
+    // Vulkan 1.3 descriptor indexing layout (replaces individual bindings)
+    DescriptorLayoutSpec createEntityIndexedLayout();
     
     // Common rendering layouts
     DescriptorLayoutSpec createMaterialLayout(uint32_t textureCount = 4);

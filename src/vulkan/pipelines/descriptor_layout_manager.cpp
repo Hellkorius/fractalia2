@@ -531,117 +531,41 @@ std::string DescriptorLayoutManager::descriptorTypeToString(VkDescriptorType typ
 
 // DescriptorLayoutPresets namespace implementation
 namespace DescriptorLayoutPresets {
-    DescriptorLayoutSpec createEntityGraphicsLayout() {
+    DescriptorLayoutSpec createEntityIndexedLayout() {
         DescriptorLayoutSpec spec;
-        spec.layoutName = "EntityGraphics";
+        spec.layoutName = "EntityIndexedBuffers";
         
-        // Automatically create bindings based on EntityDescriptorBindings::Graphics constants
-        spec.bindings.reserve(EntityDescriptorBindings::Graphics::BINDING_COUNT);
+        // Binding 0: Uniform buffer for camera matrices (required by vertex shader)
+        DescriptorBinding uniformBinding{};
+        uniformBinding.binding = 0;
+        uniformBinding.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        uniformBinding.descriptorCount = 1;
+        uniformBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+        uniformBinding.debugName = "cameraMatricesUBO";
         
-        for (uint32_t i = 0; i < EntityDescriptorBindings::Graphics::BINDING_COUNT; ++i) {
-            DescriptorBinding binding{};
-            binding.binding = i;
-            binding.descriptorCount = 1;
-            binding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-            
-            // Configure each binding based on EntityDescriptorBindings::Graphics enum
-            switch (i) {
-                case EntityDescriptorBindings::Graphics::UNIFORM_BUFFER:
-                    binding.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-                    binding.debugName = "cameraUBO";
-                    break;
-                    
-                case EntityDescriptorBindings::Graphics::POSITION_BUFFER:
-                    binding.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-                    binding.debugName = "positionBuffer";
-                    break;
-                    
-                case EntityDescriptorBindings::Graphics::MOVEMENT_PARAMS_BUFFER:
-                    binding.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-                    binding.debugName = "movementParamsBuffer";
-                    break;
-                    
-                case EntityDescriptorBindings::Graphics::ROTATION_STATE_BUFFER:
-                    binding.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-                    binding.debugName = "rotationStateBuffer";
-                    break;
-                    
-                default:
-                    // For any future bindings, default to storage buffer
-                    binding.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-                    binding.debugName = "entityBuffer_" + std::to_string(i);
-                    break;
-            }
-            
-            spec.bindings.push_back(binding);
-        }
+        // Binding 1: Single bindless buffer array using Vulkan 1.3 descriptor indexing
+        DescriptorBinding bufferArrayBinding{};
+        bufferArrayBinding.binding = 1;
+        bufferArrayBinding.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        bufferArrayBinding.descriptorCount = EntityBufferType::MAX_ENTITY_BUFFERS;
+        bufferArrayBinding.stageFlags = VK_SHADER_STAGE_ALL;
+        bufferArrayBinding.isBindless = true;
+        bufferArrayBinding.maxBindlessDescriptors = EntityBufferType::MAX_ENTITY_BUFFERS;
+        bufferArrayBinding.debugName = "entityBufferArray";
         
-        return spec;
-    }
-    
-    DescriptorLayoutSpec createEntityComputeLayout() {
-        DescriptorLayoutSpec spec;
-        spec.layoutName = "EntityComputeSoA";
-        
-        // SoA Structure of Arrays layout matching compute shaders
-        
-        // Binding 0: VelocityBuffer (velocity.xy, damping, reserved)
-        DescriptorBinding velocityBinding{};
-        velocityBinding.binding = 0;
-        velocityBinding.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-        velocityBinding.descriptorCount = 1;
-        velocityBinding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
-        velocityBinding.debugName = "velocityBuffer";
-        
-        // Binding 1: MovementParamsBuffer (amplitude, frequency, phase, timeOffset)
-        DescriptorBinding movementParamsBinding{};
-        movementParamsBinding.binding = 1;
-        movementParamsBinding.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-        movementParamsBinding.descriptorCount = 1;
-        movementParamsBinding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
-        movementParamsBinding.debugName = "movementParamsBuffer";
-        
-        // Binding 2: RuntimeStateBuffer (totalTime, initialized, stateTimer, entityState)
-        DescriptorBinding runtimeStateBinding{};
-        runtimeStateBinding.binding = 2;
-        runtimeStateBinding.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-        runtimeStateBinding.descriptorCount = 1;
-        runtimeStateBinding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
-        runtimeStateBinding.debugName = "runtimeStateBuffer";
-        
-        // Binding 3: PositionBuffer (output positions for graphics)
-        DescriptorBinding positionOutputBinding{};
-        positionOutputBinding.binding = 3;
-        positionOutputBinding.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-        positionOutputBinding.descriptorCount = 1;
-        positionOutputBinding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
-        positionOutputBinding.debugName = "positionOutputBuffer";
-        
-        // Binding 4: CurrentPositionBuffer (physics integration state)
-        DescriptorBinding currentPosBinding{};
-        currentPosBinding.binding = 4;
-        currentPosBinding.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-        currentPosBinding.descriptorCount = 1;
-        currentPosBinding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
-        currentPosBinding.debugName = "currentPositionBuffer";
-        
-        // Binding 5: RotationStateBuffer (rotation, angularVelocity, angularDamping, reserved)
-        DescriptorBinding rotationStateBinding{};
-        rotationStateBinding.binding = 5;
-        rotationStateBinding.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-        rotationStateBinding.descriptorCount = 1;
-        rotationStateBinding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
-        rotationStateBinding.debugName = "rotationStateBuffer";
-        
-        // Binding 7: SpatialMapBuffer (spatial hash grid for collision detection)
+        // Binding 2: Special spatial map buffer for atomic operations (physics shader only)
         DescriptorBinding spatialMapBinding{};
-        spatialMapBinding.binding = 7;
+        spatialMapBinding.binding = 2;
         spatialMapBinding.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         spatialMapBinding.descriptorCount = 1;
         spatialMapBinding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
         spatialMapBinding.debugName = "spatialMapBuffer";
         
-        spec.bindings = {velocityBinding, movementParamsBinding, runtimeStateBinding, positionOutputBinding, currentPosBinding, rotationStateBinding, spatialMapBinding};
+        spec.bindings = {uniformBinding, bufferArrayBinding, spatialMapBinding};
+        
+        // Enable descriptor indexing features
+        spec.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT;
+        
         return spec;
     }
 }

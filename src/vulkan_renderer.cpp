@@ -125,7 +125,7 @@ bool VulkanRenderer::initialize(SDL_Window* window) {
         return false;
     }
     
-    auto layoutSpec = DescriptorLayoutPresets::createEntityGraphicsLayout();
+    auto layoutSpec = DescriptorLayoutPresets::createEntityIndexedLayout();
     VkDescriptorSetLayout descriptorLayout = pipelineSystem->getLayoutManager()->getLayout(layoutSpec);
     if (descriptorLayout == VK_NULL_HANDLE) {
         std::cerr << "Failed to create descriptor layout" << std::endl;
@@ -169,7 +169,7 @@ bool VulkanRenderer::initialize(SDL_Window* window) {
     }
     std::cout << "Graphics descriptor sets updated with entity and position buffers" << std::endl;
     
-    auto computeLayoutSpec = DescriptorLayoutPresets::createEntityComputeLayout();
+    auto computeLayoutSpec = DescriptorLayoutPresets::createEntityIndexedLayout();
     VkDescriptorSetLayout computeDescriptorLayout = pipelineSystem->getLayoutManager()->getLayout(computeLayoutSpec);
     if (computeDescriptorLayout == VK_NULL_HANDLE) {
         std::cerr << "Failed to create compute descriptor layout" << std::endl;
@@ -183,8 +183,8 @@ bool VulkanRenderer::initialize(SDL_Window* window) {
         return false;
     }
     
-    // Create graphics descriptor sets for entity rendering with unified layout
-    auto graphicsLayoutSpec = DescriptorLayoutPresets::createEntityGraphicsLayout();
+    // Create graphics descriptor sets for entity rendering with Vulkan 1.3 descriptor indexing
+    auto graphicsLayoutSpec = DescriptorLayoutPresets::createEntityIndexedLayout();
     VkDescriptorSetLayout graphicsDescriptorLayout = pipelineSystem->getLayoutManager()->getLayout(graphicsLayoutSpec);
     if (!gpuEntityManager->getDescriptorManager().createGraphicsDescriptorSets(graphicsDescriptorLayout)) {
         std::cerr << "Failed to create entity graphics descriptor sets" << std::endl;

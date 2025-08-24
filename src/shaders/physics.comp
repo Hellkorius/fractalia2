@@ -1,4 +1,16 @@
 #version 450
+#extension GL_EXT_nonuniform_qualifier : require
+
+// Shared entity buffer indices for descriptor indexing
+const uint VELOCITY_BUFFER = 0u;           
+const uint MOVEMENT_PARAMS_BUFFER = 1u;    
+const uint RUNTIME_STATE_BUFFER = 2u;      
+const uint ROTATION_STATE_BUFFER = 3u;     
+const uint COLOR_BUFFER = 4u;              
+const uint MODEL_MATRIX_BUFFER = 5u;       
+const uint POSITION_OUTPUT_BUFFER = 6u;    
+const uint CURRENT_POSITION_BUFFER = 7u;   
+const uint SPATIAL_MAP_BUFFER = 8u;
 
 // Optimized workgroup size for maximum GPU occupancy
 layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
@@ -12,30 +24,13 @@ layout(push_constant) uniform PhysicsPushConstants {
     uint entityOffset;  // For chunked dispatches
 } pc;
 
-// Unified SoA binding layout (shared with movement shader)
-layout(std430, binding = 0) buffer VelocityBuffer {
-    vec4 velocities[];  // R/W: velocity.xy, damping, reserved
-} velocityBuffer;
+// Vulkan 1.3 descriptor indexing - single array of all entity buffers
+layout(std430, binding = 1) buffer EntityBuffers {
+    vec4 data[];
+} entityBuffers[];
 
-layout(std430, binding = 2) buffer RuntimeStateBuffer {
-    vec4 runtimeStates[];  // R/W: totalTime, reserved, stateTimer, initialized
-} runtimeStateBuffer;
-
-// Physics-specific buffers
-layout(std430, binding = 3) buffer PositionBuffer {
-    vec4 positions[]; // RW: computed positions for graphics
-} outPositions;
-
-layout(std430, binding = 4) buffer CurrentPositionBuffer {
-    vec4 currentPositions[]; // R/W: physics integration state
-} currentPos;
-
-layout(std430, binding = 5) buffer RotationStateBuffer {
-    vec4 rotationStates[];  // rotation, angularVelocity, angularDamping, reserved
-} rotationStateBuffer;
-
-// Spatial map buffer for collision detection and spatial queries
-layout(std430, binding = 7) buffer SpatialMapBuffer {
+// Special spatial map buffer with atomic support (required for atomic operations)
+layout(std430, binding = 2) buffer SpatialMapBuffer {
     uvec2 spatialCells[]; // R/W: spatial hash grid - packed (entityId, nextIndex)
 } spatialMap;
 
@@ -222,9 +217,9 @@ void main() {
     }
     
     // Load entity data from SoA buffers - better cache locality
-    vec4 velocity = velocityBuffer.velocities[entityIndex];
-    vec4 runtimeState = runtimeStateBuffer.runtimeStates[entityIndex];
-    vec4 rotationState = rotationStateBuffer.rotationStates[entityIndex];
+    vec4 velocity = entityBuffers[VELOCITY_BUFFER].data[entityIndex];
+    vec4 runtimeState = entityBuffers[RUNTIME_STATE_BUFFER].data[entityIndex];
+    vec4 rotationState = entityBuffers[ROTATION_STATE_BUFFER].data[entityIndex];
     
     float initialized = runtimeState.w; // initialized flag is in .w
     
@@ -233,7 +228,7 @@ void main() {
     float damping = velocity.z;
     
     // SIMPLIFIED: Read position directly from output buffer, integrate velocity
-    vec3 currentPosition = outPositions.positions[entityIndex].xyz;
+    vec3 currentPosition = entityBuffers[POSITION_OUTPUT_BUFFER].data[entityIndex].xyz;
     
     // On first frame, initialize position if it's zero
     if (length(currentPosition) < 0.01) {
@@ -261,7 +256,7 @@ void main() {
     rotationState.x = timeRotation;
     
     // Write tentative position to current buffer first
-    currentPos.currentPositions[entityIndex] = vec4(currentPosition, 1.0);
+    entityBuffers[CURRENT_POSITION_BUFFER].data[entityIndex] = vec4(currentPosition, 1.0);
     
     // Update spatial map with new position
     updateSpatialMap(entityIndex, currentPosition.xy);
@@ -318,7 +313,7 @@ void main() {
             if (otherEntityIndex >= pc.entityCount) continue;
             
             // Get other entity's position
-            vec3 otherPos = currentPos.currentPositions[otherEntityIndex].xyz;
+            vec3 otherPos = entityBuffers[CURRENT_POSITION_BUFFER].data[otherEntityIndex].xyz;
             
             // Fast squared distance check for early culling (no expensive sqrt)
             vec2 diff = currentPosition.xy - otherPos.xy;
@@ -341,7 +336,7 @@ void main() {
     }
     
     // Write back final velocity, rotation state, and position
-    velocityBuffer.velocities[entityIndex].xy = vel;
-    rotationStateBuffer.rotationStates[entityIndex] = rotationState;
-    outPositions.positions[entityIndex] = vec4(resolvedPosition, currentPosition.z, 0.0);
+    entityBuffers[VELOCITY_BUFFER].data[entityIndex].xy = vel;
+    entityBuffers[ROTATION_STATE_BUFFER].data[entityIndex] = rotationState;
+    entityBuffers[POSITION_OUTPUT_BUFFER].data[entityIndex] = vec4(resolvedPosition, currentPosition.z, 0.0);
 }

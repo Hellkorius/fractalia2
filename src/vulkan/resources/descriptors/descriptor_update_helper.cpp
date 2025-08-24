@@ -60,6 +60,62 @@ bool DescriptorUpdateHelper::updateDescriptorSet(
     return true;
 }
 
+bool DescriptorUpdateHelper::updateDescriptorSetWithBufferArray(
+    const VulkanContext& context,
+    VkDescriptorSet descriptorSet,
+    uint32_t binding,
+    const std::vector<VkBuffer>& buffers,
+    VkDescriptorType descriptorType,
+    VkDeviceSize bufferSize) {
+    
+    if (!validateDescriptorSet(descriptorSet)) {
+        return false;
+    }
+    
+    if (buffers.empty()) {
+        std::cerr << "DescriptorUpdateHelper: No buffers provided for array binding" << std::endl;
+        return false;
+    }
+    
+    // Validate all buffers
+    for (size_t i = 0; i < buffers.size(); ++i) {
+        if (buffers[i] == VK_NULL_HANDLE) {
+            std::cerr << "DescriptorUpdateHelper: Buffer " << i << " is VK_NULL_HANDLE in array binding" << std::endl;
+            return false;
+        }
+    }
+    
+    // Prepare buffer infos for array
+    std::vector<VkDescriptorBufferInfo> bufferInfos(buffers.size());
+    for (size_t i = 0; i < buffers.size(); ++i) {
+        bufferInfos[i].buffer = buffers[i];
+        bufferInfos[i].offset = 0;
+        bufferInfos[i].range = bufferSize;
+    }
+    
+    // Create write descriptor for array
+    VkWriteDescriptorSet descriptorWrite{};
+    descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    descriptorWrite.dstSet = descriptorSet;
+    descriptorWrite.dstBinding = binding;
+    descriptorWrite.dstArrayElement = 0;
+    descriptorWrite.descriptorType = descriptorType;
+    descriptorWrite.descriptorCount = static_cast<uint32_t>(buffers.size());
+    descriptorWrite.pBufferInfo = bufferInfos.data();
+    
+    // Execute update
+    const auto& vk = context.getLoader();
+    vk.vkUpdateDescriptorSets(
+        context.getDevice(), 
+        1, 
+        &descriptorWrite, 
+        0, 
+        nullptr
+    );
+    
+    return true;
+}
+
 bool DescriptorUpdateHelper::validateBinding(const BufferBinding& binding) {
     if (binding.buffer == VK_NULL_HANDLE) {
         std::cerr << "DescriptorUpdateHelper: Buffer is VK_NULL_HANDLE for binding " << binding.binding << std::endl;

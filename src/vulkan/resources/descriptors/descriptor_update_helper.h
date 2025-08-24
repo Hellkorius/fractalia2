@@ -74,6 +74,16 @@ public:
         return true;
     }
 
+    // Array binding support for unified descriptor indexing system
+    static bool updateDescriptorSetWithBufferArray(
+        const VulkanContext& context,
+        VkDescriptorSet descriptorSet,
+        uint32_t binding,
+        const std::vector<VkBuffer>& buffers,
+        VkDescriptorType descriptorType,
+        VkDeviceSize bufferSize = VK_WHOLE_SIZE
+    );
+    
     // Validation helpers
     static bool validateBinding(const BufferBinding& binding);
     static bool validateDescriptorSet(VkDescriptorSet descriptorSet);

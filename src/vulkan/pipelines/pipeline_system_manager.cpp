@@ -101,8 +101,8 @@ VkPipeline PipelineSystemManager::createGraphicsPipeline(const PipelineCreationI
         }
     }
     
-    // Create descriptor layout for this pipeline
-    auto layoutSpec = DescriptorLayoutPresets::createEntityGraphicsLayout();
+    // Create descriptor layout for this pipeline (using Vulkan 1.3 indexing)
+    auto layoutSpec = DescriptorLayoutPresets::createEntityIndexedLayout();
     VkDescriptorSetLayout descriptorLayout = layoutManager->getLayout(layoutSpec);
     if (descriptorLayout == VK_NULL_HANDLE) {
         std::cerr << "Failed to create descriptor layout" << std::endl;
@@ -135,8 +135,8 @@ VkPipeline PipelineSystemManager::createComputePipeline(const std::string& compu
         return VK_NULL_HANDLE;
     }
     
-    // Create descriptor layout for compute pipeline
-    auto layoutSpec = DescriptorLayoutPresets::createEntityComputeLayout();
+    // Create descriptor layout for compute pipeline (using Vulkan 1.3 indexing)
+    auto layoutSpec = DescriptorLayoutPresets::createEntityIndexedLayout();
     VkDescriptorSetLayout descriptorLayout = layoutManager->getLayout(layoutSpec);
     if (descriptorLayout == VK_NULL_HANDLE) {
         std::cerr << "Failed to create compute descriptor layout" << std::endl;
@@ -160,8 +160,7 @@ void PipelineSystemManager::warmupCommonPipelines() {
     
     // Warmup common descriptor layouts
     std::vector<DescriptorLayoutSpec> commonLayouts = {
-        DescriptorLayoutPresets::createEntityGraphicsLayout(),
-        DescriptorLayoutPresets::createEntityComputeLayout()
+        DescriptorLayoutPresets::createEntityIndexedLayout()  // Single unified layout
     };
     layoutManager->warmupCache(commonLayouts);
     
@@ -173,7 +172,7 @@ void PipelineSystemManager::warmupCommonPipelines() {
     // Note: Would need render pass to actually warmup - this is a placeholder
     
     // Warmup common compute pipeline states
-    auto entityComputeLayout = layoutManager->getLayout(DescriptorLayoutPresets::createEntityComputeLayout());
+    auto entityComputeLayout = layoutManager->getLayout(DescriptorLayoutPresets::createEntityIndexedLayout());
     std::vector<ComputePipelineState> commonComputeStates = {
         ComputePipelinePresets::createEntityMovementState(entityComputeLayout)
     };

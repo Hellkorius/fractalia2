@@ -1,4 +1,16 @@
 #version 450
+#extension GL_EXT_nonuniform_qualifier : require
+
+// Shared entity buffer indices for descriptor indexing
+const uint VELOCITY_BUFFER = 0u;           
+const uint MOVEMENT_PARAMS_BUFFER = 1u;    
+const uint RUNTIME_STATE_BUFFER = 2u;      
+const uint ROTATION_STATE_BUFFER = 3u;     
+const uint COLOR_BUFFER = 4u;              
+const uint MODEL_MATRIX_BUFFER = 5u;       
+const uint POSITION_OUTPUT_BUFFER = 6u;    
+const uint CURRENT_POSITION_BUFFER = 7u;   
+const uint SPATIAL_MAP_BUFFER = 8u;
 
 layout(binding = 0) uniform UBO {
     mat4 view;
@@ -14,18 +26,10 @@ layout(push_constant) uniform PC {
 // Input vertex geometry
 layout(location = 0) in vec3 inPos;
 
-// Temporarily simplified for debugging
-layout(std430, binding = 1) readonly buffer ComputedPositions {
-    vec4 computedPos[];
-};
-
-layout(std430, binding = 2) readonly buffer MovementParamsBuffer {
-    vec4 movementParams[];  // amplitude, frequency, phase, timeOffset
-} movementParamsBuffer;
-
-layout(std430, binding = 3) readonly buffer RotationStateBuffer {
-    vec4 rotationStates[];  // rotation, angularVelocity, angularDamping, reserved
-} rotationStateBuffer;
+// Vulkan 1.3 descriptor indexing - single array of all entity buffers
+layout(std430, binding = 1) readonly buffer EntityBuffers {
+    vec4 data[];
+} entityBuffers[];
 
 
 layout(location = 0) out vec3 color;
@@ -49,10 +53,10 @@ vec3 hsv2rgb(float h, float s, float v) {
 
 void main() {
     // Read computed positions from physics shader output
-    vec3 worldPos = computedPos[gl_InstanceIndex].xyz;
+    vec3 worldPos = entityBuffers[POSITION_OUTPUT_BUFFER].data[gl_InstanceIndex].xyz;
     
     // Extract movement parameters for color calculation from SoA buffers
-    vec4 entityMovementParams = movementParamsBuffer.movementParams[gl_InstanceIndex];
+    vec4 entityMovementParams = entityBuffers[MOVEMENT_PARAMS_BUFFER].data[gl_InstanceIndex];
     float phase = entityMovementParams.z;
     float timeOffset = entityMovementParams.w;
     float entityTime = pc.time + timeOffset;
@@ -100,7 +104,7 @@ void main() {
     saturation = clamp(saturation, 0.0, 1.0); // Allow completely desaturated to fully saturated
     
     // Read rotation from dedicated rotation buffer
-    float rot = rotationStateBuffer.rotationStates[gl_InstanceIndex].x;
+    float rot = entityBuffers[ROTATION_STATE_BUFFER].data[gl_InstanceIndex].x;
     
     color = hsv2rgb(hue, saturation, brightness);
     

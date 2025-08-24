@@ -11,7 +11,10 @@ const std::vector<const char*> validationLayers = {
 const std::vector<const char*> deviceExtensions = {
     VK_KHR_SWAPCHAIN_EXTENSION_NAME,
     // Low-latency optimization extension (optional)
-    VK_EXT_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME
+    VK_EXT_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME,
+    // Descriptor indexing extensions for Vulkan 1.3 features
+    VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME,
+    VK_KHR_MAINTENANCE_3_EXTENSION_NAME
 };
 
 #ifdef NDEBUG
@@ -219,11 +222,26 @@ bool VulkanContext::createLogicalDevice() {
     enabledExtensions.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME); // Always required
     
     // Add optional extensions if supported
+    std::set<std::string> availableExtensionNames;
     for (const auto& extension : availableExtensions) {
-        if (std::string(extension.extensionName) == VK_EXT_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME) {
-            enabledExtensions.push_back(VK_EXT_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME);
-            break;
-        }
+        availableExtensionNames.insert(extension.extensionName);
+    }
+    
+    // Add descriptor indexing extensions if supported
+    if (availableExtensionNames.count(VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME)) {
+        enabledExtensions.push_back(VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME);
+        std::cout << "VK_EXT_descriptor_indexing supported - enabling advanced descriptor features" << std::endl;
+    }
+    
+    if (availableExtensionNames.count(VK_KHR_MAINTENANCE_3_EXTENSION_NAME)) {
+        enabledExtensions.push_back(VK_KHR_MAINTENANCE_3_EXTENSION_NAME);
+        std::cout << "VK_KHR_maintenance3 supported - enabling descriptor indexing prerequisites" << std::endl;
+    }
+    
+    // Add swapchain maintenance extension if supported
+    if (availableExtensionNames.count(VK_EXT_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME)) {
+        enabledExtensions.push_back(VK_EXT_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME);
+        std::cout << "VK_EXT_swapchain_maintenance1 supported - enabling low-latency optimizations" << std::endl;
     }
 
     VkDeviceCreateInfo createInfo{};
@@ -376,7 +394,11 @@ bool VulkanContext::isDeviceSuitable(VkPhysicalDevice device) {
     std::set<std::string> requiredExtensions = { VK_KHR_SWAPCHAIN_EXTENSION_NAME };
     
     // Optional extensions for better performance
-    std::set<std::string> optionalExtensions = { VK_EXT_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME };
+    std::set<std::string> optionalExtensions = { 
+        VK_EXT_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME,
+        VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME,
+        VK_KHR_MAINTENANCE_3_EXTENSION_NAME
+    };
     
     // Check which extensions are available
     std::set<std::string> supportedExtensions;
