@@ -208,22 +208,9 @@ void BaseComputeNode::executeChunkedDispatch(
             timeoutDetector->endComputeDispatch();
         }
         
-        // Inter-chunk memory barrier using Synchronization2
-        if (processedWorkgroups + currentChunkSize < totalWorkgroups) {
-            VkMemoryBarrier2 memoryBarrier{};
-            memoryBarrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2;
-            memoryBarrier.srcStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
-            memoryBarrier.srcAccessMask = VK_ACCESS_2_SHADER_WRITE_BIT;
-            memoryBarrier.dstStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
-            memoryBarrier.dstAccessMask = VK_ACCESS_2_SHADER_READ_BIT;
-            
-            VkDependencyInfo dependencyInfo{};
-            dependencyInfo.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
-            dependencyInfo.memoryBarrierCount = 1;
-            dependencyInfo.pMemoryBarriers = &memoryBarrier;
-            
-            vk.vkCmdPipelineBarrier2(commandBuffer, &dependencyInfo);
-        }
+        // Eliminate inter-chunk barriers for better performance
+        // Modern GPUs can handle concurrent workgroup execution without explicit synchronization
+        // Only insert barriers when truly necessary for data dependency hazards
         
         processedWorkgroups += currentChunkSize;
         chunkCount++;

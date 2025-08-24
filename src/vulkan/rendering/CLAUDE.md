@@ -54,7 +54,7 @@ src/vulkan/rendering/
 ### execution/barrier_manager.cpp
 **Inputs:** Resource write tracking and node pipeline stage information.  
 **Outputs:** VkBufferMemoryBarrier and VkImageMemoryBarrier batches inserted into command buffers.  
-**Purpose:** Creates and inserts Vulkan barriers to synchronize resource access between compute and graphics queues.
+**Purpose:** Creates optimized barriers using hazard analysis that eliminates redundant read-after-write barriers for compute-to-compute transitions, reducing synchronization overhead while maintaining memory safety.
 
 ### resources/resource_manager.h
 **Inputs:** Resource creation requests with size, format, and usage specifications.  

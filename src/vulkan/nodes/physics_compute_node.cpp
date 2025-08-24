@@ -48,17 +48,20 @@ void PhysicsComputeNode::execute(VkCommandBuffer commandBuffer, const FrameGraph
 // Virtual method implementations specific to physics computation
 BaseComputeNode::DispatchParams PhysicsComputeNode::calculateDispatchParams(uint32_t entityCount, uint32_t maxWorkgroups, bool forceChunking) {
     // Calculate workgroups needed for both spatial map clearing and entity processing
-    const uint32_t SPATIAL_MAP_SIZE = 16384; // 32x32x16 (3D spatial grid)
+    const uint32_t SPATIAL_MAP_SIZE = 32768; // 64x64x8 (cache-optimized 3D spatial grid)
     const uint32_t spatialClearWorkgroups = (SPATIAL_MAP_SIZE + THREADS_PER_WORKGROUP - 1) / THREADS_PER_WORKGROUP;
     const uint32_t entityWorkgroups = (entityCount + THREADS_PER_WORKGROUP - 1) / THREADS_PER_WORKGROUP;
     
     // Use maximum of both requirements
     const uint32_t totalWorkgroups = std::max(spatialClearWorkgroups, entityWorkgroups);
     
+    // Disable forced chunking for modern GPUs unless truly necessary
+    const bool shouldChunk = (totalWorkgroups > maxWorkgroups) && (maxWorkgroups < 2048);
+    
     return {
         totalWorkgroups,
         maxWorkgroups,
-        totalWorkgroups > maxWorkgroups || forceChunking
+        shouldChunk || forceChunking
     };
 }
 

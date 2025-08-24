@@ -19,9 +19,9 @@ constexpr uint32_t DEFAULT_SHADER_CACHE_SIZE = 512;
 constexpr uint32_t DEFAULT_LAYOUT_CACHE_SIZE = 256;
 constexpr uint64_t CACHE_CLEANUP_INTERVAL = 1000;  // frames
 
-// Compute Configuration
+// Compute Configuration - optimized for modern GPUs
 constexpr uint32_t THREADS_PER_WORKGROUP = 64;
-constexpr uint32_t MAX_WORKGROUPS_PER_CHUNK = 512;
+constexpr uint32_t MAX_WORKGROUPS_PER_CHUNK = 2048;  // Increased from 512 to reduce chunking
 
 // Memory Sizes (in bytes)
 constexpr size_t MEGABYTE = 1024 * 1024;

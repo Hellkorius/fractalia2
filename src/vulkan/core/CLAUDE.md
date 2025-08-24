@@ -26,7 +26,7 @@ src/vulkan/core/
 
 **vulkan_constants.h**
 - **Inputs**: None (header-only constants)
-- **Outputs**: Engine-wide configuration constants for frame counts, timeouts, cache sizes, memory limits, and compute workgroup parameters. Provides single source of truth for all Vulkan subsystem sizing.
+- **Outputs**: Engine-wide configuration constants for frame counts, timeouts, cache sizes, memory limits, and compute workgroup parameters. MAX_WORKGROUPS_PER_CHUNK set to 2048 (increased from 512) to reduce chunking overhead on modern GPUs. Provides single source of truth for all Vulkan subsystem sizing.
 
 **vulkan_context.h**
 - **Inputs**: SDL window handle, validation layer requirements

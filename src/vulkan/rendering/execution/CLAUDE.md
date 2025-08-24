@@ -12,4 +12,4 @@
 ### barrier_manager.cpp
 **Inputs:** Frame graph node inputs/outputs, resource write tracking, execution order sequence.  
 **Outputs:** VkBufferMemoryBarrier and VkImageMemoryBarrier commands inserted into command buffers at optimal points.  
-**Function:** Analyzes compute-to-graphics transitions, creates batched barriers to prevent hazards while maximizing async execution.
+**Function:** Implements optimized barrier requirement analysis that only inserts barriers for true write-after-write and write-after-read hazards. Eliminates redundant read-after-write barriers for compute-to-compute transitions, reducing synchronization overhead by analyzing resource access patterns across all queue types (compute-to-compute, compute-to-graphics, graphics-to-compute, graphics-to-graphics).

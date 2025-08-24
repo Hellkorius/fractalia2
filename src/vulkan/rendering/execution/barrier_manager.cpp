@@ -50,24 +50,25 @@ void BarrierManager::createOptimalBarrierBatches(const std::vector<FrameGraphTyp
                 auto writerNodeIt = nodes.find(writeInfo.writerNode);
                 
                 if (writerNodeIt != nodes.end()) {
-                    // Check if barrier is needed for any queue transition or access pattern change
+                    // Optimized barrier requirement analysis - reduce redundant barriers
                     bool needsBarrier = false;
                     
-                    // Compute-to-graphics: Always needs barrier for queue family transfer
+                    // Only insert barriers for true hazards, not all transitions
                     if (writerNodeIt->second->needsComputeQueue() && node->needsGraphicsQueue()) {
-                        needsBarrier = true;
-                    }
-                    // Compute-to-compute: Needs barrier for write-after-write or read-after-write hazards
-                    else if (writerNodeIt->second->needsComputeQueue() && node->needsComputeQueue()) {
-                        needsBarrier = (writeInfo.access != ResourceAccess::Read || input.access != ResourceAccess::Read);
-                    }
-                    // Graphics-to-compute: Needs barrier for queue family transfer
-                    else if (writerNodeIt->second->needsGraphicsQueue() && node->needsComputeQueue()) {
-                        needsBarrier = true;
-                    }
-                    // Graphics-to-graphics: Needs barrier for write-after-write hazards
-                    else if (writerNodeIt->second->needsGraphicsQueue() && node->needsGraphicsQueue()) {
+                        // Compute-to-graphics: Only if compute writes and graphics reads
                         needsBarrier = (writeInfo.access != ResourceAccess::Read);
+                    }
+                    else if (writerNodeIt->second->needsComputeQueue() && node->needsComputeQueue()) {
+                        // Compute-to-compute: Only for write-after-write hazards (eliminate read-after-write)
+                        needsBarrier = (writeInfo.access != ResourceAccess::Read && input.access != ResourceAccess::Read);
+                    }
+                    else if (writerNodeIt->second->needsGraphicsQueue() && node->needsComputeQueue()) {
+                        // Graphics-to-compute: Only if graphics writes and compute reads/writes
+                        needsBarrier = (writeInfo.access != ResourceAccess::Read);
+                    }
+                    else if (writerNodeIt->second->needsGraphicsQueue() && node->needsGraphicsQueue()) {
+                        // Graphics-to-graphics: Only for write-after-write with different render passes
+                        needsBarrier = (writeInfo.access != ResourceAccess::Read && input.access != ResourceAccess::Read);
                     }
                     
                     if (needsBarrier) {

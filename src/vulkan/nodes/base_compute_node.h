@@ -81,9 +81,9 @@ protected:
     GPUEntityManager* gpuEntityManager;
     std::shared_ptr<GPUTimeoutDetector> timeoutDetector;
 
-    // Adaptive dispatch parameters
+    // Adaptive dispatch parameters - optimized defaults
     uint32_t adaptiveMaxWorkgroups = MAX_WORKGROUPS_PER_CHUNK;
-    bool forceChunkedDispatch = true;
+    bool forceChunkedDispatch = false;  // Disable forced chunking on modern GPUs
 
     // Push constants
     NodePushConstants pushConstants{};
