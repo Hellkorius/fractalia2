@@ -68,6 +68,7 @@ void InputEventProcessor::processSDLEvents() {
     // Clear window events
     hasWindowResize = false;
     
+    
     SDL_Event event;
     while (SDL_PollEvent(&event)) {
         switch (event.type) {
@@ -98,6 +99,7 @@ void InputEventProcessor::processSDLEvents() {
                 break;
         }
     }
+    
 }
 
 bool InputEventProcessor::isKeyDown(int scancode) const {

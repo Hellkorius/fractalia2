@@ -199,6 +199,11 @@ int main(int argc, char* argv[]) {
             std::cout << "ERROR: controlService is null!" << std::endl;
         }
         
+        // Update camera service after control processing for matrix recalculation
+        if (cameraService) {
+            cameraService->update(deltaTime);
+        }
+        
         // Handle window resize for camera aspect ratio
         int width, height;
         if (inputService->hasWindowResizeEvent(width, height)) {

@@ -299,6 +299,24 @@ bool InputService::hasWindowResizeEvent(int& width, int& height) const {
     return eventProcessor ? eventProcessor->hasWindowResizeEvent(width, height) : false;
 }
 
+// Mouse control
+void InputService::centerMouseCursor() {
+    if (!initialized || !window) {
+        return;
+    }
+    
+    // Get window size
+    int windowWidth, windowHeight;
+    SDL_GetWindowSize(window, &windowWidth, &windowHeight);
+    
+    // Calculate center position
+    float centerX = windowWidth / 2.0f;
+    float centerY = windowHeight / 2.0f;
+    
+    // Warp mouse to center
+    SDL_WarpMouseInWindow(window, centerX, centerY);
+}
+
 // Debug and introspection
 std::vector<std::string> InputService::getActiveContexts() const {
     return contextManager ? contextManager->getActiveContexts() : std::vector<std::string>();

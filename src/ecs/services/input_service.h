@@ -87,6 +87,9 @@ public:
     // Window event handling (delegated to InputEventProcessor)
     bool hasWindowResizeEvent(int& width, int& height) const;
     
+    // Mouse control
+    void centerMouseCursor();
+    
     // Debug and introspection
     std::vector<std::string> getActiveContexts() const;
     std::vector<std::string> getRegisteredActions() const;

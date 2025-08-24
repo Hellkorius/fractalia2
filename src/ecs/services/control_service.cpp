@@ -7,6 +7,7 @@
 #include "../gpu/gpu_entity_manager.h"
 #include "../utilities/debug.h"
 #include "../utilities/profiler.h"
+#include <SDL3/SDL.h>
 #include <iostream>
 #include <algorithm>
 
@@ -430,18 +431,26 @@ void GameControlService::integrateWithInputService() {
     });
     
     // Mouse look controls for 3D camera rotation
+    InputBinding mouseHorizontalBinding(InputBinding::InputType::MOUSE_AXIS_X, 0);
+    mouseHorizontalBinding.deadzone = 0.0f; // No deadzone for mouse axis
+    mouseHorizontalBinding.sensitivity = 1.0f;
+    
     inputService->registerAction({
         "camera_look_horizontal",
         InputActionType::ANALOG_1D,
         "Horizontal camera look",
-        {InputBinding(InputBinding::InputType::MOUSE_AXIS_X, 0)}
+        {mouseHorizontalBinding}
     });
+    
+    InputBinding mouseVerticalBinding(InputBinding::InputType::MOUSE_AXIS_Y, 0);
+    mouseVerticalBinding.deadzone = 0.0f; // No deadzone for mouse axis
+    mouseVerticalBinding.sensitivity = 1.0f;
     
     inputService->registerAction({
         "camera_look_vertical",
         InputActionType::ANALOG_1D,
         "Vertical camera look",
-        {InputBinding(InputBinding::InputType::MOUSE_AXIS_Y, 0)}
+        {mouseVerticalBinding}
     });
     
     inputService->registerAction({
@@ -695,6 +704,7 @@ void GameControlService::handleMouseLook() {
     if (mouseLookPressed && !wasMouseLookToggled) {
         mouseLookEnabled = !mouseLookEnabled;
         std::cout << "Mouse look " << (mouseLookEnabled ? "enabled" : "disabled") << std::endl;
+        
         wasMouseLookToggled = true;
     }
     if (!mouseLookPressed) {
@@ -714,7 +724,8 @@ void GameControlService::handleMouseLook() {
     float deltaX = inputService->getActionAnalog1D("camera_look_horizontal");
     float deltaY = inputService->getActionAnalog1D("camera_look_vertical");
     
-    if (std::abs(deltaX) > 0.1f || std::abs(deltaY) > 0.1f) {
+    // Apply mouse look rotation if any (following WASD pattern exactly)
+    if (std::abs(deltaX) > 0.001f || std::abs(deltaY) > 0.001f) {
         // Calculate current look direction
         glm::vec3 forward = glm::normalize(activeCamera->target - activeCamera->position);
         glm::vec3 right = glm::normalize(glm::cross(forward, activeCamera->up));
@@ -736,12 +747,16 @@ void GameControlService::handleMouseLook() {
             forward = newForward;
         }
         
-        // Update camera target while keeping position fixed
-        float distance = glm::length(activeCamera->target - activeCamera->position);
-        activeCamera->target = activeCamera->position + forward * distance;
+        // EXACTLY like WASD: trigger camera service update by calling setCameraPosition
+        glm::vec3 currentPos = activeCamera->position;
+        cameraService->setCameraPosition(activeCameraID, currentPos);
         
-        // Recalculate camera up vector to maintain proper orientation
-        activeCamera->up = glm::normalize(glm::cross(right, forward));
+        // Update camera target with new direction (like WASD updates target)
+        float distance = glm::length(activeCamera->target - activeCamera->position);
+        activeCamera->target = currentPos + forward * distance;
+        
+        // Center mouse cursor for continuous look (FPS-style)
+        inputService->centerMouseCursor();
     }
 }
 
