@@ -103,6 +103,7 @@ void VulkanFunctionLoader::loadPhysicalDeviceFunctions() {
     LOAD_INSTANCE_FUNCTION(vkGetPhysicalDeviceProperties);
     LOAD_INSTANCE_FUNCTION(vkGetPhysicalDeviceQueueFamilyProperties);
     LOAD_INSTANCE_FUNCTION(vkGetPhysicalDeviceMemoryProperties);
+    LOAD_INSTANCE_FUNCTION(vkGetPhysicalDeviceFormatProperties);
     LOAD_INSTANCE_FUNCTION(vkGetPhysicalDeviceSurfaceSupportKHR);
     LOAD_INSTANCE_FUNCTION(vkGetPhysicalDeviceSurfaceCapabilitiesKHR);
     LOAD_INSTANCE_FUNCTION(vkGetPhysicalDeviceSurfaceFormatsKHR);

@@ -33,6 +33,11 @@ bool VulkanSwapchain::initialize(const VulkanContext& context, SDL_Window* windo
         return false;
     }
     
+    if (!createDepthResources()) {
+        std::cerr << "Failed to create depth resources" << std::endl;
+        return false;
+    }
+    
     return true;
 }
 
@@ -47,6 +52,11 @@ void VulkanSwapchain::cleanupBeforeContextDestruction() {
     msaaColorImageView.reset();
     msaaColorImage.reset();
     msaaColorImageMemory.reset();
+    
+    // Cleanup depth resources
+    depthImageView.reset();
+    depthImage.reset();
+    depthImageMemory.reset();
     
     // Manual cleanup for non-RAII managed resources
     if (context && swapChain != VK_NULL_HANDLE) {
@@ -120,6 +130,11 @@ bool VulkanSwapchain::recreate(VkRenderPass renderPass) {
     
     if (!createMSAAColorResources()) {
         std::cerr << "Failed to recreate MSAA color resources!" << std::endl;
+        return false;
+    }
+    
+    if (!createDepthResources()) {
+        std::cerr << "Failed to recreate depth resources!" << std::endl;
         return false;
     }
     
@@ -271,6 +286,11 @@ void VulkanSwapchain::cleanupSwapChain() {
     msaaColorImage.reset();
     msaaColorImageMemory.reset();
     
+    // Cleanup depth resources
+    depthImageView.reset();
+    depthImage.reset();
+    depthImageMemory.reset();
+    
     swapChainImageViews.clear();
     
     if (swapChain != VK_NULL_HANDLE) {
@@ -299,6 +319,21 @@ void VulkanSwapchain::cleanupSwapChainExceptSwapchain() {
         std::cout << "VulkanSwapchain: CRITICAL - Freeing MSAA color image memory" << std::endl;
         msaaColorImageMemory.reset();
         std::cout << "VulkanSwapchain: MSAA memory successfully freed" << std::endl;
+    }
+    
+    // Cleanup depth resources - RAII handles destruction
+    if (depthImageView) {
+        std::cout << "VulkanSwapchain: Destroying depth image view" << std::endl;
+        depthImageView.reset();
+    }
+    if (depthImage) {
+        std::cout << "VulkanSwapchain: Destroying depth image" << std::endl;
+        depthImage.reset();
+    }
+    if (depthImageMemory) {
+        std::cout << "VulkanSwapchain: CRITICAL - Freeing depth image memory" << std::endl;
+        depthImageMemory.reset();
+        std::cout << "VulkanSwapchain: Depth memory successfully freed" << std::endl;
     }
     
     // Cleanup swapchain image views - RAII handles destruction
@@ -394,9 +429,10 @@ bool VulkanSwapchain::createFramebuffers(VkRenderPass renderPass) {
     swapChainFramebuffers.reserve(swapChainImageViews.size());
     
     for (size_t i = 0; i < swapChainImageViews.size(); i++) {
-        std::array<VkImageView, 2> attachments = {
+        std::array<VkImageView, 3> attachments = {
             msaaColorImageView.get(),      
-            swapChainImageViews[i].get()
+            swapChainImageViews[i].get(),
+            depthImageView.get()  // Add depth attachment
         };
         
         VkFramebufferCreateInfo framebufferInfo{};
@@ -417,5 +453,75 @@ bool VulkanSwapchain::createFramebuffers(VkRenderPass renderPass) {
         swapChainFramebuffers.emplace_back(vulkan_raii::make_framebuffer(framebuffer, context));
     }
 
+    return true;
+}
+
+VkFormat VulkanSwapchain::findDepthFormat() {
+    // Candidate depth formats in order of preference
+    std::vector<VkFormat> candidates = {
+        VK_FORMAT_D32_SFLOAT,
+        VK_FORMAT_D32_SFLOAT_S8_UINT,
+        VK_FORMAT_D24_UNORM_S8_UINT
+    };
+    
+    const auto& vk = context->getLoader();
+    const VkPhysicalDevice physicalDevice = context->getPhysicalDevice();
+    
+    for (VkFormat format : candidates) {
+        VkFormatProperties props;
+        vk.vkGetPhysicalDeviceFormatProperties(physicalDevice, format, &props);
+        
+        if (props.optimalTilingFeatures & VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT) {
+            return format;
+        }
+    }
+    
+    std::cerr << "Failed to find supported depth format!" << std::endl;
+    return VK_FORMAT_D32_SFLOAT; // fallback
+}
+
+bool VulkanSwapchain::createDepthResources() {
+    // Find the best supported depth format
+    depthFormat = findDepthFormat();
+    
+    VkImage image;
+    VkDeviceMemory memory;
+    
+    // Create depth image
+    if (!VulkanUtils::createImage(context->getDevice(), context->getPhysicalDevice(), context->getLoader(),
+                            swapChainExtent.width, swapChainExtent.height, depthFormat, VK_IMAGE_TILING_OPTIMAL,
+                            VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+                            image, memory, VK_SAMPLE_COUNT_2_BIT)) {  // Match MSAA sample count
+        std::cerr << "Failed to create depth image!" << std::endl;
+        return false;
+    }
+    
+    depthImage = vulkan_raii::make_image(image, context);
+    depthImageMemory = vulkan_raii::make_device_memory(memory, context);
+    
+    // Create depth image view
+    VkImageViewCreateInfo viewInfo{};
+    viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+    viewInfo.image = image;
+    viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+    viewInfo.format = depthFormat;
+    viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+    viewInfo.subresourceRange.baseMipLevel = 0;
+    viewInfo.subresourceRange.levelCount = 1;
+    viewInfo.subresourceRange.baseArrayLayer = 0;
+    viewInfo.subresourceRange.layerCount = 1;
+    
+    VkImageView imageView;
+    if (context->getLoader().vkCreateImageView(context->getDevice(), &viewInfo, nullptr, &imageView) != VK_SUCCESS) {
+        std::cerr << "Failed to create depth image view!" << std::endl;
+        return false;
+    }
+    
+    depthImageView = vulkan_raii::make_image_view(imageView, context);
+    
+    // Note: Layout transition will be handled automatically during the first render pass
+    // The depth image starts in VK_IMAGE_LAYOUT_UNDEFINED and transitions to 
+    // VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL via the loadOp in the render pass
+    
     return true;
 }

@@ -275,6 +275,17 @@ void CameraManager::createOrthographicCamera(const std::string& name, const glm:
     camera.setPosition(position);
     camera.setZoom(zoom);
     camera.viewSize = viewSize;
+    camera.setProjectionType(Camera::ProjectionType::Orthographic);
+    
+    createCamera(camera, name);
+}
+
+void CameraManager::createPerspectiveCamera(const std::string& name, const glm::vec3& position, const glm::vec3& target, float fov) {
+    Camera camera;
+    camera.setPosition(position);
+    camera.setTarget(target);
+    camera.setFOV(fov);
+    camera.setProjectionType(Camera::ProjectionType::Perspective);
     
     createCamera(camera, name);
 }
@@ -346,5 +357,10 @@ flecs::entity CameraManager::createCameraEntity(const Camera& cameraData, const 
 
 flecs::entity CameraManager::createMainCameraEntity() {
     Camera mainCamera;
+    // Set up default 3D perspective camera
+    mainCamera.setPosition(glm::vec3(0.0f, 0.0f, 5.0f));
+    mainCamera.setTarget(glm::vec3(0.0f, 0.0f, 0.0f));
+    mainCamera.setFOV(45.0f);
+    mainCamera.setProjectionType(Camera::ProjectionType::Perspective);
     return createCameraEntity(mainCamera, "main");
 }

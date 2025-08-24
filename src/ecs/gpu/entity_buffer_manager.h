@@ -25,6 +25,7 @@ public:
     // SoA buffer access - delegated to specialized buffers
     VkBuffer getVelocityBuffer() const { return velocityBuffer.getBuffer(); }
     VkBuffer getMovementParamsBuffer() const { return movementParamsBuffer.getBuffer(); }
+    VkBuffer getMovementCentersBuffer() const { return movementCentersBuffer.getBuffer(); }
     VkBuffer getRuntimeStateBuffer() const { return runtimeStateBuffer.getBuffer(); }
     VkBuffer getRotationStateBuffer() const { return rotationStateBuffer.getBuffer(); }
     VkBuffer getColorBuffer() const { return colorBuffer.getBuffer(); }
@@ -45,6 +46,7 @@ public:
     // Buffer properties - delegated to specialized buffers
     VkDeviceSize getVelocityBufferSize() const { return velocityBuffer.getSize(); }
     VkDeviceSize getMovementParamsBufferSize() const { return movementParamsBuffer.getSize(); }
+    VkDeviceSize getMovementCentersBufferSize() const { return movementCentersBuffer.getSize(); }
     VkDeviceSize getRuntimeStateBufferSize() const { return runtimeStateBuffer.getSize(); }
     VkDeviceSize getRotationStateBufferSize() const { return rotationStateBuffer.getSize(); }
     VkDeviceSize getColorBufferSize() const { return colorBuffer.getSize(); }
@@ -59,6 +61,7 @@ public:
     // Typed upload methods for better API
     bool uploadVelocityData(const void* data, VkDeviceSize size, VkDeviceSize offset = 0);
     bool uploadMovementParamsData(const void* data, VkDeviceSize size, VkDeviceSize offset = 0);
+    bool uploadMovementCentersData(const void* data, VkDeviceSize size, VkDeviceSize offset = 0);
     bool uploadRuntimeStateData(const void* data, VkDeviceSize size, VkDeviceSize offset = 0);
     bool uploadRotationStateData(const void* data, VkDeviceSize size, VkDeviceSize offset = 0);
     bool uploadColorData(const void* data, VkDeviceSize size, VkDeviceSize offset = 0);
@@ -95,6 +98,7 @@ private:
     // Specialized buffer components (SRP-compliant)
     VelocityBuffer velocityBuffer;
     MovementParamsBuffer movementParamsBuffer;
+    MovementCentersBuffer movementCentersBuffer;
     RuntimeStateBuffer runtimeStateBuffer;
     RotationStateBuffer rotationStateBuffer;
     ColorBuffer colorBuffer;

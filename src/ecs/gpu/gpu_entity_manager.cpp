@@ -14,12 +14,12 @@ thread_local std::mt19937 rng{std::random_device{}()};
 thread_local std::uniform_real_distribution<float> stateTimerDist{0.0f, 600.0f};
 
 void GPUEntitySoA::addFromECS(const Transform& transform, const Renderable& renderable, const MovementPattern& pattern) {
-    // Velocity (initialized to zero, set by compute shader)
+    // Velocity (initialized to zero, set by compute shader) - now supporting 3D
     velocities.emplace_back(
         0.0f,                      // velocity.x
-        0.0f,                      // velocity.y  
-        0.001f,                    // damping factor
-        0.0f                       // reserved
+        0.0f,                      // velocity.y
+        0.0f,                      // velocity.z (3D support)
+        0.001f                     // damping factor moved to w component
     );
     
     // Movement parameters
@@ -28,6 +28,14 @@ void GPUEntitySoA::addFromECS(const Transform& transform, const Renderable& rend
         pattern.frequency, 
         pattern.phase,
         pattern.timeOffset
+    );
+    
+    // Movement center (3D position) - center point for entity movement
+    movementCenters.emplace_back(
+        pattern.center.x,              // center.x
+        pattern.center.y,              // center.y  
+        pattern.center.z,              // center.z (3D support)
+        0.0f                           // reserved
     );
     
     // Runtime state
@@ -135,6 +143,7 @@ void GPUEntityManager::uploadPendingEntities() {
     // Upload each SoA buffer separately
     VkDeviceSize velocityOffset = activeEntityCount * sizeof(glm::vec4);
     VkDeviceSize movementParamsOffset = activeEntityCount * sizeof(glm::vec4);
+    VkDeviceSize movementCentersOffset = activeEntityCount * sizeof(glm::vec4);
     VkDeviceSize runtimeStateOffset = activeEntityCount * sizeof(glm::vec4);
     VkDeviceSize rotationStateOffset = activeEntityCount * sizeof(glm::vec4);
     VkDeviceSize colorOffset = activeEntityCount * sizeof(glm::vec4);
@@ -142,6 +151,7 @@ void GPUEntityManager::uploadPendingEntities() {
     
     VkDeviceSize velocitySize = entityCount * sizeof(glm::vec4);
     VkDeviceSize movementParamsSize = entityCount * sizeof(glm::vec4);
+    VkDeviceSize movementCentersSize = entityCount * sizeof(glm::vec4);
     VkDeviceSize runtimeStateSize = entityCount * sizeof(glm::vec4);
     VkDeviceSize rotationStateSize = entityCount * sizeof(glm::vec4);
     VkDeviceSize colorSize = entityCount * sizeof(glm::vec4);
@@ -150,6 +160,7 @@ void GPUEntityManager::uploadPendingEntities() {
     // Copy SoA data to GPU buffers using new typed upload methods
     bufferManager.uploadVelocityData(stagingEntities.velocities.data(), velocitySize, velocityOffset);
     bufferManager.uploadMovementParamsData(stagingEntities.movementParams.data(), movementParamsSize, movementParamsOffset);
+    bufferManager.uploadMovementCentersData(stagingEntities.movementCenters.data(), movementCentersSize, movementCentersOffset);
     bufferManager.uploadRuntimeStateData(stagingEntities.runtimeStates.data(), runtimeStateSize, runtimeStateOffset);
     bufferManager.uploadRotationStateData(stagingEntities.rotationStates.data(), rotationStateSize, rotationStateOffset);
     bufferManager.uploadColorData(stagingEntities.colors.data(), colorSize, colorOffset);

@@ -16,8 +16,9 @@ class ResourceContext;
 
 // Structure of Arrays (SoA) for GPU entities - better cache locality and vectorization
 struct GPUEntitySoA {
-    std::vector<glm::vec4> velocities;        // velocity.xy, damping, reserved
+    std::vector<glm::vec4> velocities;        // velocity.xyz, damping (3D support)
     std::vector<glm::vec4> movementParams;    // amplitude, frequency, phase, timeOffset
+    std::vector<glm::vec4> movementCenters;   // center.xyz, reserved (3D movement origins)
     std::vector<glm::vec4> runtimeStates;     // totalTime, initialized, stateTimer, entityState
     std::vector<glm::vec4> rotationStates;    // rotation, angularVelocity, angularDamping, reserved
     std::vector<glm::vec4> colors;            // RGBA color
@@ -26,6 +27,7 @@ struct GPUEntitySoA {
     void reserve(size_t capacity) {
         velocities.reserve(capacity);
         movementParams.reserve(capacity);
+        movementCenters.reserve(capacity);
         runtimeStates.reserve(capacity);
         rotationStates.reserve(capacity);
         colors.reserve(capacity);
@@ -35,6 +37,7 @@ struct GPUEntitySoA {
     void clear() {
         velocities.clear();
         movementParams.clear();
+        movementCenters.clear();
         runtimeStates.clear();
         rotationStates.clear();
         colors.clear();
@@ -67,6 +70,7 @@ public:
     // Direct buffer access for frame graph - SoA buffers
     VkBuffer getVelocityBuffer() const { return bufferManager.getVelocityBuffer(); }
     VkBuffer getMovementParamsBuffer() const { return bufferManager.getMovementParamsBuffer(); }
+    VkBuffer getMovementCentersBuffer() const { return bufferManager.getMovementCentersBuffer(); }
     VkBuffer getRuntimeStateBuffer() const { return bufferManager.getRuntimeStateBuffer(); }
     VkBuffer getRotationStateBuffer() const { return bufferManager.getRotationStateBuffer(); }
     VkBuffer getColorBuffer() const { return bufferManager.getColorBuffer(); }
@@ -86,6 +90,7 @@ public:
     // Buffer properties - SoA approach
     VkDeviceSize getVelocityBufferSize() const { return bufferManager.getVelocityBufferSize(); }
     VkDeviceSize getMovementParamsBufferSize() const { return bufferManager.getMovementParamsBufferSize(); }
+    VkDeviceSize getMovementCentersBufferSize() const { return bufferManager.getMovementCentersBufferSize(); }
     VkDeviceSize getRuntimeStateBufferSize() const { return bufferManager.getRuntimeStateBufferSize(); }
     VkDeviceSize getRotationStateBufferSize() const { return bufferManager.getRotationStateBufferSize(); }
     VkDeviceSize getColorBufferSize() const { return bufferManager.getColorBufferSize(); }

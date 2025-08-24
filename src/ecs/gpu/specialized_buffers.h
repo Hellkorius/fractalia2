@@ -34,6 +34,19 @@ protected:
     const char* getBufferTypeName() const override { return "MovementParams"; }
 };
 
+// SINGLE responsibility: movement center positions management (3D support)
+class MovementCentersBuffer : public BufferBase {
+public:
+    using BufferBase::initialize; // Bring base class initialize into scope
+    
+    bool initialize(const VulkanContext& context, ResourceCoordinator* resourceCoordinator, uint32_t maxEntities) {
+        return BufferBase::initialize(context, resourceCoordinator, maxEntities, sizeof(glm::vec4), 0);
+    }
+    
+protected:
+    const char* getBufferTypeName() const override { return "MovementCenters"; }
+};
+
 // SINGLE responsibility: runtime state management
 class RuntimeStateBuffer : public BufferBase {
 public:

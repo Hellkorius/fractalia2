@@ -34,6 +34,12 @@ public:
     
     VkImage getMSAAColorImage() const { return msaaColorImage.get(); }
     VkImageView getMSAAColorImageView() const { return msaaColorImageView.get(); }
+    
+    // Depth buffer access
+    VkImage getDepthImage() const { return depthImage.get(); }
+    VkImageView getDepthImageView() const { return depthImageView.get(); }
+    VkFormat getDepthFormat() const { return depthFormat; }
+    
     std::vector<VkFramebuffer> getFramebuffers() const;
     
     bool createFramebuffers(VkRenderPass renderPass);
@@ -53,12 +59,19 @@ private:
     vulkan_raii::DeviceMemory msaaColorImageMemory;
     vulkan_raii::ImageView msaaColorImageView;
     
+    // Depth buffer resources
+    vulkan_raii::Image depthImage;
+    vulkan_raii::DeviceMemory depthImageMemory;
+    vulkan_raii::ImageView depthImageView;
+    VkFormat depthFormat = VK_FORMAT_D32_SFLOAT; // 32-bit float depth buffer
+    
     std::vector<vulkan_raii::Framebuffer> swapChainFramebuffers;
 
 
     bool createSwapChain(VkSwapchainKHR oldSwapchainKHR = VK_NULL_HANDLE);
     bool createImageViews();
     bool createMSAAColorResources();
+    bool createDepthResources();
     void cleanupSwapChain();
     void cleanupSwapChainExceptSwapchain();
     
@@ -66,5 +79,6 @@ private:
     VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats);
     VkPresentModeKHR chooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes);
     VkExtent2D chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities);
+    VkFormat findDepthFormat();
     
 };

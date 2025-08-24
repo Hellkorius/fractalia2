@@ -101,6 +101,7 @@ public:
     
     // Camera control integration
     void handleCameraControls();
+    void handleMouseLook();
     void resetCamera();
     void focusCameraOnEntities();
     

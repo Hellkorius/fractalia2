@@ -17,13 +17,8 @@ bool CameraCulling::isPositionVisible(const glm::vec3& position, const Camera* c
         return false;
     }
     
-    CameraBounds bounds = getCameraBounds(camera);
-    if (!bounds.valid) {
-        return true;
-    }
-    
-    return position.x >= bounds.min.x && position.x <= bounds.max.x &&
-           position.y >= bounds.min.y && position.y <= bounds.max.y;
+    // Use the camera's own isVisible method which supports both orthographic and perspective
+    return camera->isVisible(position);
 }
 
 
@@ -32,6 +27,12 @@ CameraCulling::CameraBounds CameraCulling::getCameraBounds(const Camera* camera)
     
     if (!camera) {
         return bounds;
+    }
+    
+    // Only calculate 2D bounds for orthographic cameras
+    // Perspective cameras use proper 3D frustum culling via camera->isVisible()
+    if (camera->projectionType != Camera::ProjectionType::Orthographic) {
+        return bounds; // Invalid bounds for perspective cameras
     }
     
     glm::vec3 cameraPos = camera->position;
@@ -57,18 +58,10 @@ bool CameraCulling::isInFrustum(const glm::vec3& position, const glm::vec3& boun
         return false;
     }
     
-    CameraBounds cameraBounds = getCameraBounds(camera);
-    if (!cameraBounds.valid) {
-        return true;
-    }
-    
-    glm::vec2 entityMin = glm::vec2(position.x - bounds.x, position.y - bounds.y);
-    glm::vec2 entityMax = glm::vec2(position.x + bounds.x, position.y + bounds.y);
-    
-    bool intersects = !(entityMax.x < cameraBounds.min.x || entityMin.x > cameraBounds.max.x ||
-                       entityMax.y < cameraBounds.min.y || entityMin.y > cameraBounds.max.y);
-    
-    return intersects;
+    // For 3D frustum culling, delegate to camera's isVisible method
+    // The bounds parameter represents the entity's extent from center
+    // We check the center position for simplicity (more sophisticated algorithms can check all corners)
+    return camera->isVisible(position);
 }
 
 float CameraCulling::calculateDistanceToCamera(const glm::vec3& position, const Camera* camera) const {

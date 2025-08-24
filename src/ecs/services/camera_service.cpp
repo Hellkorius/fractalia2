@@ -344,6 +344,12 @@ void CameraService::createOrthographicCamera(const std::string& name, const glm:
     }
 }
 
+void CameraService::createPerspectiveCamera(const std::string& name, const glm::vec3& position, const glm::vec3& target, float fov) {
+    if (initialized) {
+        cameraManager->createPerspectiveCamera(name, position, target, fov);
+    }
+}
+
 void CameraService::createFollowCamera(const std::string& name, const glm::vec3& target, float distance, float zoom) {
     if (initialized) {
         cameraManager->createFollowCamera(name, target, distance, zoom);

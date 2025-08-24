@@ -16,7 +16,7 @@ fractalia2/
 │   │   ├── events/                  (Decoupled event bus architecture with type-safe dispatching)
 │   │   ├── gpu/                     (CPU-GPU bridge implementing Structure of Arrays for optimal GPU performance)
 │   │   ├── services/                (High-level game services coordinating input, camera, and rendering)
-│   │   │   ├── camera/              (Multi-camera management with frustum culling and smooth transitions)
+│   │   │   ├── camera/              (3D camera system with perspective/orthographic projections, frustum culling, and viewport management)
 │   │   │   └── input/               (SDL event processing with action-based input and context switching)
 │   │   ├── systems/                 (ECS system infrastructure for entity lifecycle and movement coordination)
 │   │   └── utilities/               (Common debugging, profiling, and configuration utilities)
@@ -45,6 +45,28 @@ fractalia2/
 **GPU Pipeline**: Movement Compute → Physics Compute → Graphics Rendering  
 **Coordination**: Frame Graph with automatic barrier insertion and resource dependency tracking  
 **Performance**: 80,000+ entities at 60 FPS with cache-optimized 128-byte entity layout and ping-pong buffers
+
+## 3D Camera System
+
+**Camera Component Features**:
+- **Dual Projection Support**: Perspective (3D) and orthographic (2D compatibility) modes
+- **3D View Control**: Position, target, up vectors with lookAt functionality  
+- **Perspective Parameters**: FOV (field of view), aspect ratio, near/far clipping planes
+- **3D Movement**: Forward/right/up movement, orbit controls, and smooth transitions
+- **Matrix Generation**: Cached view/projection matrices with lazy computation and Vulkan Y-flip correction
+
+**Camera Service Architecture**:
+- **CameraManager**: Multi-camera creation, lifecycle, and active camera management
+- **CameraTransforms**: 3D coordinate transformations between world, screen, and viewport spaces
+- **CameraCulling**: 3D frustum culling for perspective cameras, 2D AABB tests for orthographic
+- **ViewportManager**: Multi-viewport support for split-screen rendering with render order control
+- **CameraTransitionSystem**: Smooth camera transitions with configurable easing functions
+
+**3D Rendering Pipeline**:
+- **View Matrix**: 3D lookAt transformation (`glm::lookAt(position, target, up)`)
+- **Projection Matrix**: Perspective projection (`glm::perspective`) with Vulkan coordinate correction
+- **Frustum Culling**: 3D visibility testing using camera forward direction and FOV-based angle culling
+- **Coordinate Conversion**: Full 3D world-to-screen and screen-to-world transformations
 
 ## Key Principles
 

@@ -103,6 +103,10 @@ void GameControlService::processFrame(float deltaTime) {
     // Update action cooldowns
     updateActionCooldowns();
     
+    // Handle continuous camera movement and mouse look every frame
+    handleCameraControls();
+    handleMouseLook();
+    
     // Handle input for control actions
     handleInput();
     
@@ -175,9 +179,6 @@ void GameControlService::handleInput() {
     if (inputService->isActionJustPressed("camera_focus")) {
         executeAction("camera_focus");
     }
-    
-    // Handle continuous camera movement (analog actions)
-    handleCameraControls();
 }
 
 void GameControlService::executeActions() {
@@ -396,15 +397,29 @@ void GameControlService::integrateWithInputService() {
     inputService->registerAction({
         "camera_move_left",
         InputActionType::DIGITAL,
-        "Move camera left",
+        "Strafe camera left",
         {InputBinding(InputBinding::InputType::KEYBOARD_KEY, SDL_SCANCODE_A)}
     });
     
     inputService->registerAction({
         "camera_move_right",
         InputActionType::DIGITAL,
-        "Move camera right",
+        "Strafe camera right",
         {InputBinding(InputBinding::InputType::KEYBOARD_KEY, SDL_SCANCODE_D)}
+    });
+    
+    inputService->registerAction({
+        "camera_move_up",
+        InputActionType::DIGITAL,
+        "Move camera up",
+        {InputBinding(InputBinding::InputType::KEYBOARD_KEY, SDL_SCANCODE_SPACE)}
+    });
+    
+    inputService->registerAction({
+        "camera_move_down",
+        InputActionType::DIGITAL,
+        "Move camera down",
+        {InputBinding(InputBinding::InputType::KEYBOARD_KEY, SDL_SCANCODE_LSHIFT)}
     });
     
     inputService->registerAction({
@@ -412,6 +427,28 @@ void GameControlService::integrateWithInputService() {
         InputActionType::ANALOG_1D,
         "Zoom camera with mouse wheel",
         {InputBinding(InputBinding::InputType::MOUSE_WHEEL_Y, 0)}
+    });
+    
+    // Mouse look controls for 3D camera rotation
+    inputService->registerAction({
+        "camera_look_horizontal",
+        InputActionType::ANALOG_1D,
+        "Horizontal camera look",
+        {InputBinding(InputBinding::InputType::MOUSE_AXIS_X, 0)}
+    });
+    
+    inputService->registerAction({
+        "camera_look_vertical",
+        InputActionType::ANALOG_1D,
+        "Vertical camera look",
+        {InputBinding(InputBinding::InputType::MOUSE_AXIS_Y, 0)}
+    });
+    
+    inputService->registerAction({
+        "camera_toggle_mouse_look",
+        InputActionType::DIGITAL,
+        "Toggle mouse look mode",
+        {InputBinding(InputBinding::InputType::MOUSE_BUTTON, SDL_BUTTON_MIDDLE)}
     });
 }
 
@@ -580,66 +617,157 @@ void GameControlService::toggleWireframeMode() {
 void GameControlService::handleCameraControls() {
     if (!cameraService || !inputService) return;
     
-    const float baseMoveSpeed = 30.0f; // base units per second at 1.0x zoom (increased)
-    const float maxMoveSpeed = 100.0f; // cap speed when zoomed way out
-    const float zoomSensitivity = 0.05f;  // zoom sensitivity per wheel tick (smoother)
+    const float moveSpeed = 15.0f; // units per second for 3D movement
     
-    // Get current zoom level to adjust movement speed
-    float currentZoom = cameraService->getCameraZoom(cameraService->getActiveCameraID());
-    float zoomAdjustedMoveSpeed = std::min(maxMoveSpeed, baseMoveSpeed / currentZoom); // Inverse relationship with cap
+    CameraID activeCameraID = cameraService->getActiveCameraID();
+    Camera* activeCamera = cameraService->getCamera(activeCameraID);
+    if (!activeCamera) return;
     
     glm::vec3 movement(0.0f);
-    float zoomDelta = 0.0f;
     
-    // Calculate movement based on input - zoom-adjusted for fine control when zoomed in
+    // Get camera's forward, right, and up vectors for 3D movement
+    glm::vec3 forward = glm::normalize(activeCamera->target - activeCamera->position);
+    glm::vec3 right = glm::normalize(glm::cross(forward, activeCamera->up));
+    glm::vec3 up = activeCamera->up;
+    
+    // Calculate 3D movement based on camera orientation
     if (inputService->isActionActive("camera_move_forward")) {
-        movement.y += zoomAdjustedMoveSpeed * deltaTime;
+        movement += forward * moveSpeed * deltaTime;
     }
     if (inputService->isActionActive("camera_move_backward")) {
-        movement.y -= zoomAdjustedMoveSpeed * deltaTime;
+        movement -= forward * moveSpeed * deltaTime;
     }
     if (inputService->isActionActive("camera_move_left")) {
-        movement.x -= zoomAdjustedMoveSpeed * deltaTime;
+        movement -= right * moveSpeed * deltaTime;
     }
     if (inputService->isActionActive("camera_move_right")) {
-        movement.x += zoomAdjustedMoveSpeed * deltaTime;
+        movement += right * moveSpeed * deltaTime;
     }
-    
-    // Calculate zoom from mouse wheel (positive = zoom in, negative = zoom out)
-    float wheelDelta = inputService->getActionAnalog1D("camera_zoom");
-    if (std::abs(wheelDelta) > 0.01f) {
-        std::cout << "Wheel delta: " << wheelDelta << std::endl;
-        zoomDelta = wheelDelta * zoomSensitivity; // Much smaller sensitivity for fine control
+    if (inputService->isActionActive("camera_move_up")) {
+        movement += up * moveSpeed * deltaTime;
+    }
+    if (inputService->isActionActive("camera_move_down")) {
+        movement -= up * moveSpeed * deltaTime;
     }
     
     // Apply movement if any
-    if (movement.x != 0.0f || movement.y != 0.0f || movement.z != 0.0f) {
-        glm::vec3 currentPos = cameraService->getCameraPosition(cameraService->getActiveCameraID());
-        cameraService->setCameraPosition(cameraService->getActiveCameraID(), currentPos + movement);
+    if (glm::length(movement) > 0.0f) {
+        glm::vec3 currentPos = activeCamera->position;
+        glm::vec3 newPos = currentPos + movement;
+        
+        // Update both camera position and target to maintain look direction
+        glm::vec3 targetOffset = activeCamera->target - activeCamera->position;
+        cameraService->setCameraPosition(activeCameraID, newPos);
+        
+        // Update the target to move with the camera
+        activeCamera->target = newPos + targetOffset;
     }
     
-    // Apply zoom if any
-    if (zoomDelta != 0.0f) {
-        float currentZoom = cameraService->getCameraZoom(cameraService->getActiveCameraID());
+    // Handle zoom/FOV changes with mouse wheel for perspective cameras
+    float wheelDelta = inputService->getActionAnalog1D("camera_zoom");
+    if (std::abs(wheelDelta) > 0.01f) {
+        if (activeCamera->projectionType == Camera::ProjectionType::Perspective) {
+            // For perspective cameras, adjust FOV instead of zoom
+            float fovDelta = wheelDelta * -2.0f; // Negative to make wheel up = zoom in
+            float newFov = glm::clamp(activeCamera->fov + fovDelta, 15.0f, 120.0f);
+            activeCamera->fov = newFov;
+            std::cout << "FOV: " << activeCamera->fov << std::endl;
+        } else {
+            // For orthographic cameras, use traditional zoom
+            const float zoomSensitivity = 0.05f;
+            float zoomDelta = wheelDelta * zoomSensitivity;
+            float currentZoom = cameraService->getCameraZoom(activeCameraID);
+            float zoomMultiplier = std::pow(1.1f, zoomDelta * 10.0f);
+            float newZoom = glm::clamp(currentZoom * zoomMultiplier, 0.05f, 20.0f);
+            cameraService->setCameraZoom(activeCameraID, newZoom);
+        }
+    }
+}
+
+void GameControlService::handleMouseLook() {
+    if (!cameraService || !inputService) return;
+    
+    static bool mouseLookEnabled = false;
+    static bool wasMouseLookToggled = false;
+    
+    // Toggle mouse look mode with middle mouse button
+    bool mouseLookPressed = inputService->isActionJustPressed("camera_toggle_mouse_look");
+    if (mouseLookPressed && !wasMouseLookToggled) {
+        mouseLookEnabled = !mouseLookEnabled;
+        std::cout << "Mouse look " << (mouseLookEnabled ? "enabled" : "disabled") << std::endl;
+        wasMouseLookToggled = true;
+    }
+    if (!mouseLookPressed) {
+        wasMouseLookToggled = false;
+    }
+    
+    if (!mouseLookEnabled) return;
+    
+    const float mouseSensitivity = 0.002f; // Radians per pixel
+    const float pitchLimit = 1.5f; // Limit pitch to avoid flipping (about 85 degrees)
+    
+    CameraID activeCameraID = cameraService->getActiveCameraID();
+    Camera* activeCamera = cameraService->getCamera(activeCameraID);
+    if (!activeCamera) return;
+    
+    // Get mouse movement deltas
+    float deltaX = inputService->getActionAnalog1D("camera_look_horizontal");
+    float deltaY = inputService->getActionAnalog1D("camera_look_vertical");
+    
+    if (std::abs(deltaX) > 0.1f || std::abs(deltaY) > 0.1f) {
+        // Calculate current look direction
+        glm::vec3 forward = glm::normalize(activeCamera->target - activeCamera->position);
+        glm::vec3 right = glm::normalize(glm::cross(forward, activeCamera->up));
+        glm::vec3 worldUp = glm::vec3(0.0f, 1.0f, 0.0f);
         
-        // Use exponential zoom for smoother feel (like most applications)
-        // Positive delta = zoom in (multiply by >1), negative = zoom out (multiply by <1)
-        float zoomMultiplier = std::pow(1.1f, zoomDelta * 10.0f); // 1.1^(delta*10) for smooth exponential scaling
-        float newZoom = std::max(0.05f, std::min(20.0f, currentZoom * zoomMultiplier)); // Wider range: 0.05x to 20x
+        // Apply horizontal rotation (yaw) around world up axis
+        float yawAngle = -deltaX * mouseSensitivity;
+        glm::mat4 yawRotation = glm::rotate(glm::mat4(1.0f), yawAngle, worldUp);
+        forward = glm::mat3(yawRotation) * forward;
         
-        std::cout << "Zoom: " << currentZoom << " -> " << newZoom << " (multiplier: " << zoomMultiplier << ")" << std::endl;
-        cameraService->setCameraZoom(cameraService->getActiveCameraID(), newZoom);
+        // Apply vertical rotation (pitch) around right axis
+        float pitchAngle = -deltaY * mouseSensitivity;
+        
+        // Limit pitch to prevent camera flipping
+        glm::vec3 newForward = glm::mat3(glm::rotate(glm::mat4(1.0f), pitchAngle, right)) * forward;
+        float newPitch = std::asin(glm::clamp(newForward.y, -1.0f, 1.0f));
+        
+        if (std::abs(newPitch) < pitchLimit) {
+            forward = newForward;
+        }
+        
+        // Update camera target while keeping position fixed
+        float distance = glm::length(activeCamera->target - activeCamera->position);
+        activeCamera->target = activeCamera->position + forward * distance;
+        
+        // Recalculate camera up vector to maintain proper orientation
+        activeCamera->up = glm::normalize(glm::cross(right, forward));
     }
 }
 
 void GameControlService::resetCamera() {
     if (!cameraService) return;
     
-    // Reset to default camera position
-    cameraService->setCameraPosition(cameraService->getActiveCameraID(), glm::vec3(0.0f, 0.0f, 10.0f));
-    cameraService->setCameraZoom(cameraService->getActiveCameraID(), 1.0f);
+    CameraID activeCameraID = cameraService->getActiveCameraID();
+    Camera* activeCamera = cameraService->getCamera(activeCameraID);
+    if (!activeCamera) return;
     
-    DEBUG_LOG("Camera reset to default position");
+    // Reset to default 3D camera position and orientation
+    glm::vec3 defaultPos(0.0f, 5.0f, 15.0f);  // Slightly elevated and back
+    glm::vec3 defaultTarget(0.0f, 0.0f, 0.0f); // Look at origin
+    glm::vec3 defaultUp(0.0f, 1.0f, 0.0f);    // Standard up vector
+    
+    cameraService->setCameraPosition(activeCameraID, defaultPos);
+    activeCamera->target = defaultTarget;
+    activeCamera->up = defaultUp;
+    
+    if (activeCamera->projectionType == Camera::ProjectionType::Perspective) {
+        activeCamera->fov = 45.0f; // Default FOV
+    } else {
+        cameraService->setCameraZoom(activeCameraID, 1.0f);
+    }
+    
+    DEBUG_LOG("Camera reset to default 3D position");
 }
 
 void GameControlService::focusCameraOnEntities() {
@@ -656,7 +784,25 @@ void GameControlService::focusCameraOnEntities() {
     
     if (entityCount > 0) {
         center /= static_cast<float>(entityCount);
-        cameraService->focusCameraOn(cameraService->getActiveCameraID(), center, 1.0f);
+        
+        CameraID activeCameraID = cameraService->getActiveCameraID();
+        Camera* activeCamera = cameraService->getCamera(activeCameraID);
+        if (activeCamera) {
+            // Position camera at a good viewing distance from the entity center
+            glm::vec3 currentPos = activeCamera->position;
+            glm::vec3 toCenter = glm::normalize(center - currentPos);
+            
+            // If camera is too close to center, move it back
+            float distanceToCenter = glm::length(center - currentPos);
+            if (distanceToCenter < 10.0f) {
+                glm::vec3 viewOffset = glm::vec3(0.0f, 5.0f, 15.0f); // Good viewing position
+                cameraService->setCameraPosition(activeCameraID, center + viewOffset);
+            }
+            
+            // Make camera look at the entity center
+            activeCamera->target = center;
+        }
+        
         DEBUG_LOG("Camera focused on entity center: (" << center.x << ", " << center.y << ", " << center.z << ")");
     }
 }
@@ -677,20 +823,25 @@ void GameControlService::logControlState() const {
 }
 
 void GameControlService::printControlInstructions() const {
-    std::cout << "\n=== Flecs GPU Compute Movement Demo Controls ===" << std::endl;
+    std::cout << "\n=== Fractalia2 3D GPU Compute Movement Demo Controls ===" << std::endl;
     std::cout << "ESC: Exit" << std::endl;
     std::cout << "P: Print detailed performance report" << std::endl;
     std::cout << "+/=: Add 1000 more GPU entities" << std::endl;
     std::cout << "Left Click: Create GPU entity with movement at mouse position" << std::endl;
-    std::cout << "All entities use random walk movement pattern" << std::endl;
+    std::cout << "Right Click: Debug entity info at mouse position" << std::endl;
     std::cout << "T: Run graphics buffer overflow tests" << std::endl;
     std::cout << "F3: Toggle debug mode" << std::endl;
-    std::cout << "R: Reset camera" << std::endl;
+    std::cout << "" << std::endl;
+    std::cout << "=== 3D Camera Controls ===" << std::endl;
+    std::cout << "WASD: Move camera (forward/back/strafe)" << std::endl;
+    std::cout << "Space: Move camera up" << std::endl;
+    std::cout << "Shift: Move camera down" << std::endl;
+    std::cout << "Mouse Wheel: Zoom/FOV (perspective) or Zoom (orthographic)" << std::endl;
+    std::cout << "Middle Click: Toggle mouse look mode" << std::endl;
+    std::cout << "Mouse Look: Look around (when enabled)" << std::endl;
+    std::cout << "R: Reset camera to default position" << std::endl;
     std::cout << "F: Focus camera on entities" << std::endl;
-    std::cout << "WASD: Move camera" << std::endl;
-    std::cout << "Right Click: Debug entity info at mouse position" << std::endl;
-    std::cout << "Mouse Wheel: Zoom camera" << std::endl;
-    std::cout << "===============================================\n" << std::endl;
+    std::cout << "===================================================\n" << std::endl;
 }
 
 void GameControlService::debugEntityAtPosition(const glm::vec2& worldPos) {

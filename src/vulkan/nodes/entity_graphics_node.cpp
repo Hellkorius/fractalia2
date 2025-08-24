@@ -92,11 +92,11 @@ void EntityGraphicsNode::execute(VkCommandBuffer commandBuffer, const FrameGraph
     auto layoutSpec = DescriptorLayoutPresets::createEntityIndexedLayout();
     VkDescriptorSetLayout descriptorLayout = graphicsManager->getLayoutManager()->getLayout(layoutSpec);
     
-    // Create graphics pipeline state for dynamic rendering (no render pass needed)
+    // Create graphics pipeline state for dynamic rendering (now with depth buffer)
     GraphicsPipelineState pipelineState = GraphicsPipelinePresets::createEntityRenderingStateDynamic(
         descriptorLayout, 
         swapchain->getImageFormat(),  // Color format for dynamic rendering
-        VK_FORMAT_UNDEFINED,          // No depth format
+        swapchain->getDepthFormat(),  // Enable depth format for 3D rendering
         VK_SAMPLE_COUNT_2_BIT         // MSAA samples
     );
     
@@ -134,6 +134,15 @@ void EntityGraphicsNode::execute(VkCommandBuffer commandBuffer, const FrameGraph
     colorAttachment.resolveImageView = swapchainImageViews[imageIndex];
     colorAttachment.resolveImageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
     
+    // Setup depth attachment for 3D rendering
+    VkRenderingAttachmentInfo depthAttachment{};
+    depthAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+    depthAttachment.imageView = swapchain->getDepthImageView();
+    depthAttachment.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+    depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    depthAttachment.clearValue.depthStencil = {1.0f, 0};  // Clear to far plane
+    
     VkRenderingInfo renderingInfo{};
     renderingInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
     renderingInfo.renderArea.offset = {0, 0};
@@ -141,8 +150,8 @@ void EntityGraphicsNode::execute(VkCommandBuffer commandBuffer, const FrameGraph
     renderingInfo.layerCount = 1;
     renderingInfo.colorAttachmentCount = 1;
     renderingInfo.pColorAttachments = &colorAttachment;
-    renderingInfo.pDepthAttachment = nullptr;    // No depth
-    renderingInfo.pStencilAttachment = nullptr;  // No stencil
+    renderingInfo.pDepthAttachment = &depthAttachment;  // Enable depth testing
+    renderingInfo.pStencilAttachment = nullptr;         // No stencil
     
     // Cache loader reference for performance
     const auto& vk = context->getLoader();

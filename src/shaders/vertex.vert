@@ -4,13 +4,14 @@
 // Shared entity buffer indices for descriptor indexing
 const uint VELOCITY_BUFFER = 0u;           
 const uint MOVEMENT_PARAMS_BUFFER = 1u;    
-const uint RUNTIME_STATE_BUFFER = 2u;      
-const uint ROTATION_STATE_BUFFER = 3u;     
-const uint COLOR_BUFFER = 4u;              
-const uint MODEL_MATRIX_BUFFER = 5u;       
-const uint POSITION_OUTPUT_BUFFER = 6u;    
-const uint CURRENT_POSITION_BUFFER = 7u;   
-const uint SPATIAL_MAP_BUFFER = 8u;
+const uint MOVEMENT_CENTERS_BUFFER = 2u;   
+const uint RUNTIME_STATE_BUFFER = 3u;      
+const uint ROTATION_STATE_BUFFER = 4u;     
+const uint COLOR_BUFFER = 5u;              
+const uint MODEL_MATRIX_BUFFER = 6u;       
+const uint POSITION_OUTPUT_BUFFER = 7u;    
+const uint CURRENT_POSITION_BUFFER = 8u;   
+const uint SPATIAL_MAP_BUFFER = 9u;
 
 layout(binding = 0) uniform UBO {
     mat4 view;
@@ -52,7 +53,7 @@ vec3 hsv2rgb(float h, float s, float v) {
 }
 
 void main() {
-    // Read computed positions from physics shader output
+    // Read computed positions from physics shader output (now supporting 3D)
     vec3 worldPos = entityBuffers[POSITION_OUTPUT_BUFFER].data[gl_InstanceIndex].xyz;
     
     // Extract movement parameters for color calculation from SoA buffers
@@ -108,17 +109,18 @@ void main() {
     
     color = hsv2rgb(hue, saturation, brightness);
     
-    // ROTATE THE ACTUAL TRIANGLE VERTICES
+    // ROTATE THE ACTUAL TRIANGLE VERTICES (now supporting 3D)
     float cosRot = cos(rot);
     float sinRot = sin(rot);
     
-    // Rotate the triangle vertex coordinates around (0,0) before adding world position
-    vec2 rotatedVertex = vec2(
+    // For 3D, rotate vertices in the XY plane, preserving Z
+    vec3 rotatedVertex = vec3(
         inPos.x * cosRot - inPos.y * sinRot,
-        inPos.x * sinRot + inPos.y * cosRot
+        inPos.x * sinRot + inPos.y * cosRot,
+        inPos.z  // Preserve Z component for 3D geometry
     );
     
-    // Add rotated vertex to world position
-    vec3 finalPos = vec3(worldPos.xy + rotatedVertex, 0.0);
+    // Add rotated vertex to world position (full 3D support)
+    vec3 finalPos = worldPos + rotatedVertex;
     gl_Position = ubo.proj * ubo.view * vec4(finalPos, 1.0);
 }

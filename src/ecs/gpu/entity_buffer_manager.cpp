@@ -36,6 +36,11 @@ bool EntityBufferManager::initialize(const VulkanContext& context, ResourceCoord
         return false;
     }
     
+    if (!movementCentersBuffer.initialize(context, resourceCoordinator, maxEntities)) {
+        std::cerr << "EntityBufferManager: Failed to initialize movement centers buffer" << std::endl;
+        return false;
+    }
+    
     if (!runtimeStateBuffer.initialize(context, resourceCoordinator, maxEntities)) {
         std::cerr << "EntityBufferManager: Failed to initialize runtime state buffer" << std::endl;
         return false;
@@ -85,6 +90,7 @@ void EntityBufferManager::cleanup() {
     colorBuffer.cleanup();
     rotationStateBuffer.cleanup();
     runtimeStateBuffer.cleanup();
+    movementCentersBuffer.cleanup();
     movementParamsBuffer.cleanup();
     velocityBuffer.cleanup();
     uploadService.cleanup();
@@ -99,6 +105,10 @@ bool EntityBufferManager::uploadVelocityData(const void* data, VkDeviceSize size
 
 bool EntityBufferManager::uploadMovementParamsData(const void* data, VkDeviceSize size, VkDeviceSize offset) {
     return uploadService.upload(movementParamsBuffer, data, size, offset);
+}
+
+bool EntityBufferManager::uploadMovementCentersData(const void* data, VkDeviceSize size, VkDeviceSize offset) {
+    return uploadService.upload(movementCentersBuffer, data, size, offset);
 }
 
 bool EntityBufferManager::uploadRuntimeStateData(const void* data, VkDeviceSize size, VkDeviceSize offset) {

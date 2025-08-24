@@ -90,6 +90,7 @@ public:
     void focusCameraOn(CameraID cameraID, const glm::vec3& target, float zoom = 0.0f);
     
     void createOrthographicCamera(const std::string& name, const glm::vec3& position, float zoom, const glm::vec2& viewSize);
+    void createPerspectiveCamera(const std::string& name, const glm::vec3& position, const glm::vec3& target, float fov = 45.0f);
     void createFollowCamera(const std::string& name, const glm::vec3& target, float distance, float zoom);
     
     void printCameraInfo(CameraID cameraID = 0) const;

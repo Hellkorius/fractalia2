@@ -95,43 +95,49 @@ bool EntityDescriptorManager::createDescriptorSetLayouts() {
     computeBindings[EntityDescriptorBindings::Compute::MOVEMENT_PARAMS_BUFFER].descriptorCount = 1;
     computeBindings[EntityDescriptorBindings::Compute::MOVEMENT_PARAMS_BUFFER].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
 
-    // Binding 2: Runtime state buffer (for movement shader) / Position output buffer (for physics shader)
+    // Binding 2: Movement centers buffer (for 3D movement centers)
+    computeBindings[EntityDescriptorBindings::Compute::MOVEMENT_CENTERS_BUFFER].binding = EntityDescriptorBindings::Compute::MOVEMENT_CENTERS_BUFFER;
+    computeBindings[EntityDescriptorBindings::Compute::MOVEMENT_CENTERS_BUFFER].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    computeBindings[EntityDescriptorBindings::Compute::MOVEMENT_CENTERS_BUFFER].descriptorCount = 1;
+    computeBindings[EntityDescriptorBindings::Compute::MOVEMENT_CENTERS_BUFFER].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+
+    // Binding 3: Runtime state buffer (for movement shader) / Position output buffer (for physics shader)
     computeBindings[EntityDescriptorBindings::Compute::RUNTIME_STATE_BUFFER].binding = EntityDescriptorBindings::Compute::RUNTIME_STATE_BUFFER;
     computeBindings[EntityDescriptorBindings::Compute::RUNTIME_STATE_BUFFER].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
     computeBindings[EntityDescriptorBindings::Compute::RUNTIME_STATE_BUFFER].descriptorCount = 1;
     computeBindings[EntityDescriptorBindings::Compute::RUNTIME_STATE_BUFFER].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
 
-    // Binding 3: Current position buffer (for physics shader)
+    // Binding 4: Current position buffer (for physics shader)
     computeBindings[EntityDescriptorBindings::Compute::POSITION_BUFFER].binding = EntityDescriptorBindings::Compute::POSITION_BUFFER;
     computeBindings[EntityDescriptorBindings::Compute::POSITION_BUFFER].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
     computeBindings[EntityDescriptorBindings::Compute::POSITION_BUFFER].descriptorCount = 1;
     computeBindings[EntityDescriptorBindings::Compute::POSITION_BUFFER].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
 
-    // Binding 4: Target position buffer (for physics shader)
+    // Binding 5: Target position buffer (for physics shader)
     computeBindings[EntityDescriptorBindings::Compute::CURRENT_POSITION_BUFFER].binding = EntityDescriptorBindings::Compute::CURRENT_POSITION_BUFFER;
     computeBindings[EntityDescriptorBindings::Compute::CURRENT_POSITION_BUFFER].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
     computeBindings[EntityDescriptorBindings::Compute::CURRENT_POSITION_BUFFER].descriptorCount = 1;
     computeBindings[EntityDescriptorBindings::Compute::CURRENT_POSITION_BUFFER].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
 
-    // Binding 5: Rotation state buffer (for movement and physics shaders)
+    // Binding 6: Rotation state buffer (for movement and physics shaders)
     computeBindings[EntityDescriptorBindings::Compute::ROTATION_STATE_BUFFER].binding = EntityDescriptorBindings::Compute::ROTATION_STATE_BUFFER;
     computeBindings[EntityDescriptorBindings::Compute::ROTATION_STATE_BUFFER].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
     computeBindings[EntityDescriptorBindings::Compute::ROTATION_STATE_BUFFER].descriptorCount = 1;
     computeBindings[EntityDescriptorBindings::Compute::ROTATION_STATE_BUFFER].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
 
-    // Binding 6: Color buffer (for graphics shader)
+    // Binding 7: Color buffer (for graphics shader)
     computeBindings[EntityDescriptorBindings::Compute::COLOR_BUFFER].binding = EntityDescriptorBindings::Compute::COLOR_BUFFER;
     computeBindings[EntityDescriptorBindings::Compute::COLOR_BUFFER].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
     computeBindings[EntityDescriptorBindings::Compute::COLOR_BUFFER].descriptorCount = 1;
     computeBindings[EntityDescriptorBindings::Compute::COLOR_BUFFER].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
 
-    // Binding 7: Model matrix buffer (for graphics shader)
+    // Binding 8: Model matrix buffer (for graphics shader)
     computeBindings[EntityDescriptorBindings::Compute::MODEL_MATRIX_BUFFER].binding = EntityDescriptorBindings::Compute::MODEL_MATRIX_BUFFER;
     computeBindings[EntityDescriptorBindings::Compute::MODEL_MATRIX_BUFFER].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
     computeBindings[EntityDescriptorBindings::Compute::MODEL_MATRIX_BUFFER].descriptorCount = 1;
     computeBindings[EntityDescriptorBindings::Compute::MODEL_MATRIX_BUFFER].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
 
-    // Binding 8: Spatial map buffer (for physics shader)
+    // Binding 9: Spatial map buffer (for physics shader)
     computeBindings[EntityDescriptorBindings::Compute::SPATIAL_MAP_BUFFER].binding = EntityDescriptorBindings::Compute::SPATIAL_MAP_BUFFER;
     computeBindings[EntityDescriptorBindings::Compute::SPATIAL_MAP_BUFFER].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
     computeBindings[EntityDescriptorBindings::Compute::SPATIAL_MAP_BUFFER].descriptorCount = 1;
@@ -282,6 +288,7 @@ bool EntityDescriptorManager::updateComputeDescriptorSet() {
     std::vector<DescriptorUpdateHelper::BufferBinding> bindings = {
         {EntityDescriptorBindings::Compute::VELOCITY_BUFFER, bufferManager->getVelocityBuffer(), VK_DESCRIPTOR_TYPE_STORAGE_BUFFER},
         {EntityDescriptorBindings::Compute::MOVEMENT_PARAMS_BUFFER, bufferManager->getMovementParamsBuffer(), VK_DESCRIPTOR_TYPE_STORAGE_BUFFER},
+        {EntityDescriptorBindings::Compute::MOVEMENT_CENTERS_BUFFER, bufferManager->getMovementCentersBuffer(), VK_DESCRIPTOR_TYPE_STORAGE_BUFFER},
         {EntityDescriptorBindings::Compute::RUNTIME_STATE_BUFFER, bufferManager->getRuntimeStateBuffer(), VK_DESCRIPTOR_TYPE_STORAGE_BUFFER},
         {EntityDescriptorBindings::Compute::POSITION_BUFFER, bufferManager->getPositionBuffer(), VK_DESCRIPTOR_TYPE_STORAGE_BUFFER},
         {EntityDescriptorBindings::Compute::CURRENT_POSITION_BUFFER, bufferManager->getCurrentPositionBuffer(), VK_DESCRIPTOR_TYPE_STORAGE_BUFFER},

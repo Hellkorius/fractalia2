@@ -1,16 +1,17 @@
 #version 450
 #extension GL_EXT_nonuniform_qualifier : require
 
-// Shared entity buffer indices for descriptor indexing
+// Shared entity buffer indices for descriptor indexing (updated for 3D)
 const uint VELOCITY_BUFFER = 0u;           
 const uint MOVEMENT_PARAMS_BUFFER = 1u;    
-const uint RUNTIME_STATE_BUFFER = 2u;      
-const uint ROTATION_STATE_BUFFER = 3u;     
-const uint COLOR_BUFFER = 4u;              
-const uint MODEL_MATRIX_BUFFER = 5u;       
-const uint POSITION_OUTPUT_BUFFER = 6u;    
-const uint CURRENT_POSITION_BUFFER = 7u;   
-const uint SPATIAL_MAP_BUFFER = 8u;
+const uint MOVEMENT_CENTERS_BUFFER = 2u;   
+const uint RUNTIME_STATE_BUFFER = 3u;      
+const uint ROTATION_STATE_BUFFER = 4u;     
+const uint COLOR_BUFFER = 5u;              
+const uint MODEL_MATRIX_BUFFER = 6u;       
+const uint POSITION_OUTPUT_BUFFER = 7u;    
+const uint CURRENT_POSITION_BUFFER = 8u;   
+const uint SPATIAL_MAP_BUFFER = 9u;
 
 // Optimized workgroup size for maximum GPU occupancy
 layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
@@ -96,9 +97,10 @@ void main() {
         return;
     }
     
-    // Load entity data from SoA buffers - much better cache locality
+    // Load entity data from SoA buffers - much better cache locality (3D support)
     vec4 velocity = entityBuffers[VELOCITY_BUFFER].data[entityIndex];
     vec4 movementParams = entityBuffers[MOVEMENT_PARAMS_BUFFER].data[entityIndex];
+    vec4 movementCenter = entityBuffers[MOVEMENT_CENTERS_BUFFER].data[entityIndex];
     vec4 runtimeState = entityBuffers[RUNTIME_STATE_BUFFER].data[entityIndex];
     
     // Extract movement parameters
@@ -130,13 +132,19 @@ void main() {
         uint spiralHash = fastHash(seed + 67890u);
         float movementAngularVel = (hashToFloat(spiralHash) - 0.5) * 0.15; // -0.075 to +0.075 rad/frame
         
-        // Use basic trig for random direction with enhanced velocity
-        velocity.x = speed * cos(randAngle + movementAngularVel);
-        velocity.y = speed * sin(randAngle + movementAngularVel);
+        // 3D random movement - generate random spherical coordinates
+        uint angleHash2 = fastHash(seed + 11111u);
+        float elevation = (hashToFloat(angleHash2) - 0.5) * 1.5; // Vertical angle: -0.75 to +0.75 radians
+        
+        // Use spherical coordinates for 3D direction
+        float cosElev = cos(elevation);
+        velocity.x = speed * cosElev * cos(randAngle + movementAngularVel);
+        velocity.y = speed * cosElev * sin(randAngle + movementAngularVel);
+        velocity.z = speed * sin(elevation); // Vertical movement component
         
         // Rotation is now handled entirely by physics shader
         
-        // Write updated velocity back to SoA buffer
+        // Write updated 3D velocity back to SoA buffer
         entityBuffers[VELOCITY_BUFFER].data[entityIndex] = velocity;
     }
 }
