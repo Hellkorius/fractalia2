@@ -26,6 +26,8 @@ layout(push_constant) uniform PC {
 
 // Input vertex geometry
 layout(location = 0) in vec3 inPos;
+layout(location = 1) in vec3 inColor;
+layout(location = 2) in vec3 inNormal;
 
 // Vulkan 1.3 descriptor indexing - single array of all entity buffers
 layout(std430, binding = 1) readonly buffer EntityBuffers {
@@ -34,6 +36,8 @@ layout(std430, binding = 1) readonly buffer EntityBuffers {
 
 
 layout(location = 0) out vec3 color;
+layout(location = 1) out vec3 worldPos;
+layout(location = 2) out vec3 normal;
 
 /* ---------- HSV → RGB ---------- */
 vec3 hsv2rgb(float h, float s, float v) {
@@ -54,7 +58,7 @@ vec3 hsv2rgb(float h, float s, float v) {
 
 void main() {
     // Read computed positions from physics shader output (now supporting 3D)
-    vec3 worldPos = entityBuffers[POSITION_OUTPUT_BUFFER].data[gl_InstanceIndex].xyz;
+    vec3 entityWorldPos = entityBuffers[POSITION_OUTPUT_BUFFER].data[gl_InstanceIndex].xyz;
     
     // Extract movement parameters for color calculation from SoA buffers
     vec4 entityMovementParams = entityBuffers[MOVEMENT_PARAMS_BUFFER].data[gl_InstanceIndex];
@@ -127,7 +131,19 @@ void main() {
         inPos.z  // Preserve Z component for 3D geometry
     );
     
+    // Rotate the normal as well (same rotation as vertices)
+    vec3 rotatedNormal = vec3(
+        inNormal.x * cosRot - inNormal.y * sinRot,
+        inNormal.x * sinRot + inNormal.y * cosRot,
+        inNormal.z  // Preserve Z component for normal
+    );
+    
     // Add rotated vertex to world position (full 3D support)
-    vec3 finalPos = worldPos + rotatedVertex;
+    vec3 finalPos = entityWorldPos + rotatedVertex;
+    
+    // Pass data to fragment shader
+    worldPos = finalPos;
+    normal = normalize(rotatedNormal);
+    
     gl_Position = ubo.proj * ubo.view * vec4(finalPos, 1.0);
 }

@@ -3,9 +3,9 @@
 PolygonMesh PolygonFactory::createTriangle() {
     PolygonMesh triangle;
     triangle.vertices = {
-        {{0.0f, -2.0f, 0.0f}, {1.0f, 1.0f, 1.0f}},
-        {{2.0f, 2.0f, 0.0f}, {1.0f, 1.0f, 1.0f}},
-        {{-2.0f, 2.0f, 0.0f}, {1.0f, 1.0f, 1.0f}}
+        {{0.0f, -2.0f, 0.0f}, {1.0f, 1.0f, 1.0f}, {0.0f, 0.0f, 1.0f}},
+        {{2.0f, 2.0f, 0.0f}, {1.0f, 1.0f, 1.0f}, {0.0f, 0.0f, 1.0f}},
+        {{-2.0f, 2.0f, 0.0f}, {1.0f, 1.0f, 1.0f}, {0.0f, 0.0f, 1.0f}}
     };
     triangle.indices = {0, 1, 2};
     return triangle;
@@ -14,10 +14,10 @@ PolygonMesh PolygonFactory::createTriangle() {
 PolygonMesh PolygonFactory::createSquare() {
     PolygonMesh square;
     square.vertices = {
-        {{-0.5f, -0.5f, 0.0f}, {1.0f, 0.0f, 0.0f}},
-        {{0.5f, -0.5f, 0.0f}, {1.0f, 0.0f, 0.0f}},
-        {{0.5f, 0.5f, 0.0f}, {1.0f, 0.0f, 0.0f}},
-        {{-0.5f, 0.5f, 0.0f}, {1.0f, 0.0f, 0.0f}}
+        {{-0.5f, -0.5f, 0.0f}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 1.0f}},
+        {{0.5f, -0.5f, 0.0f}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 1.0f}},
+        {{0.5f, 0.5f, 0.0f}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 1.0f}},
+        {{-0.5f, 0.5f, 0.0f}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 1.0f}}
     };
     square.indices = {0, 1, 2, 0, 2, 3};
     return square;
@@ -26,44 +26,44 @@ PolygonMesh PolygonFactory::createSquare() {
 PolygonMesh PolygonFactory::createCube() {
     PolygonMesh cube;
     
-    // Define the 8 vertices of a cube centered at origin
-    // Each face will have distinct colors for visual differentiation
+    // Define vertices for each face with proper normals
+    // Each face gets its own vertices for correct normal calculation
     cube.vertices = {
-        // Front face (red)
-        {{-0.5f, -0.5f,  0.5f}, {1.0f, 0.0f, 0.0f}}, // 0: bottom-left
-        {{ 0.5f, -0.5f,  0.5f}, {1.0f, 0.0f, 0.0f}}, // 1: bottom-right
-        {{ 0.5f,  0.5f,  0.5f}, {1.0f, 0.0f, 0.0f}}, // 2: top-right
-        {{-0.5f,  0.5f,  0.5f}, {1.0f, 0.0f, 0.0f}}, // 3: top-left
+        // Front face (Z+) - normal: (0, 0, 1)
+        {{-0.5f, -0.5f,  0.5f}, {0.8f, 0.8f, 0.8f}, {0.0f, 0.0f, 1.0f}}, // 0
+        {{ 0.5f, -0.5f,  0.5f}, {0.8f, 0.8f, 0.8f}, {0.0f, 0.0f, 1.0f}}, // 1
+        {{ 0.5f,  0.5f,  0.5f}, {0.8f, 0.8f, 0.8f}, {0.0f, 0.0f, 1.0f}}, // 2
+        {{-0.5f,  0.5f,  0.5f}, {0.8f, 0.8f, 0.8f}, {0.0f, 0.0f, 1.0f}}, // 3
         
-        // Back face (green)
-        {{-0.5f, -0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}}, // 4: bottom-left
-        {{ 0.5f, -0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}}, // 5: bottom-right
-        {{ 0.5f,  0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}}, // 6: top-right
-        {{-0.5f,  0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}}, // 7: top-left
+        // Back face (Z-) - normal: (0, 0, -1)
+        {{ 0.5f, -0.5f, -0.5f}, {0.6f, 0.6f, 0.6f}, {0.0f, 0.0f, -1.0f}}, // 4
+        {{-0.5f, -0.5f, -0.5f}, {0.6f, 0.6f, 0.6f}, {0.0f, 0.0f, -1.0f}}, // 5
+        {{-0.5f,  0.5f, -0.5f}, {0.6f, 0.6f, 0.6f}, {0.0f, 0.0f, -1.0f}}, // 6
+        {{ 0.5f,  0.5f, -0.5f}, {0.6f, 0.6f, 0.6f}, {0.0f, 0.0f, -1.0f}}, // 7
         
-        // Left face (blue)
-        {{-0.5f, -0.5f, -0.5f}, {0.0f, 0.0f, 1.0f}}, // 8: bottom-back
-        {{-0.5f, -0.5f,  0.5f}, {0.0f, 0.0f, 1.0f}}, // 9: bottom-front
-        {{-0.5f,  0.5f,  0.5f}, {0.0f, 0.0f, 1.0f}}, // 10: top-front
-        {{-0.5f,  0.5f, -0.5f}, {0.0f, 0.0f, 1.0f}}, // 11: top-back
+        // Left face (X-) - normal: (-1, 0, 0)
+        {{-0.5f, -0.5f, -0.5f}, {0.4f, 0.4f, 0.4f}, {-1.0f, 0.0f, 0.0f}}, // 8
+        {{-0.5f, -0.5f,  0.5f}, {0.4f, 0.4f, 0.4f}, {-1.0f, 0.0f, 0.0f}}, // 9
+        {{-0.5f,  0.5f,  0.5f}, {0.4f, 0.4f, 0.4f}, {-1.0f, 0.0f, 0.0f}}, // 10
+        {{-0.5f,  0.5f, -0.5f}, {0.4f, 0.4f, 0.4f}, {-1.0f, 0.0f, 0.0f}}, // 11
         
-        // Right face (yellow)
-        {{ 0.5f, -0.5f,  0.5f}, {1.0f, 1.0f, 0.0f}}, // 12: bottom-front
-        {{ 0.5f, -0.5f, -0.5f}, {1.0f, 1.0f, 0.0f}}, // 13: bottom-back
-        {{ 0.5f,  0.5f, -0.5f}, {1.0f, 1.0f, 0.0f}}, // 14: top-back
-        {{ 0.5f,  0.5f,  0.5f}, {1.0f, 1.0f, 0.0f}}, // 15: top-front
+        // Right face (X+) - normal: (1, 0, 0)
+        {{ 0.5f, -0.5f,  0.5f}, {0.7f, 0.7f, 0.7f}, {1.0f, 0.0f, 0.0f}}, // 12
+        {{ 0.5f, -0.5f, -0.5f}, {0.7f, 0.7f, 0.7f}, {1.0f, 0.0f, 0.0f}}, // 13
+        {{ 0.5f,  0.5f, -0.5f}, {0.7f, 0.7f, 0.7f}, {1.0f, 0.0f, 0.0f}}, // 14
+        {{ 0.5f,  0.5f,  0.5f}, {0.7f, 0.7f, 0.7f}, {1.0f, 0.0f, 0.0f}}, // 15
         
-        // Top face (magenta)
-        {{-0.5f,  0.5f,  0.5f}, {1.0f, 0.0f, 1.0f}}, // 16: front-left
-        {{ 0.5f,  0.5f,  0.5f}, {1.0f, 0.0f, 1.0f}}, // 17: front-right
-        {{ 0.5f,  0.5f, -0.5f}, {1.0f, 0.0f, 1.0f}}, // 18: back-right
-        {{-0.5f,  0.5f, -0.5f}, {1.0f, 0.0f, 1.0f}}, // 19: back-left
+        // Top face (Y+) - normal: (0, 1, 0)
+        {{-0.5f,  0.5f,  0.5f}, {0.9f, 0.9f, 0.9f}, {0.0f, 1.0f, 0.0f}}, // 16
+        {{ 0.5f,  0.5f,  0.5f}, {0.9f, 0.9f, 0.9f}, {0.0f, 1.0f, 0.0f}}, // 17
+        {{ 0.5f,  0.5f, -0.5f}, {0.9f, 0.9f, 0.9f}, {0.0f, 1.0f, 0.0f}}, // 18
+        {{-0.5f,  0.5f, -0.5f}, {0.9f, 0.9f, 0.9f}, {0.0f, 1.0f, 0.0f}}, // 19
         
-        // Bottom face (cyan)
-        {{-0.5f, -0.5f, -0.5f}, {0.0f, 1.0f, 1.0f}}, // 20: back-left
-        {{ 0.5f, -0.5f, -0.5f}, {0.0f, 1.0f, 1.0f}}, // 21: back-right
-        {{ 0.5f, -0.5f,  0.5f}, {0.0f, 1.0f, 1.0f}}, // 22: front-right
-        {{-0.5f, -0.5f,  0.5f}, {0.0f, 1.0f, 1.0f}}  // 23: front-left
+        // Bottom face (Y-) - normal: (0, -1, 0)
+        {{-0.5f, -0.5f, -0.5f}, {0.3f, 0.3f, 0.3f}, {0.0f, -1.0f, 0.0f}}, // 20
+        {{ 0.5f, -0.5f, -0.5f}, {0.3f, 0.3f, 0.3f}, {0.0f, -1.0f, 0.0f}}, // 21
+        {{ 0.5f, -0.5f,  0.5f}, {0.3f, 0.3f, 0.3f}, {0.0f, -1.0f, 0.0f}}, // 22
+        {{-0.5f, -0.5f,  0.5f}, {0.3f, 0.3f, 0.3f}, {0.0f, -1.0f, 0.0f}}  // 23
     };
     
     // Define triangles for each face (counter-clockwise winding)

@@ -243,19 +243,31 @@ namespace GraphicsPipelinePresets {
         
         VkVertexInputBindingDescription vertexBinding{};
         vertexBinding.binding = 0;
-        vertexBinding.stride = sizeof(glm::vec3) + sizeof(glm::vec3);
+        vertexBinding.stride = sizeof(glm::vec3) + sizeof(glm::vec3) + sizeof(glm::vec3); // pos + color + normal
         vertexBinding.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
         state.vertexBindings.push_back(vertexBinding);
         
-        // SoA approach: No instance binding for entity data (using storage buffers instead)
-        // Only send vertex position - colors derived from GPU entity data
-        
+        // Vertex attributes: position, color, normal
         VkVertexInputAttributeDescription posAttr{};
         posAttr.binding = 0;
         posAttr.location = 0;
         posAttr.format = VK_FORMAT_R32G32B32_SFLOAT;
         posAttr.offset = 0;
         state.vertexAttributes.push_back(posAttr);
+        
+        VkVertexInputAttributeDescription colorAttr{};
+        colorAttr.binding = 0;
+        colorAttr.location = 1;
+        colorAttr.format = VK_FORMAT_R32G32B32_SFLOAT;
+        colorAttr.offset = sizeof(glm::vec3);
+        state.vertexAttributes.push_back(colorAttr);
+        
+        VkVertexInputAttributeDescription normalAttr{};
+        normalAttr.binding = 0;
+        normalAttr.location = 2;
+        normalAttr.format = VK_FORMAT_R32G32B32_SFLOAT;
+        normalAttr.offset = sizeof(glm::vec3) + sizeof(glm::vec3);
+        state.vertexAttributes.push_back(normalAttr);
         
         VkPipelineColorBlendAttachmentState colorBlendAttachment{};
         colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | 
@@ -293,19 +305,31 @@ namespace GraphicsPipelinePresets {
         
         VkVertexInputBindingDescription vertexBinding{};
         vertexBinding.binding = 0;
-        vertexBinding.stride = sizeof(glm::vec3) + sizeof(glm::vec3);
+        vertexBinding.stride = sizeof(glm::vec3) + sizeof(glm::vec3) + sizeof(glm::vec3); // pos + color + normal
         vertexBinding.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
         state.vertexBindings.push_back(vertexBinding);
         
-        // SoA approach: No instance binding for entity data (using storage buffers instead)
-        // Only send vertex position - colors derived from GPU entity data
-        
+        // Vertex attributes: position, color, normal
         VkVertexInputAttributeDescription posAttr{};
         posAttr.binding = 0;
         posAttr.location = 0;
         posAttr.format = VK_FORMAT_R32G32B32_SFLOAT;
         posAttr.offset = 0;
         state.vertexAttributes.push_back(posAttr);
+        
+        VkVertexInputAttributeDescription colorAttr{};
+        colorAttr.binding = 0;
+        colorAttr.location = 1;
+        colorAttr.format = VK_FORMAT_R32G32B32_SFLOAT;
+        colorAttr.offset = sizeof(glm::vec3);
+        state.vertexAttributes.push_back(colorAttr);
+        
+        VkVertexInputAttributeDescription normalAttr{};
+        normalAttr.binding = 0;
+        normalAttr.location = 2;
+        normalAttr.format = VK_FORMAT_R32G32B32_SFLOAT;
+        normalAttr.offset = sizeof(glm::vec3) + sizeof(glm::vec3);
+        state.vertexAttributes.push_back(normalAttr);
         
         VkPipelineColorBlendAttachmentState colorBlendAttachment{};
         colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | 
