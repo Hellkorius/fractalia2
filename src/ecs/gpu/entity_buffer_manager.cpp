@@ -245,11 +245,11 @@ bool EntityBufferManager::readbackEntityAtPosition(glm::vec2 worldPos, EntityDeb
                     if (entityId >= maxEntities) continue;
                     entitiesFound++;
                     
-                    // Read position for this entity
+                    // Read position from model matrix (column 3)
                     glm::vec4 entityPosition;
-                    if (readGPUBuffer(positionCoordinator.getPrimaryBuffer(), 
+                    if (readGPUBuffer(modelMatrixBuffer.getBuffer(), 
                                      &entityPosition, sizeof(glm::vec4), 
-                                     entityId * sizeof(glm::vec4))) {
+                                     (entityId * 4 + 3) * sizeof(glm::vec4))) {
                         
                         // Calculate entity's spatial cell using same logic as shader
                         glm::vec2 entityPos2D = glm::vec2(entityPosition);
@@ -316,10 +316,10 @@ bool EntityBufferManager::readbackEntityById(uint32_t entityId, EntityDebugInfo&
     
     info.entityId = entityId;
     
-    // Read position
-    if (!readGPUBuffer(positionCoordinator.getPrimaryBuffer(), 
+    // Read position from model matrix (column 3)
+    if (!readGPUBuffer(modelMatrixBuffer.getBuffer(), 
                       &info.position, sizeof(glm::vec4), 
-                      entityId * sizeof(glm::vec4))) {
+                      (entityId * 4 + 3) * sizeof(glm::vec4))) {
         return false;
     }
     

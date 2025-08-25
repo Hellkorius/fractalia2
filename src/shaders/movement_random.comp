@@ -1,17 +1,9 @@
 #version 450
 #extension GL_EXT_nonuniform_qualifier : require
+#extension GL_GOOGLE_include_directive : require
 
-// Shared entity buffer indices for descriptor indexing (updated for 3D)
-const uint VELOCITY_BUFFER = 0u;           
-const uint MOVEMENT_PARAMS_BUFFER = 1u;    
-const uint MOVEMENT_CENTERS_BUFFER = 2u;   
-const uint RUNTIME_STATE_BUFFER = 3u;      
-const uint ROTATION_STATE_BUFFER = 4u;     
-const uint COLOR_BUFFER = 5u;              
-const uint MODEL_MATRIX_BUFFER = 6u;       
-const uint POSITION_OUTPUT_BUFFER = 7u;    
-const uint CURRENT_POSITION_BUFFER = 8u;   
-const uint SPATIAL_MAP_BUFFER = 9u;
+// Include shared entity buffer indices  
+#include "entity_buffer_indices.glsl"
 
 // Optimized workgroup size for maximum GPU occupancy
 layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;

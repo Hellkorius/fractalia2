@@ -155,6 +155,10 @@ int main(int argc, char* argv[]) {
     
     DEBUG_LOG("Creating " << ENTITY_COUNT << " GPU entities for stress testing...");
     
+    // Create floor entity automatically on startup
+    DEBUG_LOG("Creating floor entity at startup...");
+    controlService->createDefaultFloor();
+    
     auto swarmEntities = entityFactory.createSwarm(
         ENTITY_COUNT,
         glm::vec3(10.0f, 10.0f, 0.0f),

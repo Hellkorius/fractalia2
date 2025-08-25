@@ -132,12 +132,10 @@ void RenderFrameDirector::setupFrameGraph(uint32_t imageIndex) {
             gpuEntityManager
         );
         
-        // Physics compute node (updates positions based on velocity every frame)
+        // Physics compute node (now writes to model matrices directly - MVP approach)
         physicsNodeId = frameGraph->addNode<PhysicsComputeNode>(
             entityBufferId,
-            positionBufferId,
-            currentPositionBufferId,
-            targetPositionBufferId,
+            entityBufferId,  // Model matrix is part of entity buffer system
             pipelineSystem->getComputeManager(),
             gpuEntityManager
         );

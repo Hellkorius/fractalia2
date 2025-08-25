@@ -7,17 +7,15 @@
 
 PhysicsComputeNode::PhysicsComputeNode(
     FrameGraphTypes::ResourceId entityBuffer, 
-    FrameGraphTypes::ResourceId positionBuffer,
-    FrameGraphTypes::ResourceId currentPositionBuffer,
-    FrameGraphTypes::ResourceId targetPositionBuffer,
+    FrameGraphTypes::ResourceId modelMatrixBuffer,
     ComputePipelineManager* computeManager,
     GPUEntityManager* gpuEntityManager,
     std::shared_ptr<GPUTimeoutDetector> timeoutDetector
 ) : BaseComputeNode(
     entityBuffer,
-    positionBuffer, 
-    currentPositionBuffer,
-    targetPositionBuffer,
+    modelMatrixBuffer,  // Physics now writes to model matrices
+    modelMatrixBuffer,  // Use same buffer for current/target (no ping-pong needed)
+    modelMatrixBuffer,  // Physics updates model matrices directly
     computeManager,
     gpuEntityManager,
     timeoutDetector,
@@ -29,14 +27,13 @@ PhysicsComputeNode::PhysicsComputeNode(
 std::vector<ResourceDependency> PhysicsComputeNode::getInputs() const {
     return {
         {entityBufferId, ResourceAccess::ReadWrite, PipelineStage::ComputeShader},
-        {currentPositionBufferId, ResourceAccess::ReadWrite, PipelineStage::ComputeShader},
+        {positionBufferId, ResourceAccess::ReadWrite, PipelineStage::ComputeShader},  // Model matrix buffer
     };
 }
 
 std::vector<ResourceDependency> PhysicsComputeNode::getOutputs() const {
     return {
-        {positionBufferId, ResourceAccess::Write, PipelineStage::ComputeShader},
-        {currentPositionBufferId, ResourceAccess::Write, PipelineStage::ComputeShader},
+        {positionBufferId, ResourceAccess::Write, PipelineStage::ComputeShader},  // Model matrix buffer
     };
 }
 
@@ -74,4 +71,9 @@ void PhysicsComputeNode::setupPushConstants(float time, float deltaTime, uint32_
     pushConstants.time = time;
     pushConstants.deltaTime = deltaTime;
     pushConstants.frame = frameCounter;
+    
+    // Set gravity and collision parameters
+    pushConstants.gravityStrength = 15.0f;  // Gravity acceleration (tuned for the engine scale)
+    pushConstants.restitution = 0.5f;       // Moderate bounce (50% energy retention)
+    pushConstants.friction = 0.8f;          // Surface friction (20% velocity loss)
 }

@@ -93,6 +93,20 @@ public:
         return *this;
     }
     
+    EntityBuilder& setEntityType(EntityType entityType) {
+        if (auto* renderable = entity.get_mut<Renderable>()) {
+            renderable->entityType = entityType;
+        } else {
+            auto r = entity.get_mut<Renderable>();
+            if (!r) {
+                entity.set<Renderable>({});
+                r = entity.get_mut<Renderable>();
+            }
+            r->entityType = entityType;
+        }
+        return *this;
+    }
+    
     // Physics methods
     EntityBuilder& withVelocity(const glm::vec3& linear, const glm::vec3& angular = glm::vec3(0.0f)) {
         entity.set<Velocity>({.linear = linear, .angular = angular});
@@ -260,6 +274,26 @@ public:
             .build();
             
         entity.set<MovementPattern>(pattern);
+        return entity;
+    }
+    
+    // Create a floor entity at specified position and scale
+    flecs::entity createFloorEntity(const glm::vec3& position, const glm::vec3& scale = glm::vec3(100.0f, 100.0f, 1.0f)) {
+        // Floor entities have a distinctive bright color for visibility
+        glm::vec4 floorColor = glm::vec4(0.8f, 0.2f, 0.2f, 1.0f); // Bright red floor color
+        
+        // Floor movement pattern (static - no actual movement)
+        MovementPattern pattern = createMovementPattern(position, 0, 1, MovementType::RandomWalk);
+        
+        flecs::entity entity = create()
+            .at(position)
+            .scaled(scale)  // Large scale to make floor plane
+            .withColor(floorColor)
+            .setEntityType(EntityType::Floor)  // Mark as floor entity
+            .asStatic()     // Floor entities don't move
+            .build();
+            
+        entity.set<MovementPattern>(pattern);  // Set the movement pattern
         return entity;
     }
     

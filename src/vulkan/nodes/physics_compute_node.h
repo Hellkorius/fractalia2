@@ -9,9 +9,7 @@ class PhysicsComputeNode : public BaseComputeNode {
 public:
     PhysicsComputeNode(
         FrameGraphTypes::ResourceId entityBuffer, 
-        FrameGraphTypes::ResourceId positionBuffer,
-        FrameGraphTypes::ResourceId currentPositionBuffer,
-        FrameGraphTypes::ResourceId targetPositionBuffer,
+        FrameGraphTypes::ResourceId modelMatrixBuffer,  // Physics now writes to model matrices
         ComputePipelineManager* computeManager,
         GPUEntityManager* gpuEntityManager,
         std::shared_ptr<GPUTimeoutDetector> timeoutDetector = nullptr

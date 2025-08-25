@@ -49,5 +49,8 @@ struct NodePushConstants {
     uint32_t frame;
     uint32_t param1;        // Flexible parameter - entityOffset for physics, globalFrame for entity
     uint32_t param2;        // Future expansion
-    uint32_t padding[2];    // Ensure 16-byte alignment
+    float gravityStrength;  // Gravity acceleration for physics nodes
+    float restitution;      // Bounce factor for floor collisions
+    float friction;         // Surface friction coefficient
+    uint32_t padding;       // Maintain 16-byte alignment
 };

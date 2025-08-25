@@ -6,6 +6,12 @@
 #include <cstdint>
 #include <cstring>
 
+// Entity types for collision and physics behavior (must be defined before Renderable)
+enum class EntityType {
+    Regular = 0,    // Normal moving entities affected by gravity and collisions
+    Floor = 1       // Static collision surfaces (infinite mass, immovable)
+};
+
 // Transform component - consolidates position/rotation for better cache locality
 struct Transform {
     glm::vec3 position{0.0f, 0.0f, 0.0f};
@@ -47,6 +53,7 @@ struct Renderable {
     glm::vec4 color{1.0f, 1.0f, 1.0f, 1.0f};
     uint32_t layer{0}; // For depth sorting
     bool visible{true};
+    EntityType entityType{EntityType::Regular}; // Entity type for collision behavior
     
     // Transform matrix for GPU upload
     glm::mat4 modelMatrix{1.0f};

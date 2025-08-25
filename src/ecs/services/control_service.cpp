@@ -157,6 +157,15 @@ void GameControlService::handleInput() {
         std::cout << "GameControlService: create_swarm is active but not just pressed" << std::endl;
     }
     
+    // Floor creation
+    if (inputService->isActionJustPressed("create_floor")) {
+        std::cout << "GameControlService: create_floor action triggered!" << std::endl;
+        glm::vec2 mouseScreen = inputService->getMousePosition();
+        controlState.entityCreationPos = inputService->getMouseWorldPosition();
+        std::cout << "Mouse screen: (" << mouseScreen.x << ", " << mouseScreen.y << ") -> world: (" << controlState.entityCreationPos.x << ", " << controlState.entityCreationPos.y << ")" << std::endl;
+        executeAction("create_floor");
+    }
+    
     // Performance stats
     if (inputService->isActionJustPressed("show_stats")) {
         executeAction("show_stats");
@@ -236,6 +245,14 @@ void GameControlService::initializeDefaultActions() {
     });
     
     registerAction({
+        ControlActionType::CREATE_FLOOR,
+        "create_floor",
+        "Create floor entity at cursor position",
+        [this]() { actionCreateFloor(); },
+        true, 1.0f, 0.0f  // 1 second cooldown
+    });
+    
+    registerAction({
         ControlActionType::DEBUG_ENTITY,
         "debug_entity",
         "Debug entity info at cursor position",
@@ -308,6 +325,11 @@ void GameControlService::executePendingRequests() {
         createSwarm(1000, glm::vec3(10.0f, 10.0f, 0.0f), 8.0f);
     }
     
+    if (controlState.requestFloorCreation) {
+        std::cout << "GameControlService::executePendingRequests() - Creating floor at (" << controlState.entityCreationPos.x << ", " << controlState.entityCreationPos.y << ")" << std::endl;
+        createFloor(controlState.entityCreationPos);
+    }
+    
     if (controlState.requestPerformanceStats) {
         showPerformanceStats();
     }
@@ -336,6 +358,13 @@ void GameControlService::integrateWithInputService() {
         InputActionType::DIGITAL,
         "Create entity swarm",
         {InputBinding(InputBinding::InputType::KEYBOARD_KEY, SDL_SCANCODE_EQUALS)}
+    });
+    
+    inputService->registerAction({
+        "create_floor",
+        InputActionType::DIGITAL,
+        "Create floor entity at mouse position",
+        {InputBinding(InputBinding::InputType::KEYBOARD_KEY, SDL_SCANCODE_F)}
     });
     
     inputService->registerAction({
@@ -377,7 +406,7 @@ void GameControlService::integrateWithInputService() {
         "camera_focus",
         InputActionType::DIGITAL,
         "Focus camera on entities",
-        {InputBinding(InputBinding::InputType::KEYBOARD_KEY, SDL_SCANCODE_F)}
+        {InputBinding(InputBinding::InputType::KEYBOARD_KEY, SDL_SCANCODE_G)}
     });
     
     // WASD camera movement controls - using DIGITAL for keyboard keys
@@ -489,6 +518,11 @@ void GameControlService::actionCreateSwarm() {
     controlState.requestSwarmCreation = true;
 }
 
+void GameControlService::actionCreateFloor() {
+    std::cout << "GameControlService::actionCreateFloor() - Setting request flag" << std::endl;
+    controlState.requestFloorCreation = true;
+}
+
 void GameControlService::actionDebugEntity() {
     glm::vec2 mouseWorldPos = inputService->getMouseWorldPosition();
     debugEntityAtPosition(mouseWorldPos);
@@ -561,6 +595,64 @@ void GameControlService::createSwarm(size_t count, const glm::vec3& center, floa
     }
     
     DEBUG_LOG("Created swarm of " << count << " entities");
+}
+
+void GameControlService::createFloor(const glm::vec2& position) {
+    std::cout << "GameControlService::createFloor() - Called with position (" << position.x << ", " << position.y << ")" << std::endl;
+    
+    if (!entityFactory) {
+        std::cout << "ERROR: entityFactory is null!" << std::endl;
+        return;
+    }
+    if (!renderer) {
+        std::cout << "ERROR: renderer is null!" << std::endl;
+        return;
+    }
+    
+    // Create massive floor right underneath the origin
+    glm::vec3 floorPos(0.0f, 0.0f, -5.0f);  // Just below origin, close to entities
+    glm::vec3 floorScale(1000.0f, 1000.0f, 2.0f);  // Huge floor plane to catch all entities
+    
+    flecs::entity floorEntity = entityFactory->createFloorEntity(floorPos, floorScale);
+    std::cout << "Created floor entity at position (" << floorPos.x << ", " << floorPos.y << ", " << floorPos.z << ")" << std::endl;
+    
+    auto* gpuEntityManager = renderer->getGPUEntityManager();
+    if (gpuEntityManager) {
+        std::vector<flecs::entity> entities = {floorEntity};
+        gpuEntityManager->addEntitiesFromECS(entities);
+        gpuEntityManager->uploadPendingEntities();
+        std::cout << "Added floor entity to GPU manager and uploaded" << std::endl;
+    } else {
+        std::cout << "ERROR: gpuEntityManager is null!" << std::endl;
+    }
+    
+    DEBUG_LOG("Created floor at (" << position.x << ", " << position.y << ") at Z=" << floorPos.z);
+}
+
+void GameControlService::createDefaultFloor() {
+    std::cout << "GameControlService::createDefaultFloor() - Creating default floor at origin" << std::endl;
+    
+    if (!entityFactory || !renderer) {
+        std::cout << "ERROR: entityFactory or renderer is null!" << std::endl;
+        return;
+    }
+    
+    // Create massive floor right underneath the origin
+    glm::vec3 floorPos(0.0f, 0.0f, -5.0f);  // Just below origin, close to entities
+    glm::vec3 floorScale(1000.0f, 1000.0f, 2.0f);  // Huge floor plane to catch all entities
+    
+    flecs::entity floorEntity = entityFactory->createFloorEntity(floorPos, floorScale);
+    std::cout << "Created default floor entity at origin" << std::endl;
+    
+    auto* gpuEntityManager = renderer->getGPUEntityManager();
+    if (gpuEntityManager) {
+        std::vector<flecs::entity> entities = {floorEntity};
+        gpuEntityManager->addEntitiesFromECS(entities);
+        gpuEntityManager->uploadPendingEntities();
+        std::cout << "Added default floor entity to GPU manager and uploaded" << std::endl;
+    }
+    
+    DEBUG_LOG("Created default floor at origin (0, 0, -5)");
 }
 
 void GameControlService::showPerformanceStats() {

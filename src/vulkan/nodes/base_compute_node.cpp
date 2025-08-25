@@ -149,7 +149,6 @@ void BaseComputeNode::executeSingleDispatch(
     const auto& vk = context->getLoader();
     
     // Single dispatch execution
-    std::cout << nodeTypeName << ": Starting single dispatch execution..." << std::endl;
     if (timeoutDetector) {
         timeoutDetector->beginComputeDispatch(getDispatchBaseName(), totalWorkgroups);
     }

@@ -15,17 +15,19 @@
 // Core entity data buffer indices (matches EntityBufferType in C++)
 const uint VELOCITY_BUFFER = 0u;           // vec4: velocity.xy, damping, reserved
 const uint MOVEMENT_PARAMS_BUFFER = 1u;    // vec4: amplitude, frequency, phase, timeOffset
-const uint RUNTIME_STATE_BUFFER = 2u;      // vec4: totalTime, initialized, stateTimer, entityState
-const uint ROTATION_STATE_BUFFER = 3u;     // vec4: rotation, angularVelocity, angularDamping, reserved
-const uint COLOR_BUFFER = 4u;              // vec4: RGBA color values
-const uint MODEL_MATRIX_BUFFER = 5u;       // mat4: full 3D transform matrix (cold data)
+const uint MOVEMENT_CENTERS_BUFFER = 2u;   // vec4: movement center.xyz, reserved
+const uint RUNTIME_STATE_BUFFER = 3u;      // vec4: totalTime, initialized, stateTimer, entityState
+const uint ROTATION_STATE_BUFFER = 4u;     // vec4: rotation, angularVelocity, angularDamping, reserved
+const uint COLOR_BUFFER = 5u;              // vec4: RGBA color values
+const uint MODEL_MATRIX_BUFFER = 6u;       // mat4: full 3D transform matrix
 
-// Position and physics buffers
-const uint POSITION_OUTPUT_BUFFER = 6u;    // vec4: computed positions for graphics
-const uint CURRENT_POSITION_BUFFER = 7u;   // vec4: physics integration state
+// Spatial optimization buffer  
+const uint SPATIAL_MAP_BUFFER = 7u;        // uvec2[]: spatial hash grid for collision detection
 
-// Spatial optimization buffer
-const uint SPATIAL_MAP_BUFFER = 8u;        // uvec2[]: spatial hash grid for collision detection
+// DEPRECATED: Position buffers are now unused - physics writes to MODEL_MATRIX_BUFFER
+// These constants are kept for compatibility during migration  
+const uint POSITION_OUTPUT_BUFFER = 8u;    // DEPRECATED: use MODEL_MATRIX_BUFFER column 3
+const uint CURRENT_POSITION_BUFFER = 9u;   // DEPRECATED: use MODEL_MATRIX_BUFFER column 3
 
 // Maximum number of buffers
 const uint MAX_ENTITY_BUFFERS = 16u;

@@ -20,6 +20,7 @@ enum class ControlActionType {
     TOGGLE_MOVEMENT,
     CREATE_ENTITY,
     CREATE_SWARM,
+    CREATE_FLOOR,
     DEBUG_ENTITY,
     PERFORMANCE_STATS,
     GRAPHICS_TESTS,
@@ -49,12 +50,14 @@ struct ControlState {
     // Request flags
     bool requestEntityCreation = false;
     bool requestSwarmCreation = false;
+    bool requestFloorCreation = false;
     bool requestPerformanceStats = false;
     bool requestGraphicsTests = false;
     
     void resetRequestFlags() {
         requestEntityCreation = false;
         requestSwarmCreation = false;
+        requestFloorCreation = false;
         requestPerformanceStats = false;
         requestGraphicsTests = false;
     }
@@ -93,6 +96,8 @@ public:
     void toggleMovementType();
     void createEntity(const glm::vec2& position);
     void createSwarm(size_t count, const glm::vec3& center, float radius);
+    void createFloor(const glm::vec2& position);
+    void createDefaultFloor();  // Create floor at origin
     void debugEntityAtPosition(const glm::vec2& worldPos);
     void showPerformanceStats();
     void runGraphicsTests();
@@ -152,6 +157,7 @@ private:
     void actionToggleMovement();
     void actionCreateEntity();
     void actionCreateSwarm();
+    void actionCreateFloor();
     void actionDebugEntity();
     void actionShowStats();
     void actionGraphicsTests();

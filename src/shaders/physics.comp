@@ -1,27 +1,25 @@
 #version 450
 #extension GL_EXT_nonuniform_qualifier : require
+#extension GL_GOOGLE_include_directive : require
 
-// Shared entity buffer indices for descriptor indexing
-const uint VELOCITY_BUFFER = 0u;           
-const uint MOVEMENT_PARAMS_BUFFER = 1u;    
-const uint RUNTIME_STATE_BUFFER = 2u;      
-const uint ROTATION_STATE_BUFFER = 3u;     
-const uint COLOR_BUFFER = 4u;              
-const uint MODEL_MATRIX_BUFFER = 5u;       
-const uint POSITION_OUTPUT_BUFFER = 6u;    
-const uint CURRENT_POSITION_BUFFER = 7u;   
-const uint SPATIAL_MAP_BUFFER = 8u;
+// Include shared entity buffer indices
+#include "entity_buffer_indices.glsl"
 
 // Optimized workgroup size for maximum GPU occupancy
 layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 
-// Push constants for timing and control
-layout(push_constant) uniform PhysicsPushConstants {
+// Push constants for timing and control (matching NodePushConstants from CPU)
+layout(push_constant) uniform NodePushConstants {
     float time;
     float deltaTime;
     uint entityCount;
     uint frame;
-    uint entityOffset;  // For chunked dispatches
+    uint param1;            // entityOffset for chunked dispatches
+    uint param2;            // Future expansion
+    float gravityStrength;  // Gravity acceleration (e.g., 9.81)
+    float restitution;      // Bounce factor (0.0-1.0)
+    float friction;         // Surface friction (0.0-1.0)
+    uint padding;           // Alignment padding
 } pc;
 
 // Vulkan 1.3 descriptor indexing - single array of all entity buffers
@@ -78,6 +76,18 @@ void updateSpatialMap3D(uint entityIndex, vec3 position) {
     
     // Store old head as our next pointer (building linked list)
     spatialMap.spatialCells[cellIndex].y = expectedHead;
+}
+
+/* ---------- Entity Type Constants ---------- */
+
+// Entity type definitions (must match CPU EntityType enum)
+const float ENTITY_TYPE_REGULAR = 0.0;
+const float ENTITY_TYPE_FLOOR = 1.0;
+
+// Helper function to check entity type from runtime state
+bool isFloorEntity(uint entityIndex) {
+    vec4 runtimeState = entityBuffers[RUNTIME_STATE_BUFFER].data[entityIndex];
+    return abs(runtimeState.y - ENTITY_TYPE_FLOOR) < 0.1; // .y contains entityType
 }
 
 /* ---------- Collision Detection Constants and Functions ---------- */
@@ -141,6 +151,41 @@ vec3 resolveCollision3D(vec3 currentPos, vec3 otherPos) {
     return currentPos; // No collision resolution needed
 }
 
+// Resolve floor collision with bounce and friction
+vec3 resolveFloorCollision(vec3 currentPos, vec3 floorPos, inout vec3 velocity) {
+    vec3 diff = currentPos - floorPos;
+    float distSq = dot(diff, diff);
+    
+    // Calculate safe distance from floor surface
+    float safeDistance = CUBE_RADIUS + MIN_SEPARATION;
+    float safeDistanceSq = safeDistance * safeDistance;
+    
+    if (distSq < safeDistanceSq && distSq > 0.000001) {
+        // Calculate collision normal (direction from floor to entity)
+        float invDist = inversesqrt(distSq);
+        vec3 normal = diff * invDist;
+        
+        // Position entity at safe distance from floor
+        vec3 correctedPos = floorPos + normal * safeDistance;
+        
+        // Calculate bounce velocity: reflect along normal with restitution
+        float velDotNormal = dot(velocity, normal);
+        if (velDotNormal < 0.0) { // Moving towards floor
+            // Reflect velocity component perpendicular to floor
+            velocity = velocity - (1.0 + pc.restitution) * velDotNormal * normal;
+            
+            // Apply friction to velocity parallel to floor
+            vec3 parallelVel = velocity - dot(velocity, normal) * normal;
+            parallelVel *= pc.friction;
+            velocity = dot(velocity, normal) * normal + parallelVel;
+        }
+        
+        return correctedPos;
+    }
+    
+    return currentPos; // No collision with floor
+}
+
 void main() {
     // Clear spatial cells (each thread clears one cell)
     if (gl_GlobalInvocationID.x < SPATIAL_MAP_SIZE) {
@@ -150,7 +195,7 @@ void main() {
     memoryBarrierShared();
     
     // Get current entity index with chunk offset
-    uint entityIndex = gl_GlobalInvocationID.x + pc.entityOffset;
+    uint entityIndex = gl_GlobalInvocationID.x + pc.param1;
     
     // Early exit for out-of-bounds entities
     if (entityIndex >= pc.entityCount) {
@@ -163,13 +208,30 @@ void main() {
     vec4 rotationState = entityBuffers[ROTATION_STATE_BUFFER].data[entityIndex];
     
     float initialized = runtimeState.w; // initialized flag is in .w
+    float entityType = runtimeState.y;  // entity type in .y
     
     // Extract velocity and damping (now supporting 3D velocity)
     vec3 vel = velocity.xyz;
     float damping = velocity.w;
     
-    // SIMPLIFIED: Read position directly from output buffer, integrate velocity
-    vec3 currentPosition = entityBuffers[POSITION_OUTPUT_BUFFER].data[entityIndex].xyz;
+    // NEW MVP APPROACH: Extract position from model matrix (column 3)
+    vec3 currentPosition = entityBuffers[MODEL_MATRIX_BUFFER].data[entityIndex * 4 + 3].xyz;
+    
+    // Skip physics for floor entities (they don't move)
+    bool isFloor = abs(entityType - ENTITY_TYPE_FLOOR) < 0.1;
+    if (isFloor) {
+        // Floor entities are static - but they need position initialization too
+        // If floor position is zero, it means it hasn't been initialized yet
+        if (length(currentPosition) < 0.01) {
+            // Floor entities get their position from their initial setup
+            // For now, use a default floor position - this should be set by the CPU
+            currentPosition = vec3(0.0, 0.0, -5.0);
+        }
+        
+        // Update spatial map for collision detection
+        updateSpatialMap3D(entityIndex, currentPosition);
+        return;
+    }
     
     // On first frame, initialize position if it's zero
     if (length(currentPosition) < 0.01) {
@@ -189,6 +251,9 @@ void main() {
         currentPosition = vec3(gridX + randX, gridY + randY, gridZ + randZ);
     }
     
+    // Apply gravity to regular entities only (floor entities don't have physics)
+    vel.z -= pc.gravityStrength * pc.deltaTime;
+    
     // Physics integration: position += velocity * deltaTime (3D movement)
     if (length(vel) > 0.01) {
         // Enhanced physics integration for frequent movement updates (3D)
@@ -205,8 +270,8 @@ void main() {
     float timeRotation = sin(pc.time * 0.1 + baseRotation) * 0.5; // Individual oscillation
     rotationState.x = timeRotation;
     
-    // Write tentative position to current buffer first
-    entityBuffers[CURRENT_POSITION_BUFFER].data[entityIndex] = vec4(currentPosition, 1.0);
+    // Write tentative position to model matrix translation (column 3)
+    entityBuffers[MODEL_MATRIX_BUFFER].data[entityIndex * 4 + 3] = vec4(currentPosition, 1.0);
     
     // Update 3D spatial map with new position
     updateSpatialMap3D(entityIndex, currentPosition);
@@ -266,19 +331,24 @@ void main() {
             if (otherEntityIndex == entityIndex) continue; // Skip self
             if (otherEntityIndex >= pc.entityCount) continue;
             
-            // Get other entity's position
-            vec3 otherPos = entityBuffers[CURRENT_POSITION_BUFFER].data[otherEntityIndex].xyz;
+            // Get other entity's position from model matrix
+            vec3 otherPos = entityBuffers[MODEL_MATRIX_BUFFER].data[otherEntityIndex * 4 + 3].xyz;
             
             // 3D distance check for collision detection
             vec3 diff = currentPosition - otherPos;
             float distSq = dot(diff, diff);
             
             if (distSq < collisionRadiusSq && distSq > 0.000001) {
-                // 3D Collision detected! Resolve using 3D separation
-                resolvedPosition = resolveCollision3D(currentPosition, otherPos);
-                
-                // Dampen velocity on collision (3D)
-                vel *= 0.3; // Reduce velocity significantly on collision
+                // Check if colliding with floor entity
+                if (isFloorEntity(otherEntityIndex)) {
+                    // Floor collision - special handling with bounce and friction
+                    resolvedPosition = resolveFloorCollision(currentPosition, otherPos, vel);
+                } else {
+                    // Regular entity collision - existing behavior
+                    resolvedPosition = resolveCollision3D(currentPosition, otherPos);
+                    // Dampen velocity on collision (3D)
+                    vel *= 0.3; // Reduce velocity significantly on collision
+                }
                 hadCollision = true;
                 break; // Handle first collision only
             }
@@ -287,8 +357,8 @@ void main() {
         if (hadCollision) break; // Exit loop
     }
     
-    // Write back final velocity, rotation state, and full 3D position
+    // Write back final velocity, rotation state, and resolved position to model matrix
     entityBuffers[VELOCITY_BUFFER].data[entityIndex] = vec4(vel, damping);
     entityBuffers[ROTATION_STATE_BUFFER].data[entityIndex] = rotationState;
-    entityBuffers[POSITION_OUTPUT_BUFFER].data[entityIndex] = vec4(resolvedPosition, 0.0);
+    entityBuffers[MODEL_MATRIX_BUFFER].data[entityIndex * 4 + 3] = vec4(resolvedPosition, 1.0);
 }

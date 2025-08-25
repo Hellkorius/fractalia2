@@ -41,7 +41,7 @@ void GPUEntitySoA::addFromECS(const Transform& transform, const Renderable& rend
     // Runtime state
     runtimeStates.emplace_back(
         0.0f,                          // totalTime (updated by compute shader)
-        0.0f,                          // reserved 
+        static_cast<float>(static_cast<int>(renderable.entityType)), // entityType (Floor=1, Regular=0)
         stateTimerDist(rng),           // stateTimer (random staggering)
         0.0f                           // initialized flag (starts as 0.0)
     );
@@ -166,28 +166,15 @@ void GPUEntityManager::uploadPendingEntities() {
     bufferManager.uploadColorData(stagingEntities.colors.data(), colorSize, colorOffset);
     bufferManager.uploadModelMatrixData(stagingEntities.modelMatrices.data(), modelMatrixSize, modelMatrixOffset);
     
-    // Initialize position buffers with spawn positions
-    std::vector<glm::vec4> initialPositions;
-    initialPositions.reserve(entityCount);
-    
-    for (size_t i = 0; i < stagingEntities.modelMatrices.size(); ++i) {
+    // MVP APPROACH: Initial positions are now stored directly in model matrices
+    // Physics shader will read/write positions from/to model matrix column 3
+    // Debug model matrix positions to verify proper initialization
+    for (size_t i = 0; i < stagingEntities.modelMatrices.size() && i < 5; ++i) {
         const auto& modelMatrix = stagingEntities.modelMatrices[i];
-        // Extract position from modelMatrix (4th column contains translation)
         glm::vec3 spawnPosition = glm::vec3(modelMatrix[3]);
-        initialPositions.emplace_back(spawnPosition, 1.0f);
-        
-        // Debug first few positions to verify data
-        if (i < 5) {
-            std::cout << "Entity " << i << " spawn position: (" 
-                      << spawnPosition.x << ", " << spawnPosition.y << ", " << spawnPosition.z << ")" << std::endl;
-        }
+        std::cout << "Entity " << i << " model matrix position: (" 
+                  << spawnPosition.x << ", " << spawnPosition.y << ", " << spawnPosition.z << ")" << std::endl;
     }
-    
-    // Initialize ALL position buffers so graphics and physics can read from any of them
-    VkDeviceSize positionUploadSize = initialPositions.size() * sizeof(glm::vec4);
-    VkDeviceSize positionOffset = activeEntityCount * sizeof(glm::vec4);
-    
-    bufferManager.uploadPositionDataToAllBuffers(initialPositions.data(), positionUploadSize, positionOffset);
     
     activeEntityCount += entityCount;
     stagingEntities.clear();
