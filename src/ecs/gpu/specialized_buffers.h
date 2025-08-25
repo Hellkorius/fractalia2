@@ -112,16 +112,31 @@ protected:
     const char* getBufferTypeName() const override { return "Position"; }
 };
 
-// SINGLE responsibility: spatial map data management
+// SINGLE responsibility: spatial cell metadata (bucketed hash table)
 class SpatialMapBuffer : public BufferBase {
 public:
     using BufferBase::initialize; // Bring base class initialize into scope
     
-    bool initialize(const VulkanContext& context, ResourceCoordinator* resourceCoordinator, uint32_t gridSize = 16384) {
-        // Spatial map uses uvec2 (8 bytes per cell) for linked list storage
-        return BufferBase::initialize(context, resourceCoordinator, gridSize, sizeof(glm::uvec2), 0);
+    bool initialize(const VulkanContext& context, ResourceCoordinator* resourceCoordinator, uint32_t gridSize = 32768) {
+        // Spatial map stores pairs: [entityCount, entityOffset] per cell (2 * uint32_t per cell)
+        return BufferBase::initialize(context, resourceCoordinator, gridSize, 2 * sizeof(uint32_t), 0);
     }
     
 protected:
     const char* getBufferTypeName() const override { return "SpatialMap"; }
+};
+
+// SINGLE responsibility: spatial entity indices (flat array grouped by cell)
+class SpatialEntitiesBuffer : public BufferBase {
+public:
+    using BufferBase::initialize; // Bring base class initialize into scope
+    
+    bool initialize(const VulkanContext& context, ResourceCoordinator* resourceCoordinator, uint32_t maxSpatialEntries) {
+        // Flat array of entity indices, grouped by cell. Size = entities * average_cells_per_entity
+        // For 80k entities with ~4 cells per entity average = 320k entries
+        return BufferBase::initialize(context, resourceCoordinator, maxSpatialEntries, sizeof(uint32_t), 0);
+    }
+    
+protected:
+    const char* getBufferTypeName() const override { return "SpatialEntities"; }
 };

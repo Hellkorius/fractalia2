@@ -4,6 +4,7 @@
 #include "../core/vulkan_function_loader.h"
 #include "../core/vulkan_utils.h"
 #include "../core/vulkan_constants.h"
+#include "../rendering/frame_graph_types.h"
 #include <iostream>
 #include <chrono>
 #include <algorithm>
@@ -318,11 +319,11 @@ namespace ComputePipelinePresets {
         state.workgroupSizeZ = 1;
         state.isFrequentlyUsed = true;
         
-        // Add push constants for time/frame data (must match PhysicsPushConstants struct)
+        // Add push constants for time/frame data (must match NodePushConstants struct)
         VkPushConstantRange pushConstant{};
         pushConstant.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
         pushConstant.offset = 0;
-        pushConstant.size = sizeof(float) * 2 + sizeof(uint32_t) * 6;  // time, deltaTime, entityCount, frame, entityOffset, padding[3]
+        pushConstant.size = sizeof(NodePushConstants);  // Use actual struct size
         state.pushConstantRanges.push_back(pushConstant);
         
         return state;

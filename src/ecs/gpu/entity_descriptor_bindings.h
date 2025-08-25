@@ -12,22 +12,23 @@
  */
 namespace EntityDescriptorBindings {
 
-    // Compute descriptor set bindings (SoA structure)
+    // Compute descriptor set bindings (SoA structure) - DEPRECATED
+    // Modern shaders use Vulkan 1.3 descriptor indexing instead
     namespace Compute {
         enum Binding : uint32_t {
             VELOCITY_BUFFER = 0,
             MOVEMENT_PARAMS_BUFFER = 1,
             MOVEMENT_CENTERS_BUFFER = 2,
             RUNTIME_STATE_BUFFER = 3,
-            POSITION_BUFFER = 4,
-            CURRENT_POSITION_BUFFER = 5,
-            ROTATION_STATE_BUFFER = 6,
-            COLOR_BUFFER = 7,
-            MODEL_MATRIX_BUFFER = 8,
-            SPATIAL_MAP_BUFFER = 9
+            // DEPRECATED: Position buffers removed - use MODEL_MATRIX column 3
+            ROTATION_STATE_BUFFER = 4,
+            COLOR_BUFFER = 5,
+            MODEL_MATRIX_BUFFER = 6,
+            SPATIAL_MAP_BUFFER = 7,
+            SPATIAL_ENTITIES_BUFFER = 8
         };
         
-        constexpr uint32_t BINDING_COUNT = 10;
+        constexpr uint32_t BINDING_COUNT = 9; // Reduced from 11 after removing position buffers
     }
 
     // Graphics descriptor set bindings (rendering pipeline)

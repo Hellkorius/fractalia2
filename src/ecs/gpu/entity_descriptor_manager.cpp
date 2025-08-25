@@ -107,19 +107,9 @@ bool EntityDescriptorManager::createDescriptorSetLayouts() {
     computeBindings[EntityDescriptorBindings::Compute::RUNTIME_STATE_BUFFER].descriptorCount = 1;
     computeBindings[EntityDescriptorBindings::Compute::RUNTIME_STATE_BUFFER].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
 
-    // Binding 4: Current position buffer (for physics shader)
-    computeBindings[EntityDescriptorBindings::Compute::POSITION_BUFFER].binding = EntityDescriptorBindings::Compute::POSITION_BUFFER;
-    computeBindings[EntityDescriptorBindings::Compute::POSITION_BUFFER].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    computeBindings[EntityDescriptorBindings::Compute::POSITION_BUFFER].descriptorCount = 1;
-    computeBindings[EntityDescriptorBindings::Compute::POSITION_BUFFER].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+    // REMOVED: Position buffers (bindings 4,5) - deprecated in favor of MODEL_MATRIX column 3
 
-    // Binding 5: Target position buffer (for physics shader)
-    computeBindings[EntityDescriptorBindings::Compute::CURRENT_POSITION_BUFFER].binding = EntityDescriptorBindings::Compute::CURRENT_POSITION_BUFFER;
-    computeBindings[EntityDescriptorBindings::Compute::CURRENT_POSITION_BUFFER].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    computeBindings[EntityDescriptorBindings::Compute::CURRENT_POSITION_BUFFER].descriptorCount = 1;
-    computeBindings[EntityDescriptorBindings::Compute::CURRENT_POSITION_BUFFER].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
-
-    // Binding 6: Rotation state buffer (for movement and physics shaders)
+    // Binding 4: Rotation state buffer (for movement and physics shaders)
     computeBindings[EntityDescriptorBindings::Compute::ROTATION_STATE_BUFFER].binding = EntityDescriptorBindings::Compute::ROTATION_STATE_BUFFER;
     computeBindings[EntityDescriptorBindings::Compute::ROTATION_STATE_BUFFER].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
     computeBindings[EntityDescriptorBindings::Compute::ROTATION_STATE_BUFFER].descriptorCount = 1;
@@ -137,11 +127,8 @@ bool EntityDescriptorManager::createDescriptorSetLayouts() {
     computeBindings[EntityDescriptorBindings::Compute::MODEL_MATRIX_BUFFER].descriptorCount = 1;
     computeBindings[EntityDescriptorBindings::Compute::MODEL_MATRIX_BUFFER].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
 
-    // Binding 9: Spatial map buffer (for physics shader)
-    computeBindings[EntityDescriptorBindings::Compute::SPATIAL_MAP_BUFFER].binding = EntityDescriptorBindings::Compute::SPATIAL_MAP_BUFFER;
-    computeBindings[EntityDescriptorBindings::Compute::SPATIAL_MAP_BUFFER].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    computeBindings[EntityDescriptorBindings::Compute::SPATIAL_MAP_BUFFER].descriptorCount = 1;
-    computeBindings[EntityDescriptorBindings::Compute::SPATIAL_MAP_BUFFER].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+    // REMOVED: Spatial map buffer - now uses separate binding (2) with proper uvec2 type
+    // REMOVED: Spatial entities buffer - now uses separate binding (10) with proper uint array type
 
     VkDescriptorSetLayoutCreateInfo computeLayoutInfo{};
     computeLayoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
@@ -284,18 +271,17 @@ bool EntityDescriptorManager::updateComputeDescriptorSet() {
         return false;
     }
 
-    // Use DescriptorUpdateHelper for DRY principle
+    // Use DescriptorUpdateHelper for DRY principle - removed deprecated position buffers and spatial buffers
     std::vector<DescriptorUpdateHelper::BufferBinding> bindings = {
         {EntityDescriptorBindings::Compute::VELOCITY_BUFFER, bufferManager->getVelocityBuffer(), VK_DESCRIPTOR_TYPE_STORAGE_BUFFER},
         {EntityDescriptorBindings::Compute::MOVEMENT_PARAMS_BUFFER, bufferManager->getMovementParamsBuffer(), VK_DESCRIPTOR_TYPE_STORAGE_BUFFER},
         {EntityDescriptorBindings::Compute::MOVEMENT_CENTERS_BUFFER, bufferManager->getMovementCentersBuffer(), VK_DESCRIPTOR_TYPE_STORAGE_BUFFER},
         {EntityDescriptorBindings::Compute::RUNTIME_STATE_BUFFER, bufferManager->getRuntimeStateBuffer(), VK_DESCRIPTOR_TYPE_STORAGE_BUFFER},
-        {EntityDescriptorBindings::Compute::POSITION_BUFFER, bufferManager->getPositionBuffer(), VK_DESCRIPTOR_TYPE_STORAGE_BUFFER},
-        {EntityDescriptorBindings::Compute::CURRENT_POSITION_BUFFER, bufferManager->getCurrentPositionBuffer(), VK_DESCRIPTOR_TYPE_STORAGE_BUFFER},
+        // REMOVED: Position buffers - modern shaders use MODEL_MATRIX column 3 for positions
         {EntityDescriptorBindings::Compute::ROTATION_STATE_BUFFER, bufferManager->getRotationStateBuffer(), VK_DESCRIPTOR_TYPE_STORAGE_BUFFER},
         {EntityDescriptorBindings::Compute::COLOR_BUFFER, bufferManager->getColorBuffer(), VK_DESCRIPTOR_TYPE_STORAGE_BUFFER},
-        {EntityDescriptorBindings::Compute::MODEL_MATRIX_BUFFER, bufferManager->getModelMatrixBuffer(), VK_DESCRIPTOR_TYPE_STORAGE_BUFFER},
-        {EntityDescriptorBindings::Compute::SPATIAL_MAP_BUFFER, bufferManager->getSpatialMapBuffer(), VK_DESCRIPTOR_TYPE_STORAGE_BUFFER}
+        {EntityDescriptorBindings::Compute::MODEL_MATRIX_BUFFER, bufferManager->getModelMatrixBuffer(), VK_DESCRIPTOR_TYPE_STORAGE_BUFFER}
+        // REMOVED: Spatial buffers - now use separate bindings (2, 10) with proper types
     };
 
     return DescriptorUpdateHelper::updateDescriptorSet(*getContext(), computeDescriptorSet, bindings);
@@ -355,11 +341,10 @@ bool EntityDescriptorManager::recreateComputeDescriptorSets() {
         return false;
     }
     
-    // Validate buffers are available
+    // Validate essential buffers are available (position buffers deprecated)
     if (!bufferManager || bufferManager->getVelocityBuffer() == VK_NULL_HANDLE || 
-        bufferManager->getPositionBuffer() == VK_NULL_HANDLE || 
-        bufferManager->getCurrentPositionBuffer() == VK_NULL_HANDLE) {
-        std::cerr << "EntityDescriptorManager: ERROR - Cannot recreate compute descriptor sets: buffers not available" << std::endl;
+        bufferManager->getModelMatrixBuffer() == VK_NULL_HANDLE) {
+        std::cerr << "EntityDescriptorManager: ERROR - Cannot recreate compute descriptor sets: essential buffers not available" << std::endl;
         return false;
     }
     
@@ -480,7 +465,7 @@ bool EntityDescriptorManager::createIndexedDescriptorSet() {
     // Create descriptor pool for indexed descriptors
     std::vector<VkDescriptorPoolSize> poolSizes;
     poolSizes.push_back({VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1}); // For camera matrices
-    poolSizes.push_back({VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, EntityBufferType::MAX_ENTITY_BUFFERS + 1}); // +1 for spatial map
+    poolSizes.push_back({VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, EntityBufferType::MAX_ENTITY_BUFFERS + 2}); // +2 for separate spatial buffers
 
     VkDescriptorPoolCreateInfo poolInfo{};
     poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
@@ -567,10 +552,9 @@ bool EntityDescriptorManager::updateIndexedDescriptorSet() {
         {EntityBufferType::RUNTIME_STATE, bufferManager->getRuntimeStateBuffer(), "RuntimeStateBuffer"},
         {EntityBufferType::ROTATION_STATE, bufferManager->getRotationStateBuffer(), "RotationStateBuffer"},
         {EntityBufferType::COLOR, bufferManager->getColorBuffer(), "ColorBuffer"},
-        {EntityBufferType::MODEL_MATRIX, bufferManager->getModelMatrixBuffer(), "ModelMatrixBuffer"},
-        {EntityBufferType::POSITION_OUTPUT, bufferManager->getPositionBuffer(), "PositionOutputBuffer"},
-        {EntityBufferType::CURRENT_POSITION, bufferManager->getCurrentPositionBuffer(), "CurrentPositionBuffer"},
-        {EntityBufferType::SPATIAL_MAP, bufferManager->getSpatialMapBuffer(), "SpatialMapBuffer"}
+        {EntityBufferType::MODEL_MATRIX, bufferManager->getModelMatrixBuffer(), "ModelMatrixBuffer"}
+        // REMOVED: Position buffers - deprecated in favor of MODEL_MATRIX column 3
+        // REMOVED: Spatial buffers - now use separate dedicated bindings (2, 10) with proper types
     };
 
     // Update each buffer in the indexed array
@@ -594,7 +578,7 @@ bool EntityDescriptorManager::updateIndexedDescriptorSet() {
         writes.push_back(write);
     }
 
-    // Add spatial map buffer binding (binding 2)
+    // Add spatial map buffer binding (binding 2) - proper separate binding for uvec2 type
     if (bufferManager->getSpatialMapBuffer() != VK_NULL_HANDLE) {
         VkDescriptorBufferInfo spatialMapInfo = {bufferManager->getSpatialMapBuffer(), 0, VK_WHOLE_SIZE};
         
@@ -608,6 +592,22 @@ bool EntityDescriptorManager::updateIndexedDescriptorSet() {
         spatialMapWrite.pBufferInfo = &spatialMapInfo;
         
         writes.push_back(spatialMapWrite);
+    }
+    
+    // Add spatial entities buffer binding (binding 10) - proper separate binding for uint array type
+    if (bufferManager->getSpatialEntitiesBuffer() != VK_NULL_HANDLE) {
+        VkDescriptorBufferInfo spatialEntitiesInfo = {bufferManager->getSpatialEntitiesBuffer(), 0, VK_WHOLE_SIZE};
+        
+        VkWriteDescriptorSet spatialEntitiesWrite{};
+        spatialEntitiesWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        spatialEntitiesWrite.dstSet = indexedDescriptorSet;
+        spatialEntitiesWrite.dstBinding = 10; // Spatial entities at binding 10
+        spatialEntitiesWrite.dstArrayElement = 0;
+        spatialEntitiesWrite.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        spatialEntitiesWrite.descriptorCount = 1;
+        spatialEntitiesWrite.pBufferInfo = &spatialEntitiesInfo;
+        
+        writes.push_back(spatialEntitiesWrite);
     }
 
     if (!writes.empty()) {

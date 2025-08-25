@@ -115,10 +115,10 @@ void main() {
         uint hash = fastHash(seed);
         float randAngle = hashToFloat(hash) * TWO_PI;
         
-        // Enhanced speed with moderate variance for frequent updates
+        // Reduced speed for more controlled movement
         uint speedHash = fastHash(seed + 12345u);
-        float speedMultiplier = 1.0 + hashToFloat(speedHash) * 2.0; // Range: 1.0 to 3.0
-        float speed = 1.2 * speedMultiplier; // Base speed 1.2, final range: 1.2 to 3.6
+        float speedMultiplier = 0.8 + hashToFloat(speedHash) * 1.0; // Range: 0.8 to 1.8
+        float speed = 0.8 * speedMultiplier; // Base speed 0.8, final range: 0.64 to 1.44
         
         // Add moderate angular momentum for dynamic movement
         uint spiralHash = fastHash(seed + 67890u);

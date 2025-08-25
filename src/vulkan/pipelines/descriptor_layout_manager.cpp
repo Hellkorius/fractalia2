@@ -561,7 +561,15 @@ namespace DescriptorLayoutPresets {
         spatialMapBinding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
         spatialMapBinding.debugName = "spatialMapBuffer";
         
-        spec.bindings = {uniformBinding, bufferArrayBinding, spatialMapBinding};
+        // Binding 10: Spatial entities buffer for bucketed hash table (physics shader only)
+        DescriptorBinding spatialEntitiesBinding{};
+        spatialEntitiesBinding.binding = 10;
+        spatialEntitiesBinding.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        spatialEntitiesBinding.descriptorCount = 1;
+        spatialEntitiesBinding.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+        spatialEntitiesBinding.debugName = "spatialEntitiesBuffer";
+        
+        spec.bindings = {uniformBinding, bufferArrayBinding, spatialMapBinding, spatialEntitiesBinding};
         
         // Enable descriptor indexing features
         spec.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT;

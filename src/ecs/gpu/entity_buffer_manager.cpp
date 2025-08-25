@@ -61,8 +61,16 @@ bool EntityBufferManager::initialize(const VulkanContext& context, ResourceCoord
         return false;
     }
     
-    if (!spatialMapBuffer.initialize(context, resourceCoordinator, 16384)) { // 32x32x16 3D grid
+    if (!spatialMapBuffer.initialize(context, resourceCoordinator, 32768)) { // 64x64x8 3D grid  
         std::cerr << "EntityBufferManager: Failed to initialize spatial map buffer" << std::endl;
+        return false;
+    }
+    
+    // Spatial entities buffer - sized for multi-cell occupancy (entities * avg cells per entity)
+    // 80k entities * 4 average cells = 320k entries  
+    uint32_t maxSpatialEntries = maxEntities * 4;
+    if (!spatialEntitiesBuffer.initialize(context, resourceCoordinator, maxSpatialEntries)) {
+        std::cerr << "EntityBufferManager: Failed to initialize spatial entities buffer" << std::endl;
         return false;
     }
     
@@ -86,6 +94,7 @@ void EntityBufferManager::cleanup() {
     // Cleanup specialized components
     positionCoordinator.cleanup();
     spatialMapBuffer.cleanup();
+    spatialEntitiesBuffer.cleanup();
     modelMatrixBuffer.cleanup();
     colorBuffer.cleanup();
     rotationStateBuffer.cleanup();
@@ -129,6 +138,10 @@ bool EntityBufferManager::uploadModelMatrixData(const void* data, VkDeviceSize s
 
 bool EntityBufferManager::uploadSpatialMapData(const void* data, VkDeviceSize size, VkDeviceSize offset) {
     return uploadService.upload(spatialMapBuffer, data, size, offset);
+}
+
+bool EntityBufferManager::uploadSpatialEntitiesData(const void* data, VkDeviceSize size, VkDeviceSize offset) {
+    return uploadService.upload(spatialEntitiesBuffer, data, size, offset);
 }
 
 bool EntityBufferManager::uploadPositionDataToAllBuffers(const void* data, VkDeviceSize size, VkDeviceSize offset) {
@@ -344,7 +357,7 @@ bool EntityBufferManager::readbackEntityById(uint32_t entityId, EntityDebugInfo&
 }
 
 bool EntityBufferManager::readbackSpatialCell(uint32_t cellIndex, std::vector<uint32_t>& entityIds) const {
-    const uint32_t SPATIAL_MAP_SIZE = 16384; // 32x32x16 (3D spatial grid)
+    const uint32_t SPATIAL_MAP_SIZE = 32768; // 64x64x8 (3D spatial grid)
     if (cellIndex >= SPATIAL_MAP_SIZE) {
         return false;
     }
@@ -397,23 +410,24 @@ bool EntityBufferManager::readbackSpatialCell(uint32_t cellIndex, std::vector<ui
 }
 
 bool EntityBufferManager::initializeSpatialMapBuffer() {
-    const uint32_t SPATIAL_MAP_SIZE = 16384; // 32x32x16 (3D spatial grid) grid
-    const uint32_t NULL_INDEX = 0xFFFFFFFF;
+    const uint32_t SPATIAL_MAP_SIZE = 32768; // 64x64x8 (3D spatial grid)
+    const uint32_t maxSpatialEntries = maxEntities * 4; // 4 cells per entity average
+    const uint32_t entriesPerCell = maxSpatialEntries / SPATIAL_MAP_SIZE; // Average allocation per cell
     
-    // Create initialization data with NULL values
+    // Initialize spatial map with proper offsets for bucketed hash table
     std::vector<glm::uvec2> initData(SPATIAL_MAP_SIZE);
-    for (auto& cell : initData) {
-        cell.x = NULL_INDEX; // entityId = NULL
-        cell.y = NULL_INDEX; // nextIndex = NULL
+    for (uint32_t i = 0; i < SPATIAL_MAP_SIZE; i++) {
+        initData[i].x = 0; // entityCount = 0 (no entities in cell yet)
+        initData[i].y = i * entriesPerCell; // entityOffset = start index for this cell in flat array
     }
     
-    // Upload the NULL initialization data
+    // Upload the initialization data  
     VkDeviceSize uploadSize = SPATIAL_MAP_SIZE * sizeof(glm::uvec2);
     bool success = uploadService.upload(spatialMapBuffer, initData.data(), uploadSize, 0);
     
     if (success) {
-        std::cout << "EntityBufferManager: Spatial map buffer initialized with NULL values (" 
-                  << SPATIAL_MAP_SIZE << " cells)" << std::endl;
+        std::cout << "EntityBufferManager: Spatial map buffer initialized (bucketed hash table: " 
+                  << SPATIAL_MAP_SIZE << " cells, " << entriesPerCell << " entries per cell)" << std::endl;
     }
     
     return success;

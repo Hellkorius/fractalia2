@@ -20,15 +20,15 @@ namespace EntityBufferType {
     constexpr uint32_t COLOR = 5;              // vec4: RGBA color values
     constexpr uint32_t MODEL_MATRIX = 6;       // mat4: full 3D transform matrix (physics writes to column 3)
     
-    // Spatial optimization buffer
-    constexpr uint32_t SPATIAL_MAP = 7;        // uvec2[]: spatial hash grid for collision detection
+    // Spatial optimization buffers (bucketed hash table)
+    constexpr uint32_t SPATIAL_MAP = 7;        // uvec2[]: spatial cell metadata [entityCount, entityOffset] 
+    constexpr uint32_t SPATIAL_ENTITIES = 8;   // uint[]: flat array of entity indices grouped by cell
     
     // DEPRECATED: Position buffers are now unused - physics writes to MODEL_MATRIX column 3
-    constexpr uint32_t POSITION_OUTPUT = 8;    // DEPRECATED: use MODEL_MATRIX buffer column 3
-    constexpr uint32_t CURRENT_POSITION = 9;   // DEPRECATED: use MODEL_MATRIX buffer column 3
+    constexpr uint32_t POSITION_OUTPUT = 9;    // DEPRECATED: use MODEL_MATRIX buffer column 3
+    constexpr uint32_t CURRENT_POSITION = 10;  // DEPRECATED: use MODEL_MATRIX buffer column 3
     
     // Reserved slots for future expansion
-    constexpr uint32_t RESERVED_10 = 10;
     constexpr uint32_t RESERVED_11 = 11;
     constexpr uint32_t RESERVED_12 = 12;
     constexpr uint32_t RESERVED_13 = 13;
@@ -54,6 +54,7 @@ namespace EntityBufferType {
             case COLOR: return "ColorBuffer";
             case MODEL_MATRIX: return "ModelMatrixBuffer";
             case SPATIAL_MAP: return "SpatialMapBuffer";
+            case SPATIAL_ENTITIES: return "SpatialEntitiesBuffer";
             case POSITION_OUTPUT: return "PositionOutputBuffer (DEPRECATED)";
             case CURRENT_POSITION: return "CurrentPositionBuffer (DEPRECATED)";
             default: return "ReservedBuffer";

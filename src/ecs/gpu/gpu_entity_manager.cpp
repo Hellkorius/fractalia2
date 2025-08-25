@@ -136,7 +136,12 @@ void GPUEntityManager::addEntitiesFromECS(const std::vector<flecs::entity>& enti
 void GPUEntityManager::uploadPendingEntities() {
     if (stagingEntities.empty()) return;
     
-    std::cout << "GPUEntityManager: WARNING - Uploading entities during runtime! This will overwrite computed positions!" << std::endl;
+    bool isRuntimeAddition = (activeEntityCount > 0);
+    if (isRuntimeAddition) {
+        std::cout << "GPUEntityManager: Adding " << stagingEntities.size() << " new entities at runtime (appending to existing " << activeEntityCount << " entities)" << std::endl;
+    } else {
+        std::cout << "GPUEntityManager: Initial entity upload (" << stagingEntities.size() << " entities)" << std::endl;
+    }
     
     size_t entityCount = stagingEntities.size();
     
@@ -164,6 +169,9 @@ void GPUEntityManager::uploadPendingEntities() {
     bufferManager.uploadRuntimeStateData(stagingEntities.runtimeStates.data(), runtimeStateSize, runtimeStateOffset);
     bufferManager.uploadRotationStateData(stagingEntities.rotationStates.data(), rotationStateSize, rotationStateOffset);
     bufferManager.uploadColorData(stagingEntities.colors.data(), colorSize, colorOffset);
+    
+    // Model matrices: Always upload for new entities (they need initial positions)
+    // Note: This is safe because we're appending at the correct offset, not overwriting existing entities
     bufferManager.uploadModelMatrixData(stagingEntities.modelMatrices.data(), modelMatrixSize, modelMatrixOffset);
     
     // MVP APPROACH: Initial positions are now stored directly in model matrices

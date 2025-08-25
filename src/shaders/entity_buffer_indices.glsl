@@ -21,13 +21,18 @@ const uint ROTATION_STATE_BUFFER = 4u;     // vec4: rotation, angularVelocity, a
 const uint COLOR_BUFFER = 5u;              // vec4: RGBA color values
 const uint MODEL_MATRIX_BUFFER = 6u;       // mat4: full 3D transform matrix
 
-// Spatial optimization buffer  
-const uint SPATIAL_MAP_BUFFER = 7u;        // uvec2[]: spatial hash grid for collision detection
+// NOTE: Spatial buffers (SPATIAL_MAP, SPATIAL_ENTITIES) use dedicated bindings (2, 10)
+// They are NOT part of the entity buffer array due to type requirements (uvec2, uint vs vec4)
 
 // DEPRECATED: Position buffers are now unused - physics writes to MODEL_MATRIX_BUFFER
 // These constants are kept for compatibility during migration  
-const uint POSITION_OUTPUT_BUFFER = 8u;    // DEPRECATED: use MODEL_MATRIX_BUFFER column 3
-const uint CURRENT_POSITION_BUFFER = 9u;   // DEPRECATED: use MODEL_MATRIX_BUFFER column 3
+const uint POSITION_OUTPUT_BUFFER = 7u;    // DEPRECATED: use MODEL_MATRIX_BUFFER column 3
+const uint CURRENT_POSITION_BUFFER = 8u;   // DEPRECATED: use MODEL_MATRIX_BUFFER column 3
+
+// Reserved slots for future expansion
+const uint RESERVED_9 = 9u;
+const uint RESERVED_10 = 10u;
+const uint RESERVED_11 = 11u;
 
 // Maximum number of buffers
 const uint MAX_ENTITY_BUFFERS = 16u;
