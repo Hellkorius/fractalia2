@@ -61,14 +61,14 @@ bool EntityBufferManager::initialize(const VulkanContext& context, ResourceCoord
         return false;
     }
     
-    if (!spatialMapBuffer.initialize(context, resourceCoordinator, 32768)) { // 64x64x8 3D grid  
+    if (!spatialMapBuffer.initialize(context, resourceCoordinator, 16384)) { // 32x32x16 3D grid - matches shader  
         std::cerr << "EntityBufferManager: Failed to initialize spatial map buffer" << std::endl;
         return false;
     }
     
-    // Spatial entities buffer - sized for multi-cell occupancy (entities * avg cells per entity)
-    // 80k entities * 4 average cells = 320k entries  
-    uint32_t maxSpatialEntries = maxEntities * 4;
+    // Spatial entities buffer - reduced with larger cells (entities * avg cells per entity)
+    // 80k entities * 2 average cells = 160k entries (reduced from 320k with larger cell size)
+    uint32_t maxSpatialEntries = maxEntities * 2;
     if (!spatialEntitiesBuffer.initialize(context, resourceCoordinator, maxSpatialEntries)) {
         std::cerr << "EntityBufferManager: Failed to initialize spatial entities buffer" << std::endl;
         return false;
@@ -410,9 +410,12 @@ bool EntityBufferManager::readbackSpatialCell(uint32_t cellIndex, std::vector<ui
 }
 
 bool EntityBufferManager::initializeSpatialMapBuffer() {
-    const uint32_t SPATIAL_MAP_SIZE = 32768; // 64x64x8 (3D spatial grid)
-    const uint32_t maxSpatialEntries = maxEntities * 4; // 4 cells per entity average
-    const uint32_t entriesPerCell = maxSpatialEntries / SPATIAL_MAP_SIZE; // Average allocation per cell
+    const uint32_t SPATIAL_MAP_SIZE = 16384; // 32x32x16 (3D spatial grid) - matches GPU shader
+    const uint32_t maxSpatialEntries = maxEntities * 2; // 2 cells per entity average (reduced with larger cells)
+    const uint32_t entriesPerCell = (maxSpatialEntries + SPATIAL_MAP_SIZE - 1) / SPATIAL_MAP_SIZE; // Round UP division
+    
+    std::cout << "EntityBufferManager: First-principles spatial hash - " << maxSpatialEntries << " total entries, " 
+              << entriesPerCell << " per cell (32x32x16 grid, cell_size=3.0)" << std::endl;
     
     // Initialize spatial map with proper offsets for bucketed hash table
     std::vector<glm::uvec2> initData(SPATIAL_MAP_SIZE);
@@ -426,8 +429,8 @@ bool EntityBufferManager::initializeSpatialMapBuffer() {
     bool success = uploadService.upload(spatialMapBuffer, initData.data(), uploadSize, 0);
     
     if (success) {
-        std::cout << "EntityBufferManager: Spatial map buffer initialized (bucketed hash table: " 
-                  << SPATIAL_MAP_SIZE << " cells, " << entriesPerCell << " entries per cell)" << std::endl;
+        std::cout << "EntityBufferManager: First-principles spatial hash initialized: " 
+                  << SPATIAL_MAP_SIZE << " cells (32x32x16), " << entriesPerCell << " entries per cell" << std::endl;
     }
     
     return success;

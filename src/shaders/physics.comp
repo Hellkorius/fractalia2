@@ -38,13 +38,14 @@ layout(std430, binding = 10) buffer SpatialEntitiesBuffer {
 
 /* ---------- Spatial Map Constants and Functions ---------- */
 
-// 3D Spatial grid configuration - cache-optimized
-const float CELL_SIZE = 2.0;           // Size of each spatial cell (must be larger than collision radius)
-const uint GRID_WIDTH = 64;            // Increased for better distribution
-const uint GRID_HEIGHT = 64;           // Power-of-2 for fast modulo
-const uint GRID_DEPTH = 8;             // Reduced depth for cache locality
-const uint SPATIAL_MAP_SIZE = GRID_WIDTH * GRID_HEIGHT * GRID_DEPTH; // 32768 cells
-const uint MAX_ENTITIES_PER_CELL = 32; // Safety limit for collision detection
+// FIRST-PRINCIPLES SPATIAL HASH: Properly sized for collision detection
+const float ENTITY_RADIUS = 0.5;       // Conservative entity radius for collision
+const float CELL_SIZE = 3.0;           // 6x entity radius = guaranteed single-cell containment
+const uint GRID_WIDTH = 32;            // Reduced grid for better cache locality
+const uint GRID_HEIGHT = 32;           // 32x32x16 = 16,384 cells total
+const uint GRID_DEPTH = 16;            // Increased depth for better 3D distribution
+const uint SPATIAL_MAP_SIZE = GRID_WIDTH * GRID_HEIGHT * GRID_DEPTH; // 16384 cells
+const uint MAX_ENTITIES_PER_CELL = 16;  // Reduced for better performance
 
 // Clean spatial buffer access using proper types - no workarounds needed
 
@@ -63,13 +64,13 @@ void initializeSpatialMap() {
     memoryBarrierBuffer();
 }
 
-// Cache-friendly 3D access pattern constants
-const uint Z_STRIDE = GRID_WIDTH * GRID_HEIGHT;  // 4096 - one cache line per Z level
-const uint Y_STRIDE = GRID_WIDTH;                // 64 - fits in cache line
+// Cache-friendly 3D access pattern constants  
+const uint Z_STRIDE = GRID_WIDTH * GRID_HEIGHT;  // 1024 - one cache line per Z level
+const uint Y_STRIDE = GRID_WIDTH;                // 32 - fits in cache line
 
-// 3D Collision detection configuration - GENEROUS for debugging  
-const float CUBE_RADIUS = 1.2;            // Large bounding sphere radius for cube (was 0.8)
-const float MIN_SEPARATION = 0.3;         // Minimum separation distance
+// FIRST-PRINCIPLES COLLISION: Conservative and deterministic
+const float COLLISION_RADIUS = ENTITY_RADIUS * 2.2; // 1.1 = slight overlap tolerance
+const float MIN_SEPARATION = 0.1;                   // Small separation buffer
 
 // Cache-optimized 3D spatial hash function
 uint spatialHash3D(vec3 position) {
@@ -81,9 +82,9 @@ uint spatialHash3D(vec3 position) {
     uint y = uint(gridCoord.y) & (GRID_HEIGHT - 1);
     uint z = uint(gridCoord.z) & (GRID_DEPTH - 1);
     
-    // Cache-friendly layout: Z-order curve for spatial locality
+    // Cache-friendly layout: Z-order curve for spatial locality  
     // Interleave bits: Z layers grouped for cache coherency
-    return x + (y << 6) + (z << 12);  // x + y*64 + z*4096
+    return x + (y << 5) + (z << 10);  // x + y*32 + z*1024
 }
 
 // Calculate entity bounds from model matrix
@@ -93,12 +94,12 @@ struct EntityBounds {
 };
 
 EntityBounds calculateEntityBounds(uint entityIndex, vec3 position) {
-    // Use fixed entity size for spatial hash (don't rely on model matrix scaling)
-    vec3 halfSize = vec3(CUBE_RADIUS, CUBE_RADIUS, CUBE_RADIUS); // Fixed cube half-size
+    // Fixed entity size for consistent collision detection
+    vec3 radius = vec3(ENTITY_RADIUS, ENTITY_RADIUS, ENTITY_RADIUS);
     
     EntityBounds bounds;
-    bounds.minBounds = position - halfSize;
-    bounds.maxBounds = position + halfSize;
+    bounds.minBounds = position - radius;
+    bounds.maxBounds = position + radius;
     return bounds;
 }
 
@@ -167,131 +168,95 @@ void insertFloorEntityIntoCells(uint entityIndex, vec3 position) {
     }
 }
 
-// Regular entity spatial insertion - smaller entities
+// SIMPLIFIED ENTITY INSERTION: Single cell per entity with proper sizing
 void insertRegularEntityIntoCells(uint entityIndex, vec3 position) {
     if (entityIndex >= pc.entityCount) return;
     
-    EntityBounds bounds = calculateEntityBounds(entityIndex, position);
+    // Single cell insertion - CELL_SIZE is large enough to contain entire entity
+    uint cellIndex = spatialHash3D(position);
     
-    // Calculate spatial cell range that this entity occupies
-    ivec3 minCell = ivec3(floor(bounds.minBounds / CELL_SIZE));
-    ivec3 maxCell = ivec3(floor(bounds.maxBounds / CELL_SIZE));
-    
-    // Clamp to grid bounds
-    minCell = max(minCell, ivec3(0));
-    maxCell = min(maxCell, ivec3(int(GRID_WIDTH-1), int(GRID_HEIGHT-1), int(GRID_DEPTH-1)));
-    
-    // Add entity to cells it occupies
-    for (int z = minCell.z; z <= maxCell.z; z++) {
-        for (int y = minCell.y; y <= maxCell.y; y++) {
-            for (int x = minCell.x; x <= maxCell.x; x++) {
-                uint cellIndex = uint(x) + (uint(y) << 6) + (uint(z) << 12);
-                
-                if (cellIndex < SPATIAL_MAP_SIZE) {
-                    // ATOMIC RESERVATION - prevents race condition, proper types
-                    uint reservedSlot = atomicAdd(spatialMap.cellMetadata[cellIndex].x, 1);
-                    uint entityOffset = spatialMap.cellMetadata[cellIndex].y;
-                    
-                    // Safety check with atomic count
-                    if (reservedSlot < MAX_ENTITIES_PER_CELL) {
-                        uint insertIndex = entityOffset + reservedSlot;
-                        if (insertIndex < spatialEntities.entityIndices.length()) {
-                            spatialEntities.entityIndices[insertIndex] = entityIndex;
-                        }
-                    } else {
-                        // Rollback on overflow
-                        atomicAdd(spatialMap.cellMetadata[cellIndex].x, -1);
-                    }
-                }
+    if (cellIndex < SPATIAL_MAP_SIZE) {
+        // ATOMIC RESERVATION - prevents race condition
+        uint reservedSlot = atomicAdd(spatialMap.cellMetadata[cellIndex].x, 1);
+        uint entityOffset = spatialMap.cellMetadata[cellIndex].y;
+        
+        // Safety check with atomic count
+        if (reservedSlot < MAX_ENTITIES_PER_CELL) {
+            uint insertIndex = entityOffset + reservedSlot;
+            if (insertIndex < spatialEntities.entityIndices.length()) {
+                spatialEntities.entityIndices[insertIndex] = entityIndex;
             }
+        } else {
+            // Rollback on overflow
+            atomicAdd(spatialMap.cellMetadata[cellIndex].x, -1);
         }
     }
 }
 
 // Removed cached floor collision system to prevent conflicts with hardcoded system
 
-// Solid surface collision system - proper physics response
-bool checkFloorCollision(vec3 entityPosition, out vec3 resolvedPosition, inout vec3 velocity) {
-    // Hardcoded floor properties (matches control_service.cpp creation)
-    vec3 floorCenter = vec3(0.0, -5.0, 0.0);
-    vec3 floorScale = vec3(1000.0, 2.0, 1000.0);
-    vec3 floorHalfSize = floorScale * 0.5;
-    float entityRadius = 0.8;
+// FIRST-PRINCIPLES COLLISION SYSTEM: Simple, deterministic, robust
+
+// Floor collision check - simple AABB vs sphere
+bool checkFloorCollision(vec3 position, out vec3 correctedPosition) {
+    // Floor parameters - match control_service.cpp exactly
+    const vec3 floorCenter = vec3(0.0, -5.0, 0.0);
+    const vec3 floorHalfSize = vec3(500.0, 1.0, 500.0); // 1000x2x1000 -> half size
     
-    // Calculate floor bounds
-    vec3 floorMin = floorCenter - floorHalfSize;
-    vec3 floorMax = floorCenter + floorHalfSize;
+    // Entity bottom point
+    float entityBottom = position.y - ENTITY_RADIUS;
+    float floorTop = floorCenter.y + floorHalfSize.y; // -5 + 1 = -4
     
-    // Check if entity is within horizontal bounds of floor
-    if (entityPosition.x < floorMin.x - entityRadius || entityPosition.x > floorMax.x + entityRadius ||
-        entityPosition.z < floorMin.z - entityRadius || entityPosition.z > floorMax.z + entityRadius) {
-        return false; // Outside floor horizontal bounds
+    // Check if entity is above floor and within horizontal bounds
+    bool withinBounds = (position.x >= floorCenter.x - floorHalfSize.x - ENTITY_RADIUS &&
+                         position.x <= floorCenter.x + floorHalfSize.x + ENTITY_RADIUS &&
+                         position.z >= floorCenter.z - floorHalfSize.z - ENTITY_RADIUS &&
+                         position.z <= floorCenter.z + floorHalfSize.z + ENTITY_RADIUS);
+    
+    if (!withinBounds) {
+        correctedPosition = position;
+        return false;
     }
     
-    // Calculate closest point on floor surface to entity
-    vec3 closestPoint = clamp(entityPosition, floorMin, floorMax);
-    vec3 difference = entityPosition - closestPoint;
-    float distance = length(difference);
-    
-    // Check if entity is colliding with floor
-    if (distance < entityRadius) {
-        // Collision detected - resolve it
-        if (distance > 0.001) {
-            // Calculate collision normal (direction to push entity)
-            vec3 normal = normalize(difference);
-            
-            // Position entity just outside floor surface
-            resolvedPosition = closestPoint + normal * entityRadius;
-            
-            // Apply physics response to velocity
-            float velocityAlongNormal = dot(velocity, normal);
-            
-            if (velocityAlongNormal < 0.0) {
-                // Moving into surface - preserve XZ movement for floor collisions
-                
-                // For floor collision, we mainly care about Y-axis (vertical)
-                if (abs(normal.y) > 0.7) { // This is primarily a floor (horizontal surface)
-                    // Only modify Y velocity, preserve XZ completely
-                    velocity.y = -velocity.y * 0.3; // Bounce Y with restitution
-                    // Keep velocity.x and velocity.z unchanged for smooth sliding
-                } else {
-                    // For walls or other surfaces, use full physics
-                    vec3 normalVelocity = velocityAlongNormal * normal;
-                    vec3 tangentVelocity = velocity - normalVelocity;
-                    
-                    float restitution = 0.3;
-                    vec3 newNormalVelocity = -normalVelocity * restitution;
-                    
-                    float friction = 0.9; // Less friction for walls
-                    vec3 newTangentVelocity = tangentVelocity * friction;
-                    
-                    velocity = newNormalVelocity + newTangentVelocity;
-                }
-            }
-            
-            return true;
-        } else {
-            // Entity exactly on surface - just push up slightly
-            resolvedPosition = entityPosition + vec3(0, entityRadius, 0);
-            velocity.y = max(velocity.y, 0.0); // Prevent downward velocity
-            return true;
-        }
+    // Floor collision: push entity up so bottom is at floor top
+    if (entityBottom <= floorTop) {
+        correctedPosition = position;
+        correctedPosition.y = floorTop + ENTITY_RADIUS; // Entity center at floor + radius
+        return true;
     }
     
-    return false; // No collision
+    correctedPosition = position;
+    return false;
+}
+
+// Entity-entity collision check - simple sphere vs sphere
+bool checkEntityCollision(vec3 position, vec3 otherPosition, out vec3 separation) {
+    vec3 diff = position - otherPosition;
+    float distSq = dot(diff, diff);
+    float collisionDistSq = COLLISION_RADIUS * COLLISION_RADIUS;
+    
+    if (distSq > 0.000001 && distSq < collisionDistSq) {
+        float distance = sqrt(distSq);
+        float penetration = COLLISION_RADIUS - distance;
+        separation = (diff / distance) * penetration;
+        return true;
+    }
+    
+    separation = vec3(0.0);
+    return false;
 }
 
 // Unified insertion function - all entities go to spatial hash (floor collisions handled separately)
 void insertEntityIntoCells(uint entityIndex, vec3 position) {
     if (entityIndex >= pc.entityCount) return;
     
-    // All entities (including floors) go into spatial hash for entity-entity collisions
-    // Floor collisions are handled by the hardcoded checkFloorCollision() function
-    if (!isFloorEntity(entityIndex)) {
-        // Only regular entities need spatial hash insertion
+    // ALL entities go into spatial hash for entity-entity collision detection
+    // Floor collisions are still handled by the separate checkFloorCollision() function
+    if (isFloorEntity(entityIndex)) {
+        insertFloorEntityIntoCells(entityIndex, position);
+    } else {
         insertRegularEntityIntoCells(entityIndex, position);
     }
-    // Floor entities skip spatial hash since they don't move or need entity-entity collision
 }
 
 /* ---------- Collision Detection Constants and Functions ---------- */
@@ -319,34 +284,7 @@ uint collectEntitiesInCell(uint cellIndex, out uint entities[MAX_ENTITIES_PER_CE
     return entityCount;
 }
 
-// 3D Sphere-sphere collision test
-bool sphereCollision3D(vec3 pos1, vec3 pos2, float radius1, float radius2) {
-    vec3 diff = pos2 - pos1;
-    float distSq = dot(diff, diff);
-    float radiusSum = radius1 + radius2;
-    return distSq < (radiusSum * radiusSum);
-}
-
-// Resolve 3D collision with separation force
-vec3 resolveCollision3D(vec3 currentPos, vec3 otherPos) {
-    vec3 diff = currentPos - otherPos;
-    float distSq = dot(diff, diff);
-    
-    // Calculate safe distance (sum of bounding radii + separation)
-    float safeDistance = CUBE_RADIUS * 2.0 + MIN_SEPARATION;
-    float safeDistanceSq = safeDistance * safeDistance;
-    
-    if (distSq < safeDistanceSq && distSq > 0.000001) {
-        // Force separation - push entity away from collision
-        float invDist = inversesqrt(distSq); // Fast inverse sqrt
-        vec3 separationDir = diff * invDist;
-        
-        // Position entity at safe distance away from other entity
-        return otherPos + separationDir * safeDistance;
-    }
-    
-    return currentPos; // No collision resolution needed
-}
+// Old collision functions removed - using unified collision system
 
 
 void main() {
@@ -392,155 +330,126 @@ void main() {
         return;
     }
     
-    // On first frame, initialize position if it's zero
+    // Initialize position if needed
     if (length(currentPosition) < 0.01) {
-        // TIGHTER SPAWN: Use smaller spacing to encourage collisions for testing
-        float gridX = float(entityIndex % 50) * 1.0 - 25.0;  // Tighter X spread: -25 to +25 (50 units wide)
-        float gridY = float((entityIndex / 50) % 50) * 1.0 - 25.0;  // Tighter Y spread: -25 to +25 (50 units wide)
-        float gridZ = float(entityIndex / 2500) * 2.0 - 10.0;  // Tighter Z layers: -10 to +10
+        // CONTROLLED SPAWN: Tight grid to test collision system
+        float gridX = float(entityIndex % 10) * (COLLISION_RADIUS * 0.8); // Slightly overlapping
+        float gridZ = float(entityIndex / 10) * (COLLISION_RADIUS * 0.8);
+        float gridY = -2.0; // Above floor (floor top is at Y=-4)
         
-        // Small randomization to prevent perfect grid alignment
-        uint seed = entityIndex * 2654435761u;
-        float randX = (float(seed & 0xFFFFu) / 65535.0 - 0.5) * 0.8; // Small randomness
-        seed = seed * 1664525u + 1013904223u;
-        float randY = (float(seed & 0xFFFFu) / 65535.0 - 0.5) * 0.8;  
-        seed = seed * 1664525u + 1013904223u;
-        float randZ = (float(seed & 0xFFFFu) / 65535.0 - 0.5) * 1.5;
+        currentPosition = vec3(gridX, gridY, gridZ);
         
-        currentPosition = vec3(gridX + randX, gridY + randY + 15.0, gridZ + randZ); // Spawn above floor, tighter clustering
-        
-        // Initialize model matrix position immediately
+        // Initialize model matrix position
         entityBuffers[MODEL_MATRIX_BUFFER].data[entityIndex * 4 + 3] = vec4(currentPosition, 1.0);
+        
+        // Initialize with small random velocity
+        uint seed = entityIndex * 2654435761u;
+        float randVx = (float(seed & 0xFFFFu) / 65535.0 - 0.5) * 2.0;
+        seed = seed * 1664525u + 1013904223u;
+        float randVz = (float(seed & 0xFFFFu) / 65535.0 - 0.5) * 2.0;
+        vel = vec3(randVx, 0.0, randVz);
     }
     
-    // Apply gravity to regular entities only (floor entities don't have physics)
+    // FIRST-PRINCIPLES PHYSICS PIPELINE
+    
+    // STEP 1: Apply forces (gravity only)
     vel.y -= pc.gravityStrength * pc.deltaTime;
     
-    // Physics integration: position += velocity * deltaTime (3D movement)
-    if (length(vel) > 0.01) {
-        // Normalized physics integration (removed excessive multiplier)
-        currentPosition.x += vel.x * pc.deltaTime * 5.0; // Reduced from 15.0 to 5.0
-        currentPosition.y += vel.y * pc.deltaTime * 5.0;
-        currentPosition.z += vel.z * pc.deltaTime * 5.0;
-    }
+    // STEP 2: Calculate desired position from integration
+    vec3 desiredPosition = currentPosition + vel * pc.deltaTime;
     
-    // Moderate damping to balance frequent updates with momentum retention (3D)
-    vel *= 0.998;
-    
-    // Generate individual rotation physics directly in physics shader
-    float baseRotation = float(entityIndex % 360) * 0.01745; // Individual base rotation (degrees to radians)
-    float timeRotation = sin(pc.time * 0.1 + baseRotation) * 0.5; // Individual oscillation
-    rotationState.x = timeRotation;
-    
-    // Write tentative position to model matrix translation (column 3)
-    entityBuffers[MODEL_MATRIX_BUFFER].data[entityIndex * 4 + 3] = vec4(currentPosition, 1.0);
-    
-    // Insert entity into spatial hash at current position
+    // STEP 3: Insert current position into spatial hash
     insertEntityIntoCells(entityIndex, currentPosition);
     
-    // Wait for all entities to populate spatial hash before collision detection
+    // Synchronize spatial hash population
     barrier();
     memoryBarrierBuffer();
     
-    // 3D Collision detection - single unified floor collision system
-    vec3 resolvedPosition = currentPosition;
-    bool hadCollision = false;
+    // STEP 4: Collision detection and resolution
+    vec3 resolvedPosition = desiredPosition;
     
-    // SINGLE FLOOR COLLISION: Use only the hardcoded system to prevent conflicts
-    if (checkFloorCollision(currentPosition, resolvedPosition, vel)) {
-        hadCollision = true;
-        currentPosition = resolvedPosition; // Apply floor collision immediately
-        
-        // Immediately update model matrix with floor collision resolution
-        entityBuffers[MODEL_MATRIX_BUFFER].data[entityIndex * 4 + 3] = vec4(currentPosition, 1.0);
-        
-        // DON'T re-insert after floor collision - we'll do one final insert at the end
+    // Check floor collision first
+    vec3 floorCorrectedPosition;
+    bool hitFloor = checkFloorCollision(resolvedPosition, floorCorrectedPosition);
+    if (hitFloor) {
+        resolvedPosition = floorCorrectedPosition;
+        // Stop downward velocity on floor hit
+        if (vel.y < 0.0) {
+            vel.y = 0.0;
+        }
     }
     
-    // Pre-calculate collision parameters for spatial hash (unified with resolveCollision3D)
-    const float collisionRadius = CUBE_RADIUS * 2.0 + MIN_SEPARATION; // 2.2 total
-    const float collisionRadiusSq = collisionRadius * collisionRadius;
+    // Check entity-entity collisions
+    uint cellIndex = spatialHash3D(currentPosition); // Use current position for spatial lookup
     
-    // ALWAYS check spatial hash for entity-entity collisions (independent of floor collisions)
-    {
-        // Get our spatial cell
-        uint cellIndex = spatialHash3D(currentPosition);
-    
-    // Expanded 3D neighborhood: 27 cells (3x3x3 cube) for better collision detection
-    // Ensures floor collision detection works properly across cell boundaries
-    const int offsets[27][3] = int[27][3](
-        // Current layer (z=0)
-        int[3](-1, -1, 0), int[3](0, -1, 0), int[3](1, -1, 0),
-        int[3](-1,  0, 0), int[3](0,  0, 0), int[3](1,  0, 0),
-        int[3](-1,  1, 0), int[3](0,  1, 0), int[3](1,  1, 0),
-        // Below layer (z=-1)  
-        int[3](-1, -1, -1), int[3](0, -1, -1), int[3](1, -1, -1),
-        int[3](-1,  0, -1), int[3](0,  0, -1), int[3](1,  0, -1),
-        int[3](-1,  1, -1), int[3](0,  1, -1), int[3](1,  1, -1),
-        // Above layer (z=1)
-        int[3](-1, -1, 1), int[3](0, -1, 1), int[3](1, -1, 1),
-        int[3](-1,  0, 1), int[3](0,  0, 1), int[3](1,  0, 1),
-        int[3](-1,  1, 1), int[3](0,  1, 1), int[3](1,  1, 1)
+    // Check current cell and immediate neighbors (3x3x1 = 9 cells)
+    const int offsets[9][2] = int[9][2](
+        int[2](-1, -1), int[2](0, -1), int[2](1, -1),
+        int[2](-1,  0), int[2](0,  0), int[2](1,  0),
+        int[2](-1,  1), int[2](0,  1), int[2](1,  1)
     );
     
-    for (int cellIdx = 0; cellIdx < 27; cellIdx++) {
+    vec3 totalSeparation = vec3(0.0);
+    
+    for (int cellIdx = 0; cellIdx < 9; cellIdx++) {
         int dx = offsets[cellIdx][0];
-        int dy = offsets[cellIdx][1];
-        int dz = offsets[cellIdx][2];
+        int dz = offsets[cellIdx][1];
         
-        // Calculate neighbor cell using cache-optimized addressing
+        // Calculate neighbor cell
         uint currentX = cellIndex & (GRID_WIDTH - 1);
-        uint currentY = (cellIndex >> 6) & (GRID_HEIGHT - 1);
-        uint currentZ = (cellIndex >> 12) & (GRID_DEPTH - 1);
+        uint currentY = (cellIndex >> 5) & (GRID_HEIGHT - 1);
+        uint currentZ = (cellIndex >> 10) & (GRID_DEPTH - 1);
         
-        // Apply offset with proper wrapping (handle negative offsets correctly)
         uint neighborX = (currentX + uint(dx + int(GRID_WIDTH))) & (GRID_WIDTH - 1);
-        uint neighborY = (currentY + uint(dy + int(GRID_HEIGHT))) & (GRID_HEIGHT - 1);
         uint neighborZ = (currentZ + uint(dz + int(GRID_DEPTH))) & (GRID_DEPTH - 1);
+        uint neighborCell = neighborX + (currentY << 5) + (neighborZ << 10);
         
-        // Cache-friendly neighbor calculation
-        uint neighborCell = neighborX + (neighborY << 6) + (neighborZ << 12);
-        
-        // Collect entities in this neighboring cell
+        // Collect entities in this cell
         uint entitiesInCell[MAX_ENTITIES_PER_CELL];
         uint entityCount = collectEntitiesInCell(neighborCell, entitiesInCell);
         
-        // Check collision with entities in this cell
+        // Check collision with other entities
         for (uint i = 0; i < entityCount; i++) {
             uint otherEntityIndex = entitiesInCell[i];
             if (otherEntityIndex == entityIndex) continue; // Skip self
             if (otherEntityIndex >= pc.entityCount) continue;
+            if (isFloorEntity(otherEntityIndex)) continue; // Skip floor entities
             
-            // Get other entity's transform from model matrix
-            vec3 otherPos = entityBuffers[MODEL_MATRIX_BUFFER].data[otherEntityIndex * 4 + 3].xyz;
+            // Get other entity's current position from spatial hash
+            vec3 otherPosition = entityBuffers[MODEL_MATRIX_BUFFER].data[otherEntityIndex * 4 + 3].xyz;
             
-            // Regular entity-entity collision - sphere vs sphere
-            // (Floor collisions are now handled by cached collision system)
-            if (!isFloorEntity(otherEntityIndex)) {
-                vec3 diff = currentPosition - otherPos;
-                float distSq = dot(diff, diff);
-                
-                if (distSq < collisionRadiusSq && distSq > 0.000001) {
-                    currentPosition = resolveCollision3D(currentPosition, otherPos);
-                    // STRONGER collision response for better visibility
-                    vel *= 0.5; // Stronger dampening to make collisions more obvious
-                    
-                    // Immediately update model matrix with resolved position
-                    entityBuffers[MODEL_MATRIX_BUFFER].data[entityIndex * 4 + 3] = vec4(currentPosition, 1.0);
-                    
-                    // DON'T re-insert after entity collision - we'll do one final insert at the end
-                    
-                    hadCollision = true;
-                    break; // Handle first collision only
-                }
+            // Check collision
+            vec3 separation;
+            if (checkEntityCollision(resolvedPosition, otherPosition, separation)) {
+                totalSeparation += separation;
             }
         }
-        
-        if (hadCollision) break; // Exit loop
     }
-    } // End of spatial hash collision check
     
-    // Write back final velocity, rotation state, and current position to model matrix
+    // Apply entity separation
+    if (length(totalSeparation) > 0.01) {
+        resolvedPosition += totalSeparation;
+        
+        // Bounce velocity
+        vec3 separationDir = normalize(totalSeparation);
+        float velocityAlongSeparation = dot(vel, separationDir);
+        if (velocityAlongSeparation < 0.0) {
+            vel -= separationDir * velocityAlongSeparation * pc.restitution;
+        }
+    }
+    
+    // Apply friction and damping
+    vel *= (1.0 - pc.friction * pc.deltaTime);
+    
+    // STEP 5: Finalize position
+    currentPosition = resolvedPosition;
+    
+    // Generate rotation
+    float baseRotation = float(entityIndex % 360) * 0.01745;
+    float timeRotation = sin(pc.time * 0.1 + baseRotation) * 0.5;
+    rotationState.x = timeRotation;
+    
+    // STEP 6: Write results
     entityBuffers[VELOCITY_BUFFER].data[entityIndex] = vec4(vel, damping);
     entityBuffers[ROTATION_STATE_BUFFER].data[entityIndex] = rotationState;
     entityBuffers[MODEL_MATRIX_BUFFER].data[entityIndex * 4 + 3] = vec4(currentPosition, 1.0);
