@@ -610,8 +610,8 @@ void GameControlService::createFloor(const glm::vec2& position) {
     }
     
     // Create massive floor right underneath the origin
-    glm::vec3 floorPos(0.0f, 0.0f, -5.0f);  // Just below origin, close to entities
-    glm::vec3 floorScale(1000.0f, 1000.0f, 2.0f);  // Huge floor plane to catch all entities
+    glm::vec3 floorPos(0.0f, -5.0f, 0.0f);  // Below origin in Y direction (gravity now pulls down in Y)
+    glm::vec3 floorScale(1000.0f, 2.0f, 1000.0f);  // Huge floor plane to catch all entities (thin in Y, large in X and Z)
     
     flecs::entity floorEntity = entityFactory->createFloorEntity(floorPos, floorScale);
     std::cout << "Created floor entity at position (" << floorPos.x << ", " << floorPos.y << ", " << floorPos.z << ")" << std::endl;
@@ -638,8 +638,8 @@ void GameControlService::createDefaultFloor() {
     }
     
     // Create massive floor right underneath the origin
-    glm::vec3 floorPos(0.0f, 0.0f, -5.0f);  // Just below origin, close to entities
-    glm::vec3 floorScale(1000.0f, 1000.0f, 2.0f);  // Huge floor plane to catch all entities
+    glm::vec3 floorPos(0.0f, -5.0f, 0.0f);  // Below origin in Y direction (gravity now pulls down in Y)
+    glm::vec3 floorScale(1000.0f, 2.0f, 1000.0f);  // Huge floor plane to catch all entities (thin in Y, large in X and Z)
     
     flecs::entity floorEntity = entityFactory->createFloorEntity(floorPos, floorScale);
     std::cout << "Created default floor entity at origin" << std::endl;
@@ -770,7 +770,7 @@ void GameControlService::handleCameraControls() {
         if (activeCamera->projectionType == Camera::ProjectionType::Perspective) {
             // For perspective cameras, adjust FOV instead of zoom
             float fovDelta = wheelDelta * -2.0f; // Negative to make wheel up = zoom in
-            float newFov = glm::clamp(activeCamera->fov + fovDelta, 15.0f, 120.0f);
+            float newFov = glm::clamp(activeCamera->fov + fovDelta, 1.0f, 179.0f);  // Full FOV range for immersive view
             activeCamera->setFOV(newFov);
             std::cout << "FOV: " << activeCamera->fov << std::endl;
         } else {
@@ -806,7 +806,7 @@ void GameControlService::handleMouseLook() {
     if (!mouseLookEnabled) return;
     
     const float mouseSensitivity = 0.002f; // Radians per pixel
-    const float pitchLimit = 1.5f; // Limit pitch to avoid flipping (about 85 degrees)
+    // Removed pitch limit to allow full 360-degree camera movement
     
     CameraID activeCameraID = cameraService->getActiveCameraID();
     Camera* activeCamera = cameraService->getCamera(activeCameraID);
@@ -831,13 +831,8 @@ void GameControlService::handleMouseLook() {
         // Apply vertical rotation (pitch) around right axis
         float pitchAngle = -deltaY * mouseSensitivity;
         
-        // Limit pitch to prevent camera flipping
-        glm::vec3 newForward = glm::mat3(glm::rotate(glm::mat4(1.0f), pitchAngle, right)) * forward;
-        float newPitch = std::asin(glm::clamp(newForward.y, -1.0f, 1.0f));
-        
-        if (std::abs(newPitch) < pitchLimit) {
-            forward = newForward;
-        }
+        // Apply pitch rotation without limits for full 360-degree movement
+        forward = glm::mat3(glm::rotate(glm::mat4(1.0f), pitchAngle, right)) * forward;
         
         // EXACTLY like WASD: trigger camera service update by calling setCameraPosition
         glm::vec3 currentPos = activeCamera->position;

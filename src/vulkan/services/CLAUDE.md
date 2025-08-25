@@ -53,11 +53,11 @@
 **Function:** Implements constructor-based service pattern with full dependency injection. Handles swapchain image acquisition with timeout protection and orchestrates full swapchain recreation including pipeline cache regeneration.
 
 ### render_frame_director.h
-**Inputs:** Eight dependencies via constructor dependency injection (VulkanContext, VulkanSwapchain, PipelineSystemManager, VulkanSync, ResourceCoordinator, GPUEntityManager, FrameGraph, PresentationSurface), ECS world reference, frame timing data, resource IDs.  
+**Inputs:** Eight dependencies via constructor dependency injection (VulkanContext, VulkanSwapchain, PipelineSystemManager, VulkanSync, ResourceCoordinator, GPUEntityManager, FrameGraph, PresentationSurface), ECS world reference, frame timing data, entity buffer and position buffer resource IDs.  
 **Outputs:** RenderFrameResult containing execution success and acquired swapchain image index.  
-**Function:** Constructor-based master frame orchestration service with comprehensive null validation that coordinates image acquisition, frame graph setup, node configuration, and execution.
+**Function:** Constructor-based master frame orchestration service with comprehensive null validation that coordinates image acquisition, frame graph setup with MVP transformation pipeline, node configuration, and execution.
 
 ### render_frame_director.cpp
-**Inputs:** Constructor dependency injection of eight core Vulkan subsystems with comprehensive null validation, frame counters, timing data, Flecs world, swapchain images, GPU entity and resource managers.  
-**Outputs:** Configured and executed frame graph with proper node setup, updated descriptor sets after swapchain recreation.  
-**Function:** Constructor-based service that throws exceptions for null dependencies and implements complete frame direction flow from image acquisition through frame graph execution with dynamic swapchain image resolution and comprehensive swapchain recreation handling.
+**Inputs:** Constructor dependency injection of eight core Vulkan subsystems with comprehensive null validation, frame counters, timing data, Flecs world, swapchain images, GPU entity manager for model matrix buffer access.  
+**Outputs:** Configured frame graph with simplified MVP pipeline: PhysicsComputeNode writes directly to model matrices (eliminating position buffer ping-pong), EntityGraphicsNode reads model matrices for transformation, dynamic swapchain image resolution.  
+**Function:** Constructor-based service implementing MVP transformation system where PhysicsComputeNode receives simplified constructor (entityBufferId, modelMatrixBufferId) and writes 3D transformations directly to model matrices as single position source, eliminating intermediate position buffer dependencies and ping-pong complexity while maintaining compute-graphics synchronization barriers.

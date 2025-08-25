@@ -278,7 +278,7 @@ public:
     }
     
     // Create a floor entity at specified position and scale
-    flecs::entity createFloorEntity(const glm::vec3& position, const glm::vec3& scale = glm::vec3(100.0f, 100.0f, 1.0f)) {
+    flecs::entity createFloorEntity(const glm::vec3& position, const glm::vec3& scale = glm::vec3(100.0f, 1.0f, 100.0f)) {
         // Floor entities have a distinctive bright color for visibility
         glm::vec4 floorColor = glm::vec4(0.8f, 0.2f, 0.2f, 1.0f); // Bright red floor color
         

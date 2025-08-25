@@ -39,6 +39,7 @@ src/
 **CPU**: Flecs ECS → Services → GPU Entity Manager (SoA conversion)  
 **GPU**: Movement Compute → Physics Compute → 3D Graphics Rendering  
 **Sync**: Frame graph with automatic barriers and resource dependency tracking  
+**Transform**: Physics writes directly to model matrix translation, vertex shader applies clean MVP (Object → World → View → Projection)  
 **Perf**: 80,000+ entities at 60 FPS with instanced rendering, MSAA, cache-optimized SoA
 
 ## 3D Implementation Status
@@ -55,7 +56,7 @@ src/
 - BaseComputeNode: Template eliminates 300+ lines of duplication, eliminated inter-chunk barriers
 - PhysicsComputeNode: Cache-optimized 3D spatial hash (64x64x8 grid, 32,768 cells, 7-cell neighborhood)
 - Compute chunking: Disabled forced chunking (forceChunkedDispatch = false), MAX_WORKGROUPS_PER_CHUNK = 2048
-- Compute-graphics sync: Memory barriers for movement→physics→rendering
+- Compute-graphics sync: Memory barriers for movement→physics→rendering, physics writes to model matrix
 - Dynamic rendering: VK 1.3 with MSAA (2x) and depth attachment
 - Resource dependencies: Declarative tracking with auto barrier insertion
 
@@ -71,7 +72,7 @@ src/
 - Staging/transfer: Async asset streaming with ring buffer allocation
 - Descriptors: Template-based updates, eliminates code duplication
 - Memory pressure: Critical detection with allocation recovery
-- Buffer coordination: Entity, vertex/index, spatial mapping integration
+- Buffer coordination: Entity model matrices, vertex/index, spatial mapping integration
 
 ### Services
 - Frame orchestration: 3D frame execution from acquisition to presentation
@@ -98,11 +99,11 @@ src/
 ## GPUEntity Structure (128 bytes, 2 cache lines)
 ```cpp
 struct GPUEntity {
-    glm::vec4 velocity;           // 16 bytes - velocity.xy, damping, reserved
+    glm::vec4 velocity;           // 16 bytes - velocity.xyz (3D), damping
     glm::vec4 movementParams;     // 16 bytes - amplitude, frequency, phase, timeOffset  
     glm::vec4 runtimeState;       // 16 bytes - totalTime, initialized, stateTimer, entityState
     glm::vec4 color;              // 16 bytes - RGBA color
-    glm::mat4 modelMatrix;        // 64 bytes - transform matrix
+    glm::mat4 modelMatrix;        // 64 bytes - transform matrix, column 3 is authoritative position
 };
 ```
 

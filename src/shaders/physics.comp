@@ -252,7 +252,7 @@ void main() {
     }
     
     // Apply gravity to regular entities only (floor entities don't have physics)
-    vel.z -= pc.gravityStrength * pc.deltaTime;
+    vel.y -= pc.gravityStrength * pc.deltaTime;
     
     // Physics integration: position += velocity * deltaTime (3D movement)
     if (length(vel) > 0.01) {

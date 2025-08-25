@@ -1,51 +1,80 @@
 # Vulkan Nodes
 
 ## Directory Overview
-(Streamlined frame graph node implementations with unified lifecycle and push constants)
+Frame graph node implementations with MVP transformation system and model matrix-based physics updates.
 
-### Simplified Node Architecture
-- **Unified Lifecycle**: Nodes use only `execute()` and optional `onFirstUse()` methods
-- **Unified Push Constants**: All nodes use `NodePushConstants` structure with flexible parameters
-- **Consolidated Debug**: Replaced individual counters with `FrameGraphDebug` utilities
+### MVP Transformation Architecture
+- **Model Matrix Centralization**: Physics updates model matrices directly, eliminating position buffer ping-pong
+- **Simplified Resource Dependencies**: Reduced from 4 position buffers to single model matrix buffer
+- **Clean MVP Pipeline**: Object → World (model) → View → Projection transformation in vertex shader
+- **Unified Node Architecture**: BaseComputeNode template eliminates 300+ lines of compute node duplication
 
 ### Files
 
+**base_compute_node.h**
+- **Template Architecture**: Eliminates duplication between EntityComputeNode and PhysicsComputeNode
+- **Inputs**: Entity buffer, model matrix buffer (single buffer replaces position ping-pong)
+- **Function**: Provides unified compute execution with chunked dispatch, pipeline management, and resource binding
+
 **entity_compute_node.h**
-- **Inputs**: Entity buffer resource IDs, ComputePipelineManager, GPUEntityManager, GPUTimeoutDetector
-- **Outputs**: Modified entity buffer with updated movement parameters, compute shader barriers for graphics synchronization
-- **Function**: Orchestrates GPU compute workloads for entity movement using adaptive chunked dispatching with unified `NodePushConstants`.
+- **Inputs**: Entity buffer, position/model matrix buffers (legacy ping-pong structure maintained)
+- **Outputs**: Updated entity movement parameters, velocity calculations
+- **Function**: Random walk movement computation using BaseComputeNode template methods
 
 **entity_compute_node.cpp**
-- **Inputs**: Command buffer, frame timing data (time, deltaTime), entity count from GPUEntityManager
-- **Outputs**: Executed compute dispatches with memory barriers, unified `NodePushConstants` with `param1` for chunk offsets
-- **Function**: Implements chunked compute execution with GPU health monitoring using streamlined `execute()` lifecycle and throttled debug logging.
+- **Execution**: Delegates to BaseComputeNode::executeComputeNode() template method
+- **Pipeline**: Uses EntityMovementComputeState with movement-specific parameters
+- **Function**: Calculates entity velocity and movement patterns with adaptive workload management
 
 **entity_graphics_node.h**
-- **Inputs**: Entity/position buffer resource IDs, GraphicsPipelineManager, VulkanSwapchain, ResourceCoordinator, GPUEntityManager
-- **Outputs**: Rendered frame to swapchain image, updated uniform buffers, graphics pipeline state
-- **Function**: Manages instanced rendering pipeline with camera matrix updates and descriptor set binding.
+- **MVP Integration**: Reads model matrices from physics for proper 3D transformation
+- **Inputs**: Entity buffer (attributes), model matrix buffer (transform data)
+- **Outputs**: Rendered swapchain images with depth testing and MSAA resolve
+- **Function**: 3D instanced rendering with camera matrix updates and uniform buffer optimization
 
 **entity_graphics_node.cpp**
-- **Inputs**: Command buffer, swapchain framebuffers, camera matrices from CameraService, entity count
-- **Outputs**: Dynamic rendering with MSAA resolve, instanced draw calls, uniform buffer updates with dirty tracking
-- **Function**: Executes graphics rendering with streamlined `execute()` lifecycle, viewport management, and throttled debug logging.
+- **MVP Transformation**: Vertex shader reads model matrices and applies View/Projection from UBO
+- **Resource Access**: ReadOnly access to entity and model matrix buffers
+- **Rendering**: Dynamic rendering with depth attachment, MSAA (2x), and frustum culling
+- **Function**: Executes 3D graphics pipeline with cached uniform buffers and dirty tracking
 
 **physics_compute_node.h**
-- **Inputs**: Entity/position buffer resource IDs, ComputePipelineManager, GPUEntityManager, GPUTimeoutDetector
-- **Outputs**: Updated position and current position buffers, spatial map clearing workgroups, compute barriers
-- **Function**: Handles spatial hash collision detection compute workloads with adaptive dispatching and chunk management.
+- **Model Matrix Output**: Constructor takes modelMatrixBuffer instead of separate position buffers
+- **Simplified Dependencies**: ReadWrite access to entity buffer and model matrix buffer only
+- **Function**: Spatial hash collision detection writing directly to model matrix translation components
 
 **physics_compute_node.cpp**
-- **Inputs**: Command buffer, frame timing, entity positions, spatial map size requirements
-- **Outputs**: Physics compute dispatches with unified `NodePushConstants`, memory barriers for data consistency, consolidated debug logging
-- **Function**: Implements physics simulation with spatial map management using unified push constants (`param1` for entityOffset) and `FrameGraphDebug` utilities.
+- **Resource Simplification**: Uses single modelMatrixBuffer for all position operations
+- **Constructor**: BaseComputeNode(entityBuffer, modelMatrixBuffer, modelMatrixBuffer, modelMatrixBuffer)
+- **Dependencies**: ReadWrite access to model matrix buffer eliminates position buffer ping-pong
+- **Execution**: Physics calculations write 3D positions to model matrix column 3 (translation)
+- **Function**: 3D spatial hash (64×64×8 grid, 32,768 cells) with optimized cache-line access patterns
 
 **swapchain_present_node.h**
-- **Inputs**: Color target resource ID, VulkanSwapchain, current swapchain image index
-- **Outputs**: Presentation dependency declarations, swapchain image resource bindings
-- **Function**: Declares presentation dependencies for proper frame graph synchronization without direct command buffer operations.
+- **Inputs**: Dynamic swapchain image resource ID resolved per-frame
+- **Dependencies**: ColorAttachment write access to current swapchain image
+- **Function**: Frame graph presentation dependency declaration without direct command operations
 
 **swapchain_present_node.cpp**
-- **Inputs**: Frame graph context, swapchain state, image index validation
-- **Outputs**: Dependency validation results, presentation readiness confirmation
-- **Function**: Validates presentation dependencies and image bounds using streamlined `execute()` lifecycle for queue-level presentation.
+- **Validation**: Ensures swapchain image bounds and presentation readiness
+- **Dependencies**: Uses currentSwapchainImageId for dynamic per-frame resource binding
+- **Function**: Validates presentation state for queue-level presentation coordination
+
+## MVP Transformation Pipeline
+
+### Data Flow
+1. **Movement Compute**: EntityComputeNode updates velocity/movement parameters
+2. **Physics Compute**: PhysicsComputeNode writes 3D positions to model matrix translation (column 3)
+3. **Graphics Rendering**: EntityGraphicsNode reads model matrices for MVP transformation
+4. **Vertex Shader**: Applies Object → World (model) → View → Projection transformation
+
+### Resource Dependencies
+- **EntityComputeNode**: ReadWrite entity buffer (movement parameters)
+- **PhysicsComputeNode**: ReadWrite entity buffer + model matrix buffer
+- **EntityGraphicsNode**: Read entity buffer + model matrix buffer
+
+### Performance Optimizations
+- **Eliminated Position Ping-Pong**: Single model matrix buffer replaces 4 position buffers
+- **Cache-Optimized Access**: Model matrix layout matches GPU cache line boundaries
+- **Reduced Memory Barriers**: Simplified compute-graphics synchronization
+- **Template Code Elimination**: BaseComputeNode reduces duplication by 300+ lines

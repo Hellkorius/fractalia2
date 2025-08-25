@@ -7,8 +7,8 @@
 
 // Camera component for 3D view control
 struct Camera {
-    glm::vec3 position{0.0f, 0.0f, 5.0f};  // Camera position in world space (moved back for 3D)
-    glm::vec3 target{0.0f, 0.0f, 0.0f};    // Camera target/look-at point
+    glm::vec3 position{3.0f, 4.0f, 5.0f};  // Camera position in world space (angled view for better 3D perspective)
+    glm::vec3 target{0.0f, 0.0f, 0.0f};    // Camera target/look-at point  
     glm::vec3 up{0.0f, 1.0f, 0.0f};        // Camera up vector
     
     // Projection parameters
@@ -153,7 +153,7 @@ struct Camera {
     
     // 3D projection controls
     void setFOV(float newFov) {
-        fov = glm::clamp(newFov, 1.0f, 179.0f);
+        fov = glm::clamp(newFov, 0.1f, 179.9f);  // More permissive FOV range for full 360 camera movement
         projectionDirty = true;
     }
     
